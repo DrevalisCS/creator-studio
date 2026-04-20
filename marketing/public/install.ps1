@@ -106,6 +106,20 @@ services:
       interval: 5s
       retries: 20
 
+  # One-shot: runs Alembic migrations and exits. ``app`` and ``worker``
+  # wait for this to complete before starting.
+  migrate:
+    image: $ImageRegistry/creator-studio-app:$ImageTag
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://drevalis:drevalis@postgres:5432/drevalis
+      PYTHONPATH: /app/src
+    working_dir: /app
+    command: python -m alembic upgrade head
+    restart: "no"
+    depends_on:
+      postgres: { condition: service_healthy }
+
   app:
     image: $ImageRegistry/creator-studio-app:$ImageTag
     restart: unless-stopped
@@ -122,6 +136,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }
+      migrate:  { condition: service_completed_successfully }
 
   worker:
     image: $ImageRegistry/creator-studio-app:$ImageTag
@@ -137,6 +152,7 @@ services:
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }
+      migrate:  { condition: service_completed_successfully }
 
   frontend:
     image: $ImageRegistry/creator-studio-frontend:$ImageTag
