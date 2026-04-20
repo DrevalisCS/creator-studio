@@ -13,6 +13,9 @@ license_keys/
 # ─── Screenshots / scratch ─────────────────────────────────────────────
 screenshots/
 .claude-plan.md
+.claude/
+*.zip
+test.db
 
 # ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
