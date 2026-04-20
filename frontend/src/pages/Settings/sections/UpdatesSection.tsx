@@ -2,7 +2,6 @@ import { useCallback, useEffect, useState } from 'react';
 import { ArrowUpCircle, CheckCircle2, AlertTriangle, RefreshCw, ExternalLink } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
 import { updates, type UpdateStatus } from '@/lib/api';
 
@@ -20,7 +19,7 @@ export function UpdatesSection() {
       const s = await updates.status(force);
       setStatus(s);
     } catch (e: any) {
-      toast({ title: 'Update check failed', description: e?.message, variant: 'error' });
+      toast.error('Update check failed', { description: e?.message });
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -38,9 +37,9 @@ export function UpdatesSection() {
     setApplying(true);
     try {
       const r = await updates.apply();
-      toast({ title: 'Update queued', description: r.hint, variant: 'success' });
+      toast.success('Update queued', { description: r.hint });
     } catch (e: any) {
-      toast({ title: 'Could not queue update', description: e?.message, variant: 'error' });
+      toast.error('Could not queue update', { description: e?.message });
     } finally {
       setApplying(false);
     }

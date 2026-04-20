@@ -57,10 +57,8 @@ export function LicenseSection() {
       }
     } catch (e: any) {
       const detail = e?.detail ?? e?.message ?? 'could not open billing portal';
-      toast({
-        title: 'Billing portal unavailable',
+      toast.error('Billing portal unavailable', {
         description: typeof detail === 'string' ? detail : JSON.stringify(detail),
-        variant: 'error',
       });
     } finally {
       setOpeningPortal(false);
@@ -71,9 +69,9 @@ export function LicenseSection() {
     if (!status?.machine_id) return;
     try {
       await navigator.clipboard.writeText(status.machine_id);
-      toast({ title: 'Machine ID copied', variant: 'success' });
+      toast.success('Machine ID copied');
     } catch {
-      toast({ title: 'Copy failed', variant: 'error' });
+      toast.error('Copy failed');
     }
   };
 
@@ -82,15 +80,13 @@ export function LicenseSection() {
     setReplacing(true);
     try {
       await license.activate(replaceKey.trim());
-      toast({ title: 'License replaced', variant: 'success' });
+      toast.success('License replaced');
       setReplaceKey('');
       refresh();
     } catch (e: any) {
       const detail = e?.detail ?? e?.message ?? 'activation failed';
-      toast({
-        title: 'Activation failed',
+      toast.error('Activation failed', {
         description: typeof detail === 'string' ? detail : JSON.stringify(detail),
-        variant: 'error',
       });
     } finally {
       setReplacing(false);
@@ -104,10 +100,10 @@ export function LicenseSection() {
     setDeactivating(true);
     try {
       await license.deactivate();
-      toast({ title: 'License deactivated', variant: 'success' });
+      toast.success('License deactivated');
       refresh();
     } catch (e: any) {
-      toast({ title: 'Deactivate failed', description: e?.message, variant: 'error' });
+      toast.error('Deactivate failed', { description: e?.message });
     } finally {
       setDeactivating(false);
     }
