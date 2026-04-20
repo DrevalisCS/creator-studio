@@ -33,7 +33,13 @@ $LicenseServerUrl = if ($env:LICENSE_SERVER_URL) { $env:LICENSE_SERVER_URL } els
 
 function Write-Step   { param($msg) Write-Host "`n▶ $msg" -ForegroundColor Green }
 function Write-Warn   { param($msg) Write-Host   "! $msg" -ForegroundColor Yellow }
-function Write-Fail   { param($msg) Write-Host   "✕ $msg" -ForegroundColor Red; exit 1 }
+function Write-Fail {
+    param($msg)
+    Write-Host   "✕ $msg" -ForegroundColor Red
+    # ``exit`` inside a script piped via ``iwr | iex`` is easy to miss —
+    # ``throw`` always surfaces as a visible terminating error.
+    throw $msg
+}
 
 # ---- 1. Docker Desktop ---------------------------------------------------
 
@@ -191,7 +197,14 @@ API_AUTH_TOKEN=
 
 Write-Step "Pulling images (first run can take several minutes)"
 & docker compose pull
-if ($LASTEXITCODE -ne 0) { Write-Fail "docker compose pull failed" }
+if ($LASTEXITCODE -ne 0) {
+    Write-Host ""
+    Write-Host "  Common causes:" -ForegroundColor Yellow
+    Write-Host "   - GHCR packages not yet public. See https://drevalis.com/download#troubleshoot"
+    Write-Host "   - Docker Desktop not signed in / rate-limited (docker login)"
+    Write-Host "   - No internet / corporate proxy blocking ghcr.io"
+    Write-Fail "docker compose pull failed — see output above"
+}
 
 Write-Step "Starting the stack"
 & docker compose up -d
