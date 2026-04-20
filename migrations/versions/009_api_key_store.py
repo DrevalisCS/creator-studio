@@ -52,11 +52,14 @@ def upgrade() -> None:
     )
 
     # Maintain updated_at via the same trigger used by other tables.
+    # NB: the function is named ``set_updated_at`` in migration 001 — the
+    # original 009 referenced ``update_updated_at_column`` which never
+    # existed, so fresh installs failed at this step.
     op.execute(
         """
         CREATE TRIGGER trg_api_key_store_updated_at
         BEFORE UPDATE ON api_key_store
-        FOR EACH ROW EXECUTE FUNCTION update_updated_at_column()
+        FOR EACH ROW EXECUTE FUNCTION set_updated_at()
         """
     )
 
