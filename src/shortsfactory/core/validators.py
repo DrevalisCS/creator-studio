@@ -180,14 +180,19 @@ def _check_ip_local_first(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -
 def sanitize_filename(filename: str) -> str:
     """Sanitize a filename by stripping path components and dangerous characters.
 
-    Returns only the basename with alphanumeric, hyphen, underscore, and dot characters.
-    """
-    # Strip any path components
-    import os
+    Cross-platform: treats both ``/`` and ``\\`` as path separators regardless
+    of the host OS (``os.path.basename`` alone does not, so a Windows path
+    like ``C:\\Users\\x\\f.txt`` would survive into the basename on Linux).
+    Also strips any Windows drive prefix (``C:``).
 
-    basename = os.path.basename(filename)
-    # Replace path separators that might remain
-    basename = basename.replace("/", "").replace("\\", "")
+    Returns only the final segment, with non-alphanumeric chars (except
+    ``._-``) replaced by ``_``.
+    """
+    # Take the last component after EITHER separator, regardless of host OS.
+    basename = filename.replace("\\", "/").rsplit("/", 1)[-1]
+    # Strip any residual Windows drive prefix (e.g., "C:file.txt").
+    if len(basename) >= 2 and basename[1] == ":":
+        basename = basename[2:]
     # Only allow safe characters
     sanitized = re.sub(r"[^a-zA-Z0-9._-]", "_", basename)
     # Prevent empty or dot-only filenames
