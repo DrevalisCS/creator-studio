@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Download — Drevalis Creator Studio</title>
+  <meta name="description" content="Install Drevalis Creator Studio in one command. Self-hosted Docker stack." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class', theme: { extend: {
+      fontFamily: { display: ['Outfit', 'sans-serif'], sans: ['DM Sans', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+      colors: { bg: { base: '#0A0B0E', elevated: '#14161B' }, txt: { primary: '#E8EAED', secondary: '#9AA0A6', muted: '#5F6368' }, accent: { DEFAULT: '#00E5B8', glow: '#00BFA8' } },
+    } } };
+  </script>
+  <style>
+    body { background:#0A0B0E; color:#E8EAED; font-family:'DM Sans',sans-serif; }
+    h1,h2,h3,h4 { font-family:'Outfit',sans-serif; }
+    .card { background: rgba(20,22,27,.8); border: 1px solid rgba(255,255,255,.06); }
+    pre, code.inline { font-family: 'JetBrains Mono', monospace; }
+    pre { background: #0A0B0E; border: 1px solid rgba(255,255,255,.06); }
+  </style>
+</head>
+
+<body>
+  <nav class="border-b border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="font-display font-bold text-lg">Drevalis</a>
+      <div class="flex items-center gap-6 text-sm">
+        <a href="/#features" class="text-txt-secondary hover:text-txt-primary">Features</a>
+        <a href="/pricing" class="text-txt-secondary hover:text-txt-primary">Pricing</a>
+        <a href="/download" class="text-txt-primary">Download</a>
+        <a href="/account" class="text-txt-secondary hover:text-txt-primary">Account</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="max-w-4xl mx-auto px-6 py-16">
+    <h1 class="font-display text-5xl font-bold mb-4">Install in one command.</h1>
+    <p class="text-lg text-txt-secondary mb-10">
+      Drevalis Creator Studio ships as a Docker Compose stack. The installer writes a ready-to-run configuration, pulls the official images, and starts the services.
+    </p>
+
+    <h2 class="font-display text-2xl font-bold mb-3">Quick install</h2>
+
+    <div class="space-y-6">
+      <!-- Linux / macOS -->
+      <div class="card rounded-xl p-5">
+        <h3 class="font-semibold mb-2 flex items-center gap-2">
+          <span class="text-lg">🐧</span> Linux &amp; macOS
+        </h3>
+        <p class="text-xs text-txt-secondary mb-3">Docker Engine + Compose plugin, or Docker Desktop on macOS.</p>
+        <pre class="rounded-lg p-4 text-sm overflow-x-auto"><code>curl -fsSL https://drevalis.com/install.sh | bash</code></pre>
+        <p class="text-xs text-txt-muted mt-2">
+          Read <a href="/install.sh" class="text-accent underline">install.sh</a> before piping to bash if you prefer.
+        </p>
+      </div>
+
+      <!-- Windows -->
+      <div class="card rounded-xl p-5">
+        <h3 class="font-semibold mb-2 flex items-center gap-2">
+          <span class="text-lg">🪟</span> Windows 10 / 11
+        </h3>
+        <p class="text-xs text-txt-secondary mb-3">
+          Requires <a href="https://www.docker.com/products/docker-desktop/" class="text-accent underline" target="_blank" rel="noreferrer">Docker Desktop</a> (enables WSL2 automatically).
+          Once installed and running, open <strong>PowerShell</strong> and paste:
+        </p>
+        <pre class="rounded-lg p-4 text-sm overflow-x-auto"><code>iwr -useb https://drevalis.com/install.ps1 | iex</code></pre>
+        <p class="text-xs text-txt-muted mt-2">
+          PowerShell's <code class="inline text-txt-primary">ExecutionPolicy</code> must allow remote scripts. If it complains, run
+          <code class="inline text-txt-primary">Set-ExecutionPolicy -Scope Process RemoteSigned</code> first.
+          Read <a href="/install.ps1" class="text-accent underline">install.ps1</a> before running if you prefer.
+        </p>
+
+        <details class="mt-3 text-xs">
+          <summary class="cursor-pointer text-accent">Never used Docker Desktop before?</summary>
+          <ol class="mt-2 space-y-1.5 text-txt-secondary list-decimal list-inside">
+            <li>Download Docker Desktop from <a href="https://www.docker.com/products/docker-desktop/" class="text-accent underline" target="_blank" rel="noreferrer">docker.com</a> — pick "Windows" → AMD64 or ARM64</li>
+            <li>Run the installer; accept the WSL2 option when prompted</li>
+            <li>Reboot when it asks</li>
+            <li>Launch Docker Desktop from the Start menu and wait until the tray icon (bottom right) is solid, not animated</li>
+            <li>Open PowerShell and paste the command above</li>
+          </ol>
+        </details>
+      </div>
+    </div>
+
+    <h2 class="font-display text-2xl font-bold mt-12 mb-3">What the installer does</h2>
+    <ol class="space-y-2 text-sm text-txt-secondary list-decimal list-inside mb-10">
+      <li>Creates <code class="inline text-txt-primary">/srv/drevalis</code></li>
+      <li>Writes <code class="inline text-txt-primary">docker-compose.yml</code> pulling official images from <code class="inline text-txt-primary">ghcr.io/drevaliscs/*</code></li>
+      <li>Generates a Fernet encryption key and writes <code class="inline text-txt-primary">.env</code></li>
+      <li>Pulls all images (~3 GB, coffee break)</li>
+      <li>Runs database migrations</li>
+      <li>Starts the stack</li>
+      <li>Prints the URL to open</li>
+    </ol>
+
+    <h2 class="font-display text-2xl font-bold mt-12 mb-3">System requirements</h2>
+    <div class="grid md:grid-cols-2 gap-4 mb-10">
+      <div class="card rounded-xl p-5">
+        <h4 class="font-semibold mb-2">Minimum</h4>
+        <ul class="text-sm text-txt-secondary space-y-1">
+          <li>Linux, macOS (Docker Desktop), or Windows (WSL2 + Docker Desktop)</li>
+          <li>8 CPU cores, 16 GB RAM</li>
+          <li>50 GB free disk</li>
+          <li>Docker Engine 24+, Docker Compose v2</li>
+        </ul>
+      </div>
+      <div class="card rounded-xl p-5">
+        <h4 class="font-semibold mb-2">Recommended</h4>
+        <ul class="text-sm text-txt-secondary space-y-1">
+          <li>NVIDIA GPU with 12 GB+ VRAM (for scene generation)</li>
+          <li>32 GB RAM</li>
+          <li>200 GB SSD</li>
+          <li>Fast internet for first-time model downloads</li>
+        </ul>
+      </div>
+    </div>
+
+    <h2 class="font-display text-2xl font-bold mt-12 mb-3">External services you need</h2>
+    <p class="text-sm text-txt-secondary mb-4">
+      Drevalis Creator Studio orchestrates these three tools. Install them separately so you control the models:
+    </p>
+
+    <div class="grid md:grid-cols-3 gap-4">
+      <div class="card rounded-xl p-5">
+        <h4 class="font-semibold mb-1">ComfyUI</h4>
+        <p class="text-xs text-txt-secondary mb-2">Scene image / video generation.</p>
+        <a href="https://github.com/comfyanonymous/ComfyUI" class="text-xs text-accent underline" target="_blank" rel="noreferrer">Install guide →</a>
+      </div>
+      <div class="card rounded-xl p-5">
+        <h4 class="font-semibold mb-1">LM Studio or Ollama</h4>
+        <p class="text-xs text-txt-secondary mb-2">Local LLM for scripts. Or plug in Claude / OpenAI-compatible.</p>
+        <a href="https://lmstudio.ai" class="text-xs text-accent underline" target="_blank" rel="noreferrer">LM Studio →</a>
+      </div>
+      <div class="card rounded-xl p-5">
+        <h4 class="font-semibold mb-1">FFmpeg</h4>
+        <p class="text-xs text-txt-secondary mb-2">Installed inside the Docker container — nothing to do.</p>
+        <span class="text-xs text-accent">Included</span>
+      </div>
+    </div>
+
+    <h2 class="font-display text-2xl font-bold mt-12 mb-3">After install</h2>
+    <ol class="space-y-2 text-sm text-txt-secondary list-decimal list-inside">
+      <li>Open <code class="inline text-txt-primary">http://localhost:3000</code></li>
+      <li>Paste your license key (from the purchase email) into the activation screen</li>
+      <li>Settings → ComfyUI Servers → add your ComfyUI URL (e.g. <code class="inline text-txt-primary">http://host.docker.internal:8188</code>)</li>
+      <li>Settings → LLM Configs → add your LM Studio / Ollama endpoint</li>
+      <li>Settings → Voice Profiles → pick a default TTS voice</li>
+      <li>Create your first series and generate an episode</li>
+    </ol>
+
+    <h2 class="font-display text-2xl font-bold mt-12 mb-3">Updates</h2>
+    <p class="text-sm text-txt-secondary mb-3">
+      In-app, one click. Settings → Updates → <em>Update now</em>. The updater sidecar pulls the new images and restarts the stack automatically. No terminal needed.
+    </p>
+    <p class="text-sm text-txt-secondary">Prefer manual?</p>
+    <pre class="rounded-lg p-4 text-sm overflow-x-auto mt-3"><code>cd /srv/drevalis
+docker compose pull
+docker compose up -d --remove-orphans</code></pre>
+
+    <h2 class="font-display text-2xl font-bold mt-12 mb-3">Manual install (if you'd rather not pipe to bash)</h2>
+    <p class="text-sm text-txt-secondary mb-3">Create a <code class="inline">docker-compose.yml</code> with:</p>
+    <pre class="rounded-lg p-4 text-xs overflow-x-auto"><code>services:
+  app:
+    image: ghcr.io/drevaliscs/creator-studio-app:latest
+    restart: unless-stopped
+    ports: ["8000:8000"]
+    env_file: .env
+    volumes: [./storage:/app/storage, updater_shared:/shared]
+    depends_on: [postgres, redis]
+
+  worker:
+    image: ghcr.io/drevaliscs/creator-studio-app:latest
+    restart: unless-stopped
+    env_file: .env
+    volumes: [./storage:/app/storage]
+    command: python -m arq shortsfactory.workers.settings.WorkerSettings
+    depends_on: [postgres, redis]
+
+  frontend:
+    image: ghcr.io/drevaliscs/creator-studio-frontend:latest
+    restart: unless-stopped
+    ports: ["3000:3000"]
+    depends_on: [app]
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: drevalis
+      POSTGRES_PASSWORD: drevalis
+      POSTGRES_DB: drevalis
+    volumes: [pg:/var/lib/postgresql/data]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  updater:
+    image: ghcr.io/drevaliscs/creator-studio-updater:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - .:/project
+      - updater_shared:/shared
+
+volumes:
+  pg:
+  updater_shared:</code></pre>
+
+    <p class="text-sm text-txt-secondary mt-4">
+      Then set <code class="inline">.env</code> with <code class="inline">ENCRYPTION_KEY</code> and <code class="inline">LICENSE_SERVER_URL=https://license.drevalis.com</code>, and run <code class="inline">docker compose up -d</code>.
+    </p>
+
+    <h2 class="font-display text-2xl font-bold mt-12 mb-3">Still stuck?</h2>
+    <p class="text-sm text-txt-secondary">
+      Email <a href="mailto:support@drevalis.com" class="text-accent underline">support@drevalis.com</a> with the output of
+      <code class="inline">docker compose logs app worker</code> and we'll help.
+    </p>
+  </section>
+
+  <footer class="border-t border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6 py-8 text-xs text-txt-muted text-center">© 2026 Drevalis</div>
+  </footer>
+</body>
+</html>

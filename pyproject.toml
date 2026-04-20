@@ -1,0 +1,137 @@
+[project]
+name = "shortsfactory"
+version = "0.1.0"
+description = "AI-powered YouTube Shorts creation studio"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.32.0",
+    "sqlalchemy[asyncio]>=2.0.36",
+    "asyncpg>=0.30.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "redis>=5.2.0",
+    "arq>=0.26.1",
+    "structlog>=24.4.0",
+    "openai>=1.58.0",
+    "anthropic>=0.42.0",
+    "httpx>=0.28.0",
+    "cryptography>=44.0.0",
+    "faster-whisper>=1.1.0",
+    "aiofiles>=24.1.0",
+    "alembic>=1.14.0",
+    "edge-tts>=6.1.0",
+    "python-multipart>=0.0.9",
+    "google-api-python-client>=2.100.0",
+    "google-auth-oauthlib>=1.2.0",
+    "google-auth>=2.25.0",
+    "pyjwt[crypto]>=2.10.0",
+]
+
+[project.optional-dependencies]
+kokoro = [
+    "kokoro>=0.9.0; python_version >= '3.11'",
+    "soundfile>=0.13.0",
+]
+music = [
+    "audiocraft>=1.0.0; python_version >= '3.11'",
+]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.25.0",
+    "pytest-cov>=6.0.0",
+    "mypy>=1.14.0",
+    "ruff>=0.8.0",
+    "factory-boy>=3.3.0",
+    "httpx>=0.28.0",
+    "bandit>=1.7.0",
+    "pip-audit>=2.7.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shortsfactory"]
+
+# ── Ruff ──────────────────────────────────────────────────────────────────────
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "W",   # pycodestyle warnings
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+    "SIM", # flake8-simplify
+    "TCH", # flake8-type-checking
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["shortsfactory"]
+
+# ── mypy ──────────────────────────────────────────────────────────────────────
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = [
+    "pydantic.mypy",
+    "sqlalchemy.ext.mypy.plugin",
+]
+warn_return_any = true
+warn_unused_configs = true
+
+[[tool.mypy.overrides]]
+module = [
+    "arq.*",
+    "faster_whisper.*",
+    "kokoro.*",
+    "soundfile.*",
+    "audiocraft.*",
+    "numpy.*",
+    "edge_tts.*",
+    "google.*",
+    "google_auth_oauthlib.*",
+    "googleapiclient.*",
+]
+ignore_missing_imports = true
+
+# ── pytest ────────────────────────────────────────────────────────────────────
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-ra -q --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks integration tests requiring external services",
+]
+
+# ── bandit ────────────────────────────────────────────────────────────────────
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]
+skips = ["B101"]  # skip assert warnings in test code
+
+# ── coverage ──────────────────────────────────────────────────────────────────
+
+[tool.coverage.run]
+source = ["src/shortsfactory"]
+branch = true
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if __name__",
+]

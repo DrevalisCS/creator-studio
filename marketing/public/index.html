@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Drevalis Creator Studio — AI-powered YouTube Shorts automation</title>
+  <meta name="description" content="Self-hosted, end-to-end YouTube Shorts creation: LLM scripts, TTS voiceover, ComfyUI scenes, captions, and upload. Your GPU, your content, your IP." />
+  <meta property="og:title" content="Drevalis Creator Studio" />
+  <meta property="og:description" content="Self-hosted YouTube Shorts automation. Script → voice → scenes → upload, fully local." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://drevalis.com/" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            display: ['Outfit', 'system-ui', 'sans-serif'],
+            sans: ['DM Sans', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            bg: { base: '#0A0B0E', elevated: '#14161B', hover: '#1A1D24' },
+            txt: { primary: '#E8EAED', secondary: '#9AA0A6', muted: '#5F6368' },
+            accent: { DEFAULT: '#00E5B8', glow: '#00BFA8' },
+          },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    body { background: #0A0B0E; color: #E8EAED; font-family: 'DM Sans', system-ui, sans-serif; }
+    h1, h2, h3, h4 { font-family: 'Outfit', sans-serif; letter-spacing: -0.01em; }
+    .accent-gradient { background: linear-gradient(135deg, #00E5B8 0%, #00BFA8 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+    .card { background: rgba(20, 22, 27, 0.8); border: 1px solid rgba(255,255,255,0.06); backdrop-filter: blur(8px); }
+    .glow-on-hover { transition: box-shadow .2s, transform .2s; }
+    .glow-on-hover:hover { box-shadow: 0 0 40px -10px rgba(0,229,184,.4); transform: translateY(-2px); }
+    .noise { position: fixed; inset: 0; pointer-events: none; opacity: .03; z-index: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E"); }
+  </style>
+</head>
+
+<body class="antialiased">
+  <div class="noise"></div>
+
+  <!-- Nav -->
+  <nav class="sticky top-0 z-50 border-b border-white/[0.06] bg-bg-base/80 backdrop-blur-md">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="flex items-center gap-2">
+        <svg width="28" height="28" viewBox="0 0 28 28" fill="none"><rect x="2" y="2" width="24" height="24" rx="6" fill="url(#g)"/><path d="M9 9 L19 14 L9 19 Z" fill="#0A0B0E"/><defs><linearGradient id="g" x1="0" y1="0" x2="28" y2="28"><stop stop-color="#00E5B8"/><stop offset="1" stop-color="#00BFA8"/></linearGradient></defs></svg>
+        <span class="font-display font-bold text-lg">Drevalis</span>
+      </a>
+      <div class="flex items-center gap-6 text-sm">
+        <a href="#features" class="text-txt-secondary hover:text-txt-primary">Features</a>
+        <a href="#pricing" class="text-txt-secondary hover:text-txt-primary">Pricing</a>
+        <a href="/download" class="text-txt-secondary hover:text-txt-primary">Download</a>
+        <a href="/account" class="text-txt-secondary hover:text-txt-primary">Account</a>
+        <a href="#pricing" class="rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold px-4 py-2 text-sm glow-on-hover">Start free trial</a>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="relative overflow-hidden">
+    <div class="max-w-6xl mx-auto px-6 py-24 text-center relative z-10">
+      <div class="inline-flex items-center gap-2 text-xs text-accent border border-accent/20 bg-accent/5 rounded-full px-3 py-1 mb-6">
+        <span class="w-1.5 h-1.5 bg-accent rounded-full animate-pulse"></span>
+        Self-hosted · Your GPU · Your IP
+      </div>
+      <h1 class="font-display text-5xl md:text-7xl font-bold mb-6 leading-[1.05]">
+        YouTube Shorts,<br/>
+        <span class="accent-gradient">on autopilot.</span>
+      </h1>
+      <p class="text-xl text-txt-secondary max-w-2xl mx-auto mb-10">
+        Drevalis Creator Studio turns a series topic into a finished, captioned, uploaded Short. Scripts by an LLM, voiceover by Edge/Kokoro/ElevenLabs, scenes by ComfyUI, all on <strong class="text-txt-primary">your own hardware</strong>.
+      </p>
+      <div class="flex items-center justify-center gap-4">
+        <a href="#pricing" class="rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold px-6 py-3 glow-on-hover">See pricing</a>
+        <a href="/download" class="rounded-md border border-white/10 px-6 py-3 text-txt-primary hover:bg-bg-hover">Install guide →</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Demo placeholder -->
+  <section class="max-w-5xl mx-auto px-6 pb-24">
+    <div class="card rounded-xl p-2 shadow-2xl shadow-accent/10">
+      <div class="aspect-video rounded-lg bg-bg-base flex items-center justify-center text-txt-muted border border-white/[0.04]">
+        <div class="text-center">
+          <div class="text-6xl mb-3">▶</div>
+          <div class="text-sm">Drop a demo video / screen recording here</div>
+          <div class="text-xs mt-1">60–90 seconds, topic in → finished MP4 out</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section id="features" class="max-w-6xl mx-auto px-6 py-24">
+    <h2 class="font-display text-4xl font-bold text-center mb-3">Everything in one pipeline</h2>
+    <p class="text-txt-secondary text-center mb-14 max-w-xl mx-auto">Six automated steps, fully local. No data leaves your machine unless you want it to.</p>
+
+    <div class="grid md:grid-cols-3 gap-5">
+      <!-- Feature cards -->
+      <div class="card rounded-xl p-6">
+        <div class="text-2xl mb-3">✍️</div>
+        <h3 class="font-semibold mb-2">LLM scripts</h3>
+        <p class="text-sm text-txt-secondary">Plug in LM Studio, Ollama, or Claude. Series bibles keep voice consistent across episodes.</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <div class="text-2xl mb-3">🎙</div>
+        <h3 class="font-semibold mb-2">TTS voiceover</h3>
+        <p class="text-sm text-txt-secondary">17 free Edge voices, Kokoro, Piper, or ElevenLabs — <span class="text-txt-primary">whichever you prefer</span>.</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <div class="text-2xl mb-3">🎞</div>
+        <h3 class="font-semibold mb-2">Scene generation</h3>
+        <p class="text-sm text-txt-secondary">ComfyUI workflows (Qwen Image for Shorts, Wan 2.2 for long-form). Your models, your style.</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <div class="text-2xl mb-3">💬</div>
+        <h3 class="font-semibold mb-2">Word-level captions</h3>
+        <p class="text-sm text-txt-secondary">faster-whisper produces timed ASS subtitles with animated presets. Burned in for social.</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <div class="text-2xl mb-3">🎬</div>
+        <h3 class="font-semibold mb-2">FFmpeg assembly</h3>
+        <p class="text-sm text-txt-secondary">9:16 / 16:9 / 1:1. Ken Burns pans, background music with sidechain ducking, thumbnails.</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <div class="text-2xl mb-3">📤</div>
+        <h3 class="font-semibold mb-2">Multi-platform upload</h3>
+        <p class="text-sm text-txt-secondary">YouTube OAuth, multiple channels, scheduled publishing. TikTok + Instagram on Studio tier.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- What's different -->
+  <section class="max-w-5xl mx-auto px-6 py-24">
+    <div class="card rounded-2xl p-10 md:p-14">
+      <h2 class="font-display text-3xl md:text-4xl font-bold mb-8">Why self-hosted?</h2>
+      <div class="grid md:grid-cols-3 gap-8 text-sm">
+        <div>
+          <h4 class="text-accent font-semibold mb-2">You own the pipeline</h4>
+          <p class="text-txt-secondary">Scripts, voices, models, workflows — all on your disk. No platform can take them away.</p>
+        </div>
+        <div>
+          <h4 class="text-accent font-semibold mb-2">Your GPU, your cost</h4>
+          <p class="text-txt-secondary">Pay only for the license. Compute runs on your hardware. Rent a RunPod GPU on-demand (Pro tier+) if you need more.</p>
+        </div>
+        <div>
+          <h4 class="text-accent font-semibold mb-2">No creator-account lock-in</h4>
+          <p class="text-txt-secondary">Switch LLMs, swap voices, change models. Nothing in the pipeline is proprietary to Drevalis.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section id="pricing" class="max-w-6xl mx-auto px-6 py-24">
+    <h2 class="font-display text-4xl font-bold text-center mb-3">Pricing</h2>
+    <p class="text-txt-secondary text-center mb-8">All tiers include every feature — tiers cap concurrency, channels, and cloud GPU access.</p>
+
+    <div class="flex items-center justify-center gap-3 mb-12">
+      <span class="text-sm text-txt-secondary">Monthly</span>
+      <label class="relative inline-flex cursor-pointer items-center">
+        <input type="checkbox" data-interval-toggle class="peer sr-only" />
+        <div class="h-6 w-11 rounded-full bg-bg-elevated border border-white/10 peer-checked:bg-accent/30 peer-checked:border-accent/40"></div>
+        <div class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-txt-primary transition peer-checked:translate-x-5 peer-checked:bg-accent"></div>
+      </label>
+      <span class="text-sm text-txt-secondary">Yearly <span class="text-accent">(2 months free)</span></span>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-5">
+      <!-- Solo -->
+      <div class="card rounded-xl p-8 flex flex-col">
+        <h3 class="font-display text-xl font-bold mb-1">Solo</h3>
+        <p class="text-xs text-txt-secondary mb-6">For one creator, one channel.</p>
+        <div class="mb-6">
+          <span class="text-4xl font-bold">$<span data-price data-price-monthly="19" data-price-yearly="190">19</span></span>
+          <span class="text-txt-secondary" data-interval-label>/mo</span>
+        </div>
+        <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
+          <li>✓ 1 machine</li>
+          <li>✓ 5 episodes / day</li>
+          <li>✓ 1 YouTube channel</li>
+          <li>✓ Edge, Piper, Kokoro TTS</li>
+          <li>✓ Updates included</li>
+        </ul>
+        <button data-checkout data-tier="solo" data-interval="monthly"
+                class="rounded-md border border-white/10 py-3 font-semibold text-txt-primary hover:bg-bg-hover">
+          Start Solo
+        </button>
+      </div>
+
+      <!-- Pro (featured) -->
+      <div class="card rounded-xl p-8 flex flex-col border-accent/40 bg-accent/5 shadow-xl shadow-accent/20 relative">
+        <div class="absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-semibold bg-gradient-to-r from-accent to-accent-glow text-bg-base px-3 py-1 rounded-full">
+          Most popular
+        </div>
+        <h3 class="font-display text-xl font-bold mb-1">Pro</h3>
+        <p class="text-xs text-txt-secondary mb-6">Scale up a few channels.</p>
+        <div class="mb-6">
+          <span class="text-4xl font-bold">$<span data-price data-price-monthly="39" data-price-yearly="390">39</span></span>
+          <span class="text-txt-secondary" data-interval-label>/mo</span>
+        </div>
+        <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
+          <li>✓ 3 machines</li>
+          <li>✓ <strong class="text-txt-primary">Unlimited</strong> episodes</li>
+          <li>✓ 3 YouTube channels</li>
+          <li>✓ RunPod cloud GPU offload</li>
+          <li>✓ Audiobook studio</li>
+          <li>✓ ElevenLabs TTS</li>
+        </ul>
+        <button data-checkout data-tier="pro" data-interval="monthly"
+                class="rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold py-3 glow-on-hover">
+          Start Pro
+        </button>
+      </div>
+
+      <!-- Studio -->
+      <div class="card rounded-xl p-8 flex flex-col">
+        <h3 class="font-display text-xl font-bold mb-1">Studio</h3>
+        <p class="text-xs text-txt-secondary mb-6">Multi-platform content operation.</p>
+        <div class="mb-6">
+          <span class="text-4xl font-bold">$<span data-price data-price-monthly="99" data-price-yearly="990">99</span></span>
+          <span class="text-txt-secondary" data-interval-label>/mo</span>
+        </div>
+        <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
+          <li>✓ 5 machines</li>
+          <li>✓ Unlimited everything</li>
+          <li>✓ Unlimited YouTube channels</li>
+          <li>✓ TikTok + Instagram</li>
+          <li>✓ API access</li>
+          <li>✓ Priority email support</li>
+        </ul>
+        <button data-checkout data-tier="studio" data-interval="monthly"
+                class="rounded-md border border-white/10 py-3 font-semibold text-txt-primary hover:bg-bg-hover">
+          Start Studio
+        </button>
+      </div>
+    </div>
+
+    <p class="text-center text-xs text-txt-muted mt-8">
+      14-day money-back guarantee · Cancel anytime · VAT/sales tax handled via Stripe
+    </p>
+  </section>
+
+  <!-- FAQ -->
+  <section class="max-w-3xl mx-auto px-6 py-24">
+    <h2 class="font-display text-3xl font-bold text-center mb-10">Questions</h2>
+    <div class="space-y-4">
+      <details class="card rounded-xl p-5 group">
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">What hardware do I need?<span class="text-txt-muted group-open:rotate-180 transition">⌃</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">
+          Minimum: 16 GB RAM, an NVIDIA GPU with ≥ 8 GB VRAM for scenes, ~20 GB disk. For long-form video (Wan 2.2), 24 GB+ VRAM is recommended. No GPU? Use the RunPod integration on Pro/Studio — scenes run on a rented cloud GPU on-demand.
+        </p>
+      </details>
+      <details class="card rounded-xl p-5 group">
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">Do I need to install ComfyUI and LM Studio separately?<span class="text-txt-muted group-open:rotate-180 transition">⌃</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">
+          Yes — both run as external services so you control the models. Our install guide walks through it. Alternatively, wire the app to a RunPod ComfyUI (Pro tier) and Anthropic Claude for scripts — zero local GPU needed.
+        </p>
+      </details>
+      <details class="card rounded-xl p-5 group">
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">Can I upgrade or cancel later?<span class="text-txt-muted group-open:rotate-180 transition">⌃</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">
+          Yes. Visit <a href="/account" class="text-accent underline">drevalis.com/account</a> at any time to open Stripe's billing portal — upgrade, downgrade, change payment method, cancel, or view invoices.
+        </p>
+      </details>
+      <details class="card rounded-xl p-5 group">
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">What happens if I don't renew?<span class="text-txt-muted group-open:rotate-480 transition">⌃</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">
+          Your install keeps running for a 7-day grace window, then locks. You can still open the app to view past episodes — generation and upload stop until you renew. Updates are paused.
+        </p>
+      </details>
+      <details class="card rounded-xl p-5 group">
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">Is my data sent anywhere?<span class="text-txt-muted group-open:rotate-180 transition">⌃</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">
+          No. Scripts, voices, videos, and channel credentials stay on your machine. Drevalis servers only handle licensing: a 24-hour heartbeat checks whether your subscription is still active. Nothing about your content is transmitted.
+        </p>
+      </details>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="border-t border-white/[0.06] mt-24">
+    <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-start justify-between gap-6">
+      <div>
+        <div class="flex items-center gap-2 mb-2">
+          <span class="font-display font-bold">Drevalis</span>
+        </div>
+        <p class="text-xs text-txt-muted">© 2026 Drevalis. Creator Studio is a trademark of Drevalis.</p>
+      </div>
+      <div class="flex gap-10 text-sm">
+        <div>
+          <div class="text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">Product</div>
+          <ul class="space-y-1.5 text-txt-secondary">
+            <li><a href="#features" class="hover:text-txt-primary">Features</a></li>
+            <li><a href="#pricing" class="hover:text-txt-primary">Pricing</a></li>
+            <li><a href="/download" class="hover:text-txt-primary">Download</a></li>
+          </ul>
+        </div>
+        <div>
+          <div class="text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">Account</div>
+          <ul class="space-y-1.5 text-txt-secondary">
+            <li><a href="/account" class="hover:text-txt-primary">Manage subscription</a></li>
+            <li><a href="mailto:support@drevalis.com" class="hover:text-txt-primary">Support</a></li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/assets/site.js"></script>
+</body>
+</html>

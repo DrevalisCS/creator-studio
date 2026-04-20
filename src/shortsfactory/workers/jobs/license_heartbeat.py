@@ -1,0 +1,113 @@
+"""Daily license heartbeat.
+
+Runs as an arq cron every 24h. Reads the stored JWT, extracts the license
+key from the ``jti`` claim, and POSTs ``/heartbeat`` to the license server.
+On success, replaces the stored JWT with the freshly-minted one and bumps
+the cross-process state version so all uvicorn workers re-read. On explicit
+revocation (402 ``license_revoked``), zeros the JWT — the next request
+flips the app into EXPIRED and the frontend returns to the activation
+wizard.
+
+Network failures are logged but tolerated: the cached JWT's own ``exp``
+carries the app through the 7-day offline grace window.
+"""
+
+from __future__ import annotations
+
+import structlog
+
+logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
+
+async def license_heartbeat(ctx: dict) -> dict:
+    from shortsfactory.core.config import Settings
+    from shortsfactory.core.license.activation import (
+        ActivationError,
+        ActivationNetworkError,
+        heartbeat_with_server,
+    )
+    from shortsfactory.core.license.machine import stable_machine_id
+    from shortsfactory.core.license.verifier import (
+        LicenseVerificationError,
+        bootstrap_license_state,
+        bump_state_version,
+        verify_jwt,
+    )
+    from shortsfactory.repositories.license_state import LicenseStateRepository
+
+    settings = Settings()  # type: ignore[call-arg]
+    session_factory = ctx["session_factory"]
+    redis = ctx.get("redis")
+
+    log = logger.bind(job="license_heartbeat")
+
+    # Nothing to do without a configured server — Phase 1 installs are
+    # activated from a directly-pasted JWT and don't need heartbeats.
+    if not settings.license_server_url:
+        log.debug("heartbeat_skipped_no_server_url")
+        return {"skipped": "no_server_url"}
+
+    async with session_factory() as session:
+        repo = LicenseStateRepository(session)
+        row = await repo.get()
+        if row is None or not row.jwt:
+            log.debug("heartbeat_skipped_no_license")
+            return {"skipped": "no_license"}
+
+        try:
+            claims = verify_jwt(
+                row.jwt,
+                public_key_override_pem=settings.license_public_key_override,
+            )
+        except LicenseVerificationError as exc:
+            log.warning("heartbeat_stored_jwt_invalid", error=str(exc)[:120])
+            return {"skipped": "jwt_invalid"}
+
+        machine_id = row.machine_id or stable_machine_id()
+
+        try:
+            fresh_jwt = await heartbeat_with_server(
+                settings.license_server_url,
+                license_key=claims.jti,
+                machine_id=machine_id,
+                version="0.1.0",
+            )
+        except ActivationNetworkError as exc:
+            log.info("heartbeat_network_failure", error=str(exc)[:120])
+            await repo.record_heartbeat("network_error")
+            await session.commit()
+            return {"status": "network_error"}
+        except ActivationError as exc:
+            # Revoked / not found / any non-2xx — zero the JWT so the app
+            # locks on the next request, matching the behavior of an
+            # explicit deactivate.
+            log.warning(
+                "heartbeat_rejected",
+                status_code=exc.status_code,
+                error=exc.error,
+            )
+            await repo.clear()
+            await repo.record_heartbeat(f"revoked:{exc.error}")
+            await session.commit()
+            if redis is not None:
+                await bump_state_version(redis)
+            # Re-bootstrap local state in this process immediately.
+            await bootstrap_license_state(
+                session_factory,
+                public_key_override_pem=settings.license_public_key_override,
+            )
+            return {"status": "revoked", "error": exc.error}
+
+        # Success — replace the stored JWT with the renewed one.
+        await repo.upsert(jwt=fresh_jwt, machine_id=machine_id)
+        await repo.record_heartbeat("ok")
+        await session.commit()
+
+    if redis is not None:
+        await bump_state_version(redis)
+    await bootstrap_license_state(
+        session_factory,
+        public_key_override_pem=settings.license_public_key_override,
+    )
+    log.info("heartbeat_ok", tier=claims.tier)
+    return {"status": "ok", "tier": claims.tier}

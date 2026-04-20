@@ -1,0 +1,103 @@
+"""SEO generation arq job.
+
+Moved from the synchronous HTTP endpoint to avoid blocking uvicorn workers
+during LLM inference (can take up to 30 minutes on slow local models).
+"""
+
+from __future__ import annotations
+
+import json as _json
+
+import structlog
+
+logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
+
+
+async def generate_seo_async(ctx: dict, episode_id: str) -> dict:
+    """Generate SEO-optimized metadata for an episode using LLM.
+
+    Parameters
+    ----------
+    ctx:
+        arq context dict populated by ``startup``.
+    episode_id:
+        UUID string of the target episode.
+    """
+    from shortsfactory.core.config import Settings
+    from shortsfactory.repositories.episode import EpisodeRepository
+    from shortsfactory.repositories.llm_config import LLMConfigRepository
+    from shortsfactory.schemas.script import EpisodeScript
+    from shortsfactory.services.llm import (
+        LLMService,
+        OpenAICompatibleProvider,
+        _extract_json,
+    )
+
+    db = ctx["db"]
+    settings = Settings()  # type: ignore[call-arg]
+
+    logger.info("seo_generate_job.start", episode_id=episode_id)
+
+    ep_repo = EpisodeRepository(db)
+    episode = await ep_repo.get_by_id(episode_id)
+    if not episode or not episode.script:
+        logger.error("seo_generate_job.episode_not_found", episode_id=episode_id)
+        return {"error": "Episode not found or has no script"}
+
+    script = EpisodeScript.model_validate(episode.script)
+    narration = " ".join(
+        s.narration for s in script.scenes if s.narration
+    )
+
+    # Resolve LLM
+    configs = await LLMConfigRepository(db).get_all(limit=1)
+    if configs:
+        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
+        provider = llm_service.get_provider(configs[0])
+    else:
+        provider = OpenAICompatibleProvider(
+            base_url=settings.lm_studio_base_url,
+            model=settings.lm_studio_default_model,
+        )
+
+    system_prompt = (
+        "You are a YouTube SEO expert. Generate optimized metadata for a video. "
+        "Output ONLY valid JSON with this structure:\n"
+        '{"title": "SEO title (max 60 chars)", "description": "engaging description with keywords (max 500 chars)", '
+        '"hashtags": ["#tag1", "#tag2", ...], "tags": ["keyword1", "keyword2", ...], '
+        '"hook": "attention-grabbing first line for the video", '
+        '"virality_score": 1-10 (how likely this is to go viral), "virality_reasoning": "brief explanation"}'
+    )
+    user_prompt = (
+        f"Video title: {episode.title}\n"
+        f"Content: {narration[:1000]}\n\n"
+        "Generate SEO-optimized metadata now:"
+    )
+
+    result = await provider.generate(system_prompt, user_prompt, temperature=0.7, max_tokens=1024, json_mode=True)
+    try:
+        data = _json.loads(_extract_json(result.content))
+    except Exception:
+        data = {
+            "title": episode.title,
+            "description": narration[:200],
+            "hashtags": [],
+            "tags": [],
+            "hook": "",
+            "virality_score": 0,
+            "virality_reasoning": "",
+        }
+
+    # Store SEO data in episode metadata
+    metadata = dict(episode.metadata_ or {}) if episode.metadata_ else {}
+    metadata["seo"] = data
+    await ep_repo.update(episode.id, metadata_=metadata)
+    await db.commit()
+
+    logger.info(
+        "seo_generate_job.done",
+        episode_id=episode_id,
+        virality_score=data.get("virality_score", 0),
+    )
+
+    return data

@@ -1,0 +1,63 @@
+# ─── Owner-only — NEVER commit to this repo ────────────────────────────
+# These live in a separate private repo (license-server + minting CLI).
+license-server/
+scripts/mint_license.py
+license_keys/
+
+# ─── Secrets ───────────────────────────────────────────────────────────
+*.pem
+*.key
+*.crt
+!**/public_dummy*.pem
+
+# ─── Screenshots / scratch ─────────────────────────────────────────────
+screenshots/
+.claude-plan.md
+
+# ── Python ────────────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+.venv/
+venv/
+.eggs/
+
+# ── Environment / Secrets ────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── Storage (generated assets — too large for git) ───────────────────────────
+storage/
+
+# ── IDE ───────────────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# ── Testing / CI ─────────────────────────────────────────────────────────────
+.coverage
+htmlcov/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Node (frontend, if any) ─────────────────────────────────────────────────
+node_modules/
+package-lock.json
+
+# ── OS ────────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+*.log

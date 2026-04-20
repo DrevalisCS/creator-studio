@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Account — Drevalis Creator Studio</title>
+  <meta name="robots" content="noindex" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class', theme: { extend: {
+      fontFamily: { display: ['Outfit', 'sans-serif'], sans: ['DM Sans', 'sans-serif'], mono: ['JetBrains Mono', 'monospace'] },
+      colors: { bg: { base: '#0A0B0E', elevated: '#14161B' }, txt: { primary: '#E8EAED', secondary: '#9AA0A6', muted: '#5F6368' }, accent: { DEFAULT: '#00E5B8', glow: '#00BFA8' } },
+    } } };
+  </script>
+  <style>
+    body { background:#0A0B0E; color:#E8EAED; font-family:'DM Sans',sans-serif; }
+    h1,h2 { font-family:'Outfit',sans-serif; }
+    .card { background: rgba(20,22,27,.8); border: 1px solid rgba(255,255,255,.06); }
+    .glow-on-hover { transition: box-shadow .2s, transform .2s; }
+    .glow-on-hover:hover { box-shadow: 0 0 40px -10px rgba(0,229,184,.4); transform: translateY(-2px); }
+  </style>
+</head>
+
+<body>
+  <nav class="border-b border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="font-display font-bold text-lg">Drevalis</a>
+      <div class="flex items-center gap-6 text-sm">
+        <a href="/#features" class="text-txt-secondary hover:text-txt-primary">Features</a>
+        <a href="/pricing" class="text-txt-secondary hover:text-txt-primary">Pricing</a>
+        <a href="/download" class="text-txt-secondary hover:text-txt-primary">Download</a>
+        <a href="/account" class="text-txt-primary">Account</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="max-w-2xl mx-auto px-6 py-16">
+    <h1 class="font-display text-4xl font-bold mb-3">Manage your subscription</h1>
+    <p class="text-txt-secondary mb-10">
+      Enter your license key to open Stripe's billing portal. From there you can upgrade, downgrade, update your payment method, see invoices, or cancel — everything handled by Stripe.
+    </p>
+
+    <form data-portal-form class="card rounded-xl p-6 space-y-4">
+      <div>
+        <label class="text-xs text-txt-secondary block mb-1">License key</label>
+        <input
+          name="license_key"
+          required
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="e.g. 0aff24cc-1ec5-4d5e-9d35-829f4876fcdd"
+          class="w-full rounded-md bg-bg-base border border-white/10 px-3 py-2 font-mono text-sm focus:outline-none focus:border-accent/40" />
+        <p class="text-xs text-txt-muted mt-2">
+          The UUID from your welcome email. Also visible in the app at Settings → License.
+        </p>
+      </div>
+      <button class="w-full rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold py-3 glow-on-hover">
+        Open billing portal
+      </button>
+    </form>
+
+    <div class="mt-10 card rounded-xl p-6 text-sm text-txt-secondary">
+      <h2 class="font-semibold text-txt-primary mb-2">Lost your key?</h2>
+      <p>
+        Email <a href="mailto:support@drevalis.com" class="text-accent underline">support@drevalis.com</a> from the address you used to buy, and we'll re-send it.
+      </p>
+    </div>
+  </section>
+
+  <footer class="border-t border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6 py-8 text-xs text-txt-muted text-center">© 2026 Drevalis</div>
+  </footer>
+
+  <script src="/assets/site.js"></script>
+</body>
+</html>

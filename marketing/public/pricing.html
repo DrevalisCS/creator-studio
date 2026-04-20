@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pricing — Drevalis Creator Studio</title>
+  <meta name="description" content="Solo, Pro, and Studio tiers for Drevalis Creator Studio. All tiers include every feature; tiers cap machine count, channels, and cloud GPU access." />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode: 'class', theme: { extend: {
+      fontFamily: { display: ['Outfit', 'sans-serif'], sans: ['DM Sans', 'sans-serif'] },
+      colors: { bg: { base: '#0A0B0E', elevated: '#14161B' }, txt: { primary: '#E8EAED', secondary: '#9AA0A6', muted: '#5F6368' }, accent: { DEFAULT: '#00E5B8', glow: '#00BFA8' } },
+    } } };
+  </script>
+  <style>
+    body { background:#0A0B0E; color:#E8EAED; font-family:'DM Sans',sans-serif; }
+    h1,h2,h3,h4 { font-family:'Outfit',sans-serif; }
+    .accent-gradient { background: linear-gradient(135deg,#00E5B8,#00BFA8); -webkit-background-clip: text; color: transparent; }
+    .card { background: rgba(20,22,27,.8); border: 1px solid rgba(255,255,255,.06); }
+    .glow-on-hover { transition: box-shadow .2s, transform .2s; }
+    .glow-on-hover:hover { box-shadow: 0 0 40px -10px rgba(0,229,184,.4); transform: translateY(-2px); }
+  </style>
+</head>
+
+<body>
+  <nav class="border-b border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="font-display font-bold text-lg">Drevalis</a>
+      <div class="flex items-center gap-6 text-sm">
+        <a href="/#features" class="text-txt-secondary hover:text-txt-primary">Features</a>
+        <a href="/pricing" class="text-txt-primary">Pricing</a>
+        <a href="/download" class="text-txt-secondary hover:text-txt-primary">Download</a>
+        <a href="/account" class="text-txt-secondary hover:text-txt-primary">Account</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="max-w-6xl mx-auto px-6 py-20 text-center">
+    <h1 class="font-display text-5xl font-bold mb-4">Simple pricing. Everything unlocked.</h1>
+    <p class="text-xl text-txt-secondary mb-12 max-w-2xl mx-auto">
+      Every tier ships every feature. You're not paying for features — you're paying for how much work you want to do at once.
+    </p>
+
+    <div class="flex items-center justify-center gap-3 mb-12">
+      <span class="text-sm">Monthly</span>
+      <label class="relative inline-flex cursor-pointer items-center">
+        <input type="checkbox" data-interval-toggle class="peer sr-only" />
+        <div class="h-6 w-11 rounded-full bg-bg-elevated border border-white/10 peer-checked:bg-accent/30 peer-checked:border-accent/40"></div>
+        <div class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-txt-primary transition peer-checked:translate-x-5 peer-checked:bg-accent"></div>
+      </label>
+      <span class="text-sm">Yearly <span class="text-accent">(2 months free)</span></span>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-5 text-left">
+      <div class="card rounded-xl p-8 flex flex-col">
+        <h3 class="font-display text-xl font-bold mb-1">Solo</h3>
+        <p class="text-xs text-txt-secondary mb-6">For one creator, one channel.</p>
+        <div class="mb-6"><span class="text-4xl font-bold">$<span data-price data-price-monthly="19" data-price-yearly="190">19</span></span><span class="text-txt-secondary" data-interval-label>/mo</span></div>
+        <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
+          <li>✓ 1 machine</li>
+          <li>✓ 5 episodes / day</li>
+          <li>✓ 1 YouTube channel</li>
+          <li>✓ Edge / Piper / Kokoro TTS</li>
+          <li>✓ Updates included</li>
+        </ul>
+        <button data-checkout data-tier="solo" data-interval="monthly" class="rounded-md border border-white/10 py-3 font-semibold hover:bg-white/5">Subscribe</button>
+      </div>
+
+      <div class="card rounded-xl p-8 flex flex-col border-accent/40 bg-accent/5 relative">
+        <div class="absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-semibold bg-gradient-to-r from-accent to-accent-glow text-bg-base px-3 py-1 rounded-full">Most popular</div>
+        <h3 class="font-display text-xl font-bold mb-1">Pro</h3>
+        <p class="text-xs text-txt-secondary mb-6">Scale up a few channels.</p>
+        <div class="mb-6"><span class="text-4xl font-bold">$<span data-price data-price-monthly="39" data-price-yearly="390">39</span></span><span class="text-txt-secondary" data-interval-label>/mo</span></div>
+        <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
+          <li>✓ 3 machines</li>
+          <li>✓ Unlimited episodes</li>
+          <li>✓ 3 YouTube channels</li>
+          <li>✓ RunPod cloud GPU offload</li>
+          <li>✓ Audiobook studio</li>
+          <li>✓ ElevenLabs TTS</li>
+        </ul>
+        <button data-checkout data-tier="pro" data-interval="monthly" class="rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold py-3 glow-on-hover">Subscribe</button>
+      </div>
+
+      <div class="card rounded-xl p-8 flex flex-col">
+        <h3 class="font-display text-xl font-bold mb-1">Studio</h3>
+        <p class="text-xs text-txt-secondary mb-6">Multi-platform operation.</p>
+        <div class="mb-6"><span class="text-4xl font-bold">$<span data-price data-price-monthly="99" data-price-yearly="990">99</span></span><span class="text-txt-secondary" data-interval-label>/mo</span></div>
+        <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
+          <li>✓ 5 machines</li>
+          <li>✓ Unlimited everything</li>
+          <li>✓ Unlimited YouTube channels</li>
+          <li>✓ TikTok + Instagram</li>
+          <li>✓ API access</li>
+          <li>✓ Priority support</li>
+        </ul>
+        <button data-checkout data-tier="studio" data-interval="monthly" class="rounded-md border border-white/10 py-3 font-semibold hover:bg-white/5">Subscribe</button>
+      </div>
+    </div>
+
+    <p class="text-xs text-txt-muted mt-12">
+      Billed in USD via Stripe. VAT / sales tax collected where applicable. Cancel from the
+      <a href="/account" class="text-accent underline">billing portal</a> anytime.
+    </p>
+  </section>
+
+  <section class="max-w-3xl mx-auto px-6 pb-24">
+    <h2 class="font-display text-3xl font-bold text-center mb-8">FAQ</h2>
+    <div class="space-y-3">
+      <details class="card rounded-xl p-5"><summary class="font-semibold cursor-pointer">Do I need a GPU?</summary><p class="text-sm text-txt-secondary mt-3">Strongly recommended — scene generation runs on ComfyUI locally. Minimum ~8 GB VRAM. No GPU? The Pro tier's RunPod integration rents cloud GPUs on-demand (billed separately by RunPod; you bring your own RunPod API key).</p></details>
+      <details class="card rounded-xl p-5"><summary class="font-semibold cursor-pointer">Can I change tiers?</summary><p class="text-sm text-txt-secondary mt-3">Yes, from the billing portal. Upgrades are prorated immediately; downgrades take effect at the next renewal.</p></details>
+      <details class="card rounded-xl p-5"><summary class="font-semibold cursor-pointer">Refund policy?</summary><p class="text-sm text-txt-secondary mt-3">14 days, no questions asked. Email support@drevalis.com.</p></details>
+      <details class="card rounded-xl p-5"><summary class="font-semibold cursor-pointer">What counts as a "machine"?</summary><p class="text-sm text-txt-secondary mt-3">A distinct physical or virtual computer running the Drevalis Creator Studio stack. A machine is identified by a stable hostname + MAC hash. Reinstalling on the same box does not consume an extra seat.</p></details>
+    </div>
+  </section>
+
+  <footer class="border-t border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6 py-8 text-xs text-txt-muted text-center">© 2026 Drevalis · <a href="mailto:support@drevalis.com" class="hover:text-txt-primary">support@drevalis.com</a></div>
+  </footer>
+
+  <script src="/assets/site.js"></script>
+</body>
+</html>

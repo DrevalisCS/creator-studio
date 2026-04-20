@@ -1,0 +1,145 @@
+"""Optional API key authentication middleware.
+
+If the ``API_AUTH_TOKEN`` environment variable is set, all API requests must
+include it as a Bearer token in the ``Authorization`` header.  If the variable
+is not set, authentication is disabled (local dev mode).
+
+Usage in ``main.py``::
+
+    from shortsfactory.core.auth import OptionalAPIKeyMiddleware
+    app.add_middleware(OptionalAPIKeyMiddleware)
+"""
+
+from __future__ import annotations
+
+import os
+import secrets
+
+from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response
+
+# S-4: Rate-limit constants for failed auth attempts.
+# After _AUTH_FAIL_LIMIT failures from the same IP within _AUTH_FAIL_WINDOW
+# seconds, the middleware returns 429 without inspecting the token.
+_AUTH_FAIL_LIMIT: int = 10
+_AUTH_FAIL_WINDOW: int = 300  # 5 minutes
+
+
+class OptionalAPIKeyMiddleware(BaseHTTPMiddleware):
+    """Require a Bearer token on all API endpoints when API_AUTH_TOKEN is set.
+
+    * If ``API_AUTH_TOKEN`` is **not** set in the environment, all requests
+      are allowed through (local dev mode).
+    * If it **is** set, every request to ``/api/``, ``/ws/``, or ``/storage/``
+      must include ``Authorization: Bearer <token>``.
+    * The ``/health`` endpoint is always exempt.
+    * Repeated auth failures from the same IP are rate-limited via Redis
+      (S-4, CWE-307, OWASP A07:2021).
+    """
+
+    def __init__(self, app, token: str | None = None) -> None:  # type: ignore[override]
+        super().__init__(app)
+        self._token: str | None = token or os.environ.get("API_AUTH_TOKEN")
+
+    async def dispatch(
+        self, request: Request, call_next: RequestResponseEndpoint
+    ) -> Response:
+        # If no token is configured, allow everything (local dev mode).
+        if self._token is None:
+            return await call_next(request)
+
+        path = request.url.path
+
+        # Always allow health checks and OpenAPI docs.
+        exempt_prefixes = ("/health", "/docs", "/redoc", "/openapi.json")
+        if any(path.startswith(p) for p in exempt_prefixes):
+            return await call_next(request)
+
+        # Guard API routes, WebSocket upgrades, and static storage files.
+        # /storage/ is included so that generated media files are not publicly
+        # accessible when an auth token is configured (S-8).
+        guarded_prefixes = ("/api/", "/ws/", "/storage/")
+        if not any(path.startswith(p) for p in guarded_prefixes):
+            return await call_next(request)
+
+        # ------------------------------------------------------------------
+        # S-4: Per-IP rate limit on auth failures.
+        # Check BEFORE inspecting the token so a blocked IP never reaches
+        # the comparison and cannot enumerate valid tokens via timing.
+        # ------------------------------------------------------------------
+        client_ip: str = (request.client.host if request.client else "unknown")
+        rate_key: str = f"auth_fail:{client_ip}"
+
+        try:
+            # Import lazily — pool is only available after lifespan startup.
+            from redis.asyncio import Redis as _Redis
+
+            from shortsfactory.core.redis import get_pool
+
+            _redis: _Redis = _Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+            try:
+                fail_count_raw = await _redis.get(rate_key)
+                fail_count: int = int(fail_count_raw) if fail_count_raw else 0
+            finally:
+                await _redis.aclose()
+        except Exception:
+            # If Redis is unavailable, degrade gracefully and allow the
+            # request through rather than blocking all traffic.
+            fail_count = 0
+
+        if fail_count >= _AUTH_FAIL_LIMIT:
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many failed authentication attempts. Try again later."},
+            )
+
+        # ------------------------------------------------------------------
+        # Token validation
+        # ------------------------------------------------------------------
+        auth_header = request.headers.get("Authorization", "")
+        if not auth_header.startswith("Bearer "):
+            await _record_auth_failure(client_ip)
+            return JSONResponse(
+                status_code=401,
+                content={"detail": "Missing or invalid Authorization header"},
+            )
+        provided_token = auth_header[7:]  # Strip "Bearer "
+        if not secrets.compare_digest(provided_token, self._token):
+            await _record_auth_failure(client_ip)
+            return JSONResponse(
+                status_code=403,
+                content={"detail": "Invalid API token"},
+            )
+
+        return await call_next(request)
+
+
+async def _record_auth_failure(client_ip: str) -> None:
+    """Increment the Redis failure counter for *client_ip*.
+
+    Sets a TTL of ``_AUTH_FAIL_WINDOW`` seconds on the first write so the
+    key expires automatically.  Errors are swallowed — rate limiting is
+    best-effort and must not interrupt the normal auth flow.
+
+    CWE-307 (Improper Restriction of Excessive Authentication Attempts),
+    OWASP A07:2021 (Identification and Authentication Failures).
+    """
+    rate_key = f"auth_fail:{client_ip}"
+    try:
+        from redis.asyncio import Redis as _Redis
+
+        from shortsfactory.core.redis import get_pool
+
+        _redis: _Redis = _Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+        try:
+            pipe = _redis.pipeline()
+            pipe.incr(rate_key)
+            # Only set the TTL if the key is new (NX=True); this preserves
+            # the original expiry window across multiple failures.
+            pipe.expire(rate_key, _AUTH_FAIL_WINDOW, nx=True)
+            await pipe.execute()
+        finally:
+            await _redis.aclose()
+    except Exception:
+        pass  # Best-effort — never block auth flow due to Redis errors.
