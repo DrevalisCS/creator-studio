@@ -44,10 +44,13 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e . && pip install mypy
-      # ``--explicit-package-bases`` avoids the "source file found twice"
-      # error that occurs when ``pip install -e .`` puts ``shortsfactory``
-      # on the path AND ``src/`` is also given as an argument.
-      - run: mypy --explicit-package-bases src/ --no-strict-optional
+      # Point mypy at the installed package (``-p shortsfactory``) instead
+      # of the ``src/`` tree. With the editable install from ``pip install -e .``
+      # both paths resolve to the same files, but passing ``src/`` as a
+      # positional argument caused ``Source file found twice under different
+      # module names``. ``-p shortsfactory`` resolves via the installed
+      # package only and avoids the conflict.
+      - run: mypy -p shortsfactory --no-strict-optional
 
   test:
     name: Pytest (unit)
