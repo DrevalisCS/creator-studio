@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
-from shortsfactory.core.license.state import LicenseStatus, get_state
+from shortsfactory.core.license.state import get_state
 
 # Canonical tier → feature map. The license server SHOULD put the same
 # features list into the JWT's ``features`` claim; this map is the local
@@ -15,7 +15,14 @@ TIER_FEATURES: dict[str, frozenset[str]] = {
     "solo": frozenset({"basic_generation"}),
     "pro": frozenset({"basic_generation", "runpod", "audiobooks"}),
     "studio": frozenset(
-        {"basic_generation", "runpod", "audiobooks", "multichannel", "social_platforms", "api_access"}
+        {
+            "basic_generation",
+            "runpod",
+            "audiobooks",
+            "multichannel",
+            "social_platforms",
+            "api_access",
+        }
     ),
 }
 

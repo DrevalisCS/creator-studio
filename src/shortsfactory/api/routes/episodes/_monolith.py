@@ -20,9 +20,7 @@ from sqlalchemy.orm import selectinload
 from shortsfactory.core.config import Settings
 from shortsfactory.core.deps import get_db, get_redis, get_settings
 from shortsfactory.core.redis import get_arq_pool
-from shortsfactory.core.security import decrypt_value
 from shortsfactory.models.episode import Episode
-from shortsfactory.repositories.comfyui import ComfyUIServerRepository
 from shortsfactory.repositories.episode import EpisodeRepository
 from shortsfactory.repositories.generation_job import GenerationJobRepository
 from shortsfactory.repositories.media_asset import MediaAssetRepository
@@ -80,6 +78,7 @@ async def _get_dynamic_max_slots(settings: Settings, db: AsyncSession) -> int:
     result = base
     try:
         from shortsfactory.repositories.comfyui import ComfyUIServerRepository
+
         repo = ComfyUIServerRepository(db)
         servers = await repo.get_active_servers()
         if len(servers) > 1:
@@ -163,9 +162,7 @@ async def list_recent_episodes(
 )
 async def list_episodes(
     series_id: UUID | None = Query(default=None),
-    status_filter: Literal[
-        "draft", "generating", "review", "editing", "exported", "failed"
-    ]
+    status_filter: Literal["draft", "generating", "review", "editing", "exported", "failed"]
     | None = Query(default=None, alias="status"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
@@ -261,9 +258,8 @@ async def bulk_generate(
 
     # Batch-query all episodes at once instead of N individual queries
     from sqlalchemy import select as sa_select
-    result = await db.execute(
-        sa_select(Episode).where(Episode.id.in_(payload.episode_ids))
-    )
+
+    result = await db.execute(sa_select(Episode).where(Episode.id.in_(payload.episode_ids)))
     episodes_by_id = {ep.id: ep for ep in result.scalars().all()}
 
     for episode_id in payload.episode_ids:
@@ -357,7 +353,7 @@ async def update_episode(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid script format: {exc}",
-            )
+            ) from exc
 
     if not update_data:
         raise HTTPException(
@@ -654,7 +650,7 @@ async def update_episode_script(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid script format: {exc}",
-        )
+        ) from exc
 
     repo = EpisodeRepository(db)
     episode = await repo.update(episode_id, script=payload.script)
@@ -726,7 +722,11 @@ async def update_scene(
         "scene_updated",
         episode_id=str(episode_id),
         scene_number=scene_number,
-        updated_fields=[k for k in payload if k in ("narration", "visual_prompt", "duration_seconds", "keywords")],
+        updated_fields=[
+            k
+            for k in payload
+            if k in ("narration", "visual_prompt", "duration_seconds", "keywords")
+        ],
     )
     return {"message": f"Scene {scene_number} updated", "scene": scene.model_dump()}
 
@@ -786,9 +786,7 @@ async def delete_scene(
 
     # Delete associated media assets for this scene.
     asset_repo = MediaAssetRepository(db)
-    deleted_count = await asset_repo.delete_by_episode_and_scene(
-        episode_id, scene_number
-    )
+    deleted_count = await asset_repo.delete_by_episode_and_scene(episode_id, scene_number)
 
     await db.commit()
 
@@ -1043,9 +1041,7 @@ async def regenerate_voice(
 
     # Apply speed / pitch overrides into metadata_ so the TTS step can read them.
     if speed is not None or pitch is not None:
-        current_meta: dict[str, Any] = (
-            dict(episode.metadata_) if episode.metadata_ else {}
-        )
+        current_meta: dict[str, Any] = dict(episode.metadata_) if episode.metadata_ else {}
         tts_overrides: dict[str, Any] = dict(current_meta.get("tts_overrides", {}))
         if speed is not None:
             tts_overrides["speed"] = speed
@@ -1256,6 +1252,7 @@ async def estimate_cost(
     provider = "unknown"
     if voice_profile_id:
         from shortsfactory.repositories.voice_profile import VoiceProfileRepository
+
         vp = await VoiceProfileRepository(db).get_by_id(voice_profile_id)
         if vp:
             provider = vp.provider
@@ -1348,18 +1345,19 @@ async def reset_episode(
         )
 
     # Bulk delete all generation jobs for this episode.
+    from sqlalchemy import delete as sa_delete
+    from sqlalchemy import func as sa_func
+    from sqlalchemy import select as sa_select_count
+
     from shortsfactory.models.generation_job import GenerationJob
-    from sqlalchemy import delete as sa_delete, func as sa_func, select as sa_select_count
 
     count_result = await db.execute(
-        sa_select_count(sa_func.count()).select_from(GenerationJob).where(
-            GenerationJob.episode_id == episode_id
-        )
+        sa_select_count(sa_func.count())
+        .select_from(GenerationJob)
+        .where(GenerationJob.episode_id == episode_id)
     )
     deleted_jobs = count_result.scalar() or 0
-    await db.execute(
-        sa_delete(GenerationJob).where(GenerationJob.episode_id == episode_id)
-    )
+    await db.execute(sa_delete(GenerationJob).where(GenerationJob.episode_id == episode_id))
 
     # Reset status to draft.
     await ep_repo.update_status(episode_id, "draft")
@@ -1480,9 +1478,12 @@ async def _ffprobe_duration(path: Path, ffprobe_exe: str = "ffprobe") -> float:
     """
     cmd = [
         ffprobe_exe,
-        "-v", "error",
-        "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1",
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
         str(path),
     ]
     proc = await asyncio.create_subprocess_exec(
@@ -1609,9 +1610,7 @@ async def list_episode_music(
 
     # Highlight currently selected track.
     selected_path: str | None = (
-        episode.metadata_.get("selected_music_path")
-        if episode.metadata_
-        else None
+        episode.metadata_.get("selected_music_path") if episode.metadata_ else None
     )
 
     return {
@@ -1648,19 +1647,26 @@ async def generate_episode_music(
     ep_repo = EpisodeRepository(db)
     episode = await ep_repo.get_by_id(episode_id)
     if episode is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Episode {episode_id} not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"Episode {episode_id} not found"
+        )
 
     # Validate request body
     mood = payload.get("mood")
     if not mood or not isinstance(mood, str):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="'mood' is required and must be a non-empty string.")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="'mood' is required and must be a non-empty string.",
+        )
     mood = mood.lower().strip()
 
     raw_duration = payload.get("duration", 30)
     try:
         duration_seconds = float(raw_duration)
     except (TypeError, ValueError):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="'duration' must be a number (seconds).")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="'duration' must be a number (seconds)."
+        ) from None
     if not (1.0 <= duration_seconds <= _ACESTEP_MAX_DURATION_SECONDS):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1668,7 +1674,6 @@ async def generate_episode_music(
         )
 
     # Enqueue background job
-    from shortsfactory.workers.jobs.music import generate_episode_music as music_job
     await redis.enqueue_job(
         "generate_episode_music",
         str(episode_id),
@@ -1759,9 +1764,7 @@ async def select_episode_music(
         "episode_id": str(episode_id),
         "selected_music_path": music_path,
         "message": (
-            f"Music track selected: {music_path}"
-            if music_path
-            else "Music selection cleared"
+            f"Music track selected: {music_path}" if music_path else "Music selection cleared"
         ),
     }
 
@@ -1849,9 +1852,7 @@ async def set_music(
 
     if not episode.script:
         # No script yet — store the settings but skip reassembly silently.
-        response["message"] = (
-            "Music settings saved; reassembly skipped (episode has no script)"
-        )
+        response["message"] = "Music settings saved; reassembly skipped (episode has no script)"
         return response
 
     job_repo = GenerationJobRepository(db)
@@ -1887,17 +1888,11 @@ def _sanitize_filename(series_name: str, episode_title: str) -> str:
     return safe[:100] or "export"
 
 
-async def _load_episode_with_series(
-    episode_id: UUID, db: AsyncSession
-) -> Episode:
+async def _load_episode_with_series(episode_id: UUID, db: AsyncSession) -> Episode:
     """Load an episode with its series relationship eagerly loaded."""
     from sqlalchemy import select
 
-    stmt = (
-        select(Episode)
-        .where(Episode.id == episode_id)
-        .options(selectinload(Episode.series))
-    )
+    stmt = select(Episode).where(Episode.id == episode_id).options(selectinload(Episode.series))
     result = await db.execute(stmt)
     episode = result.scalar_one_or_none()
     if episode is None:
@@ -2170,6 +2165,7 @@ async def edit_video(
     original_path = video_path.parent / "final_original.mp4"
     if not original_path.exists():
         import shutil
+
         await asyncio.to_thread(shutil.copy2, str(video_path), str(original_path))
 
     # Apply edits
@@ -2190,6 +2186,7 @@ async def edit_video(
 
     # Replace the final video with the edited version
     import shutil
+
     await asyncio.to_thread(shutil.move, str(edited_path), str(video_path))
 
     # Update asset metadata
@@ -2303,6 +2300,7 @@ async def edit_reset(
 
     # Restore original
     import shutil
+
     await asyncio.to_thread(shutil.copy2, str(original_path), str(video_path))
 
     # Update asset metadata

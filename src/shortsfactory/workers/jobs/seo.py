@@ -45,9 +45,7 @@ async def generate_seo_async(ctx: dict, episode_id: str) -> dict:
         return {"error": "Episode not found or has no script"}
 
     script = EpisodeScript.model_validate(episode.script)
-    narration = " ".join(
-        s.narration for s in script.scenes if s.narration
-    )
+    narration = " ".join(s.narration for s in script.scenes if s.narration)
 
     # Resolve LLM
     configs = await LLMConfigRepository(db).get_all(limit=1)
@@ -74,7 +72,9 @@ async def generate_seo_async(ctx: dict, episode_id: str) -> dict:
         "Generate SEO-optimized metadata now:"
     )
 
-    result = await provider.generate(system_prompt, user_prompt, temperature=0.7, max_tokens=1024, json_mode=True)
+    result = await provider.generate(
+        system_prompt, user_prompt, temperature=0.7, max_tokens=1024, json_mode=True
+    )
     try:
         data = _json.loads(_extract_json(result.content))
     except Exception:

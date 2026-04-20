@@ -43,9 +43,7 @@ class UpdateCheckError(Exception):
 async def _fetch_manifest(server_url: str, license_key: str) -> dict[str, Any]:
     url = server_url.rstrip("/") + "/updates/manifest"
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(
-            url, params={"license": license_key, "current": _CURRENT_VERSION}
-        )
+        resp = await client.get(url, params={"license": license_key, "current": _CURRENT_VERSION})
     if resp.status_code >= 400:
         detail: dict = {}
         try:
@@ -62,7 +60,7 @@ async def _fetch_manifest(server_url: str, license_key: str) -> dict[str, Any]:
 
 
 async def check_for_updates(
-    redis: "Redis",
+    redis: Redis,
     *,
     server_url: str | None,
     force: bool = False,

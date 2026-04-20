@@ -82,8 +82,8 @@ class Settings(BaseSettings):
     max_concurrent_generations: int = 4
 
     # ── Job timeouts ─────────────────────────────────────────────────────
-    shorts_job_timeout: int = 7200       # 2 hours
-    longform_job_timeout: int = 14400    # 4 hours
+    shorts_job_timeout: int = 7200  # 2 hours
+    longform_job_timeout: int = 14400  # 4 hours
 
     # ── Licensing ─────────────────────────────────────────────────────────
     # Base URL of the owner-operated license server (Phase 2). None in
@@ -100,7 +100,7 @@ class Settings(BaseSettings):
     )
 
     @model_validator(mode="after")
-    def validate_encryption_key(self) -> "Settings":
+    def validate_encryption_key(self) -> Settings:
         """Validate encryption_key is a valid Fernet key at startup (M1)."""
         import base64
 
@@ -111,9 +111,9 @@ class Settings(BaseSettings):
         except Exception:
             raise ValueError(
                 "ENCRYPTION_KEY is not a valid Fernet key (base64 decode failed). "
-                "Generate one with: python -c \"from cryptography.fernet import Fernet; "
-                "print(Fernet.generate_key().decode())\""
-            )
+                'Generate one with: python -c "from cryptography.fernet import Fernet; '
+                'print(Fernet.generate_key().decode())"'
+            ) from None
         if len(decoded) != 32:
             raise ValueError(
                 f"ENCRYPTION_KEY decoded length is {len(decoded)}, expected 32. "

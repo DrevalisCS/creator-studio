@@ -8,6 +8,8 @@ Functions
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import structlog
 
 from shortsfactory.core.config import Settings
@@ -27,7 +29,6 @@ async def startup(ctx: dict) -> None:
     from shortsfactory.services.storage import LocalStorage
     from shortsfactory.services.tts import (
         EdgeTTSProvider,
-        ElevenLabsTTSProvider,
         KokoroTTSProvider,
         PiperTTSProvider,
         TTSService,
@@ -82,6 +83,7 @@ async def startup(ctx: dict) -> None:
     # so scenes can be distributed across all servers in parallel.
     try:
         from shortsfactory.repositories.comfyui import ComfyUIServerRepository
+
         async with session_factory() as _pool_ses:
             _pool_repo = ComfyUIServerRepository(_pool_ses)
             _all_servers = await _pool_repo.get_active_servers()
@@ -96,7 +98,12 @@ async def startup(ctx: dict) -> None:
                         client=_srv_client,
                         max_concurrent=_srv.max_concurrent,
                     )
-                    logger.info("comfyui_pool_server_registered", name=_srv.name, url=_srv.url[:40], max_concurrent=_srv.max_concurrent)
+                    logger.info(
+                        "comfyui_pool_server_registered",
+                        name=_srv.name,
+                        url=_srv.url[:40],
+                        max_concurrent=_srv.max_concurrent,
+                    )
                 except Exception:
                     logger.warning("comfyui_pool_register_failed", name=_srv.name)
     except Exception:
@@ -139,8 +146,8 @@ async def startup(ctx: dict) -> None:
     comfyui_elevenlabs_key: str | None = None
     comfyui_extra_servers: list[tuple[str, str | None]] = []
     try:
-        from shortsfactory.repositories.comfyui import ComfyUIServerRepository
         from shortsfactory.core.security import decrypt_value
+        from shortsfactory.repositories.comfyui import ComfyUIServerRepository
 
         async with session_factory() as _ses:
             _comfyui_repo = ComfyUIServerRepository(_ses)
@@ -219,11 +226,11 @@ async def startup(ctx: dict) -> None:
 
     # Write initial heartbeat so the API sees the worker as alive immediately
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         await redis_client.set(
             "worker:heartbeat",
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
             ex=120,
         )
     except Exception:
@@ -233,6 +240,7 @@ async def startup(ctx: dict) -> None:
     try:
         async with session_factory() as _cleanup_ses:
             from sqlalchemy import text as _text
+
             result_ep = await _cleanup_ses.execute(
                 _text("UPDATE episodes SET status = 'failed' WHERE status = 'generating'")
             )
@@ -254,6 +262,7 @@ async def startup(ctx: dict) -> None:
     try:
         async with session_factory() as _catchup_ses:
             from sqlalchemy import text as _text
+
             result_posts = await _catchup_ses.execute(
                 _text(
                     "UPDATE scheduled_posts "

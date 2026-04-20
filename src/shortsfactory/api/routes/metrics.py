@@ -97,6 +97,7 @@ async def get_recent_events(
     persist across API restarts and include worker-side data.
     """
     from sqlalchemy import select
+
     from shortsfactory.models.generation_job import GenerationJob
 
     stmt = (
@@ -116,13 +117,15 @@ async def get_recent_events(
         if started and completed:
             duration = (completed - started).total_seconds()
 
-        events.append({
-            "step": job.step,
-            "duration_seconds": round(duration, 3),
-            "success": job.status == "done",
-            "episode_id": str(job.episode_id),
-            "timestamp": (completed or started or job.created_at).isoformat(),
-            "error_message": job.error_message,
-        })
+        events.append(
+            {
+                "step": job.step,
+                "duration_seconds": round(duration, 3),
+                "success": job.status == "done",
+                "episode_id": str(job.episode_id),
+                "timestamp": (completed or started or job.created_at).isoformat(),
+                "error_message": job.error_message,
+            }
+        )
 
     return events

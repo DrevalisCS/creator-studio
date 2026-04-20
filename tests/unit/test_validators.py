@@ -25,7 +25,6 @@ from shortsfactory.core.validators import (
     validate_safe_url_or_localhost,
 )
 
-
 # ---------------------------------------------------------------------------
 # validate_safe_url -- scheme checks
 # ---------------------------------------------------------------------------

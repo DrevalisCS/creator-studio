@@ -55,9 +55,7 @@ class TestEncryptDecryptRoundtrip:
         decrypted = decrypt_value(ciphertext, fernet_key)
         assert decrypted == plaintext
 
-    def test_different_encryptions_produce_different_ciphertexts(
-        self, fernet_key: str
-    ) -> None:
+    def test_different_encryptions_produce_different_ciphertexts(self, fernet_key: str) -> None:
         """Fernet includes a timestamp + IV, so encrypting twice gives different outputs."""
         ct1, _ = encrypt_value("same-text", fernet_key)
         ct2, _ = encrypt_value("same-text", fernet_key)
@@ -67,9 +65,7 @@ class TestEncryptDecryptRoundtrip:
 class TestDecryptWithWrongKey:
     """Test that decryption with the wrong key fails."""
 
-    def test_decrypt_with_wrong_key_fails(
-        self, fernet_key: str, fernet_key_v2: str
-    ) -> None:
+    def test_decrypt_with_wrong_key_fails(self, fernet_key: str, fernet_key_v2: str) -> None:
         assert fernet_key != fernet_key_v2
 
         ciphertext, _ = encrypt_value("secret", fernet_key)
@@ -102,9 +98,7 @@ class TestKeyVersioning:
         assert plaintext == "secret-v1"
         assert matched_version == 1
 
-    def test_key_versioning_tries_newest_first(
-        self, fernet_key: str, fernet_key_v2: str
-    ) -> None:
+    def test_key_versioning_tries_newest_first(self, fernet_key: str, fernet_key_v2: str) -> None:
         # Encrypt with v2
         ciphertext, _ = encrypt_value("secret-v2", fernet_key_v2, version=2)
 
@@ -126,9 +120,7 @@ class TestKeyVersioning:
         # v2 fails, falls back to v1
         assert matched_version == 1
 
-    def test_key_versioning_all_fail_raises(
-        self, fernet_key: str, fernet_key_v2: str
-    ) -> None:
+    def test_key_versioning_all_fail_raises(self, fernet_key: str, fernet_key_v2: str) -> None:
         # Encrypt with a third key not in the dictionary
         third_key = Fernet.generate_key().decode()
         ciphertext, _ = encrypt_value("unknown-key-data", third_key)

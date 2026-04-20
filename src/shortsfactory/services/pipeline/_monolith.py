@@ -15,11 +15,10 @@ Observability:
 from __future__ import annotations
 
 import asyncio
-import json
 import time
 import traceback
-from datetime import datetime, timezone
-from enum import Enum
+from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -46,7 +45,7 @@ if TYPE_CHECKING:
     from shortsfactory.services.captions import CaptionService
     from shortsfactory.services.comfyui import ComfyUIService
     from shortsfactory.services.ffmpeg import FFmpegService
-    from shortsfactory.services.llm import LLMService
+    from shortsfactory.services.llm import LLMPool, LLMService
     from shortsfactory.services.music import MusicService  # noqa: TCH004
     from shortsfactory.services.storage import LocalStorage
     from shortsfactory.services.tts import TTSService
@@ -60,7 +59,7 @@ logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 # ---------------------------------------------------------------------------
 
 
-class PipelineStep(str, Enum):
+class PipelineStep(StrEnum):
     SCRIPT = "script"
     VOICE = "voice"
     SCENES = "scenes"
@@ -191,8 +190,6 @@ class PipelineOrchestrator:
         await self.episode_repo.update_status(self.episode_id, "generating")
         await self.db.commit()
 
-        pipeline_success = True
-
         for step in PIPELINE_ORDER:
             # Check for user-initiated cancellation before each step.
             try:
@@ -200,7 +197,10 @@ class PipelineOrchestrator:
             except asyncio.CancelledError:
                 self.log.info("pipeline_cancelled_before_step", step=step.value)
                 await self._broadcast_progress(
-                    step, 0, "failed", "Generation cancelled by user",
+                    step,
+                    0,
+                    "failed",
+                    "Generation cancelled by user",
                     error="Cancelled by user",
                 )
                 await metrics.record_generation(success=False)
@@ -263,7 +263,10 @@ class PipelineOrchestrator:
                     episode_id=str(self.episode_id),
                 )
                 await self._broadcast_progress(
-                    step, 0, "failed", "Generation cancelled by user",
+                    step,
+                    0,
+                    "failed",
+                    "Generation cancelled by user",
                     error="Cancelled by user",
                 )
                 await metrics.record_generation(success=False)
@@ -290,7 +293,6 @@ class PipelineOrchestrator:
                     exc_info=True,
                 )
 
-                pipeline_success = False
                 await self._handle_step_failure(job, step, exc, suggestion=suggestion)
 
                 # Record failed generation
@@ -301,9 +303,7 @@ class PipelineOrchestrator:
         # All steps done
         await self.episode_repo.update_status(self.episode_id, "review")
         await self.db.commit()
-        await self._broadcast_progress(
-            PipelineStep.THUMBNAIL, 100, "done", "pipeline_complete"
-        )
+        await self._broadcast_progress(PipelineStep.THUMBNAIL, 100, "done", "pipeline_complete")
 
         # Record successful generation
         await metrics.record_generation(success=True)
@@ -346,17 +346,13 @@ class PipelineOrchestrator:
         if llm_config is None:
             llm_config = await self._auto_select_llm_config()
             if llm_config is None:
-                raise ValueError(
-                    "No LLM config available -- create one in Settings."
-                )
+                raise ValueError("No LLM config available -- create one in Settings.")
 
         prompt_template = series.script_prompt_template
         if prompt_template is None:
             prompt_template = await self._auto_select_prompt_template("script")
             if prompt_template is None:
-                raise ValueError(
-                    "No script prompt template available -- create one in Settings."
-                )
+                raise ValueError("No script prompt template available -- create one in Settings.")
 
         topic = episode.topic or episode.title
         character_description = series.character_description or ""
@@ -408,9 +404,7 @@ class PipelineOrchestrator:
                     character_description=character_description,
                 )
 
-            await self._broadcast_progress(
-                PipelineStep.SCRIPT, 80, "running", "Saving script..."
-            )
+            await self._broadcast_progress(PipelineStep.SCRIPT, 80, "running", "Saving script...")
 
             await self.episode_repo.update(
                 self.episode_id,
@@ -453,11 +447,10 @@ class PipelineOrchestrator:
                 )
                 # Re-validate so the refined dict is used for persistence.
                 from shortsfactory.schemas.script import EpisodeScript as _EpisodeScript
+
                 script = _EpisodeScript.model_validate(script_data_shorts)
 
-            await self._broadcast_progress(
-                PipelineStep.SCRIPT, 80, "running", "Saving script..."
-            )
+            await self._broadcast_progress(PipelineStep.SCRIPT, 80, "running", "Saving script...")
 
             await self.episode_repo.update(
                 self.episode_id,
@@ -572,9 +565,7 @@ class PipelineOrchestrator:
         if voice_profile is None:
             voice_profile = await self._auto_select_voice_profile()
             if voice_profile is None:
-                raise ValueError(
-                    "No voice profile available -- create one in Settings."
-                )
+                raise ValueError("No voice profile available -- create one in Settings.")
 
         await self._broadcast_progress(
             PipelineStep.VOICE, 10, "running", "Synthesising voiceover..."
@@ -692,13 +683,9 @@ class PipelineOrchestrator:
             if comfyui_workflow is None:
                 comfyui_workflow = await self._auto_select_comfyui_workflow()
                 if comfyui_workflow is None:
-                    raise ValueError(
-                        "No ComfyUI workflow available -- add one in Settings."
-                    )
+                    raise ValueError("No ComfyUI workflow available -- add one in Settings.")
 
-        input_mappings = WorkflowInputMapping.model_validate(
-            comfyui_workflow.input_mappings
-        )
+        input_mappings = WorkflowInputMapping.model_validate(comfyui_workflow.input_mappings)
 
         visual_style = series.visual_style or ""
         character_description = series.character_description or ""
@@ -707,7 +694,9 @@ class PipelineOrchestrator:
         # long-form alike) so every series benefits from consistent framing.
         visual_consistency = getattr(series, "visual_consistency_prompt", None)
         if visual_consistency:
-            visual_style = f"{visual_consistency}, {visual_style}" if visual_style else visual_consistency
+            visual_style = (
+                f"{visual_consistency}, {visual_style}" if visual_style else visual_consistency
+            )
 
         # base_seed for deterministic seeded RNG inside ComfyUI prompt building.
         base_seed = getattr(series, "base_seed", None)
@@ -795,9 +784,7 @@ class PipelineOrchestrator:
             image_wf_path = image_wf.workflow_json_path if image_wf else None
             image_mappings = None
             if image_wf and image_wf.input_mappings:
-                image_mappings = WorkflowInputMapping.model_validate(
-                    image_wf.input_mappings
-                )
+                image_mappings = WorkflowInputMapping.model_validate(image_wf.input_mappings)
 
             generated_videos = await self.comfyui_service.generate_scene_videos(
                 server_id=None,  # Let the pool distribute across all servers
@@ -938,11 +925,7 @@ class PipelineOrchestrator:
         # Per-episode override takes priority over series default.
         from shortsfactory.services.captions import CaptionStyle
 
-        style = (
-            CaptionStyle(**series.caption_style)
-            if series.caption_style
-            else CaptionStyle()
-        )
+        style = CaptionStyle(**series.caption_style) if series.caption_style else CaptionStyle()
 
         # Apply per-episode caption style override
         episode_caption_style = getattr(episode, "override_caption_style", None)
@@ -1088,9 +1071,7 @@ class PipelineOrchestrator:
         use_video_concat = bool(scene_video_assets)
 
         if use_video_concat:
-            scene_video_assets.sort(
-                key=lambda a: (a.scene_number or 0, a.created_at)
-            )
+            scene_video_assets.sort(key=lambda a: (a.scene_number or 0, a.created_at))
             video_clip_paths: list[Path] = [
                 self.storage.resolve_path(a.file_path) for a in scene_video_assets
             ]
@@ -1100,9 +1081,7 @@ class PipelineOrchestrator:
             )
         else:
             # Fall back to scene image assets
-            scene_assets = await self.asset_repo.get_by_episode_and_type(
-                self.episode_id, "scene"
-            )
+            scene_assets = await self.asset_repo.get_by_episode_and_type(self.episode_id, "scene")
             if not scene_assets:
                 raise ValueError(
                     "No scene assets found (neither scene_video nor scene) "
@@ -1119,9 +1098,7 @@ class PipelineOrchestrator:
                     duration = script.scenes[idx].duration_seconds
                 else:
                     duration = 5.0
-                scene_inputs.append(
-                    SceneInput(image_path=abs_path, duration_seconds=duration)
-                )
+                scene_inputs.append(SceneInput(image_path=abs_path, duration_seconds=duration))
 
         # Gather voiceover
         voiceover_assets = await self.asset_repo.get_by_episode_and_type(
@@ -1132,9 +1109,7 @@ class PipelineOrchestrator:
         voiceover_path = self.storage.resolve_path(voiceover_assets[-1].file_path)
 
         # Gather ASS captions (prefer ASS over SRT for burned-in subtitles)
-        caption_assets = await self.asset_repo.get_by_episode_and_type(
-            self.episode_id, "caption"
-        )
+        caption_assets = await self.asset_repo.get_by_episode_and_type(self.episode_id, "caption")
         captions_path: Path | None = None
         for cap_asset in caption_assets:
             if cap_asset.file_path.endswith(".ass"):
@@ -1147,9 +1122,7 @@ class PipelineOrchestrator:
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "final.mp4"
 
-        await self._broadcast_progress(
-            PipelineStep.ASSEMBLY, 10, "running", "Assembling video..."
-        )
+        await self._broadcast_progress(PipelineStep.ASSEMBLY, 10, "running", "Assembling video...")
 
         # ── Prepare background music ────────────────────────────────────
         background_music_path: Path | None = None
@@ -1167,9 +1140,7 @@ class PipelineOrchestrator:
         # Check whether the user pre-selected a specific track via the Music tab.
         user_selected_music: Path | None = None
         if episode.metadata_ and episode.metadata_.get("selected_music_path"):
-            candidate = self.storage.resolve_path(
-                episode.metadata_["selected_music_path"]
-            )
+            candidate = self.storage.resolve_path(episode.metadata_["selected_music_path"])
             if candidate.exists():
                 user_selected_music = candidate
 
@@ -1187,16 +1158,16 @@ class PipelineOrchestrator:
             and getattr(series, "music_mood", None)
         ):
             if use_video_concat:
-                total_duration = sum(
-                    a.duration_seconds or 5.0 for a in scene_video_assets
-                )
+                total_duration = sum(a.duration_seconds or 5.0 for a in scene_video_assets)
             else:
                 total_duration = sum(si.duration_seconds for si in scene_inputs)
 
             if is_longform_with_chapters:
                 # ── Per-chapter music for longform ──────────────────────
                 await self._broadcast_progress(
-                    PipelineStep.ASSEMBLY, 15, "running",
+                    PipelineStep.ASSEMBLY,
+                    15,
+                    "running",
                     "Generating per-chapter background music...",
                 )
                 try:
@@ -1391,7 +1362,6 @@ class PipelineOrchestrator:
 
         # Calculate chapter durations from scene inputs
         chapter_durations: list[float] = []
-        scene_idx = 0
         for ch in chapters:
             ch_scenes = ch.get("scenes", [])
             if ch_scenes and isinstance(ch_scenes, list) and isinstance(ch_scenes[0], int):
@@ -1412,12 +1382,14 @@ class PipelineOrchestrator:
 
         # Mood rotation for variety
         mood_rotation = ["mysterious", "calm", "dramatic", "tense", "epic", "dark", "inspiring"]
-        default_mood = getattr(series, "music_mood", "mysterious") or "mysterious"
+        getattr(series, "music_mood", "mysterious") or "mysterious"
 
         # Generate music per chapter
         chapter_music_paths: list[Path | None] = []
-        for i, (ch, dur) in enumerate(zip(chapters, chapter_durations)):
-            ch_mood = ch.get("music_mood") or ch.get("mood") or mood_rotation[i % len(mood_rotation)]
+        for i, (ch, dur) in enumerate(zip(chapters, chapter_durations, strict=False)):
+            ch_mood = (
+                ch.get("music_mood") or ch.get("mood") or mood_rotation[i % len(mood_rotation)]
+            )
 
             self.log.info(
                 "chapter_music_generating",
@@ -1437,10 +1409,16 @@ class PipelineOrchestrator:
                     trimmed = music_dir / f"ch{i:02d}_music.wav"
                     fade_start = max(0, dur - 2.0)
                     proc = await _asyncio.create_subprocess_exec(
-                        "ffmpeg", "-y", "-i", str(music_path),
-                        "-t", str(dur + 2.0),
-                        "-af", f"afade=t=in:d=1.5,afade=t=out:st={fade_start}:d=2.0",
-                        "-c:a", "pcm_s16le",
+                        "ffmpeg",
+                        "-y",
+                        "-i",
+                        str(music_path),
+                        "-t",
+                        str(dur + 2.0),
+                        "-af",
+                        f"afade=t=in:d=1.5,afade=t=out:st={fade_start}:d=2.0",
+                        "-c:a",
+                        "pcm_s16le",
                         str(trimmed),
                         stdout=_asyncio.subprocess.PIPE,
                         stderr=_asyncio.subprocess.PIPE,
@@ -1467,9 +1445,16 @@ class PipelineOrchestrator:
 
         combined = music_dir / "combined_chapter_music.wav"
         proc = await _asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", str(concat_list),
-            "-c:a", "pcm_s16le",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list),
+            "-c:a",
+            "pcm_s16le",
             str(combined),
             stdout=_asyncio.subprocess.PIPE,
             stderr=_asyncio.subprocess.PIPE,
@@ -1506,9 +1491,7 @@ class PipelineOrchestrator:
         self.log.info("step_thumbnail_start")
 
         # Find the assembled video
-        video_assets = await self.asset_repo.get_by_episode_and_type(
-            self.episode_id, "video"
-        )
+        video_assets = await self.asset_repo.get_by_episode_and_type(self.episode_id, "video")
         if not video_assets:
             raise ValueError("No video asset found -- run the assembly step first.")
 
@@ -1524,9 +1507,7 @@ class PipelineOrchestrator:
         # Resolve mode; default to "smart_frame" when the column is absent or
         # blank so the feature activates without a schema migration on existing
         # deployments.
-        thumbnail_mode: str = (
-            getattr(series, "thumbnail_mode", None) or "smart_frame"
-        )
+        thumbnail_mode: str = getattr(series, "thumbnail_mode", None) or "smart_frame"
 
         await self._broadcast_progress(
             PipelineStep.THUMBNAIL, 20, "running", "Extracting thumbnail..."
@@ -1544,16 +1525,17 @@ class PipelineOrchestrator:
             case "text_overlay":
                 # Smart frame selection, then title text composited on top.
                 await self._broadcast_progress(
-                    PipelineStep.THUMBNAIL, 30, "running",
-                    "Selecting best frame for thumbnail..."
+                    PipelineStep.THUMBNAIL, 30, "running", "Selecting best frame for thumbnail..."
                 )
                 await self.ffmpeg_service.extract_best_thumbnail(
                     video_path=video_path,
                     output_path=thumbnail_path,
                 )
                 await self._broadcast_progress(
-                    PipelineStep.THUMBNAIL, 60, "running",
-                    "Compositing title text onto thumbnail..."
+                    PipelineStep.THUMBNAIL,
+                    60,
+                    "running",
+                    "Compositing title text onto thumbnail...",
                 )
                 episode_title: str = episode.title or ""
                 episode_subtitle: str = getattr(episode, "topic", "") or ""
@@ -1649,7 +1631,7 @@ class PipelineOrchestrator:
         existing_job: GenerationJob | None,
     ) -> GenerationJob:
         """Create new job record or reset an existing failed one."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         if existing_job is not None:
             # Reset the failed/queued job to running
@@ -1681,7 +1663,7 @@ class PipelineOrchestrator:
 
     async def _mark_step_done(self, job: GenerationJob) -> None:
         """Mark job as done with 100% progress."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await self.job_repo.update(
             job.id,
             status="done",
@@ -1764,7 +1746,7 @@ class PipelineOrchestrator:
         self.log.info("auto_selected_llm_config", name=selected.name, index=idx, total=len(configs))
         return selected
 
-    async def _build_llm_pool(self) -> "LLMPool":
+    async def _build_llm_pool(self) -> LLMPool:
         """Build an :class:`LLMPool` from all available LLM configs.
 
         Queries every :class:`LLMConfig` row (up to 10) and wraps each one in
@@ -1797,9 +1779,7 @@ class PipelineOrchestrator:
                 )
 
         if not providers:
-            raise ValueError(
-                "No LLM providers available — create at least one in Settings."
-            )
+            raise ValueError("No LLM providers available — create at least one in Settings.")
 
         self.log.info("llm_pool_built", provider_count=len(providers))
         return LLMPool(providers)
@@ -1897,15 +1877,9 @@ class PipelineOrchestrator:
                 selectinload(EpisodeModel.series).selectinload(SeriesModel.llm_config),
                 selectinload(EpisodeModel.series).selectinload(SeriesModel.comfyui_server),
                 selectinload(EpisodeModel.series).selectinload(SeriesModel.comfyui_workflow),
-                selectinload(EpisodeModel.series).selectinload(
-                    SeriesModel.video_comfyui_workflow
-                ),
-                selectinload(EpisodeModel.series).selectinload(
-                    SeriesModel.script_prompt_template
-                ),
-                selectinload(EpisodeModel.series).selectinload(
-                    SeriesModel.visual_prompt_template
-                ),
+                selectinload(EpisodeModel.series).selectinload(SeriesModel.video_comfyui_workflow),
+                selectinload(EpisodeModel.series).selectinload(SeriesModel.script_prompt_template),
+                selectinload(EpisodeModel.series).selectinload(SeriesModel.visual_prompt_template),
             )
         )
         result = await self.db.execute(stmt)

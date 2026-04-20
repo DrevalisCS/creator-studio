@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
@@ -32,15 +32,15 @@ if TYPE_CHECKING:
     from shortsfactory.models.voice_profile import VoiceProfile
     from shortsfactory.services.comfyui import ComfyUIService
     from shortsfactory.services.ffmpeg import FFmpegService
-    from shortsfactory.services.storage import LocalStorage, StorageBackend
-    from shortsfactory.services.tts import TTSProvider, TTSService
+    from shortsfactory.services.storage import StorageBackend
+    from shortsfactory.services.tts import TTSService
 
 log = structlog.get_logger(__name__)
 
 # ── Context-aware pause durations (seconds) ──────────────────────────────────
-PAUSE_WITHIN_SPEAKER = 0.15    # 150 ms between chunks of the same speaker
-PAUSE_BETWEEN_SPEAKERS = 0.4   # 400 ms between different speakers
-PAUSE_BETWEEN_CHAPTERS = 1.2   # 1.2 s between chapters
+PAUSE_WITHIN_SPEAKER = 0.15  # 150 ms between chunks of the same speaker
+PAUSE_BETWEEN_SPEAKERS = 0.4  # 400 ms between different speakers
+PAUSE_BETWEEN_CHAPTERS = 1.2  # 1.2 s between chapters
 
 
 @dataclass
@@ -69,12 +69,12 @@ class AudiobookService:
 
     def __init__(
         self,
-        tts_service: "TTSService",
-        ffmpeg_service: "FFmpegService",
-        storage: "StorageBackend",
-        db_session: "AsyncSession | None" = None,
-        comfyui_service: "ComfyUIService | None" = None,
-        redis: "Redis | None" = None,
+        tts_service: TTSService,
+        ffmpeg_service: FFmpegService,
+        storage: StorageBackend,
+        db_session: AsyncSession | None = None,
+        comfyui_service: ComfyUIService | None = None,
+        redis: Redis | None = None,
     ) -> None:
         self.tts = tts_service
         self.ffmpeg = ffmpeg_service
@@ -100,12 +100,14 @@ class AudiobookService:
         import json as _json
 
         channel = f"progress:audiobook:{audiobook_id}"
-        payload = _json.dumps({
-            "audiobook_id": str(audiobook_id),
-            "step": step,
-            "progress_pct": progress_pct,
-            "message": message,
-        })
+        payload = _json.dumps(
+            {
+                "audiobook_id": str(audiobook_id),
+                "step": step,
+                "progress_pct": progress_pct,
+                "message": message,
+            }
+        )
         try:
             await self.redis.publish(channel, payload)
         except Exception:
@@ -119,7 +121,7 @@ class AudiobookService:
         self,
         audiobook_id: UUID,
         text: str,
-        voice_profile: "VoiceProfile",
+        voice_profile: VoiceProfile,
         *,
         generate_video: bool = False,
         background_image_path: str | None = None,
@@ -216,7 +218,9 @@ class AudiobookService:
 
             pct = 5 + int((ch_idx / total_chapters) * 45)
             await self._broadcast_progress(
-                audiobook_id, "tts", pct,
+                audiobook_id,
+                "tts",
+                pct,
                 f"Generating speech for chapter {ch_idx + 1}/{total_chapters}...",
             )
 
@@ -268,7 +272,9 @@ class AudiobookService:
             if timing.chapter_index < len(chapters):
                 chapters[timing.chapter_index]["start_seconds"] = round(timing.start_seconds, 3)
                 chapters[timing.chapter_index]["end_seconds"] = round(timing.end_seconds, 3)
-                chapters[timing.chapter_index]["duration_seconds"] = round(timing.duration_seconds, 3)
+                chapters[timing.chapter_index]["duration_seconds"] = round(
+                    timing.duration_seconds, 3
+                )
 
         # 4. Get duration and file size
         duration = await self.ffmpeg.get_duration(final_audio)
@@ -277,7 +283,9 @@ class AudiobookService:
         # 5. Generate per-chapter images via ComfyUI (if enabled)
         chapter_image_paths: list[Path] = []
         if image_generation_enabled and output_format in ("audio_image", "audio_video"):
-            await self._broadcast_progress(audiobook_id, "images", 55, "Generating chapter images...")
+            await self._broadcast_progress(
+                audiobook_id, "images", 55, "Generating chapter images..."
+            )
             try:
                 chapter_image_paths = await self._generate_chapter_images(
                     chapters=chapters,
@@ -289,7 +297,9 @@ class AudiobookService:
                 # Store image paths in chapter metadata
                 for i, img_path in enumerate(chapter_image_paths):
                     if i < len(chapters):
-                        chapters[i]["image_path"] = f"audiobooks/{audiobook_id}/images/ch{i:03d}.png"
+                        chapters[i]["image_path"] = (
+                            f"audiobooks/{audiobook_id}/images/ch{i:03d}.png"
+                        )
                 log.info(
                     "audiobook.generate.images_done",
                     audiobook_id=str(audiobook_id),
@@ -367,7 +377,6 @@ class AudiobookService:
         # 6b. Generate captions from audio
         await self._broadcast_progress(audiobook_id, "captions", 85, "Generating captions...")
         captions_ass_path: Path | None = None
-        captions_srt_path: Path | None = None
         captions_ass_rel: str | None = None
         captions_srt_rel: str | None = None
 
@@ -402,7 +411,7 @@ class AudiobookService:
                 style=caption_style,
             )
             captions_ass_path = Path(caption_result.ass_path)
-            captions_srt_path = Path(caption_result.srt_path)
+            Path(caption_result.srt_path)
             captions_ass_rel = f"audiobooks/{audiobook_id}/captions/captions.ass"
             captions_srt_rel = f"audiobooks/{audiobook_id}/captions/captions.srt"
 
@@ -431,7 +440,7 @@ class AudiobookService:
 
         # 7. Convert to MP3
         try:
-            mp3_path = await self._convert_to_mp3(final_audio)
+            await self._convert_to_mp3(final_audio)
             mp3_rel_path = f"audiobooks/{audiobook_id}/audiobook.mp3"
             log.info(
                 "audiobook.generate.mp3_done",
@@ -486,8 +495,10 @@ class AudiobookService:
                     title_for_card = chapters[0]["title"] if chapters else "Audiobook"
                     resolved_cover = str(
                         await self._generate_title_card(
-                            abs_dir, title_for_card,
-                            width=video_width, height=video_height,
+                            abs_dir,
+                            title_for_card,
+                            width=video_width,
+                            height=video_height,
                         )
                     )
                 await self._create_audiobook_video(
@@ -621,8 +632,14 @@ class AudiobookService:
     async def _generate_silence(self, output_path: Path, duration: float = 0.5) -> None:
         """Generate a short silence WAV file as a TTS fallback."""
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-f", "lavfi", "-i",
-            f"anullsrc=r=24000:cl=mono", "-t", str(duration),
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=24000:cl=mono",
+            "-t",
+            str(duration),
             str(output_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -632,7 +649,7 @@ class AudiobookService:
     async def _generate_single_voice(
         self,
         text: str,
-        voice_profile: "VoiceProfile",
+        voice_profile: VoiceProfile,
         output_dir: Path,
         chapter_index: int,
         speed: float,
@@ -652,7 +669,9 @@ class AudiobookService:
 
             chunk_path = output_dir / f"ch{chapter_index:03d}_chunk_{i:04d}.wav"
             if chunk_path.exists() and chunk_path.stat().st_size > 100:
-                log.debug("audiobook.generate.chunk_cached", chapter_index=chapter_index, chunk_index=i)
+                log.debug(
+                    "audiobook.generate.chunk_cached", chapter_index=chapter_index, chunk_index=i
+                )
             else:
                 try:
                     await provider.synthesize(
@@ -673,13 +692,15 @@ class AudiobookService:
                     await self._generate_silence(chunk_path)
 
             if chunk_path.exists():
-                result.append(AudioChunk(
-                    path=chunk_path,
-                    chapter_index=chapter_index,
-                    speaker="Narrator",
-                    block_index=0,
-                    chunk_index=i,
-                ))
+                result.append(
+                    AudioChunk(
+                        path=chunk_path,
+                        chapter_index=chapter_index,
+                        speaker="Narrator",
+                        block_index=0,
+                        chunk_index=i,
+                    )
+                )
             log.debug(
                 "audiobook.generate.chunk_done",
                 chapter_index=chapter_index,
@@ -693,7 +714,7 @@ class AudiobookService:
         self,
         blocks: list[dict[str, str]],
         voice_casting: dict[str, str],
-        default_voice_profile: "VoiceProfile",
+        default_voice_profile: VoiceProfile,
         output_dir: Path,
         chapter_index: int,
         speed: float,
@@ -749,7 +770,12 @@ class AudiobookService:
 
                 chunk_path = output_dir / f"ch{chapter_index:03d}_block_{i:04d}_chunk_{j:04d}.wav"
                 if chunk_path.exists() and chunk_path.stat().st_size > 100:
-                    log.debug("audiobook.generate.chunk_cached", chapter_index=chapter_index, block_index=i, chunk_index=j)
+                    log.debug(
+                        "audiobook.generate.chunk_cached",
+                        chapter_index=chapter_index,
+                        block_index=i,
+                        chunk_index=j,
+                    )
                 else:
                     try:
                         await provider.synthesize(
@@ -772,13 +798,15 @@ class AudiobookService:
                         await self._generate_silence(chunk_path)
 
                 if chunk_path.exists():
-                    result.append(AudioChunk(
-                        path=chunk_path,
-                        chapter_index=chapter_index,
-                        speaker=speaker,
-                        block_index=i,
-                        chunk_index=j,
-                    ))
+                    result.append(
+                        AudioChunk(
+                            path=chunk_path,
+                            chapter_index=chapter_index,
+                            speaker=speaker,
+                            block_index=i,
+                            chunk_index=j,
+                        )
+                    )
                 log.debug(
                     "audiobook.generate.multi_voice_chunk_done",
                     chapter_index=chapter_index,
@@ -790,7 +818,7 @@ class AudiobookService:
 
         return result
 
-    async def _get_voice_profile(self, voice_profile_id: str) -> "VoiceProfile | None":
+    async def _get_voice_profile(self, voice_profile_id: str) -> VoiceProfile | None:
         """Load a voice profile by ID from the database."""
         if self.db_session is None:
             log.warning(
@@ -800,9 +828,9 @@ class AudiobookService:
             return None
 
         try:
-            from shortsfactory.repositories.voice_profile import VoiceProfileRepository
-
             import uuid as _uuid
+
+            from shortsfactory.repositories.voice_profile import VoiceProfileRepository
 
             vp_repo = VoiceProfileRepository(self.db_session)
             parsed_id = _uuid.UUID(voice_profile_id)
@@ -862,9 +890,14 @@ class AudiobookService:
         for dur in (PAUSE_WITHIN_SPEAKER, PAUSE_BETWEEN_SPEAKERS, PAUSE_BETWEEN_CHAPTERS):
             sil_path = output.parent / f"_silence_{int(dur * 1000)}ms.wav"
             proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-y", "-f", "lavfi", "-i",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
                 "anullsrc=r=24000:cl=mono",
-                "-t", str(dur),
+                "-t",
+                str(dur),
                 str(sil_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -898,9 +931,16 @@ class AudiobookService:
 
         # Concatenate
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-            "-i", str(concat_list),
-            "-c", "copy",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_list),
+            "-c",
+            "copy",
             str(output),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
@@ -920,9 +960,7 @@ class AudiobookService:
 
         return chapter_timings
 
-    async def _compute_chapter_timings(
-        self, chunks: list[AudioChunk]
-    ) -> list[ChapterTiming]:
+    async def _compute_chapter_timings(self, chunks: list[AudioChunk]) -> list[ChapterTiming]:
         """Compute chapter start/end times from chunk audio durations."""
         # Get duration of each chunk
         chunk_durations: list[float] = []
@@ -935,15 +973,17 @@ class AudiobookService:
         current_chapter = chunks[0].chapter_index if chunks else 0
         chapter_start = 0.0
 
-        for i, (chunk, dur) in enumerate(zip(chunks, chunk_durations)):
+        for i, (chunk, dur) in enumerate(zip(chunks, chunk_durations, strict=False)):
             if chunk.chapter_index != current_chapter:
                 # Close previous chapter
-                timings.append(ChapterTiming(
-                    chapter_index=current_chapter,
-                    start_seconds=chapter_start,
-                    end_seconds=current_time,
-                    duration_seconds=current_time - chapter_start,
-                ))
+                timings.append(
+                    ChapterTiming(
+                        chapter_index=current_chapter,
+                        start_seconds=chapter_start,
+                        end_seconds=current_time,
+                        duration_seconds=current_time - chapter_start,
+                    )
+                )
                 chapter_start = current_time + PAUSE_BETWEEN_CHAPTERS
                 current_chapter = chunk.chapter_index
 
@@ -960,12 +1000,14 @@ class AudiobookService:
                     current_time += PAUSE_WITHIN_SPEAKER
 
         # Close final chapter
-        timings.append(ChapterTiming(
-            chapter_index=current_chapter,
-            start_seconds=chapter_start,
-            end_seconds=current_time,
-            duration_seconds=current_time - chapter_start,
-        ))
+        timings.append(
+            ChapterTiming(
+                chapter_index=current_chapter,
+                start_seconds=chapter_start,
+                end_seconds=current_time,
+                duration_seconds=current_time - chapter_start,
+            )
+        )
 
         return timings
 
@@ -1031,9 +1073,7 @@ class AudiobookService:
 
                     async with self.comfyui_service._pool.acquire() as (_, client):
                         prompt_id = await client.queue_prompt(workflow)
-                        history = await self.comfyui_service._poll_until_complete(
-                            client, prompt_id
-                        )
+                        history = await self.comfyui_service._poll_until_complete(client, prompt_id)
 
                         output_images = self.comfyui_service._extract_output_images(
                             history, "60", "images"
@@ -1060,8 +1100,10 @@ class AudiobookService:
 
                 # Fallback: generate a title card
                 return await self._generate_title_card(
-                    images_dir, chapter.get("title", f"Chapter {ch_idx + 1}"),
-                    width=video_width, height=video_height,
+                    images_dir,
+                    chapter.get("title", f"Chapter {ch_idx + 1}"),
+                    width=video_width,
+                    height=video_height,
                 )
 
         tasks = [_gen_one(i, ch) for i, ch in enumerate(chapters)]
@@ -1079,14 +1121,18 @@ class AudiobookService:
                 )
                 # Generate title card as fallback
                 fallback = await self._generate_title_card(
-                    images_dir, chapters[i].get("title", f"Chapter {i + 1}"),
-                    width=video_width, height=video_height,
+                    images_dir,
+                    chapters[i].get("title", f"Chapter {i + 1}"),
+                    width=video_width,
+                    height=video_height,
                 )
                 image_paths.append(fallback)
             else:
                 fallback = await self._generate_title_card(
-                    images_dir, chapters[i].get("title", f"Chapter {i + 1}"),
-                    width=video_width, height=video_height,
+                    images_dir,
+                    chapters[i].get("title", f"Chapter {i + 1}"),
+                    width=video_width,
+                    height=video_height,
                 )
                 image_paths.append(fallback)
 
@@ -1138,17 +1184,22 @@ class AudiobookService:
         )
 
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(audio_path),
-            "-i", str(music_path),
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(audio_path),
+            "-i",
+            str(music_path),
             "-filter_complex",
             (
                 f"[1:a]volume={volume_db}dB[bgm];"
                 "[bgm][0:a]sidechaincompress=threshold=0.02:ratio=6:attack=200:release=1000[ducked];"
                 "[0:a][ducked]amix=inputs=2:duration=first:dropout_transition=2[out]"
             ),
-            "-map", "[out]",
-            "-c:a", "pcm_s16le",
+            "-map",
+            "[out]",
+            "-c:a",
+            "pcm_s16le",
             str(output_path),
         ]
 
@@ -1214,14 +1265,16 @@ class AudiobookService:
                 # Trim to exact chapter duration + crossfade
                 trimmed = music_dir / f"ch{i:03d}_music.wav"
                 trim_cmd = [
-                    "ffmpeg", "-y",
-                    "-i", str(music_path),
-                    "-t", str(target_dur),
-                    "-af", "afade=t=out:st={:.2f}:d={:.2f}".format(
-                        max(0, target_dur - crossfade_duration),
-                        crossfade_duration,
-                    ),
-                    "-c:a", "pcm_s16le",
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(music_path),
+                    "-t",
+                    str(target_dur),
+                    "-af",
+                    f"afade=t=out:st={max(0, target_dur - crossfade_duration):.2f}:d={crossfade_duration:.2f}",
+                    "-c:a",
+                    "pcm_s16le",
                     str(trimmed),
                 ]
                 proc = await asyncio.create_subprocess_exec(
@@ -1234,7 +1287,9 @@ class AudiobookService:
 
                 # Store music path in chapter metadata
                 if i < len(chapters):
-                    chapters[i]["music_path"] = f"audiobooks/{audiobook_id}/music/ch{i:03d}_music.wav"
+                    chapters[i]["music_path"] = (
+                        f"audiobooks/{audiobook_id}/music/ch{i:03d}_music.wav"
+                    )
             else:
                 chapter_music_paths.append(None)
 
@@ -1266,9 +1321,16 @@ class AudiobookService:
 
             combined_music = music_dir / "combined_music.wav"
             proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-y", "-f", "concat", "-safe", "0",
-                "-i", str(concat_list),
-                "-c:a", "pcm_s16le",
+                "ffmpeg",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_list),
+                "-c:a",
+                "pcm_s16le",
                 str(combined_music),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
@@ -1282,17 +1344,22 @@ class AudiobookService:
 
         # Mix combined music under voiceover with sidechain compression
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(audio_path),
-            "-i", str(combined_music),
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(audio_path),
+            "-i",
+            str(combined_music),
             "-filter_complex",
             (
                 f"[1:a]volume={volume_db}dB[bgm];"
                 "[bgm][0:a]sidechaincompress=threshold=0.02:ratio=6:attack=200:release=1000[ducked];"
                 "[0:a][ducked]amix=inputs=2:duration=first:dropout_transition=2[out]"
             ),
-            "-map", "[out]",
-            "-c:a", "pcm_s16le",
+            "-map",
+            "[out]",
+            "-c:a",
+            "pcm_s16le",
             str(output_path),
         ]
 
@@ -1317,10 +1384,14 @@ class AudiobookService:
         """Convert a WAV file to MP3 at 192 kbps."""
         mp3_path = wav_path.with_suffix(".mp3")
         cmd = [
-            "ffmpeg", "-y",
-            "-i", str(wav_path),
-            "-codec:a", "libmp3lame",
-            "-b:a", "192k",
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(wav_path),
+            "-codec:a",
+            "libmp3lame",
+            "-b:a",
+            "192k",
             str(mp3_path),
         ]
 
@@ -1352,13 +1423,17 @@ class AudiobookService:
         card_path = output_dir / "title_card.jpg"
         safe_title = title.replace("'", "").replace('"', "")[:50]
         cmd = [
-            "ffmpeg", "-y",
-            "-f", "lavfi",
-            "-i", f"color=c=0x0f0f1a:s={width}x{height}:d=1",
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=0x0f0f1a:s={width}x{height}:d=1",
             "-vf",
             f"drawtext=text='{safe_title}':fontsize=64:fontcolor=white"
             f":x=(w-text_w)/2:y=(h-text_h)/2:borderw=3:bordercolor=black",
-            "-frames:v", "1",
+            "-frames:v",
+            "1",
             str(card_path),
         ]
 
@@ -1398,7 +1473,7 @@ class AudiobookService:
                 image_path=img_path,
                 duration_seconds=timing.duration_seconds,
             )
-            for img_path, timing in zip(chapter_image_paths, chapter_timings)
+            for img_path, timing in zip(chapter_image_paths, chapter_timings, strict=False)
         ]
 
         config = AssemblyConfig(
@@ -1419,7 +1494,9 @@ class AudiobookService:
             if audiobook_id:
                 encode_pct = 90 + int(pct * 0.09)  # map 0-100% to 90-99%
                 await self._broadcast_progress(
-                    audiobook_id, "assembly", encode_pct,
+                    audiobook_id,
+                    "assembly",
+                    encode_pct,
                     f"Encoding video... {int(pct)}%",
                 )
 
@@ -1475,8 +1552,7 @@ class AudiobookService:
             )
         else:
             filter_parts.append(
-                f"color=c=0x0f0f1a:s={width}x{height}:d={duration}:r=25,"
-                "format=yuv420p[bg]"
+                f"color=c=0x0f0f1a:s={width}x{height}:d={duration}:r=25,format=yuv420p[bg]"
             )
 
         if with_waveform:
@@ -1493,9 +1569,7 @@ class AudiobookService:
 
         if captions_path and captions_path.exists():
             escaped = str(captions_path).replace("\\", "/").replace(":", "\\:")
-            filter_parts.append(
-                f"[{video_label}]subtitles='{escaped}'[vout]"
-            )
+            filter_parts.append(f"[{video_label}]subtitles='{escaped}'[vout]")
             output_label = "vout"
         else:
             output_label = video_label
@@ -1510,21 +1584,28 @@ class AudiobookService:
             *input_args,
             "-filter_complex",
             ";".join(filter_parts),
-            "-map", f"[{output_label}]",
-            "-map", f"{audio_input_idx}:a",
-            "-c:v", "libx264",
-            "-preset", "medium",
-            "-b:v", "2M",
-            "-c:a", "aac",
-            "-b:a", "192k",
-            "-t", str(duration),
-            "-movflags", "+faststart",
+            "-map",
+            f"[{output_label}]",
+            "-map",
+            f"{audio_input_idx}:a",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-b:v",
+            "2M",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-t",
+            str(duration),
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=PIPE, stderr=PIPE
-        )
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=PIPE, stderr=PIPE)
 
         # Stream stderr for progress tracking
         stderr_lines: list[str] = []
@@ -1537,6 +1618,7 @@ class AudiobookService:
             stderr_lines.append(text)
             if audiobook_id and duration > 10:
                 import re as _re
+
                 m = _re.search(r"time=(\d+):(\d+):(\d+\.\d+)", text)
                 if m:
                     t = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
@@ -1544,13 +1626,13 @@ class AudiobookService:
                     if pct > last_pct + 2:
                         last_pct = pct
                         await self._broadcast_progress(
-                            audiobook_id, "assembly", 90 + int(pct * 0.09),
+                            audiobook_id,
+                            "assembly",
+                            90 + int(pct * 0.09),
                             f"Encoding video... {pct}%",
                         )
 
         await proc.wait()
         if proc.returncode != 0:
             stderr_text = "\n".join(stderr_lines)
-            raise RuntimeError(
-                f"Failed to create audiobook video: {stderr_text[-300:]}"
-            )
+            raise RuntimeError(f"Failed to create audiobook video: {stderr_text[-300:]}")

@@ -136,9 +136,18 @@ with::
 """
 
 XFADE_TRANSITIONS: list[str] = [
-    "fade", "slideright", "slideleft", "slideup", "slidedown",
-    "circlecrop", "dissolve", "wipeleft", "wiperight",
-    "diagtl", "diagtr", "pixelize",
+    "fade",
+    "slideright",
+    "slideleft",
+    "slideup",
+    "slidedown",
+    "circlecrop",
+    "dissolve",
+    "wipeleft",
+    "wiperight",
+    "diagtl",
+    "diagtr",
+    "pixelize",
 ]
 """Supported FFmpeg xfade transition names for Ken Burns assembly."""
 
@@ -300,9 +309,7 @@ class FFmpegService:
                     pass
 
         if not output_path.exists():
-            raise FileNotFoundError(
-                f"FFmpeg did not produce output file: {output_path}"
-            )
+            raise FileNotFoundError(f"FFmpeg did not produce output file: {output_path}")
 
         file_size = output_path.stat().st_size
         duration = await self.get_duration(output_path)
@@ -324,8 +331,10 @@ class FFmpegService:
         """Get duration of an audio or video file using ffprobe."""
         cmd = [
             self.ffprobe_path,
-            "-v", "quiet",
-            "-print_format", "json",
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
             "-show_format",
             str(file_path),
         ]
@@ -346,9 +355,7 @@ class FFmpegService:
                 path=str(file_path),
                 stderr=stderr_text,
             )
-            raise RuntimeError(
-                f"ffprobe failed for {file_path}: {stderr_text}"
-            )
+            raise RuntimeError(f"ffprobe failed for {file_path}: {stderr_text}")
 
         try:
             info = json.loads(stdout.decode("utf-8"))
@@ -372,9 +379,12 @@ class FFmpegService:
         cmd = [
             self.ffmpeg_path,
             "-y",
-            "-i", str(input_path),
-            "-c:a", codec,
-            "-b:a", bitrate,
+            "-i",
+            str(input_path),
+            "-c:a",
+            codec,
+            "-b:a",
+            bitrate,
             "-vn",
             str(output_path),
         ]
@@ -382,9 +392,7 @@ class FFmpegService:
         await self._run_ffmpeg(cmd, description="convert_audio")
 
         if not output_path.exists():
-            raise FileNotFoundError(
-                f"Audio conversion did not produce output: {output_path}"
-            )
+            raise FileNotFoundError(f"Audio conversion did not produce output: {output_path}")
 
         log.info(
             "ffmpeg.convert_audio.done",
@@ -406,19 +414,21 @@ class FFmpegService:
         cmd = [
             self.ffmpeg_path,
             "-y",
-            "-ss", str(timestamp_seconds),
-            "-i", str(video_path),
-            "-frames:v", "1",
-            "-q:v", "2",
+            "-ss",
+            str(timestamp_seconds),
+            "-i",
+            str(video_path),
+            "-frames:v",
+            "1",
+            "-q:v",
+            "2",
             str(output_path),
         ]
 
         await self._run_ffmpeg(cmd, description="extract_thumbnail")
 
         if not output_path.exists():
-            raise FileNotFoundError(
-                f"Thumbnail extraction did not produce output: {output_path}"
-            )
+            raise FileNotFoundError(f"Thumbnail extraction did not produce output: {output_path}")
 
         log.info(
             "ffmpeg.extract_thumbnail.done",
@@ -543,6 +553,7 @@ class FFmpegService:
             subtitle: Optional secondary text rendered below the title.
             font_size: Point size for the title text (default 72).
         """
+
         # Escape characters that have special meaning inside FFmpeg drawtext
         # filter expressions.  Single quotes are the most dangerous because
         # they terminate the filter string.
@@ -572,9 +583,12 @@ class FFmpegService:
         cmd = [
             self.ffmpeg_path,
             "-y",
-            "-i", str(base_image_path),
-            "-vf", filter_str,
-            "-q:v", "2",
+            "-i",
+            str(base_image_path),
+            "-vf",
+            filter_str,
+            "-q:v",
+            "2",
             str(output_path),
         ]
 
@@ -646,8 +660,7 @@ class FFmpegService:
             voice_filters.append(f"highpass=f={cfg.voice_eq_low_cut}")
             # Parametric EQ presence boost makes voice cut through the mix.
             voice_filters.append(
-                f"equalizer=f={cfg.voice_eq_presence_freq}"
-                f":t=q:w=1.5:g={cfg.voice_eq_presence_gain}"
+                f"equalizer=f={cfg.voice_eq_presence_freq}:t=q:w=1.5:g={cfg.voice_eq_presence_gain}"
             )
 
         if cfg.voice_compressor:
@@ -662,9 +675,7 @@ class FFmpegService:
 
         if cfg.voice_normalize:
             # EBU R128 integrated loudness normalization.
-            voice_filters.append(
-                f"loudnorm=I={cfg.voice_target_lufs}:LRA=11:TP=-1"
-            )
+            voice_filters.append(f"loudnorm=I={cfg.voice_target_lufs}:LRA=11:TP=-1")
 
         # The voice chain feeds into different labels depending on whether
         # music is present (asplit needed for sidechain) or not.
@@ -685,9 +696,7 @@ class FFmpegService:
         # ── Route voice into sidechain split or direct output ──────────────
         if has_music:
             # Split voice into two streams: sidechain detector + mix input.
-            segments.append(
-                f"[{voice_chain_out}]asplit=2[vo_sc][vo_mix]"
-            )
+            segments.append(f"[{voice_chain_out}]asplit=2[vo_sc][vo_mix]")
 
             # ── Music processing chain ─────────────────────────────────────
             music_filters: list[str] = []
@@ -882,9 +891,12 @@ class FFmpegService:
         # -- inputs: one per scene image, duration-bounded ------------------
         for scene in scenes:
             cmd += [
-                "-loop", "1",
-                "-t", str(scene.duration_seconds),
-                "-i", str(scene.image_path),
+                "-loop",
+                "1",
+                "-t",
+                str(scene.duration_seconds),
+                "-i",
+                str(scene.image_path),
             ]
 
         # Audio input index starts after all images
@@ -954,15 +966,12 @@ class FFmpegService:
             offset = scenes[0].duration_seconds - td
             offset = max(0.0, offset)
             filter_parts.append(
-                f"[v0][v1]xfade=transition={transition}"
-                f":duration={td}:offset={offset:.3f}[vt0]"
+                f"[v0][v1]xfade=transition={transition}:duration={td}:offset={offset:.3f}[vt0]"
             )
 
             # Track the cumulative duration of the combined stream so far.
             # After the first xfade the combined length is d0 + d1 - td.
-            cumulative = (
-                scenes[0].duration_seconds + scenes[1].duration_seconds - td
-            )
+            cumulative = scenes[0].duration_seconds + scenes[1].duration_seconds - td
 
             # Subsequent xfades
             for i in range(2, len(scenes)):
@@ -1010,7 +1019,9 @@ class FFmpegService:
             video_out_label = "vout_wm"
 
         # Step 4: Audio filtergraph — professional mastering chain
-        music_label = f"{music_input_idx}:a" if (has_music and music_input_idx is not None) else None
+        music_label = (
+            f"{music_input_idx}:a" if (has_music and music_input_idx is not None) else None
+        )
         audio_filter_parts, audio_out_label = self._build_audio_filtergraph(
             voice_input_label=f"{audio_input_idx}:a",
             music_input_label=music_label,
@@ -1031,16 +1042,25 @@ class FFmpegService:
 
         # -- encoding -------------------------------------------------------
         cmd += [
-            "-c:v", config.video_codec,
-            "-profile:v", "high",
-            "-pix_fmt", config.pixel_format,
-            "-preset", config.preset,
-            "-b:v", config.video_bitrate,
-            "-c:a", config.audio_codec,
-            "-b:a", config.audio_bitrate,
-            "-ar", "48000",
+            "-c:v",
+            config.video_codec,
+            "-profile:v",
+            "high",
+            "-pix_fmt",
+            config.pixel_format,
+            "-preset",
+            config.preset,
+            "-b:v",
+            config.video_bitrate,
+            "-c:a",
+            config.audio_codec,
+            "-b:a",
+            config.audio_bitrate,
+            "-ar",
+            "48000",
             "-shortest",
-            "-movflags", "+faststart",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -1113,9 +1133,12 @@ class FFmpegService:
         # -- inputs ---------------------------------------------------------
         # Input 0: concat demuxer for images
         cmd += [
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_file),
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_file),
         ]
         # Input 1: voiceover
         cmd += ["-i", str(voiceover_path)]
@@ -1130,12 +1153,9 @@ class FFmpegService:
 
         # Scale to target resolution, preserving aspect ratio with padding.
         video_filters.append(
-            f"scale={config.width}:{config.height}:"
-            f"force_original_aspect_ratio=decrease"
+            f"scale={config.width}:{config.height}:force_original_aspect_ratio=decrease"
         )
-        video_filters.append(
-            f"pad={config.width}:{config.height}:(ow-iw)/2:(oh-ih)/2:color=black"
-        )
+        video_filters.append(f"pad={config.width}:{config.height}:(ow-iw)/2:(oh-ih)/2:color=black")
 
         # Set frame rate.
         video_filters.append(f"fps={config.fps}")
@@ -1176,9 +1196,7 @@ class FFmpegService:
             output_label="vout_wm",
         )
         if wm_segment is not None:
-            full_filter = (
-                f"[0:v]{video_chain}[vout];{wm_segment};{audio_filter_str}"
-            )
+            full_filter = f"[0:v]{video_chain}[vout];{wm_segment};{audio_filter_str}"
             video_final_label = "vout_wm"
         else:
             full_filter = f"[0:v]{video_chain}[vout];{audio_filter_str}"
@@ -1188,12 +1206,18 @@ class FFmpegService:
 
         # -- encoding -------------------------------------------------------
         cmd += [
-            "-c:v", config.video_codec,
-            "-preset", config.preset,
-            "-b:v", config.video_bitrate,
-            "-c:a", config.audio_codec,
-            "-b:a", config.audio_bitrate,
-            "-movflags", "+faststart",
+            "-c:v",
+            config.video_codec,
+            "-preset",
+            config.preset,
+            "-b:v",
+            config.video_bitrate,
+            "-c:a",
+            config.audio_codec,
+            "-b:a",
+            config.audio_bitrate,
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -1274,8 +1298,7 @@ class FFmpegService:
                 stderr=stderr_text[-2000:],
             )
             raise RuntimeError(
-                f"FFmpeg {description} failed (rc={proc.returncode}): "
-                f"{stderr_text[-500:]}"
+                f"FFmpeg {description} failed (rc={proc.returncode}): {stderr_text[-500:]}"
             )
 
         log.debug(
@@ -1409,9 +1432,7 @@ class FFmpegService:
                 pass
 
         if not output_path.exists():
-            raise FileNotFoundError(
-                f"FFmpeg did not produce output file: {output_path}"
-            )
+            raise FileNotFoundError(f"FFmpeg did not produce output file: {output_path}")
 
         file_size = output_path.stat().st_size
         duration = await self.get_duration(output_path)
@@ -1456,9 +1477,12 @@ class FFmpegService:
         # -- inputs -----------------------------------------------------
         # Input 0: concat demuxer for video clips
         cmd += [
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_file),
+            "-f",
+            "concat",
+            "-safe",
+            "0",
+            "-i",
+            str(concat_file),
         ]
         # Input 1: voiceover
         cmd += ["-i", str(voiceover_path)]
@@ -1473,12 +1497,9 @@ class FFmpegService:
 
         # Scale to target resolution, preserving aspect ratio with padding.
         video_filters.append(
-            f"scale={config.width}:{config.height}:"
-            f"force_original_aspect_ratio=decrease"
+            f"scale={config.width}:{config.height}:force_original_aspect_ratio=decrease"
         )
-        video_filters.append(
-            f"pad={config.width}:{config.height}:(ow-iw)/2:(oh-ih)/2:color=black"
-        )
+        video_filters.append(f"pad={config.width}:{config.height}:(ow-iw)/2:(oh-ih)/2:color=black")
 
         # Set frame rate.
         video_filters.append(f"fps={config.fps}")
@@ -1521,9 +1542,7 @@ class FFmpegService:
             output_label="vout_wm",
         )
         if wm_segment_vc is not None:
-            full_filter = (
-                f"[0:v]{video_chain}[vout];{wm_segment_vc};{audio_filter_str}"
-            )
+            full_filter = f"[0:v]{video_chain}[vout];{wm_segment_vc};{audio_filter_str}"
             video_final_label_vc = "vout_wm"
         else:
             full_filter = f"[0:v]{video_chain}[vout];{audio_filter_str}"
@@ -1533,12 +1552,18 @@ class FFmpegService:
 
         # -- encoding ---------------------------------------------------
         cmd += [
-            "-c:v", config.video_codec,
-            "-preset", config.preset,
-            "-b:v", config.video_bitrate,
-            "-c:a", config.audio_codec,
-            "-b:a", config.audio_bitrate,
-            "-movflags", "+faststart",
+            "-c:v",
+            config.video_codec,
+            "-preset",
+            config.preset,
+            "-b:v",
+            config.video_bitrate,
+            "-c:a",
+            config.audio_codec,
+            "-b:a",
+            config.audio_bitrate,
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -1550,7 +1575,13 @@ class FFmpegService:
     def _is_image(path: Path) -> bool:
         """Check if a path looks like an image file by extension."""
         return path.suffix.lower() in {
-            ".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff", ".tif",
+            ".png",
+            ".jpg",
+            ".jpeg",
+            ".webp",
+            ".bmp",
+            ".tiff",
+            ".tif",
         }
 
     # -- Video editing operations -------------------------------------------
@@ -1579,9 +1610,18 @@ class FFmpegService:
             cmd += ["-to", f"{end_seconds - (start_seconds or 0):.3f}"]
 
         cmd += [
-            "-c:v", "libx264", "-preset", "medium", "-b:v", "4M",
-            "-c:a", "aac", "-b:a", "192k",
-            "-movflags", "+faststart",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-b:v",
+            "4M",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -1634,7 +1674,7 @@ class FFmpegService:
         # -- Speed adjustment --
         if speed != 1.0:
             speed = max(0.25, min(4.0, speed))  # Clamp to sensible range
-            vf_parts.append(f"setpts={1/speed}*PTS")
+            vf_parts.append(f"setpts={1 / speed}*PTS")
 
         # -- Border / frame --
         if border_width > 0:
@@ -1682,9 +1722,18 @@ class FFmpegService:
             cmd += ["-af", ",".join(af_parts)]
 
         cmd += [
-            "-c:v", "libx264", "-preset", "medium", "-b:v", "4M",
-            "-c:a", "aac", "-b:a", "192k",
-            "-movflags", "+faststart",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "medium",
+            "-b:v",
+            "4M",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 
@@ -1754,7 +1803,7 @@ class FFmpegService:
 
         if speed != 1.0:
             speed = max(0.25, min(4.0, speed))
-            vf_parts.append(f"setpts={1/speed}*PTS")
+            vf_parts.append(f"setpts={1 / speed}*PTS")
 
         af_parts: list[str] = []
         if speed != 1.0:
@@ -1765,9 +1814,18 @@ class FFmpegService:
             cmd += ["-af", ",".join(af_parts)]
 
         cmd += [
-            "-c:v", "libx264", "-preset", "ultrafast", "-b:v", "500k",
-            "-c:a", "aac", "-b:a", "64k",
-            "-movflags", "+faststart",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-b:v",
+            "500k",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "64k",
+            "-movflags",
+            "+faststart",
             str(output_path),
         ]
 

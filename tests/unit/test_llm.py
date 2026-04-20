@@ -89,7 +89,7 @@ class TestExtractJson:
         assert parsed["title"] == "Extracted"
 
     def test_extract_json_array(self) -> None:
-        text = 'Some text before [1, 2, 3] some after'
+        text = "Some text before [1, 2, 3] some after"
         result = _extract_json(text)
         parsed = json.loads(result)
         assert parsed == [1, 2, 3]
@@ -113,9 +113,7 @@ class TestProviderSelection:
     """Test LLMService.get_provider heuristic."""
 
     @patch("shortsfactory.services.llm.OpenAICompatibleProvider")
-    def test_provider_selection_openai_compatible(
-        self, mock_openai_cls: MagicMock
-    ) -> None:
+    def test_provider_selection_openai_compatible(self, mock_openai_cls: MagicMock) -> None:
         storage_mock = AsyncMock()
         service = LLMService(storage=storage_mock)
 
@@ -134,9 +132,7 @@ class TestProviderSelection:
         assert provider is mock_openai_cls.return_value
 
     @patch("shortsfactory.services.llm.AnthropicProvider")
-    def test_provider_selection_anthropic_by_url(
-        self, mock_anthropic_cls: MagicMock
-    ) -> None:
+    def test_provider_selection_anthropic_by_url(self, mock_anthropic_cls: MagicMock) -> None:
         storage_mock = AsyncMock()
         service = LLMService(storage=storage_mock)
 
@@ -167,7 +163,7 @@ class TestProviderSelection:
             api_key_encrypted="key123",
         )
 
-        provider = service.get_provider(config)
+        service.get_provider(config)
         mock_anthropic_cls.assert_called_once()
 
     @patch("shortsfactory.services.llm.OpenAICompatibleProvider")
@@ -195,26 +191,26 @@ class TestGenerateScript:
         storage_mock = AsyncMock()
         service = LLMService(storage=storage_mock)
 
-        valid_script = json.dumps({
-            "title": "Why Cats Ignore You",
-            "hook": "Did you know?",
-            "scenes": [
-                {
-                    "scene_number": 1,
-                    "narration": "Cats are mysterious.",
-                    "visual_prompt": "cat staring",
-                    "duration_seconds": 5.0,
-                }
-            ],
-            "outro": "Follow!",
-            "total_duration_seconds": 5.0,
-            "language": "en-US",
-        })
+        valid_script = json.dumps(
+            {
+                "title": "Why Cats Ignore You",
+                "hook": "Did you know?",
+                "scenes": [
+                    {
+                        "scene_number": 1,
+                        "narration": "Cats are mysterious.",
+                        "visual_prompt": "cat staring",
+                        "duration_seconds": 5.0,
+                    }
+                ],
+                "outro": "Follow!",
+                "total_duration_seconds": 5.0,
+                "language": "en-US",
+            }
+        )
 
         mock_provider = AsyncMock()
-        mock_provider.generate = AsyncMock(
-            return_value=_make_llm_result(valid_script)
-        )
+        mock_provider.generate = AsyncMock(return_value=_make_llm_result(valid_script))
 
         # Patch get_provider to return our mock
         service.get_provider = MagicMock(return_value=mock_provider)
@@ -238,20 +234,22 @@ class TestGenerateScript:
         storage_mock = AsyncMock()
         service = LLMService(storage=storage_mock)
 
-        valid_script = json.dumps({
-            "title": "Retry Success",
-            "hook": "Hook text",
-            "scenes": [
-                {
-                    "scene_number": 1,
-                    "narration": "Success after retry.",
-                    "visual_prompt": "visual",
-                    "duration_seconds": 3.0,
-                }
-            ],
-            "outro": "",
-            "total_duration_seconds": 3.0,
-        })
+        valid_script = json.dumps(
+            {
+                "title": "Retry Success",
+                "hook": "Hook text",
+                "scenes": [
+                    {
+                        "scene_number": 1,
+                        "narration": "Success after retry.",
+                        "visual_prompt": "visual",
+                        "duration_seconds": 3.0,
+                    }
+                ],
+                "outro": "",
+                "total_duration_seconds": 3.0,
+            }
+        )
 
         mock_provider = AsyncMock()
         # First call returns invalid JSON, second returns valid
@@ -285,9 +283,7 @@ class TestGenerateScript:
 
         mock_provider = AsyncMock()
         # All calls return invalid JSON
-        mock_provider.generate = AsyncMock(
-            return_value=_make_llm_result("NOT JSON EVER")
-        )
+        mock_provider.generate = AsyncMock(return_value=_make_llm_result("NOT JSON EVER"))
 
         service.get_provider = MagicMock(return_value=mock_provider)
 
@@ -310,25 +306,29 @@ class TestGenerateScript:
         storage_mock = AsyncMock()
         service = LLMService(storage=storage_mock)
 
-        fenced_json = '```json\n' + json.dumps({
-            "title": "Fenced Script",
-            "hook": "Hook",
-            "scenes": [
+        fenced_json = (
+            "```json\n"
+            + json.dumps(
                 {
-                    "scene_number": 1,
-                    "narration": "Works.",
-                    "visual_prompt": "prompt",
-                    "duration_seconds": 4.0,
+                    "title": "Fenced Script",
+                    "hook": "Hook",
+                    "scenes": [
+                        {
+                            "scene_number": 1,
+                            "narration": "Works.",
+                            "visual_prompt": "prompt",
+                            "duration_seconds": 4.0,
+                        }
+                    ],
+                    "outro": "End",
+                    "total_duration_seconds": 4.0,
                 }
-            ],
-            "outro": "End",
-            "total_duration_seconds": 4.0,
-        }) + '\n```'
+            )
+            + "\n```"
+        )
 
         mock_provider = AsyncMock()
-        mock_provider.generate = AsyncMock(
-            return_value=_make_llm_result(fenced_json)
-        )
+        mock_provider.generate = AsyncMock(return_value=_make_llm_result(fenced_json))
         service.get_provider = MagicMock(return_value=mock_provider)
 
         config = _make_llm_config()

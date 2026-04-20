@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from shortsfactory.core.license.claims import LicenseClaims
 
 
-class LicenseStatus(str, enum.Enum):
+class LicenseStatus(enum.StrEnum):
     """Runtime license status.
 
     - ``UNACTIVATED``: no license on file; user must paste a key.

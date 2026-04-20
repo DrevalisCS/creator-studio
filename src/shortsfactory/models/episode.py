@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import TEXT, Float, CheckConstraint, ForeignKey, Index, String
+from sqlalchemy import TEXT, CheckConstraint, Float, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -46,58 +46,52 @@ class Episode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     title: Mapped[str] = mapped_column(TEXT, nullable=False)
-    topic: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    topic: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     status: Mapped[str] = mapped_column(
         TEXT, nullable=False, default="draft", server_default="'draft'"
     )
 
     # Structured script data (validated via EpisodeScript Pydantic schema)
-    script: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
+    script: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # Relative path to the episode's media directory
-    base_path: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    base_path: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # Opaque log of generation steps / events
-    generation_log: Mapped[Optional[dict[str, Any]]] = mapped_column(
-        JSONB, nullable=True
-    )
+    generation_log: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
     # Publishing metadata (title, description, hashtags, thumbnail_path)
-    metadata_: Mapped[Optional[dict[str, Any]]] = mapped_column(
-        "metadata", JSONB, nullable=True
-    )
+    metadata_: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSONB, nullable=True)
 
     # ── Per-episode overrides (architect R4) ──────────────────────────
-    override_voice_profile_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    override_voice_profile_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("voice_profiles.id", ondelete="SET NULL"),
         nullable=True,
     )
-    override_llm_config_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    override_llm_config_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("llm_configs.id", ondelete="SET NULL"),
         nullable=True,
     )
 
     # Per-episode caption style override (None = use series default)
-    override_caption_style: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    override_caption_style: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Long-form fields ─────────────────────────────────────────────
     content_format: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="'shorts'"
     )
-    chapters: Mapped[Optional[dict[str, Any]]] = mapped_column(JSONB, nullable=True)
-    total_duration_seconds: Mapped[Optional[float]] = mapped_column(
-        Float, nullable=True
-    )
+    chapters: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    total_duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     series: Mapped[Series] = relationship(back_populates="episodes")
-    override_voice_profile: Mapped[Optional[VoiceProfile]] = relationship(
+    override_voice_profile: Mapped[VoiceProfile | None] = relationship(
         back_populates="override_episodes",
         foreign_keys=[override_voice_profile_id],
     )
-    override_llm_config: Mapped[Optional[LLMConfig]] = relationship(
+    override_llm_config: Mapped[LLMConfig | None] = relationship(
         back_populates="override_episodes",
         foreign_keys=[override_llm_config_id],
     )

@@ -120,9 +120,7 @@ async def generate_voice_previews(
     comfyui_api_key: str | None = None
     if server.api_key_encrypted:
         try:
-            comfyui_api_key = decrypt_value(
-                server.api_key_encrypted, settings.encryption_key
-            )
+            comfyui_api_key = decrypt_value(server.api_key_encrypted, settings.encryption_key)
         except Exception:
             # Proceed without the key; ComfyUI may still accept the request if
             # it does not enforce authentication locally.
@@ -204,11 +202,7 @@ async def generate_voice_previews(
     # A single commit covers all `vp_repo.update` calls above.
     await db.commit()
 
-    message = (
-        f"Generated {generated} preview(s), "
-        f"skipped {skipped} existing, "
-        f"{failed} failed."
-    )
+    message = f"Generated {generated} preview(s), skipped {skipped} existing, {failed} failed."
     return {
         "generated": generated,
         "skipped": skipped,
@@ -400,7 +394,6 @@ async def test_voice_profile(
     try:
         from shortsfactory.services.tts import (
             EdgeTTSProvider,
-            ElevenLabsTTSProvider,
             KokoroTTSProvider,
             PiperTTSProvider,
         )

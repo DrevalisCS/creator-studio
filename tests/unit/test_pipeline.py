@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 from uuid import UUID, uuid4
 
 import pytest
@@ -13,7 +12,6 @@ from shortsfactory.services.pipeline import (
     PipelineOrchestrator,
     PipelineStep,
 )
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -141,7 +139,7 @@ class TestPipelineStepEnum:
             PipelineStep.ASSEMBLY,
             PipelineStep.THUMBNAIL,
         ]
-        assert PIPELINE_ORDER == expected
+        assert expected == PIPELINE_ORDER
 
     def test_pipeline_step_values(self) -> None:
         assert PipelineStep.SCRIPT.value == "script"
@@ -158,15 +156,12 @@ class TestPipelineRunsAllSteps:
     async def test_pipeline_runs_all_steps_in_order(self) -> None:
         orchestrator, mocks = _build_orchestrator()
         episode = _make_mock_episode()
-        series = episode.series
 
         # Mock _load_episode to return our episode
         orchestrator._load_episode = AsyncMock(return_value=episode)
 
         # Mock repo: no existing completed jobs
-        orchestrator.job_repo.get_latest_by_episode_and_step = AsyncMock(
-            return_value=None
-        )
+        orchestrator.job_repo.get_latest_by_episode_and_step = AsyncMock(return_value=None)
 
         # Mock job creation
         orchestrator.job_repo.create = AsyncMock(
@@ -186,6 +181,7 @@ class TestPipelineRunsAllSteps:
         async def _mock_step(step_name: str):
             async def handler(ep, ser, job):
                 step_calls.append(step_name)
+
             return handler
 
         for step in PIPELINE_ORDER:
@@ -195,9 +191,7 @@ class TestPipelineRunsAllSteps:
         # Mock _broadcast_progress and _mark_step_done
         orchestrator._broadcast_progress = AsyncMock()
         orchestrator._mark_step_done = AsyncMock()
-        orchestrator._ensure_job = AsyncMock(
-            return_value=_make_mock_job()
-        )
+        orchestrator._ensure_job = AsyncMock(return_value=_make_mock_job())
 
         await orchestrator.run()
 
@@ -206,9 +200,7 @@ class TestPipelineRunsAllSteps:
         assert step_calls == [s.value for s in PIPELINE_ORDER]
 
         # Episode status should be set to "review" at the end
-        orchestrator.episode_repo.update_status.assert_any_call(
-            orchestrator.episode_id, "review"
-        )
+        orchestrator.episode_repo.update_status.assert_any_call(orchestrator.episode_id, "review")
 
 
 class TestPipelineSkipsCompletedSteps:
@@ -258,18 +250,14 @@ class TestPipelineHandlesStepFailure:
         orchestrator._load_episode = AsyncMock(return_value=episode)
         orchestrator.episode_repo.update_status = AsyncMock()
 
-        orchestrator.job_repo.get_latest_by_episode_and_step = AsyncMock(
-            return_value=None
-        )
+        orchestrator.job_repo.get_latest_by_episode_and_step = AsyncMock(return_value=None)
 
         test_job = _make_mock_job()
         orchestrator._ensure_job = AsyncMock(return_value=test_job)
         orchestrator._broadcast_progress = AsyncMock()
 
         # Make _step_script raise an error
-        orchestrator._step_script = AsyncMock(
-            side_effect=RuntimeError("LLM API down")
-        )
+        orchestrator._step_script = AsyncMock(side_effect=RuntimeError("LLM API down"))
         orchestrator._handle_step_failure = AsyncMock()
 
         with pytest.raises(RuntimeError, match="LLM API down"):
@@ -307,9 +295,7 @@ class TestPipelineBroadcastsProgress:
 
         # Track broadcast calls
         broadcast_calls: list[tuple] = []
-        original_broadcast = AsyncMock(
-            side_effect=lambda *a, **kw: broadcast_calls.append((a, kw))
-        )
+        original_broadcast = AsyncMock(side_effect=lambda *a, **kw: broadcast_calls.append((a, kw)))
         orchestrator._broadcast_progress = original_broadcast
 
         orchestrator._step_script = AsyncMock()
@@ -347,8 +333,7 @@ class TestPipelineUpdatesEpisodeStatus:
 
         # Should update to "generating" at start and "review" at end
         status_calls = [
-            call.args[1]
-            for call in orchestrator.episode_repo.update_status.call_args_list
+            call.args[1] for call in orchestrator.episode_repo.update_status.call_args_list
         ]
         assert "generating" in status_calls
         assert "review" in status_calls

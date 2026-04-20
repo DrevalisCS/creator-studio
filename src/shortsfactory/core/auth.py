@@ -42,9 +42,7 @@ class OptionalAPIKeyMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self._token: str | None = token or os.environ.get("API_AUTH_TOKEN")
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # If no token is configured, allow everything (local dev mode).
         if self._token is None:
             return await call_next(request)
@@ -68,7 +66,7 @@ class OptionalAPIKeyMiddleware(BaseHTTPMiddleware):
         # Check BEFORE inspecting the token so a blocked IP never reaches
         # the comparison and cannot enumerate valid tokens via timing.
         # ------------------------------------------------------------------
-        client_ip: str = (request.client.host if request.client else "unknown")
+        client_ip: str = request.client.host if request.client else "unknown"
         rate_key: str = f"auth_fail:{client_ip}"
 
         try:

@@ -135,19 +135,19 @@ _ACESTEP_MAX_DURATION: float = 120.0
 # musical parameters improves generation consistency versus leaving the model
 # to infer them from tags alone.
 _MOOD_MUSIC_PARAMS: dict[str, dict[str, str | int]] = {
-    "epic":       {"bpm": 140, "key": "D minor",  "timesig": "4"},
-    "calm":       {"bpm": 72,  "key": "C major",  "timesig": "4"},
-    "dark":       {"bpm": 90,  "key": "E minor",  "timesig": "4"},
-    "happy":      {"bpm": 128, "key": "G major",  "timesig": "4"},
-    "sad":        {"bpm": 68,  "key": "A minor",  "timesig": "3"},
+    "epic": {"bpm": 140, "key": "D minor", "timesig": "4"},
+    "calm": {"bpm": 72, "key": "C major", "timesig": "4"},
+    "dark": {"bpm": 90, "key": "E minor", "timesig": "4"},
+    "happy": {"bpm": 128, "key": "G major", "timesig": "4"},
+    "sad": {"bpm": 68, "key": "A minor", "timesig": "3"},
     "mysterious": {"bpm": 100, "key": "F# minor", "timesig": "4"},
-    "action":     {"bpm": 150, "key": "B minor",  "timesig": "4"},
-    "romantic":   {"bpm": 90,  "key": "Ab major", "timesig": "4"},
-    "tense":      {"bpm": 110, "key": "C minor",  "timesig": "4"},
-    "horror":     {"bpm": 80,  "key": "Eb minor", "timesig": "4"},
-    "comedy":     {"bpm": 135, "key": "F major",  "timesig": "4"},
-    "inspiring":  {"bpm": 120, "key": "Bb major", "timesig": "4"},
-    "chill":      {"bpm": 85,  "key": "F major",  "timesig": "4"},
+    "action": {"bpm": 150, "key": "B minor", "timesig": "4"},
+    "romantic": {"bpm": 90, "key": "Ab major", "timesig": "4"},
+    "tense": {"bpm": 110, "key": "C minor", "timesig": "4"},
+    "horror": {"bpm": 80, "key": "Eb minor", "timesig": "4"},
+    "comedy": {"bpm": 135, "key": "F major", "timesig": "4"},
+    "inspiring": {"bpm": 120, "key": "Bb major", "timesig": "4"},
+    "chill": {"bpm": 85, "key": "F major", "timesig": "4"},
 }
 """Per-mood BPM, key, and time-signature defaults for AceStep 1.5 generation."""
 
@@ -161,75 +161,35 @@ _MOOD_TAGS: dict[str, str] = {
         "Epic cinematic orchestral: dramatic strings, powerful brass, "
         "thundering percussion, heroic theme"
     ),
-    "calm": (
-        "Ambient calm: soft piano, gentle pads, atmospheric textures, "
-        "peaceful meditation"
-    ),
+    "calm": ("Ambient calm: soft piano, gentle pads, atmospheric textures, peaceful meditation"),
     "dark": (
-        "Dark atmospheric: deep bass drones, eerie synths, "
-        "tension-building percussion, suspenseful"
+        "Dark atmospheric: deep bass drones, eerie synths, tension-building percussion, suspenseful"
     ),
     "happy": (
-        "Upbeat happy: bright acoustic guitar, cheerful melody, "
-        "light percussion, positive energy"
+        "Upbeat happy: bright acoustic guitar, cheerful melody, light percussion, positive energy"
     ),
-    "sad": (
-        "Melancholic emotional: slow piano, gentle strings, "
-        "minor key, reflective mood"
-    ),
+    "sad": ("Melancholic emotional: slow piano, gentle strings, minor key, reflective mood"),
     "mysterious": (
-        "Mystery suspense: ethereal pads, subtle percussion, "
-        "dissonant harmonics, investigative"
+        "Mystery suspense: ethereal pads, subtle percussion, dissonant harmonics, investigative"
     ),
-    "action": (
-        "High-energy action: driving drums, aggressive synths, "
-        "fast tempo, intense bass"
-    ),
-    "romantic": (
-        "Romantic ballad: warm piano, soft strings, "
-        "gentle melody, intimate atmosphere"
-    ),
+    "action": ("High-energy action: driving drums, aggressive synths, fast tempo, intense bass"),
+    "romantic": ("Romantic ballad: warm piano, soft strings, gentle melody, intimate atmosphere"),
     "horror": (
         "Horror dark ambient: deep drones, unsettling textures, "
         "sparse percussion, creepy atmosphere"
     ),
-    "comedy": (
-        "Playful comedy: bouncy bass, quirky synths, "
-        "light pizzicato, humorous staccato"
-    ),
+    "comedy": ("Playful comedy: bouncy bass, quirky synths, light pizzicato, humorous staccato"),
     "inspiring": (
-        "Inspirational uplifting: soaring strings, building drums, "
-        "hopeful piano, triumphant brass"
+        "Inspirational uplifting: soaring strings, building drums, hopeful piano, triumphant brass"
     ),
-    "chill": (
-        "Lo-fi chill: mellow beats, warm keys, "
-        "vinyl crackle, relaxed jazzy chords"
-    ),
+    "chill": ("Lo-fi chill: mellow beats, warm keys, vinyl crackle, relaxed jazzy chords"),
     # Legacy moods carried over from the MusicGen prompt table.
-    "upbeat": (
-        "Upbeat energetic: bright pop melody, driving beat, "
-        "positive energy, no vocals"
-    ),
-    "dramatic": (
-        "Dramatic cinematic orchestral: epic strings, "
-        "powerful brass, no vocals"
-    ),
-    "energetic": (
-        "High-energy electronic: driving synth bass, "
-        "propulsive beat, no vocals"
-    ),
-    "playful": (
-        "Playful fun: light bouncy melody, "
-        "happy rhythm, no vocals"
-    ),
-    "tense": (
-        "Tense thriller: dark synths, building suspense, "
-        "ominous underscore, no vocals"
-    ),
-    "inspirational": (
-        "Inspirational uplifting: orchestral swells, "
-        "hopeful piano, no vocals"
-    ),
+    "upbeat": ("Upbeat energetic: bright pop melody, driving beat, positive energy, no vocals"),
+    "dramatic": ("Dramatic cinematic orchestral: epic strings, powerful brass, no vocals"),
+    "energetic": ("High-energy electronic: driving synth bass, propulsive beat, no vocals"),
+    "playful": ("Playful fun: light bouncy melody, happy rhythm, no vocals"),
+    "tense": ("Tense thriller: dark synths, building suspense, ominous underscore, no vocals"),
+    "inspirational": ("Inspirational uplifting: orchestral swells, hopeful piano, no vocals"),
 }
 
 
@@ -346,9 +306,7 @@ class MusicService:
 
         workflow = self._build_acestep_workflow(tags, duration_seconds, seed, mood=mood)
 
-        output_dir = (
-            self.storage_base_path / "music" / "generated" / mood.lower()
-        )
+        output_dir = self.storage_base_path / "music" / "generated" / mood.lower()
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"{episode_id}_{seed}.mp3"
 
@@ -579,9 +537,7 @@ class MusicService:
         ``asyncio.to_thread``.
         """
         try:
-            return await asyncio.to_thread(
-                self._generate_music_sync, mood, duration, episode_id
-            )
+            return await asyncio.to_thread(self._generate_music_sync, mood, duration, episode_id)
         except Exception as exc:
             log.warning("music.generation_failed", error=str(exc))
             return None
@@ -637,36 +593,15 @@ class MusicService:
     def _mood_to_prompt(mood: str) -> str:
         """Convert a mood keyword into a MusicGen text prompt."""
         prompts = {
-            "upbeat": (
-                "upbeat energetic background music, modern pop, "
-                "positive vibes, no vocals"
-            ),
-            "dramatic": (
-                "dramatic cinematic background music, orchestral, "
-                "epic, no vocals"
-            ),
-            "calm": (
-                "calm relaxing background music, ambient, "
-                "gentle piano, no vocals"
-            ),
-            "energetic": (
-                "high energy electronic background music, "
-                "driving beat, no vocals"
-            ),
-            "mysterious": (
-                "mysterious dark ambient background music, "
-                "suspenseful, no vocals"
-            ),
-            "playful": (
-                "playful fun background music, light and bouncy, no vocals"
-            ),
-            "tense": (
-                "tense thriller background music, dark synths, "
-                "building suspense, no vocals"
-            ),
+            "upbeat": ("upbeat energetic background music, modern pop, positive vibes, no vocals"),
+            "dramatic": ("dramatic cinematic background music, orchestral, epic, no vocals"),
+            "calm": ("calm relaxing background music, ambient, gentle piano, no vocals"),
+            "energetic": ("high energy electronic background music, driving beat, no vocals"),
+            "mysterious": ("mysterious dark ambient background music, suspenseful, no vocals"),
+            "playful": ("playful fun background music, light and bouncy, no vocals"),
+            "tense": ("tense thriller background music, dark synths, building suspense, no vocals"),
             "inspirational": (
-                "inspirational uplifting background music, "
-                "orchestral swells, no vocals"
+                "inspirational uplifting background music, orchestral swells, no vocals"
             ),
         }
         return prompts.get(
@@ -688,12 +623,18 @@ class MusicService:
         cmd = [
             self.ffmpeg_path,
             "-y",
-            "-stream_loop", "-1",       # loop source infinitely
-            "-i", str(source),
-            "-t", str(duration),         # trim to target duration
-            "-af", f"afade=t=out:st={fade_start}:d=2",  # 2 s fade-out
-            "-ar", "44100",
-            "-ac", "2",
+            "-stream_loop",
+            "-1",  # loop source infinitely
+            "-i",
+            str(source),
+            "-t",
+            str(duration),  # trim to target duration
+            "-af",
+            f"afade=t=out:st={fade_start}:d=2",  # 2 s fade-out
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
             str(output),
         ]
 
@@ -719,8 +660,7 @@ class MusicService:
                 stderr=stderr_text[-500:],
             )
             raise RuntimeError(
-                f"FFmpeg loop/trim failed (rc={proc.returncode}): "
-                f"{stderr_text[-300:]}"
+                f"FFmpeg loop/trim failed (rc={proc.returncode}): {stderr_text[-300:]}"
             )
 
         log.debug("music.loop_trim_done", output=str(output))

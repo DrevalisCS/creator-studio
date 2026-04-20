@@ -77,8 +77,6 @@ class VideoTemplateRepository(BaseRepository[VideoTemplate]):
         one default at any time.
         """
         stmt = (
-            update(VideoTemplate)
-            .where(VideoTemplate.is_default.is_(True))
-            .values(is_default=False)
+            update(VideoTemplate).where(VideoTemplate.is_default.is_(True)).values(is_default=False)
         )
         await self.session.execute(stmt)

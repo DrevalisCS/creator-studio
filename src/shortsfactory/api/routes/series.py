@@ -41,7 +41,9 @@ router = APIRouter(prefix="/api/v1/series", tags=["series"])
 class SeriesGenerateRequest(BaseModel):
     """Payload for AI-generating a complete series from a natural language idea."""
 
-    idea: str = Field(..., min_length=10, description="Natural language description of the series idea")
+    idea: str = Field(
+        ..., min_length=10, description="Natural language description of the series idea"
+    )
     episode_count: int = Field(default=10, ge=1, le=50)
     target_duration_seconds: Literal[15, 30, 60] = 30
     voice_profile_id: UUID | None = None
@@ -317,7 +319,7 @@ async def generate_series_sync(
     episode_repo = EpisodeRepository(db)
     episodes_created: list[_GeneratedEpisode] = []
 
-    for ep_data in data.get("episodes", [])[:payload.episode_count]:
+    for ep_data in data.get("episodes", [])[: payload.episode_count]:
         title = str(ep_data.get("title", "Untitled"))[:500]
         topic = str(ep_data.get("topic", ""))
         ep = await episode_repo.create(
@@ -576,7 +578,7 @@ async def add_episodes_ai(
 
     # Create episode drafts
     created_ids = []
-    for ep_data in data["episodes"][:payload.count]:
+    for ep_data in data["episodes"][: payload.count]:
         title = ep_data.get("title", "Untitled")[:500]
         topic = ep_data.get("topic", "")
         ep = await ep_repo.create(
@@ -596,7 +598,7 @@ async def add_episodes_ai(
     return {
         "message": f"Created {len(created_ids)} new episode draft(s)",
         "episode_ids": created_ids,
-        "episodes": data["episodes"][:payload.count],
+        "episodes": data["episodes"][: payload.count],
     }
 
 
@@ -637,8 +639,8 @@ async def suggest_trending_topics(
 
     system_prompt = (
         "You are a viral content strategist. Suggest trending YouTube Shorts topics. "
-        "Output ONLY valid JSON: {\"topics\": [{\"title\": \"...\", \"angle\": \"unique angle\", "
-        "\"hook\": \"attention-grabbing first line\", \"estimated_engagement\": \"high|medium|low\"}]}"
+        'Output ONLY valid JSON: {"topics": [{"title": "...", "angle": "unique angle", '
+        '"hook": "attention-grabbing first line", "estimated_engagement": "high|medium|low"}]}'
     )
     user_prompt = (
         f"Series: {series.name}\n"
@@ -648,7 +650,9 @@ async def suggest_trending_topics(
         "and would get maximum views. Return JSON now:"
     )
 
-    result = await provider.generate(system_prompt, user_prompt, temperature=0.8, max_tokens=2048, json_mode=True)
+    result = await provider.generate(
+        system_prompt, user_prompt, temperature=0.8, max_tokens=2048, json_mode=True
+    )
     try:
         data = json.loads(_extract_json(result.content))
     except Exception:

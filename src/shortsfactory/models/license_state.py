@@ -28,9 +28,7 @@ class LicenseStateRow(Base):
     # Persisted so we can show it in the UI and pass it on renewal.
     machine_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
-    activated_at: Mapped[datetime | None] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    activated_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
     last_heartbeat_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )

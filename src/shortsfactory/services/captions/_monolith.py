@@ -18,8 +18,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-import re
-
 import structlog
 
 # Re-use the WordTimestamp dataclass from the TTS module so the two
@@ -34,6 +32,7 @@ def _clean_caption_word(word: str) -> str:
     """Strip leading/trailing punctuation from a word for cleaner caption display."""
     cleaned = word.strip(_CAPTION_STRIP_CHARS)
     return cleaned if cleaned else word  # keep original if it's ALL punctuation
+
 
 log = structlog.get_logger(__name__)
 
@@ -56,16 +55,16 @@ class CaptionStyle:
     """
 
     preset: str = "youtube_highlight"
-    font_name: str = "Impact"           # Impact is the standard Shorts/TikTok caption font
-    font_size: int = 72                 # Larger for mobile readability
+    font_name: str = "Impact"  # Impact is the standard Shorts/TikTok caption font
+    font_size: int = 72  # Larger for mobile readability
     primary_color: str = "#FFFFFF"
     highlight_color: str = "#00D4AA"  # accent teal
     outline_color: str = "#000000"
-    outline_width: int = 5              # Thicker outline cuts through any background
+    outline_width: int = 5  # Thicker outline cuts through any background
     position: str = "bottom"  # bottom | center | top
-    margin_v: int = 250                 # Higher margin keeps text clear of UI chrome
+    margin_v: int = 250  # Higher margin keeps text clear of UI chrome
     animation: str = "fade"  # fade | pop | bounce | none
-    words_per_line: int = 2             # 2 words per line: no wrapping, impactful pacing
+    words_per_line: int = 2  # 2 words per line: no wrapping, impactful pacing
     uppercase: bool = True
     play_res_x: int = 1080
     play_res_y: int = 1920
@@ -221,6 +220,7 @@ def _build_ass_header(style: CaptionStyle) -> str:
 # Legacy ASS header (classic preset compatibility)
 # ---------------------------------------------------------------------------
 
+
 def _build_ass_header_classic(play_res_x: int = 1080, play_res_y: int = 1920) -> str:
     """Build the classic ASS header with configurable resolution.
 
@@ -300,9 +300,7 @@ class CaptionService:
             language=language,
         )
 
-        word_timestamps = await asyncio.to_thread(
-            self._transcribe, audio_path, language
-        )
+        word_timestamps = await asyncio.to_thread(self._transcribe, audio_path, language)
 
         effective_style = style or CaptionStyle()
         captions = self._group_words_into_captions(
@@ -315,8 +313,11 @@ class CaptionService:
 
         self._write_srt(captions, srt_path)
         self._write_ass(
-            captions, ass_path, style=effective_style,
-            keywords=keywords, all_word_timestamps=word_timestamps,
+            captions,
+            ass_path,
+            style=effective_style,
+            keywords=keywords,
+            all_word_timestamps=word_timestamps,
         )
 
         log.info(
@@ -363,8 +364,11 @@ class CaptionService:
 
         self._write_srt(captions, srt_path)
         self._write_ass(
-            captions, ass_path, style=effective_style,
-            keywords=keywords, all_word_timestamps=word_timestamps,
+            captions,
+            ass_path,
+            style=effective_style,
+            keywords=keywords,
+            all_word_timestamps=word_timestamps,
         )
 
         log.info(
@@ -487,18 +491,22 @@ class CaptionService:
                     index=len(captions) + 1,
                     start_seconds=current_words[0].start_seconds,
                     end_seconds=current_words[-1].end_seconds,
-                    text=" ".join(display_words) if display_words else " ".join(w.word for w in current_words),
+                    text=" ".join(display_words)
+                    if display_words
+                    else " ".join(w.word for w in current_words),
                     word_timestamps=list(current_words),
                 )
             )
             current_words.clear()
 
-        for prev, curr in zip(words, words[1:]):
+        for prev, curr in zip(words, words[1:], strict=False):
             gap = curr.start_seconds - prev.end_seconds
             span = curr.end_seconds - current_words[0].start_seconds
 
             # Current accumulated text length (including the space separator).
-            current_text_len = sum(len(w.word) for w in current_words) + max(0, len(current_words) - 1)
+            current_text_len = sum(len(w.word) for w in current_words) + max(
+                0, len(current_words) - 1
+            )
             next_text_len = current_text_len + 1 + len(curr.word)
 
             should_break = (
@@ -559,23 +567,35 @@ class CaptionService:
             self._write_ass_classic(captions, output_path, effective_style)
         elif effective_style.preset == "youtube_highlight":
             self._write_ass_youtube_highlight(
-                captions, output_path, effective_style,
-                keywords=keywords, all_word_timestamps=all_word_timestamps,
+                captions,
+                output_path,
+                effective_style,
+                keywords=keywords,
+                all_word_timestamps=all_word_timestamps,
             )
         elif effective_style.preset == "karaoke":
             self._write_ass_karaoke(
-                captions, output_path, effective_style,
-                keywords=keywords, all_word_timestamps=all_word_timestamps,
+                captions,
+                output_path,
+                effective_style,
+                keywords=keywords,
+                all_word_timestamps=all_word_timestamps,
             )
         elif effective_style.preset == "tiktok_pop":
             self._write_ass_tiktok_pop(
-                captions, output_path, effective_style,
-                keywords=keywords, all_word_timestamps=all_word_timestamps,
+                captions,
+                output_path,
+                effective_style,
+                keywords=keywords,
+                all_word_timestamps=all_word_timestamps,
             )
         elif effective_style.preset == "minimal":
             self._write_ass_minimal(
-                captions, output_path, effective_style,
-                keywords=keywords, all_word_timestamps=all_word_timestamps,
+                captions,
+                output_path,
+                effective_style,
+                keywords=keywords,
+                all_word_timestamps=all_word_timestamps,
             )
         else:
             # Unknown preset -- fall back to classic
@@ -606,15 +626,8 @@ class CaptionService:
             start_ts = self._format_ass_timestamp(cap.start_seconds)
             end_ts = self._format_ass_timestamp(cap.end_seconds)
             # Escape special ASS characters in the text.
-            safe_text = (
-                cap.text
-                .replace("\\", "\\\\")
-                .replace("{", "\\{")
-                .replace("}", "\\}")
-            )
-            lines.append(
-                f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{safe_text}"
-            )
+            safe_text = cap.text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+            lines.append(f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{safe_text}")
 
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         log.debug("captions.ass.written", path=str(output_path), preset="classic")
@@ -653,16 +666,11 @@ class CaptionService:
                         word_text = word_text.upper()
                     # Safe-escape the word
                     word_text = (
-                        word_text
-                        .replace("\\", "\\\\")
-                        .replace("{", "\\{")
-                        .replace("}", "\\}")
+                        word_text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
                     )
                     dur_cs = max(1, round((wt.end_seconds - wt.start_seconds) * 100))
                     # \1c is primary fill colour for karaoke highlight
-                    parts.append(
-                        f"{{\\kf{dur_cs}}}{word_text}"
-                    )
+                    parts.append(f"{{\\kf{dur_cs}}}{word_text}")
                 tagged_text = " ".join(parts)
                 # Use the Highlight style so the karaoke fill colour is
                 # the highlight colour.  The Default style primary serves
@@ -679,21 +687,12 @@ class CaptionService:
                 safe_text = cap.text
                 if style.uppercase:
                     safe_text = safe_text.upper()
-                safe_text = (
-                    safe_text
-                    .replace("\\", "\\\\")
-                    .replace("{", "\\{")
-                    .replace("}", "\\}")
-                )
-                lines.append(
-                    f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{safe_text}"
-                )
+                safe_text = safe_text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+                lines.append(f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{safe_text}")
 
         # Append keyword overlay lines when keywords are provided.
         if keywords and all_word_timestamps:
-            lines.extend(
-                self._generate_keyword_overlays(keywords, all_word_timestamps, style)
-            )
+            lines.extend(self._generate_keyword_overlays(keywords, all_word_timestamps, style))
 
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         log.debug(
@@ -730,10 +729,7 @@ class CaptionService:
                     if style.uppercase:
                         word_text = word_text.upper()
                     word_text = (
-                        word_text
-                        .replace("\\", "\\\\")
-                        .replace("{", "\\{")
-                        .replace("}", "\\}")
+                        word_text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
                     )
                     lines.append(
                         f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,"
@@ -746,12 +742,7 @@ class CaptionService:
                 safe_text = cap.text
                 if style.uppercase:
                     safe_text = safe_text.upper()
-                safe_text = (
-                    safe_text
-                    .replace("\\", "\\\\")
-                    .replace("{", "\\{")
-                    .replace("}", "\\}")
-                )
+                safe_text = safe_text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
                 lines.append(
                     f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,"
                     f"{{\\fad(150,100)\\an{alignment}}}{safe_text}"
@@ -759,9 +750,7 @@ class CaptionService:
 
         # Append keyword overlay lines when keywords are provided.
         if keywords and all_word_timestamps:
-            lines.extend(
-                self._generate_keyword_overlays(keywords, all_word_timestamps, style)
-            )
+            lines.extend(self._generate_keyword_overlays(keywords, all_word_timestamps, style))
 
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         log.debug("captions.ass.written", path=str(output_path), preset="karaoke")
@@ -780,7 +769,7 @@ class CaptionService:
         Each word pops in from zero scale to full scale.
         """
         header = _build_ass_header(style)
-        alignment = _alignment_from_position(style.position)
+        _alignment_from_position(style.position)
         lines: list[str] = [header]
 
         # tiktok_pop always positions captions at the vertical center of the
@@ -805,14 +794,13 @@ class CaptionService:
 
                     clean_words = [_clean_caption_word(w.word) for w in chunk]
                     clean_words = [w for w in clean_words if w]
-                    chunk_text = " ".join(clean_words) if clean_words else " ".join(w.word for w in chunk)
+                    chunk_text = (
+                        " ".join(clean_words) if clean_words else " ".join(w.word for w in chunk)
+                    )
                     if style.uppercase:
                         chunk_text = chunk_text.upper()
                     chunk_text = (
-                        chunk_text
-                        .replace("\\", "\\\\")
-                        .replace("{", "\\{")
-                        .replace("}", "\\}")
+                        chunk_text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
                     )
                     # Pop-in: 80 % → 100 % over 120 ms (less jarring than 0→100).
                     # \shad2 adds a subtle drop shadow for depth and legibility.
@@ -829,12 +817,7 @@ class CaptionService:
                 safe_text = cap.text
                 if style.uppercase:
                     safe_text = safe_text.upper()
-                safe_text = (
-                    safe_text
-                    .replace("\\", "\\\\")
-                    .replace("{", "\\{")
-                    .replace("}", "\\}")
-                )
+                safe_text = safe_text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
                 lines.append(
                     f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,"
                     f"{{\\an5\\pos({center_x},{center_y})"
@@ -845,9 +828,7 @@ class CaptionService:
 
         # Append keyword overlay lines when keywords are provided.
         if keywords and all_word_timestamps:
-            lines.extend(
-                self._generate_keyword_overlays(keywords, all_word_timestamps, style)
-            )
+            lines.extend(self._generate_keyword_overlays(keywords, all_word_timestamps, style))
 
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         log.debug("captions.ass.written", path=str(output_path), preset="tiktok_pop")
@@ -875,21 +856,12 @@ class CaptionService:
             safe_text = cap.text
             if style.uppercase:
                 safe_text = safe_text.upper()
-            safe_text = (
-                safe_text
-                .replace("\\", "\\\\")
-                .replace("{", "\\{")
-                .replace("}", "\\}")
-            )
-            lines.append(
-                f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{safe_text}"
-            )
+            safe_text = safe_text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
+            lines.append(f"Dialogue: 0,{start_ts},{end_ts},Default,,0,0,0,,{safe_text}")
 
         # Append keyword overlay lines when keywords are provided.
         if keywords and all_word_timestamps:
-            lines.extend(
-                self._generate_keyword_overlays(keywords, all_word_timestamps, style)
-            )
+            lines.extend(self._generate_keyword_overlays(keywords, all_word_timestamps, style))
 
         output_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
         log.debug("captions.ass.written", path=str(output_path), preset="minimal")
@@ -971,10 +943,7 @@ class CaptionService:
                 display_text = kw.upper() if style.uppercase else kw
                 # Escape ASS special characters.
                 display_text = (
-                    display_text
-                    .replace("\\", "\\\\")
-                    .replace("{", "\\{")
-                    .replace("}", "\\}")
+                    display_text.replace("\\", "\\\\").replace("{", "\\{").replace("}", "\\}")
                 )
 
                 pos_tag = rf"\an5\pos({center_x},{center_y})"
@@ -993,9 +962,7 @@ class CaptionService:
                     rf"\t(150,300,\fscx100\fscy100)"
                     rf"\t(900,1200,\fscx0\fscy0)}}"
                 )
-                lines.append(
-                    f"Dialogue: 0,{start},{end},Buzzword,,0,0,0,,{glow_tag}{display_text}"
-                )
+                lines.append(f"Dialogue: 0,{start},{end},Buzzword,,0,0,0,,{glow_tag}{display_text}")
 
                 # --- Layer 1: sharp foreground text ------------------------
                 # No blur.  Full opacity.  Same scale-pop animation.

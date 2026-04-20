@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from contextlib import asynccontextmanager
 from collections.abc import AsyncGenerator
-from pathlib import Path
+from contextlib import asynccontextmanager
 
 import structlog
 from fastapi import FastAPI
@@ -40,7 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         log.error("invalid_encryption_key", error="Encryption key is not a valid Fernet key")
         raise SystemExit(
             "FATAL: ENCRYPTION_KEY is not a valid Fernet key. "
-            "Generate one with: python -c \"from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())\""
+            'Generate one with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"'
         ) from exc
 
     await init_db(settings)

@@ -15,12 +15,9 @@ from __future__ import annotations
 
 import json
 import re
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import structlog
-
-if TYPE_CHECKING:
-    from shortsfactory.schemas.script import EpisodeScript, SceneScript
 
 log = structlog.get_logger(__name__)
 
@@ -82,7 +79,7 @@ class LongFormScriptService:
         if chapter_count is None:
             chapter_count = max(3, target_duration_minutes // 8)
 
-        target_scenes = chapter_count * scenes_per_chapter
+        chapter_count * scenes_per_chapter
 
         log.info(
             "longform_script.generate.start",
@@ -128,12 +125,14 @@ class LongFormScriptService:
 
             # Build chapter metadata
             scene_indices = list(range(scene_number, scene_number + len(ch_scenes)))
-            chapter_metadata.append({
-                "title": ch_outline.get("title", f"Chapter {ch_idx + 1}"),
-                "scenes": scene_indices,
-                "mood": ch_outline.get("mood", "neutral"),
-                "music_mood": ch_outline.get("mood", "neutral"),
-            })
+            chapter_metadata.append(
+                {
+                    "title": ch_outline.get("title", f"Chapter {ch_idx + 1}"),
+                    "scenes": scene_indices,
+                    "mood": ch_outline.get("mood", "neutral"),
+                    "music_mood": ch_outline.get("mood", "neutral"),
+                }
+            )
 
             all_scenes.extend(ch_scenes)
 
@@ -166,9 +165,7 @@ class LongFormScriptService:
             "hook": outline.get("hook", ""),
             "scenes": all_scenes,
             "outro": outline.get("outro", ""),
-            "total_duration_seconds": sum(
-                s.get("duration_seconds", 10) for s in all_scenes
-            ),
+            "total_duration_seconds": sum(s.get("duration_seconds", 10) for s in all_scenes),
             "language": "en-US",
             "description": outline.get("description", ""),
             "hashtags": outline.get("hashtags", []),
@@ -257,7 +254,7 @@ class LongFormScriptService:
         """Generate scenes for a single chapter."""
         # Build outline summary for context (truncated to save context window)
         outline_summary = "\n".join(
-            f"- {ch.get('title', f'Chapter {i+1}')}: {ch.get('summary', '')[:80]}"
+            f"- {ch.get('title', f'Chapter {i + 1}')}: {ch.get('summary', '')[:80]}"
             for i, ch in enumerate(full_outline.get("chapters", []))
         )
 

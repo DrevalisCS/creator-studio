@@ -19,7 +19,6 @@ All tests target the middleware's observable HTTP behaviour, not its internals.
 
 from __future__ import annotations
 
-import os
 from collections.abc import AsyncGenerator
 
 import pytest
@@ -84,9 +83,7 @@ def _build_protected_app(token: str | None) -> Starlette:
 async def protected_client() -> AsyncGenerator[AsyncClient, None]:
     """Client connected to the middleware under test with a valid token configured."""
     app = _build_protected_app(token=_VALID_TOKEN)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://testserver"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as ac:
         yield ac
 
 
@@ -94,9 +91,7 @@ async def protected_client() -> AsyncGenerator[AsyncClient, None]:
 async def open_client() -> AsyncGenerator[AsyncClient, None]:
     """Client connected to the middleware under test with *no* token (auth disabled)."""
     app = _build_protected_app(token=None)
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://testserver"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://testserver") as ac:
         yield ac
 
 
@@ -108,9 +103,7 @@ async def open_client() -> AsyncGenerator[AsyncClient, None]:
 class TestAuthDisabled:
     """When no token is configured every request must pass through."""
 
-    async def test_api_request_passes_without_any_header(
-        self, open_client: AsyncClient
-    ) -> None:
+    async def test_api_request_passes_without_any_header(self, open_client: AsyncClient) -> None:
         response = await open_client.get("/api/v1/series")
 
         assert response.status_code == 200
@@ -119,22 +112,16 @@ class TestAuthDisabled:
     async def test_api_request_passes_with_irrelevant_header(
         self, open_client: AsyncClient
     ) -> None:
-        response = await open_client.get(
-            "/api/v1/series", headers={"X-Custom-Header": "anything"}
-        )
+        response = await open_client.get("/api/v1/series", headers={"X-Custom-Header": "anything"})
 
         assert response.status_code == 200
 
-    async def test_ws_request_passes_without_token(
-        self, open_client: AsyncClient
-    ) -> None:
+    async def test_ws_request_passes_without_token(self, open_client: AsyncClient) -> None:
         response = await open_client.get("/ws/progress/123")
 
         assert response.status_code == 200
 
-    async def test_health_passes_without_token(
-        self, open_client: AsyncClient
-    ) -> None:
+    async def test_health_passes_without_token(self, open_client: AsyncClient) -> None:
         response = await open_client.get("/health")
 
         assert response.status_code == 200
@@ -156,9 +143,7 @@ class TestAuthRequired:
         assert response.status_code == 401
         assert "detail" in response.json()
 
-    async def test_bearer_prefix_missing_returns_401(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_bearer_prefix_missing_returns_401(self, protected_client: AsyncClient) -> None:
         # Provides the raw token without the "Bearer " prefix.
         response = await protected_client.get(
             "/api/v1/series", headers={"Authorization": _VALID_TOKEN}
@@ -166,18 +151,14 @@ class TestAuthRequired:
 
         assert response.status_code == 401
 
-    async def test_wrong_scheme_returns_401(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_wrong_scheme_returns_401(self, protected_client: AsyncClient) -> None:
         response = await protected_client.get(
             "/api/v1/series", headers={"Authorization": f"Token {_VALID_TOKEN}"}
         )
 
         assert response.status_code == 401
 
-    async def test_ws_missing_token_returns_401(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_ws_missing_token_returns_401(self, protected_client: AsyncClient) -> None:
         response = await protected_client.get("/ws/progress/123")
 
         assert response.status_code == 401
@@ -191,9 +172,7 @@ class TestAuthRequired:
 class TestInvalidToken:
     """A Bearer token that does not match the configured secret must be rejected."""
 
-    async def test_wrong_token_returns_403(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_wrong_token_returns_403(self, protected_client: AsyncClient) -> None:
         response = await protected_client.get(
             "/api/v1/series", headers={"Authorization": "Bearer wrong-token"}
         )
@@ -201,9 +180,7 @@ class TestInvalidToken:
         assert response.status_code == 403
         assert "detail" in response.json()
 
-    async def test_empty_token_value_returns_403(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_empty_token_value_returns_403(self, protected_client: AsyncClient) -> None:
         # "Bearer " followed by an empty string.
         response = await protected_client.get(
             "/api/v1/series", headers={"Authorization": "Bearer "}
@@ -211,9 +188,7 @@ class TestInvalidToken:
 
         assert response.status_code == 403
 
-    async def test_partial_token_returns_403(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_partial_token_returns_403(self, protected_client: AsyncClient) -> None:
         partial = _VALID_TOKEN[: len(_VALID_TOKEN) // 2]
         response = await protected_client.get(
             "/api/v1/series", headers={"Authorization": f"Bearer {partial}"}
@@ -230,9 +205,7 @@ class TestInvalidToken:
 class TestValidToken:
     """A correctly-formed Bearer token matching the secret must be allowed through."""
 
-    async def test_correct_token_returns_200(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_correct_token_returns_200(self, protected_client: AsyncClient) -> None:
         response = await protected_client.get(
             "/api/v1/series", headers={"Authorization": f"Bearer {_VALID_TOKEN}"}
         )
@@ -258,34 +231,24 @@ class TestValidToken:
 class TestExemptPaths:
     """/health, /docs, and /openapi.json are exempt regardless of token config."""
 
-    async def test_health_exempt_no_token(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_health_exempt_no_token(self, protected_client: AsyncClient) -> None:
         response = await protected_client.get("/health")
 
         assert response.status_code == 200
 
-    async def test_docs_exempt_no_token(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_docs_exempt_no_token(self, protected_client: AsyncClient) -> None:
         response = await protected_client.get("/docs")
 
         assert response.status_code == 200
 
-    async def test_openapi_json_exempt_no_token(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_openapi_json_exempt_no_token(self, protected_client: AsyncClient) -> None:
         response = await protected_client.get("/openapi.json")
 
         assert response.status_code == 200
 
-    async def test_health_exempt_with_wrong_token(
-        self, protected_client: AsyncClient
-    ) -> None:
+    async def test_health_exempt_with_wrong_token(self, protected_client: AsyncClient) -> None:
         # Even a wrong token must not block /health.
-        response = await protected_client.get(
-            "/health", headers={"Authorization": "Bearer wrong"}
-        )
+        response = await protected_client.get("/health", headers={"Authorization": "Bearer wrong"})
 
         assert response.status_code == 200
 
@@ -316,14 +279,10 @@ class TestEnvironmentTokenResolution:
         assert response.status_code == 401
 
         # Correct token -- expect 200
-        response = client.get(
-            "/api/v1/test", headers={"Authorization": "Bearer env-token-xyz"}
-        )
+        response = client.get("/api/v1/test", headers={"Authorization": "Bearer env-token-xyz"})
         assert response.status_code == 200
 
-    def test_no_env_var_means_auth_disabled(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_env_var_means_auth_disabled(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
 
         from starlette.testclient import TestClient

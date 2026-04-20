@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -67,9 +67,7 @@ class TestTTSServiceProviderSelection:
         result = service.get_provider(profile)
         assert result is elevenlabs
 
-    def test_tts_service_elevenlabs_not_configured_raises(
-        self, tmp_path: Path
-    ) -> None:
+    def test_tts_service_elevenlabs_not_configured_raises(self, tmp_path: Path) -> None:
         piper = MagicMock(spec=PiperTTSProvider)
 
         service = TTSService(

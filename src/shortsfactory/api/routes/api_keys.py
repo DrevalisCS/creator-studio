@@ -25,8 +25,8 @@ from shortsfactory.schemas.runpod import (
     ApiKeyStoreListItem,
     ApiKeyStoreListResponse,
     ApiKeyStoreRequest,
-    IntegrationStatus,
     IntegrationsStatusResponse,
+    IntegrationStatus,
 )
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])

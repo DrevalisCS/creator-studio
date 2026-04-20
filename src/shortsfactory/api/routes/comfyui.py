@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -93,9 +93,7 @@ async def create_server(
     api_key_encrypted = None
     api_key_version = 1
     if payload.api_key:
-        api_key_encrypted, api_key_version = encrypt_value(
-            payload.api_key, settings.encryption_key
-        )
+        api_key_encrypted, api_key_version = encrypt_value(payload.api_key, settings.encryption_key)
 
     server = await repo.create(
         name=payload.name,
@@ -231,7 +229,7 @@ async def test_server(
         finally:
             await client.close()
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         test_status = "ok" if reachable else "unreachable"
         await repo.update_test_status(server_id, test_status, now)
         await db.commit()
@@ -249,7 +247,7 @@ async def test_server(
                 server_id=server_id,
             )
     except Exception as exc:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         await repo.update_test_status(server_id, f"error: {exc}", now)
         await db.commit()
         return ComfyUIServerTestResponse(
@@ -300,7 +298,7 @@ async def create_workflow(
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid input_mappings: {exc}",
-        )
+        ) from exc
 
     repo = ComfyUIWorkflowRepository(db)
     workflow = await repo.create(**payload.model_dump())
@@ -359,7 +357,7 @@ async def update_workflow(
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=f"Invalid input_mappings: {exc}",
-            )
+            ) from exc
 
     workflow = await repo.update(workflow_id, **update_data)
     if workflow is None:

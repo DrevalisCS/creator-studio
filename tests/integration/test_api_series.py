@@ -118,9 +118,7 @@ class TestUpdateSeries:
             "description": "Updated description",
             "target_duration_seconds": 60,
         }
-        update_resp = await client.put(
-            f"/api/v1/series/{series_id}", json=update_payload
-        )
+        update_resp = await client.put(f"/api/v1/series/{series_id}", json=update_payload)
         assert update_resp.status_code == 200
 
         data = update_resp.json()

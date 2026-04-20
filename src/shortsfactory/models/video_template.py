@@ -9,7 +9,7 @@ multiple series without manual reconfiguration.
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import BOOLEAN, FLOAT, INTEGER, TEXT, ForeignKey, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -43,38 +43,38 @@ class VideoTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # ── Identity ──────────────────────────────────────────────────────
     name: Mapped[str] = mapped_column(TEXT, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    description: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Voice settings ────────────────────────────────────────────────
-    voice_profile_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    voice_profile_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("voice_profiles.id", ondelete="SET NULL"),
         nullable=True,
     )
 
     # ── Visual settings ───────────────────────────────────────────────
-    visual_style: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    visual_style: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     # Allowed values: "image" | "video".  Not a DB-level constraint so that
     # new scene modes can be added at the application layer without migrations.
-    scene_mode: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    scene_mode: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Caption settings ──────────────────────────────────────────────
     # Stores the preset name (e.g. "youtube_highlight", "karaoke") that maps
     # to a style definition in the CaptionService.
-    caption_style_preset: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    caption_style_preset: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Music settings ────────────────────────────────────────────────
     music_enabled: Mapped[bool] = mapped_column(
         BOOLEAN, nullable=False, server_default=text("true")
     )
-    music_mood: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    music_mood: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     music_volume_db: Mapped[float] = mapped_column(
         FLOAT, nullable=False, server_default=text("'-14.0'")
     )
 
     # ── Audio mastering ───────────────────────────────────────────────
     # Freeform JSONB: voice_eq, compressor, reverb, loudness_target, etc.
-    audio_settings: Mapped[Optional[dict[str, Any]]] = mapped_column(
+    audio_settings: Mapped[dict[str, Any] | None] = mapped_column(
         JSONB, nullable=True, default=None
     )
 
@@ -84,19 +84,15 @@ class VideoTemplate(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     # ── Usage tracking ────────────────────────────────────────────────
-    times_used: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default=text("0")
-    )
+    times_used: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default=text("0"))
 
     # ── Default flag ──────────────────────────────────────────────────
     # Only one template should carry is_default=True at a time.  Enforced
     # at the service/repository layer, not at the DB level, to avoid
     # complex partial-index management across dialects.
-    is_default: Mapped[bool] = mapped_column(
-        BOOLEAN, nullable=False, server_default=text("false")
-    )
+    is_default: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, server_default=text("false"))
 
     # ── Relationships ─────────────────────────────────────────────────
-    voice_profile: Mapped[Optional[VoiceProfile]] = relationship(
+    voice_profile: Mapped[VoiceProfile | None] = relationship(
         foreign_keys=[voice_profile_id],
     )

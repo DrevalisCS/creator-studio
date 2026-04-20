@@ -14,11 +14,16 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from shortsfactory.core.config import Settings
+from shortsfactory.workers.jobs.audiobook import (
+    generate_ai_audiobook,
+    generate_audiobook,
+    generate_script_async,
+    regenerate_audiobook_chapter,
+)
 
 # ---------------------------------------------------------------------------
 # Job function imports
 # ---------------------------------------------------------------------------
-
 from shortsfactory.workers.jobs.episode import (
     generate_episode,
     reassemble_episode,
@@ -26,26 +31,18 @@ from shortsfactory.workers.jobs.episode import (
     regenerate_voice,
     retry_episode_step,
 )
-from shortsfactory.workers.jobs.audiobook import (
-    generate_audiobook,
-    generate_ai_audiobook,
-    regenerate_audiobook_chapter,
-    generate_script_async,
-)
-from shortsfactory.workers.jobs.series import generate_series_async
-from shortsfactory.workers.jobs.music import generate_episode_music
-from shortsfactory.workers.jobs.seo import generate_seo_async
-from shortsfactory.workers.jobs.scheduled import publish_scheduled_posts
-from shortsfactory.workers.jobs.runpod import auto_deploy_runpod_pod
 from shortsfactory.workers.jobs.heartbeat import worker_heartbeat
 from shortsfactory.workers.jobs.license_heartbeat import license_heartbeat
+from shortsfactory.workers.jobs.music import generate_episode_music
+from shortsfactory.workers.jobs.runpod import auto_deploy_runpod_pod
+from shortsfactory.workers.jobs.scheduled import publish_scheduled_posts
+from shortsfactory.workers.jobs.seo import generate_seo_async
+from shortsfactory.workers.jobs.series import generate_series_async
 
 # ---------------------------------------------------------------------------
 # Lifecycle hook imports
 # ---------------------------------------------------------------------------
-
 from shortsfactory.workers.lifecycle import on_job_start, shutdown, startup
-
 
 # ---------------------------------------------------------------------------
 # Redis settings helper

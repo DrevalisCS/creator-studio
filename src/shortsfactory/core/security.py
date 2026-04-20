@@ -27,9 +27,7 @@ def _validate_fernet_key(key: str) -> bytes:
     except Exception as exc:
         raise ValueError("Invalid Fernet key: unable to base64-decode.") from exc
     if len(decoded) != 32:
-        raise ValueError(
-            f"Invalid Fernet key: decoded length is {len(decoded)}, expected 32."
-        )
+        raise ValueError(f"Invalid Fernet key: decoded length is {len(decoded)}, expected 32.")
     return key_bytes
 
 

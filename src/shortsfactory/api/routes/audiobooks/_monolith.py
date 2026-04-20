@@ -232,8 +232,8 @@ async def create_ai_audiobook(
     # Get available voices for auto-assignment
     vp_repo = VoiceProfileRepository(db)
     all_voices = await vp_repo.get_all()
-    male_voices = [v for v in all_voices if getattr(v, 'gender', None) == 'male']
-    female_voices = [v for v in all_voices if getattr(v, 'gender', None) == 'female']
+    male_voices = [v for v in all_voices if getattr(v, "gender", None) == "male"]
+    female_voices = [v for v in all_voices if getattr(v, "gender", None) == "female"]
 
     for char in payload.characters:
         vp_id = char.get("voice_profile_id")
@@ -394,7 +394,7 @@ Write the complete script now. Start with a title line, then ## Chapter 1, and c
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail=f"LLM generation failed: {exc}",
-        )
+        ) from exc
 
     script_text = result.content.strip()
     lines = script_text.split("\n")
@@ -431,9 +431,7 @@ Write the complete script now. Start with a title line, then ## Chapter 1, and c
     summary="List all audiobooks",
 )
 async def list_audiobooks(
-    status_filter: str | None = Query(
-        default=None, alias="status", description="Filter by status"
-    ),
+    status_filter: str | None = Query(default=None, alias="status", description="Filter by status"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
@@ -491,7 +489,7 @@ async def create_audiobook(
                 raise HTTPException(
                     status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                     detail=f"Invalid UUID '{vp_id}' for speaker '{speaker}'",
-                )
+                ) from None
 
     # Validate output_format
     valid_formats = ("audio_only", "audio_image", "audio_video")

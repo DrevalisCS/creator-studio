@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from fastapi import HTTPException, status
@@ -18,11 +18,11 @@ _TTL_SECONDS = 60 * 60 * 48  # 48h — counter covers the UTC day and decays nex
 
 
 def _today_key() -> str:
-    day = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+    day = datetime.now(tz=UTC).strftime("%Y-%m-%d")
     return f"{_EPISODE_QUOTA_PREFIX}:{day}"
 
 
-async def check_and_increment_episode_quota(redis: "Redis") -> None:
+async def check_and_increment_episode_quota(redis: Redis) -> None:
     """Raise 402 if the current tier has hit its daily episode cap.
 
     Called on the episode-generate endpoint, before enqueueing. Increments
@@ -66,7 +66,7 @@ async def check_and_increment_episode_quota(redis: "Redis") -> None:
         )
 
 
-async def get_daily_episode_usage(redis: "Redis") -> dict[str, int | None]:
+async def get_daily_episode_usage(redis: Redis) -> dict[str, int | None]:
     """Return ``{used, limit}`` for display in the UI."""
     state = get_state()
     if not state.is_usable or state.claims is None:

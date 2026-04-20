@@ -16,11 +16,11 @@ import asyncio
 import copy
 import json
 import random
-from collections.abc import Awaitable, Callable
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, AsyncIterator
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
@@ -292,7 +292,7 @@ class ComfyUIPool:
         self._servers.pop(server_id, None)
         logger.info("comfyui_server_unregistered", server_id=str(server_id))
 
-    async def sync_from_db(self, session: "AsyncSession") -> None:
+    async def sync_from_db(self, session: AsyncSession) -> None:
         """Re-sync the pool with currently active ComfyUI servers from the DB.
 
         Removes deactivated servers, replaces servers whose URL or concurrency
@@ -410,10 +410,7 @@ class ComfyUIPool:
             return  # Successfully yielded — done
 
         # All candidates failed
-        raise RuntimeError(
-            f"All ComfyUI servers failed health checks. "
-            f"Last error: {last_error}"
-        )
+        raise RuntimeError(f"All ComfyUI servers failed health checks. Last error: {last_error}")
 
     async def close_all(self) -> None:
         """Close all registered clients."""
@@ -551,8 +548,7 @@ class ComfyUIService:
             delay = min(delay * _POLL_BACKOFF_FACTOR, _POLL_MAX_DELAY)
 
         raise TimeoutError(
-            f"ComfyUI prompt {prompt_id} did not complete within "
-            f"{_POLL_MAX_TOTAL_SECONDS}s."
+            f"ComfyUI prompt {prompt_id} did not complete within {_POLL_MAX_TOTAL_SECONDS}s."
         )
 
     def _extract_output_images(
@@ -600,7 +596,12 @@ class ComfyUIService:
         if not result:
             for nid, nout in outputs.items():
                 for field, val in nout.items():
-                    if isinstance(val, list) and val and isinstance(val[0], dict) and "filename" in val[0]:
+                    if (
+                        isinstance(val, list)
+                        and val
+                        and isinstance(val[0], dict)
+                        and "filename" in val[0]
+                    ):
                         logger.info(
                             "comfyui_found_output_on_different_node",
                             node_id=nid,
@@ -707,9 +708,7 @@ class ComfyUIService:
 
     # Kept for backward-compatibility with any external code that still reads
     # QUALITY_SUFFIX directly.  Internal prompt building now uses QUALITY_SUFFIXES.
-    QUALITY_SUFFIX: str = (
-        "highly detailed, cinematic lighting, sharp focus, professional quality"
-    )
+    QUALITY_SUFFIX: str = "highly detailed, cinematic lighting, sharp focus, professional quality"
 
     # Per-genre quality suffixes.  The pipeline matches series.visual_style
     # against these keys (substring, case-insensitive) and picks the first
@@ -730,9 +729,7 @@ class ComfyUIService:
         "watercolor": (
             "delicate watercolor wash, soft edges, luminous transparency, artistic composition"
         ),
-        "default": (
-            "highly detailed, cinematic lighting, sharp focus, professional quality"
-        ),
+        "default": ("highly detailed, cinematic lighting, sharp focus, professional quality"),
     }
 
     CAMERA_ANGLES: list[str] = [
@@ -1029,9 +1026,7 @@ class ComfyUIService:
         # Persist to storage with a UUID-based filename
         safe_filename = f"{_uuid.uuid4().hex}.mp4"
         relative_path = (
-            f"{save_relative_dir}/{safe_filename}"
-            if save_relative_dir
-            else safe_filename
+            f"{save_relative_dir}/{safe_filename}" if save_relative_dir else safe_filename
         )
         await self._storage.save_file(relative_path, video_bytes)
 
@@ -1178,7 +1173,8 @@ class ComfyUIService:
                         # Inject prompt and seed
                         for mapping in input_mappings.mappings:
                             value_map = {
-                                "visual_prompt": full_prompt + ", cinematic motion, smooth camera movement",
+                                "visual_prompt": full_prompt
+                                + ", cinematic motion, smooth camera movement",
                                 "negative_prompt": effective_negative,
                                 "seed": random.randint(0, 2**31 - 1),
                             }
@@ -1215,6 +1211,7 @@ class ComfyUIService:
 
                     # Save video
                     import uuid as _uuid
+
                     safe_filename = f"{_uuid.uuid4().hex}.mp4"
                     relative_path = f"{save_dir}/{safe_filename}"
                     abs_path = self._storage.resolve_path(relative_path)

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
@@ -16,9 +15,7 @@ class TestCreateEpisode:
     async def test_create_episode(self, client: AsyncClient) -> None:
         # First create a series to parent the episode
         series_name = f"Episode Series {uuid4().hex[:8]}"
-        series_resp = await client.post(
-            "/api/v1/series", json={"name": series_name}
-        )
+        series_resp = await client.post("/api/v1/series", json={"name": series_name})
         assert series_resp.status_code == 201
         series_id = series_resp.json()["id"]
 
@@ -57,9 +54,7 @@ class TestCreateEpisode:
         assert data["topic"] is None
         assert data["status"] == "draft"
 
-    async def test_create_episode_empty_title_rejected(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_episode_empty_title_rejected(self, client: AsyncClient) -> None:
         series_resp = await client.post(
             "/api/v1/series",
             json={"name": f"Bad Title Series {uuid4().hex[:8]}"},
@@ -73,9 +68,7 @@ class TestCreateEpisode:
         response = await client.post("/api/v1/episodes", json=payload)
         assert response.status_code == 422
 
-    async def test_create_episode_nonexistent_series(
-        self, client: AsyncClient
-    ) -> None:
+    async def test_create_episode_nonexistent_series(self, client: AsyncClient) -> None:
         """Creating an episode for a non-existent series should fail.
 
         Note: SQLite does not enforce FK constraints by default, so this test
@@ -111,9 +104,7 @@ class TestListEpisodesBySeries:
             )
 
         # List by series_id
-        response = await client.get(
-            "/api/v1/episodes", params={"series_id": series_id}
-        )
+        response = await client.get("/api/v1/episodes", params={"series_id": series_id})
         assert response.status_code == 200
 
         data = response.json()
@@ -132,9 +123,7 @@ class TestListEpisodesBySeries:
         )
         series_id = series_resp.json()["id"]
 
-        response = await client.get(
-            "/api/v1/episodes", params={"series_id": series_id}
-        )
+        response = await client.get("/api/v1/episodes", params={"series_id": series_id})
         assert response.status_code == 200
         assert response.json() == []
 
@@ -200,9 +189,7 @@ class TestGenerateEpisodeEnqueuesJob:
             assert "enqueued" in data["message"].lower()
 
     async def test_generate_episode_not_found(self, client: AsyncClient) -> None:
-        response = await client.post(
-            f"/api/v1/episodes/{uuid4()}/generate"
-        )
+        response = await client.post(f"/api/v1/episodes/{uuid4()}/generate")
         assert response.status_code == 404
 
     async def test_generate_episode_wrong_status(self, client: AsyncClient) -> None:
@@ -226,8 +213,6 @@ class TestGenerateEpisodeEnqueuesJob:
             json={"status": "review"},
         )
 
-        response = await client.post(
-            f"/api/v1/episodes/{episode_id}/generate"
-        )
+        response = await client.post(f"/api/v1/episodes/{episode_id}/generate")
         assert response.status_code == 409
         assert "cannot be regenerated" in response.json()["detail"].lower()

@@ -8,7 +8,7 @@ key from the user).
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -72,9 +72,9 @@ class ActivateRequest(BaseModel):
 
 @router.get("/status", response_model=LicenseStatusResponse)
 async def get_license_status(
-    session: "AsyncSession" = Depends(get_db_session),
-    settings: "Settings" = Depends(get_settings),
-    redis: "Redis" = Depends(get_redis),
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    redis: Redis = Depends(get_redis),
 ) -> LicenseStatusResponse:
     # Status is exempt from LicenseGateMiddleware, so we re-check the
     # cross-process version here ourselves. Otherwise a revocation handled
@@ -111,7 +111,7 @@ async def get_license_status(
 
 
 def _classify_now(claims) -> LicenseStatus:
-    now = int(datetime.now(tz=timezone.utc).timestamp())
+    now = int(datetime.now(tz=UTC).timestamp())
     if now < claims.nbf:
         return LicenseStatus.INVALID
     if now >= claims.exp:
@@ -124,9 +124,9 @@ def _classify_now(claims) -> LicenseStatus:
 @router.post("/activate", response_model=LicenseStatusResponse)
 async def activate_license(
     body: ActivateRequest,
-    session: "AsyncSession" = Depends(get_db_session),
-    settings: "Settings" = Depends(get_settings),
-    redis: "Redis" = Depends(get_redis),
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    redis: Redis = Depends(get_redis),
 ) -> LicenseStatusResponse:
     """Activate a license on this install.
 
@@ -201,9 +201,9 @@ async def activate_license(
 
 @router.post("/deactivate", response_model=LicenseStatusResponse)
 async def deactivate_license(
-    session: "AsyncSession" = Depends(get_db_session),
-    settings: "Settings" = Depends(get_settings),
-    redis: "Redis" = Depends(get_redis),
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    redis: Redis = Depends(get_redis),
 ) -> LicenseStatusResponse:
     """Remove the stored JWT. App flips back to UNACTIVATED on next request.
 
@@ -213,11 +213,7 @@ async def deactivate_license(
     """
     # Best-effort server-side seat release before we wipe local state.
     current = get_state()
-    if (
-        settings.license_server_url
-        and current.claims is not None
-        and current.claims.jti
-    ):
+    if settings.license_server_url and current.claims is not None and current.claims.jti:
         await deactivate_with_server(
             settings.license_server_url,
             license_key=current.claims.jti,
@@ -241,7 +237,7 @@ class PortalResponse(BaseModel):
 
 @router.post("/portal", response_model=PortalResponse)
 async def open_billing_portal(
-    settings: "Settings" = Depends(get_settings),
+    settings: Settings = Depends(get_settings),
 ) -> PortalResponse:
     """Relay the current license to the server's ``/portal`` endpoint.
 
@@ -263,16 +259,14 @@ async def open_billing_portal(
             detail={
                 "error": "license_server_not_configured",
                 "hint": "Billing portal requires the online license server. "
-                        "Manage your subscription at drevalis.com/account instead.",
+                "Manage your subscription at drevalis.com/account instead.",
             },
         )
 
     url = settings.license_server_url.rstrip("/") + "/portal"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
-            resp = await client.post(
-                url, json={"license_key": state.claims.jti}
-            )
+            resp = await client.post(url, json={"license_key": state.claims.jti})
     except httpx.HTTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

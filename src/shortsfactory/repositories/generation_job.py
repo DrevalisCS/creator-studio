@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Optional
 from uuid import UUID
 
 from sqlalchemy import select
@@ -65,7 +64,7 @@ class GenerationJobRepository(BaseRepository[GenerationJob]):
         self,
         id: UUID,
         status: str,
-        error_message: Optional[str] = None,
+        error_message: str | None = None,
     ) -> GenerationJob | None:
         """Update the status and optionally set an error message."""
         kwargs: dict = {"status": status}
@@ -76,18 +75,16 @@ class GenerationJobRepository(BaseRepository[GenerationJob]):
     async def get_all_filtered(
         self,
         *,
-        status_filter: Optional[str] = None,
-        episode_id: Optional[UUID] = None,
-        step: Optional[str] = None,
+        status_filter: str | None = None,
+        episode_id: UUID | None = None,
+        step: str | None = None,
         offset: int = 0,
         limit: int = 50,
     ) -> list[GenerationJob]:
         """Return jobs with optional filters, eagerly loading episode + series."""
         stmt = (
             select(GenerationJob)
-            .options(
-                selectinload(GenerationJob.episode).selectinload(Episode.series)
-            )
+            .options(selectinload(GenerationJob.episode).selectinload(Episode.series))
             .order_by(GenerationJob.created_at.desc())
         )
         if status_filter is not None:

@@ -93,11 +93,7 @@ class SocialUploadRepository(BaseRepository[SocialUpload]):
 
     async def get_recent(self, limit: int = 50) -> list[SocialUpload]:
         """Return the most recent uploads across all platforms."""
-        stmt = (
-            select(SocialUpload)
-            .order_by(SocialUpload.created_at.desc())
-            .limit(limit)
-        )
+        stmt = select(SocialUpload).order_by(SocialUpload.created_at.desc()).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 

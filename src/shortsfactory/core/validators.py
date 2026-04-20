@@ -37,9 +37,7 @@ def validate_safe_url(url: str, *, pin_dns: bool = False) -> str | tuple[str, st
 
     # Validate scheme
     if parsed.scheme not in ("http", "https"):
-        raise UnsafeURLError(
-            f"URL scheme must be http or https, got {parsed.scheme!r}"
-        )
+        raise UnsafeURLError(f"URL scheme must be http or https, got {parsed.scheme!r}")
 
     hostname = parsed.hostname
     if not hostname:
@@ -70,7 +68,7 @@ def _check_hostname(hostname: str) -> str:
     try:
         addr_infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except socket.gaierror:
-        raise UnsafeURLError(f"Could not resolve hostname: {hostname!r}")
+        raise UnsafeURLError(f"Could not resolve hostname: {hostname!r}") from None
 
     if not addr_infos:
         raise UnsafeURLError(f"Could not resolve hostname: {hostname!r}")
@@ -124,9 +122,7 @@ def validate_safe_url_or_localhost(url: str) -> str:
 
     # Validate scheme
     if parsed.scheme not in ("http", "https"):
-        raise UnsafeURLError(
-            f"URL scheme must be http or https, got {parsed.scheme!r}"
-        )
+        raise UnsafeURLError(f"URL scheme must be http or https, got {parsed.scheme!r}")
 
     hostname = parsed.hostname
     if not hostname:
@@ -156,7 +152,7 @@ def _check_hostname_local_first(hostname: str) -> None:
     try:
         addr_infos = socket.getaddrinfo(hostname, None, socket.AF_UNSPEC, socket.SOCK_STREAM)
     except socket.gaierror:
-        raise UnsafeURLError(f"Could not resolve hostname: {hostname!r}")
+        raise UnsafeURLError(f"Could not resolve hostname: {hostname!r}") from None
 
     if not addr_infos:
         raise UnsafeURLError(f"Could not resolve hostname: {hostname!r}")
@@ -176,9 +172,7 @@ def _check_ip_local_first(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -
         raise UnsafeURLError(f"Link-local addresses are not allowed: {addr}")
     if isinstance(addr, ipaddress.IPv4Address):
         if addr in ipaddress.IPv4Network("169.254.0.0/16"):
-            raise UnsafeURLError(
-                f"Cloud metadata endpoint addresses are not allowed: {addr}"
-            )
+            raise UnsafeURLError(f"Cloud metadata endpoint addresses are not allowed: {addr}")
     if addr.is_multicast:
         raise UnsafeURLError(f"Multicast addresses are not allowed: {addr}")
 
@@ -190,6 +184,7 @@ def sanitize_filename(filename: str) -> str:
     """
     # Strip any path components
     import os
+
     basename = os.path.basename(filename)
     # Replace path separators that might remain
     basename = basename.replace("/", "").replace("\\", "")

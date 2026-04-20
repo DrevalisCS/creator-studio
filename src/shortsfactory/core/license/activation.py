@@ -13,13 +13,8 @@ the next request flips the app into the EXPIRED/UNACTIVATED state.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import httpx
 import structlog
-
-if TYPE_CHECKING:
-    pass
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -83,9 +78,7 @@ async def exchange_key_for_jwt(
     body = resp.json()
     token = body.get("license_jwt")
     if not token:
-        raise ActivationError(
-            status_code=500, error="malformed_response", detail=body
-        )
+        raise ActivationError(status_code=500, error="malformed_response", detail=body)
     return token
 
 
@@ -124,9 +117,7 @@ async def heartbeat_with_server(
     body = resp.json()
     token = body.get("license_jwt") or ""
     if not token:
-        raise ActivationError(
-            status_code=500, error="malformed_response", detail=body
-        )
+        raise ActivationError(status_code=500, error="malformed_response", detail=body)
     return token
 
 

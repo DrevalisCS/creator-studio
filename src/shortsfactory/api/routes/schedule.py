@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
@@ -38,7 +38,7 @@ def _normalize_to_utc(dt: datetime, tz_name: str) -> datetime:
     if dt.tzinfo is None:
         local_tz = ZoneInfo(tz_name)
         dt = dt.replace(tzinfo=local_tz)
-    return dt.astimezone(timezone.utc)
+    return dt.astimezone(UTC)
 
 
 @router.post(
@@ -106,13 +106,11 @@ async def get_calendar(
     settings: Settings = Depends(get_settings),
 ) -> list[CalendarDay]:
     app_tz = ZoneInfo(settings.app_timezone)
-    start_dt = datetime.fromisoformat(start).replace(tzinfo=app_tz).astimezone(
-        timezone.utc
-    )
+    start_dt = datetime.fromisoformat(start).replace(tzinfo=app_tz).astimezone(UTC)
     end_dt = (
         datetime.fromisoformat(end)
         .replace(hour=23, minute=59, second=59, tzinfo=app_tz)
-        .astimezone(timezone.utc)
+        .astimezone(UTC)
     )
 
     repo = ScheduledPostRepository(db)
@@ -149,9 +147,7 @@ async def update_scheduled_post(
 
     updates = payload.model_dump(exclude_unset=True)
     if "scheduled_at" in updates and updates["scheduled_at"] is not None:
-        updates["scheduled_at"] = _normalize_to_utc(
-            updates["scheduled_at"], settings.app_timezone
-        )
+        updates["scheduled_at"] = _normalize_to_utc(updates["scheduled_at"], settings.app_timezone)
     updated = await repo.update(post_id, **updates)
     await db.commit()
     return ScheduleResponse.model_validate(updated)

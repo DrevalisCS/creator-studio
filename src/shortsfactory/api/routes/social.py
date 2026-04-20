@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import httpx
@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shortsfactory.core.config import Settings
 from shortsfactory.core.deps import get_db, get_settings
+from shortsfactory.core.license.features import fastapi_dep_require_feature
 from shortsfactory.core.security import encrypt_value
 from shortsfactory.repositories.social import (
     SocialPlatformRepository,
@@ -29,8 +30,6 @@ from shortsfactory.schemas.social import (
     TikTokAuthURLResponse,
     TikTokConnectionStatus,
 )
-
-from shortsfactory.core.license.features import fastapi_dep_require_feature
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -51,9 +50,7 @@ _TIKTOK_SCOPES = "user.info.basic,video.publish,video.upload"
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
-async def _get_tiktok_credentials(
-    db: AsyncSession, settings: Settings
-) -> tuple[str, str, str]:
+async def _get_tiktok_credentials(db: AsyncSession, settings: Settings) -> tuple[str, str, str]:
     """Resolve TikTok client_key, client_secret, redirect_uri.
 
     Checks the api_key_store DB table first (user-configured via Settings UI),
@@ -125,8 +122,8 @@ async def tiktok_auth_url(
     settings: Settings = Depends(get_settings),
 ) -> TikTokAuthURLResponse:
     """Return the TikTok OAuth authorization URL with PKCE challenge."""
-    import hashlib
     import base64
+    import hashlib
 
     client_key, _, redirect_uri = await _get_tiktok_credentials(db, settings)
 
@@ -135,21 +132,22 @@ async def tiktok_auth_url(
     # PKCE: generate code_verifier and code_challenge (S256)
     code_verifier = secrets.token_urlsafe(64)
     code_challenge = (
-        base64.urlsafe_b64encode(
-            hashlib.sha256(code_verifier.encode("ascii")).digest()
-        )
+        base64.urlsafe_b64encode(hashlib.sha256(code_verifier.encode("ascii")).digest())
         .rstrip(b"=")
         .decode("ascii")
     )
 
     # Store code_verifier in Redis so the callback can retrieve it
-    from shortsfactory.core.redis import get_pool
     from redis.asyncio import Redis
+
+    from shortsfactory.core.redis import get_pool
 
     redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
     try:
         await redis_client.set(
-            f"tiktok_pkce:{state}", code_verifier, ex=600  # 10 min expiry
+            f"tiktok_pkce:{state}",
+            code_verifier,
+            ex=600,  # 10 min expiry
         )
     finally:
         await redis_client.aclose()
@@ -216,8 +214,9 @@ async def tiktok_callback(
         )
 
     # ── Step 0: retrieve PKCE code_verifier from Redis ──────────────────
-    from shortsfactory.core.redis import get_pool
     from redis.asyncio import Redis as RedisClient
+
+    from shortsfactory.core.redis import get_pool
 
     code_verifier = ""
     redis_client: RedisClient = RedisClient(connection_pool=get_pool())  # type: ignore[type-arg]
@@ -267,7 +266,7 @@ async def tiktok_callback(
     expires_in: int = int(token_data.get("expires_in", 86400))
     refresh_expires_in: int = int(token_data.get("refresh_expires_in", 31536000))
 
-    token_expires_at = datetime.now(tz=timezone.utc) + timedelta(seconds=expires_in)
+    token_expires_at = datetime.now(tz=UTC) + timedelta(seconds=expires_in)
 
     # ── Step 2: fetch user profile for a human-readable account name ────
     display_name = "TikTok User"
@@ -384,14 +383,10 @@ async def connect_platform(
     await repo.deactivate_platform(body.platform)
 
     # Encrypt tokens
-    access_encrypted, key_version = encrypt_value(
-        body.access_token, settings.encryption_key
-    )
+    access_encrypted, key_version = encrypt_value(body.access_token, settings.encryption_key)
     refresh_encrypted = None
     if body.refresh_token:
-        refresh_encrypted, _ = encrypt_value(
-            body.refresh_token, settings.encryption_key
-        )
+        refresh_encrypted, _ = encrypt_value(body.refresh_token, settings.encryption_key)
 
     platform = await repo.create(
         platform=body.platform,

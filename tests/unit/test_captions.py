@@ -65,9 +65,7 @@ class TestGroupWordsIntoCaptions:
         # End of last caption should be the end of the last word
         assert captions[-1].end_seconds == 1.8
 
-    def test_group_words_respects_max_words(
-        self, caption_service: CaptionService
-    ) -> None:
+    def test_group_words_respects_max_words(self, caption_service: CaptionService) -> None:
         # Create 12 words with minimal gaps (all within timing)
         words = [
             WordTimestamp(
@@ -78,9 +76,7 @@ class TestGroupWordsIntoCaptions:
             for i in range(12)
         ]
 
-        captions = caption_service._group_words_into_captions(
-            words, max_words_per_line=4
-        )
+        captions = caption_service._group_words_into_captions(words, max_words_per_line=4)
 
         # With max_words_per_line=4, 12 words should produce at least 3 captions
         assert len(captions) >= 3
@@ -120,9 +116,7 @@ class TestGroupWordsIntoCaptions:
 class TestWriteSrtFormat:
     """Test SRT file output."""
 
-    def test_write_srt_format(
-        self, caption_service: CaptionService, tmp_path: Path
-    ) -> None:
+    def test_write_srt_format(self, caption_service: CaptionService, tmp_path: Path) -> None:
         captions = [
             Caption(index=1, start_seconds=0.0, end_seconds=2.5, text="Hello world"),
             Caption(index=2, start_seconds=3.0, end_seconds=5.0, text="Testing captions"),
@@ -149,9 +143,7 @@ class TestWriteSrtFormat:
 class TestWriteAssFormat:
     """Test ASS file output."""
 
-    def test_write_ass_format(
-        self, caption_service: CaptionService, tmp_path: Path
-    ) -> None:
+    def test_write_ass_format(self, caption_service: CaptionService, tmp_path: Path) -> None:
         captions = [
             Caption(index=1, start_seconds=0.0, end_seconds=2.5, text="Hello world"),
             Caption(index=2, start_seconds=3.1, end_seconds=5.55, text="Testing ASS"),
@@ -224,9 +216,7 @@ class TestFormatAssTimestamp:
     def test_format_ass_timestamp_negative(self, caption_service: CaptionService) -> None:
         assert CaptionService._format_ass_timestamp(-5.0) == "0:00:00.00"
 
-    def test_format_ass_timestamp_single_digit_hour(
-        self, caption_service: CaptionService
-    ) -> None:
+    def test_format_ass_timestamp_single_digit_hour(self, caption_service: CaptionService) -> None:
         # ASS uses single-digit hours
         result = CaptionService._format_ass_timestamp(3600.0)
         assert result.startswith("1:")

@@ -15,14 +15,14 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol
 from uuid import UUID
 
 import structlog
 
 from shortsfactory.core.security import decrypt_value
-from shortsfactory.schemas.script import EpisodeScript, SceneScript
+from shortsfactory.schemas.script import EpisodeScript
 
 if TYPE_CHECKING:
     from shortsfactory.models.llm_config import LLMConfig
@@ -95,7 +95,6 @@ class OpenAICompatibleProvider:
         max_tokens: int = 4096,
         json_mode: bool = False,
     ) -> LLMResult:
-        import openai
 
         kwargs: dict = {
             "model": self._model,
@@ -119,19 +118,24 @@ class OpenAICompatibleProvider:
         # Retry up to 3 times on timeout/server errors (RunPod proxy 524s)
         import asyncio as _asyncio
 
-        last_exc = None
         for attempt in range(3):
             try:
                 response = await self._client.chat.completions.create(**kwargs)
                 break
             except Exception as exc:
                 err_str = str(exc)
-                is_timeout = "524" in err_str or "timeout" in err_str.lower() or "502" in err_str or "503" in err_str
+                is_timeout = (
+                    "524" in err_str
+                    or "timeout" in err_str.lower()
+                    or "502" in err_str
+                    or "503" in err_str
+                )
                 if is_timeout and attempt < 2:
                     wait = (attempt + 1) * 10
-                    logger.warning("openai_generate_retry", attempt=attempt + 1, wait=wait, error=err_str[:100])
+                    logger.warning(
+                        "openai_generate_retry", attempt=attempt + 1, wait=wait, error=err_str[:100]
+                    )
                     await _asyncio.sleep(wait)
-                    last_exc = exc
                     continue
                 # Not a timeout, or last attempt — try json_mode fallback
                 if json_mode and "response_format" in kwargs:
@@ -394,9 +398,7 @@ class LLMService:
         api_key: str = "not-needed"
         if config.api_key_encrypted and self._encryption_key:
             try:
-                api_key = decrypt_value(
-                    config.api_key_encrypted, self._encryption_key
-                )
+                api_key = decrypt_value(config.api_key_encrypted, self._encryption_key)
             except Exception:
                 logger.warning(
                     "llm_api_key_decrypt_failed",
@@ -407,9 +409,7 @@ class LLMService:
         base_url = config.base_url
         model_name = config.model_name
 
-        is_anthropic = "anthropic" in base_url.lower() or model_name.lower().startswith(
-            "claude"
-        )
+        is_anthropic = "anthropic" in base_url.lower() or model_name.lower().startswith("claude")
 
         provider: LLMProvider
         if is_anthropic:
@@ -481,8 +481,7 @@ class LLMService:
 
         # All retries exhausted
         raise ValueError(
-            f"Failed to parse valid JSON after {_MAX_JSON_RETRIES + 1} attempts: "
-            f"{last_error}"
+            f"Failed to parse valid JSON after {_MAX_JSON_RETRIES + 1} attempts: {last_error}"
         )
 
     # ── script generation ──────────────────────────────────────────────
@@ -517,10 +516,8 @@ class LLMService:
                 if "{character}" not in line
             )
 
-        user_prompt = (
-            rendered_template
-            .replace("{topic}", topic)
-            .replace("{duration}", str(target_duration))
+        user_prompt = rendered_template.replace("{topic}", topic).replace(
+            "{duration}", str(target_duration)
         )
 
         # When no character is defined (e.g. space, nature, science topics),
@@ -603,11 +600,10 @@ class LLMService:
         system_prompt = (
             "You are a YouTube Shorts title expert.  Generate short, catchy, "
             "scroll-stopping titles.  Respond with a JSON object containing a "
-            "single key \"titles\" whose value is an array of strings."
+            'single key "titles" whose value is an array of strings.'
         )
         user_prompt = (
-            f"Generate {count} unique, engaging YouTube Shorts title ideas "
-            f"for this topic: {topic}"
+            f"Generate {count} unique, engaging YouTube Shorts title ideas for this topic: {topic}"
         )
 
         logger.info("title_suggestions_start", topic=topic, count=count)
@@ -642,7 +638,7 @@ class LLMService:
         system_prompt = (
             "You are a social-media optimization expert.  Given a short-form "
             "video script, generate relevant hashtags.  Respond with a JSON "
-            "object containing a single key \"hashtags\" whose value is an "
+            'object containing a single key "hashtags" whose value is an '
             "array of strings.  Each hashtag must start with '#'."
         )
         narration_summary = " | ".join(s.narration[:80] for s in script.scenes)

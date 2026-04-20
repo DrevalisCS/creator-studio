@@ -5,8 +5,6 @@ from __future__ import annotations
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
 
 class TestGenerateEpisodeMusicJob:
     """Tests for workers/jobs/music.py::generate_episode_music."""
@@ -20,9 +18,7 @@ class TestGenerateEpisodeMusicJob:
         with patch("shortsfactory.workers.jobs.music.EpisodeRepository") as MockRepo:
             MockRepo.return_value.get_by_id = AsyncMock(return_value=None)
 
-            result = await generate_episode_music(
-                ctx, str(uuid4()), "epic", 30.0
-            )
+            result = await generate_episode_music(ctx, str(uuid4()), "epic", 30.0)
 
         assert "error" in result
         assert "not found" in result["error"]
@@ -41,9 +37,7 @@ class TestGenerateEpisodeMusicJob:
             MockEpRepo.return_value.get_by_id = AsyncMock(return_value=mock_episode)
             MockServerRepo.return_value.get_active_servers = AsyncMock(return_value=[])
 
-            result = await generate_episode_music(
-                ctx, str(uuid4()), "calm", 60.0
-            )
+            result = await generate_episode_music(ctx, str(uuid4()), "calm", 60.0)
 
         assert "error" in result
         assert "ComfyUI" in result["error"]

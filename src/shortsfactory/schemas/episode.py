@@ -23,9 +23,7 @@ class EpisodeUpdate(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=500)
     topic: str | None = None
     script: dict[str, Any] | None = None
-    status: Literal[
-        "draft", "generating", "review", "editing", "exported", "failed"
-    ] | None = None
+    status: Literal["draft", "generating", "review", "editing", "exported", "failed"] | None = None
     override_voice_profile_id: UUID | None = None
     override_llm_config_id: UUID | None = None
     override_caption_style: str | None = None
@@ -35,9 +33,7 @@ class EpisodeUpdate(BaseModel):
 class ScriptUpdate(BaseModel):
     """Payload for updating just the script JSONB field."""
 
-    script: dict[str, Any] = Field(
-        ..., description="EpisodeScript-compatible JSON object"
-    )
+    script: dict[str, Any] = Field(..., description="EpisodeScript-compatible JSON object")
 
 
 class MediaAssetResponse(BaseModel):
@@ -117,9 +113,9 @@ class GenerateRequest(BaseModel):
 
     voice_profile_id: UUID | None = None
     llm_config_id: UUID | None = None
-    steps: list[
-        Literal["script", "voice", "scenes", "captions", "assembly", "thumbnail"]
-    ] | None = None
+    steps: (
+        list[Literal["script", "voice", "scenes", "captions", "assembly", "thumbnail"]] | None
+    ) = None
 
 
 class GenerateResponse(BaseModel):
@@ -153,19 +149,13 @@ class BorderConfig(BaseModel):
 class VideoEditRequest(BaseModel):
     """Payload for applying edits to an episode video."""
 
-    trim_start: float | None = Field(
-        None, ge=0, description="Trim start in seconds"
-    )
-    trim_end: float | None = Field(
-        None, ge=0, description="Trim end in seconds"
-    )
+    trim_start: float | None = Field(None, ge=0, description="Trim start in seconds")
+    trim_end: float | None = Field(None, ge=0, description="Trim end in seconds")
     border: BorderConfig | None = None
-    color_filter: Literal[
-        "warm", "cool", "bw", "vintage", "vivid", "dramatic", "sepia"
-    ] | None = None
-    speed: float = Field(
-        1.0, ge=0.25, le=4.0, description="Playback speed multiplier"
+    color_filter: Literal["warm", "cool", "bw", "vintage", "vivid", "dramatic", "sepia"] | None = (
+        None
     )
+    speed: float = Field(1.0, ge=0.25, le=4.0, description="Playback speed multiplier")
 
 
 class VideoEditResponse(BaseModel):

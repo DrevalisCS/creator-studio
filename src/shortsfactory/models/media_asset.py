@@ -5,9 +5,19 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from sqlalchemy import BIGINT, INTEGER, NUMERIC, TIMESTAMP, TEXT, CheckConstraint, ForeignKey, Index, text
+from sqlalchemy import (
+    BIGINT,
+    INTEGER,
+    NUMERIC,
+    TEXT,
+    TIMESTAMP,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -45,10 +55,10 @@ class MediaAsset(UUIDPrimaryKeyMixin, Base):
     )
     asset_type: Mapped[str] = mapped_column(TEXT, nullable=False)
     file_path: Mapped[str] = mapped_column(TEXT, nullable=False)
-    file_size_bytes: Mapped[Optional[int]] = mapped_column(BIGINT, nullable=True)
-    duration_seconds: Mapped[Optional[Decimal]] = mapped_column(NUMERIC, nullable=True)
-    scene_number: Mapped[Optional[int]] = mapped_column(INTEGER, nullable=True)
-    generation_job_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    file_size_bytes: Mapped[int | None] = mapped_column(BIGINT, nullable=True)
+    duration_seconds: Mapped[Decimal | None] = mapped_column(NUMERIC, nullable=True)
+    scene_number: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
+    generation_job_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("generation_jobs.id", ondelete="SET NULL"),
         nullable=True,
@@ -62,7 +72,7 @@ class MediaAsset(UUIDPrimaryKeyMixin, Base):
 
     # ── Relationships ──────────────────────────────────────────────────
     episode: Mapped[Episode] = relationship(back_populates="media_assets")
-    generation_job: Mapped[Optional[GenerationJob]] = relationship(
+    generation_job: Mapped[GenerationJob | None] = relationship(
         back_populates="media_assets",
         foreign_keys=[generation_job_id],
     )

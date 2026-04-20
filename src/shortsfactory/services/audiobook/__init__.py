@@ -1,11 +1,12 @@
 """Audiobook service package — backward-compatible re-exports."""
+
 from shortsfactory.services.audiobook._monolith import (  # noqa: F401
-    AudiobookService,
-    AudioChunk,
-    ChapterTiming,
     PAUSE_BETWEEN_CHAPTERS,
     PAUSE_BETWEEN_SPEAKERS,
     PAUSE_WITHIN_SPEAKER,
+    AudiobookService,
+    AudioChunk,
+    ChapterTiming,
 )
 
 __all__ = [

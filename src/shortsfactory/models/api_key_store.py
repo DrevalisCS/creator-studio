@@ -22,6 +22,4 @@ class ApiKeyStore(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     key_name: Mapped[str] = mapped_column(TEXT, nullable=False, unique=True)
     encrypted_value: Mapped[str] = mapped_column(TEXT, nullable=False)
-    key_version: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default="1"
-    )
+    key_version: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="1")

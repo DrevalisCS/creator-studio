@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import select
@@ -14,13 +14,11 @@ if TYPE_CHECKING:
 
 
 class LicenseStateRepository:
-    def __init__(self, session: "AsyncSession") -> None:
+    def __init__(self, session: AsyncSession) -> None:
         self._session = session
 
     async def get(self) -> LicenseStateRow | None:
-        result = await self._session.execute(
-            select(LicenseStateRow).where(LicenseStateRow.id == 1)
-        )
+        result = await self._session.execute(select(LicenseStateRow).where(LicenseStateRow.id == 1))
         return result.scalar_one_or_none()
 
     async def upsert(
@@ -31,7 +29,7 @@ class LicenseStateRepository:
     ) -> LicenseStateRow:
         """Write or replace the singleton license row."""
         row = await self.get()
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         if row is None:
             row = LicenseStateRow(
                 id=1,
@@ -56,14 +54,14 @@ class LicenseStateRepository:
         if row is None:
             return
         row.jwt = None
-        row.updated_at = datetime.now(tz=timezone.utc)
+        row.updated_at = datetime.now(tz=UTC)
         await self._session.flush()
 
     async def record_heartbeat(self, status: str) -> None:
         row = await self.get()
         if row is None:
             return
-        now = datetime.now(tz=timezone.utc)
+        now = datetime.now(tz=UTC)
         row.last_heartbeat_at = now
         row.last_heartbeat_status = status
         row.updated_at = now

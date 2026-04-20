@@ -4,9 +4,19 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from sqlalchemy import BIGINT, BOOLEAN, INTEGER, TEXT, TIMESTAMP, CheckConstraint, ForeignKey, Index, text
+from sqlalchemy import (
+    BIGINT,
+    BOOLEAN,
+    INTEGER,
+    TEXT,
+    TIMESTAMP,
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    text,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -35,23 +45,21 @@ class SocialPlatform(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     platform: Mapped[str] = mapped_column(TEXT, nullable=False)
-    account_name: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    account_id: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    account_name: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    account_id: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # Encrypted OAuth / API tokens (Fernet)
-    access_token_encrypted: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    refresh_token_encrypted: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    access_token_encrypted: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     token_key_version: Mapped[int] = mapped_column(
         INTEGER, nullable=False, server_default=text("1")
     )
 
-    token_expires_at: Mapped[Optional[datetime]] = mapped_column(
+    token_expires_at: Mapped[datetime | None] = mapped_column(
         TIMESTAMP(timezone=True), nullable=True
     )
 
-    is_active: Mapped[bool] = mapped_column(
-        BOOLEAN, nullable=False, server_default=text("true")
-    )
+    is_active: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, server_default=text("true"))
 
     # ── Relationships ──────────────────────────────────────────────────
     uploads: Mapped[list[SocialUpload]] = relationship(
@@ -87,7 +95,7 @@ class SocialUpload(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("social_platforms.id", ondelete="CASCADE"),
         nullable=False,
     )
-    episode_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+    episode_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("episodes.id", ondelete="CASCADE"),
         nullable=True,
@@ -98,17 +106,17 @@ class SocialUpload(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     # Platform-specific identifiers
-    platform_content_id: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    platform_url: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    platform_content_id: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    platform_url: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     title: Mapped[str] = mapped_column(TEXT, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    hashtags: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    description: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    hashtags: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     upload_status: Mapped[str] = mapped_column(
         TEXT, nullable=False, server_default=text("'pending'")
     )
-    error_message: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # Engagement counters (updated via periodic sync)
     views: Mapped[int] = mapped_column(BIGINT, nullable=False, server_default=text("0"))
@@ -118,4 +126,4 @@ class SocialUpload(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     # ── Relationships ──────────────────────────────────────────────────
     platform_account: Mapped[SocialPlatform] = relationship(back_populates="uploads")
-    episode: Mapped[Optional[Episode]] = relationship()
+    episode: Mapped[Episode | None] = relationship()

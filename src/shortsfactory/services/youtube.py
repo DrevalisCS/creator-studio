@@ -8,7 +8,7 @@ the event loop.
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -82,10 +82,11 @@ class YouTubeService:
         Uses direct HTTP token exchange (no PKCE) to avoid state
         persistence issues with google_auth_oauthlib.
         """
+
         def _exchange() -> dict[str, Any]:
             import httpx as _httpx
-            from googleapiclient.discovery import build
             from google.oauth2.credentials import Credentials
+            from googleapiclient.discovery import build
 
             # Exchange code for tokens via direct HTTP POST
             token_resp = _httpx.post(
@@ -111,14 +112,10 @@ class YouTubeService:
             )
 
             # Encrypt tokens.
-            access_enc, key_ver = encrypt_value(
-                credentials.token, self.encryption_key
-            )
+            access_enc, key_ver = encrypt_value(credentials.token, self.encryption_key)
             refresh_enc = ""
             if credentials.refresh_token:
-                refresh_enc, _ = encrypt_value(
-                    credentials.refresh_token, self.encryption_key
-                )
+                refresh_enc, _ = encrypt_value(credentials.refresh_token, self.encryption_key)
 
             # Fetch channel info.
             youtube = build("youtube", "v3", credentials=credentials)
@@ -263,9 +260,7 @@ class YouTubeService:
                 try:
                     youtube.thumbnails().set(
                         videoId=video_id,
-                        media_body=MediaFileUpload(
-                            str(thumbnail_path), mimetype="image/jpeg"
-                        ),
+                        media_body=MediaFileUpload(str(thumbnail_path), mimetype="image/jpeg"),
                     ).execute()
                     logger.info(
                         "youtube_thumbnail_set",
@@ -309,8 +304,8 @@ class YouTubeService:
         """
         if token_expiry:
             # Ensure both datetimes are timezone-aware for comparison
-            expiry = token_expiry if token_expiry.tzinfo else token_expiry.replace(tzinfo=timezone.utc)
-            if expiry > datetime.now(timezone.utc):
+            expiry = token_expiry if token_expiry.tzinfo else token_expiry.replace(tzinfo=UTC)
+            if expiry > datetime.now(UTC):
                 return None
 
         if not refresh_token_encrypted:
@@ -327,18 +322,14 @@ class YouTubeService:
             request = google.auth.transport.requests.Request()
             credentials.refresh(request)
 
-            new_access_enc, key_ver = encrypt_value(
-                credentials.token, self.encryption_key
-            )
+            new_access_enc, key_ver = encrypt_value(credentials.token, self.encryption_key)
             result: dict[str, Any] = {
                 "access_token_encrypted": new_access_enc,
                 "token_key_version": key_ver,
                 "token_expiry": credentials.expiry,
             }
             if credentials.refresh_token:
-                new_refresh_enc, _ = encrypt_value(
-                    credentials.refresh_token, self.encryption_key
-                )
+                new_refresh_enc, _ = encrypt_value(credentials.refresh_token, self.encryption_key)
                 result["refresh_token_encrypted"] = new_refresh_enc
             return result
 
@@ -533,10 +524,14 @@ class YouTubeService:
             from googleapiclient.discovery import build
 
             youtube = build("youtube", "v3", credentials=credentials)
-            response = youtube.videos().list(
-                part="statistics,snippet",
-                id=ids_param,
-            ).execute()
+            response = (
+                youtube.videos()
+                .list(
+                    part="statistics,snippet",
+                    id=ids_param,
+                )
+                .execute()
+            )
 
             stats: list[dict[str, Any]] = []
             for item in response.get("items", []):

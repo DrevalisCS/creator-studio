@@ -62,9 +62,7 @@ class TestBuildAssemblyCommand:
         assert "-shortest" in cmd
         assert str(Path("/tmp/output.mp4")) in cmd
 
-    def test_build_assembly_command_with_captions(
-        self, ffmpeg_service: FFmpegService
-    ) -> None:
+    def test_build_assembly_command_with_captions(self, ffmpeg_service: FFmpegService) -> None:
         """Captions path should produce a subtitles filter."""
         config = AssemblyConfig()
         cmd = ffmpeg_service._build_assembly_command(
@@ -82,9 +80,7 @@ class TestBuildAssemblyCommand:
         vf_value = cmd[vf_idx + 1]
         assert "subtitles=" in vf_value
 
-    def test_build_assembly_command_with_music(
-        self, ffmpeg_service: FFmpegService
-    ) -> None:
+    def test_build_assembly_command_with_music(self, ffmpeg_service: FFmpegService) -> None:
         """Background music should trigger filter_complex with audio mixing."""
         config = AssemblyConfig()
         cmd = ffmpeg_service._build_assembly_command(
@@ -115,9 +111,7 @@ class TestBuildAssemblyCommand:
         assert "[vout]" in cmd
         assert "[aout]" in cmd
 
-    def test_build_assembly_command_full(
-        self, ffmpeg_service: FFmpegService
-    ) -> None:
+    def test_build_assembly_command_full(self, ffmpeg_service: FFmpegService) -> None:
         """Captions + music together."""
         config = AssemblyConfig(
             width=720,
@@ -176,11 +170,11 @@ class TestCreateConcatFileFormat:
         # First scene
         assert "file " in lines[0]
         assert "scene_001.png" in lines[0]
-        assert "duration 5.0" == lines[1]
+        assert lines[1] == "duration 5.0"
 
         # Second scene
         assert "scene_002.png" in lines[2]
-        assert "duration 3.5" == lines[3]
+        assert lines[3] == "duration 3.5"
 
         # Last image repeated (FFmpeg concat demuxer requirement)
         assert "scene_002.png" in lines[4]

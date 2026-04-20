@@ -12,7 +12,6 @@ import pytest
 from shortsfactory.schemas.comfyui import NodeInput, WorkflowInputMapping
 from shortsfactory.services.comfyui import ComfyUIPool, ComfyUIService
 
-
 # ── Sample workflow for injection tests ───────────────────────────────────────
 
 SAMPLE_WORKFLOW: dict = {
@@ -73,9 +72,7 @@ class TestInjectParams:
         # Positive prompt injected into node 3's text field
         assert result["3"]["inputs"]["text"] == "a beautiful sunset over mountains"
 
-    def test_inject_params_all_fields(
-        self, sample_workflow_mapping: WorkflowInputMapping
-    ) -> None:
+    def test_inject_params_all_fields(self, sample_workflow_mapping: WorkflowInputMapping) -> None:
         result = ComfyUIService.inject_params(
             workflow=SAMPLE_WORKFLOW,
             mappings=sample_workflow_mapping,
@@ -165,7 +162,7 @@ class TestInjectParams:
         )
 
         # Original workflow should not be changed
-        assert SAMPLE_WORKFLOW == original
+        assert original == SAMPLE_WORKFLOW
 
     def test_inject_params_missing_node_graceful(self) -> None:
         """Mapping pointing to a non-existent node should not raise."""
@@ -214,9 +211,7 @@ class TestComfyUIPool:
         # Semaphore should have capacity of 2
         assert semaphore._value == 2
 
-    async def test_pool_acquire_releases_semaphore(
-        self, mock_comfyui_client: AsyncMock
-    ) -> None:
+    async def test_pool_acquire_releases_semaphore(self, mock_comfyui_client: AsyncMock) -> None:
         pool = ComfyUIPool()
         server_id = uuid4()
         pool.register_server(server_id, mock_comfyui_client, max_concurrent=2)
@@ -233,9 +228,7 @@ class TestComfyUIPool:
         # After exiting, semaphore should be fully released
         assert sem._value == 2
 
-    async def test_pool_concurrency_limit(
-        self, mock_comfyui_client: AsyncMock
-    ) -> None:
+    async def test_pool_concurrency_limit(self, mock_comfyui_client: AsyncMock) -> None:
         """Semaphore should block when all slots are in use."""
         pool = ComfyUIPool()
         server_id = uuid4()
@@ -294,9 +287,7 @@ class TestComfyUIPool:
                 # Should pick server_b (more available capacity)
                 assert chosen_id == server_b
 
-    async def test_pool_acquire_specific_server(
-        self, mock_comfyui_client: AsyncMock
-    ) -> None:
+    async def test_pool_acquire_specific_server(self, mock_comfyui_client: AsyncMock) -> None:
         pool = ComfyUIPool()
         server_id = uuid4()
         pool.register_server(server_id, mock_comfyui_client, max_concurrent=5)

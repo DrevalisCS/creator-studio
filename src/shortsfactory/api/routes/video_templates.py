@@ -295,8 +295,7 @@ async def apply_template_to_series(
         template_id=template_id,
         applied_fields=applied_fields,
         message=(
-            f"Template '{template.name}' applied to series. "
-            f"{len(applied_fields)} field(s) updated."
+            f"Template '{template.name}' applied to series. {len(applied_fields)} field(s) updated."
         ),
     )
 
@@ -346,9 +345,7 @@ async def create_template_from_series(
     template_repo = VideoTemplateRepository(db)
     template = await template_repo.create(
         name=f"Template: {series.name}",
-        description=(
-            f"Snapshot of series '{series.name}' settings captured automatically."
-        ),
+        description=(f"Snapshot of series '{series.name}' settings captured automatically."),
         voice_profile_id=series.voice_profile_id,
         visual_style=series.visual_style,
         scene_mode=series.scene_mode,
@@ -371,7 +368,5 @@ async def create_template_from_series(
 
     return CreateFromSeriesResponse(
         template=VideoTemplateResponse.model_validate(template),
-        message=(
-            f"Template '{template.name}' created from series '{series.name}'."
-        ),
+        message=(f"Template '{template.name}' created from series '{series.name}'."),
     )

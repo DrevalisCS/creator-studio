@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import INTEGER, NUMERIC, TEXT
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -29,17 +29,11 @@ class LLMConfig(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     model_name: Mapped[str] = mapped_column(TEXT, nullable=False)
 
     # Fernet-encrypted API key + key-rotation version
-    api_key_encrypted: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    api_key_version: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default="1"
-    )
+    api_key_encrypted: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    api_key_version: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="1")
 
-    max_tokens: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default="4096"
-    )
-    temperature: Mapped[Decimal] = mapped_column(
-        NUMERIC, nullable=False, server_default="0.7"
-    )
+    max_tokens: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="4096")
+    temperature: Mapped[Decimal] = mapped_column(NUMERIC, nullable=False, server_default="0.7")
 
     # ── Relationships ──────────────────────────────────────────────────
     series: Mapped[list[Series]] = relationship(

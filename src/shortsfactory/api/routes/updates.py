@@ -44,8 +44,8 @@ class ApplyResponse(BaseModel):
 @router.get("/status", response_model=UpdateStatusResponse)
 async def get_status(
     force: bool = Query(False, description="Bypass cache"),
-    settings: "Settings" = Depends(get_settings),
-    redis: "Redis" = Depends(get_redis),
+    settings: Settings = Depends(get_settings),
+    redis: Redis = Depends(get_redis),
 ) -> UpdateStatusResponse:
     manifest = await check_for_updates(
         redis,

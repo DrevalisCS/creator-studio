@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from uuid import uuid4
 
 import pytest
@@ -89,9 +88,7 @@ class TestDeleteEpisodeDir:
         root = await storage.ensure_episode_dirs(episode_id)
 
         # Write a file into one of the subdirectories
-        await storage.save_file(
-            f"episodes/{episode_id}/scenes/image.png", b"\x89PNG"
-        )
+        await storage.save_file(f"episodes/{episode_id}/scenes/image.png", b"\x89PNG")
 
         assert root.exists()
         result = await storage.delete_episode_dir(episode_id)
@@ -147,7 +144,7 @@ class TestGetTotalSizeBytes:
         assert total == 0
 
     async def test_get_total_size_bytes_with_files(self, storage: LocalStorage) -> None:
-        await storage.save_file("a.txt", b"12345")      # 5 bytes
+        await storage.save_file("a.txt", b"12345")  # 5 bytes
         await storage.save_file("b.txt", b"1234567890")  # 10 bytes
 
         total = await storage.get_total_size_bytes()
@@ -156,12 +153,8 @@ class TestGetTotalSizeBytes:
     async def test_get_total_size_bytes_nested(self, storage: LocalStorage) -> None:
         episode_id = uuid4()
         await storage.ensure_episode_dirs(episode_id)
-        await storage.save_file(
-            f"episodes/{episode_id}/scenes/img.png", b"x" * 100
-        )
-        await storage.save_file(
-            f"episodes/{episode_id}/voice/audio.wav", b"y" * 200
-        )
+        await storage.save_file(f"episodes/{episode_id}/scenes/img.png", b"x" * 100)
+        await storage.save_file(f"episodes/{episode_id}/voice/audio.wav", b"y" * 200)
 
         total = await storage.get_total_size_bytes()
         assert total == 300

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -30,10 +30,10 @@ class LicenseClaims(BaseModel):
     period_end: int  # actual paid-through date (unix)
 
     def exp_datetime(self) -> datetime:
-        return datetime.fromtimestamp(self.exp, tz=timezone.utc)
+        return datetime.fromtimestamp(self.exp, tz=UTC)
 
     def period_end_datetime(self) -> datetime:
-        return datetime.fromtimestamp(self.period_end, tz=timezone.utc)
+        return datetime.fromtimestamp(self.period_end, tz=UTC)
 
     def is_in_grace(self, now_unix: int) -> bool:
         """True if we're past ``period_end`` but still before ``exp``."""

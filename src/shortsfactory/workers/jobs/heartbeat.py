@@ -7,6 +7,8 @@ Jobs
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import structlog
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -18,7 +20,8 @@ async def worker_heartbeat(ctx: dict) -> None:
     The key ``worker:heartbeat`` is set with a 120-second TTL so that the
     API can detect a dead worker within two minutes.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
+
     from redis.asyncio import Redis as _Redis
 
     try:
@@ -28,7 +31,7 @@ async def worker_heartbeat(ctx: dict) -> None:
         try:
             await _r.set(
                 "worker:heartbeat",
-                datetime.now(timezone.utc).isoformat(),
+                datetime.now(UTC).isoformat(),
                 ex=120,
             )
         finally:

@@ -144,8 +144,11 @@ Write naturally with emotion and tension. Every line tagged."""
             f"Start with a title, then ## Chapter 1, and write the complete story."
         )
         result = await provider.generate(
-            system_prompt, user_prompt,
-            temperature=0.85, max_tokens=8000, json_mode=False,
+            system_prompt,
+            user_prompt,
+            temperature=0.85,
+            max_tokens=8000,
+            json_mode=False,
         )
         return result.content.strip()
 
@@ -157,7 +160,9 @@ Write naturally with emotion and tension. Every line tagged."""
         result = await provider.generate(
             system_prompt,
             f"Write an audiobook script about: {concept}\nCharacters:\n{char_list}\nMood: {mood}\nTarget: ~{target_words} words",
-            temperature=0.85, max_tokens=8000, json_mode=False,
+            temperature=0.85,
+            max_tokens=8000,
+            json_mode=False,
         )
         return result.content.strip()
 
@@ -165,7 +170,7 @@ Write naturally with emotion and tension. Every line tagged."""
 
     # Phase B: Generate each chapter
     full_outline_summary = "\n".join(
-        f"- {ch.get('title', f'Chapter {i+1}')}: {ch.get('summary', '')}"
+        f"- {ch.get('title', f'Chapter {i + 1}')}: {ch.get('summary', '')}"
         for i, ch in enumerate(chapter_outlines)
     )
 
@@ -269,12 +274,22 @@ async def generate_audiobook(ctx: dict, audiobook_id: str, generate_video: bool 
 
         # Load voice profile
         vp_repo = VoiceProfileRepository(session)
-        voice_profile = await vp_repo.get_by_id(audiobook.voice_profile_id) if audiobook.voice_profile_id else None
+        voice_profile = (
+            await vp_repo.get_by_id(audiobook.voice_profile_id)
+            if audiobook.voice_profile_id
+            else None
+        )
         if voice_profile is None:
-            await ab_repo.update(parsed_id, status="failed", error_message="Voice profile not found")
+            await ab_repo.update(
+                parsed_id, status="failed", error_message="Voice profile not found"
+            )
             await session.commit()
             log.error("voice_profile_not_found")
-            return {"audiobook_id": audiobook_id, "status": "failed", "error": "voice profile not found"}
+            return {
+                "audiobook_id": audiobook_id,
+                "status": "failed",
+                "error": "voice profile not found",
+            }
 
         service = AudiobookService(
             tts_service=ctx["tts_service"],
@@ -428,7 +443,11 @@ async def regenerate_audiobook_chapter(
                 parsed_id, status="failed", error_message="Voice profile not found"
             )
             await session.commit()
-            return {"audiobook_id": audiobook_id, "status": "failed", "error": "voice profile not found"}
+            return {
+                "audiobook_id": audiobook_id,
+                "status": "failed",
+                "error": "voice profile not found",
+            }
 
         # Full regeneration with the (potentially updated) text
         service = AudiobookService(
@@ -520,8 +539,8 @@ async def generate_script_async(ctx: dict, job_id: str, payload: dict) -> dict:
         provider = None
         session_factory = ctx["session_factory"]
         async with session_factory() as session:
-            from shortsfactory.repositories.llm_config import LLMConfigRepository
             from shortsfactory.core.security import decrypt_value
+            from shortsfactory.repositories.llm_config import LLMConfigRepository
 
             llm_repo = LLMConfigRepository(session)
             configs = await llm_repo.get_all()
@@ -543,7 +562,9 @@ async def generate_script_async(ctx: dict, job_id: str, payload: dict) -> dict:
             )
 
         target_words = payload["target_minutes"] * 150
-        characters = payload.get("characters", [{"name": "Narrator", "description": "Omniscient narrator"}])
+        characters = payload.get(
+            "characters", [{"name": "Narrator", "description": "Omniscient narrator"}]
+        )
         char_list = "\n".join(f"- {c['name']}: {c.get('description', '')}" for c in characters)
 
         script_text = await _generate_audiobook_script_text(
@@ -577,9 +598,7 @@ async def generate_script_async(ctx: dict, job_id: str, payload: dict) -> dict:
             "estimated_minutes": round(word_count / 150, 1),
         }
 
-        await redis_client.set(
-            f"script_job:{job_id}:result", json.dumps(result_dict), ex=3600
-        )
+        await redis_client.set(f"script_job:{job_id}:result", json.dumps(result_dict), ex=3600)
         await redis_client.set(f"script_job:{job_id}:status", "done", ex=3600)
 
         log.info(
@@ -592,9 +611,7 @@ async def generate_script_async(ctx: dict, job_id: str, payload: dict) -> dict:
 
     except Exception as exc:
         log.error("job_failed", error=str(exc), exc_info=True)
-        await redis_client.set(
-            f"script_job:{job_id}:error", str(exc)[:500], ex=3600
-        )
+        await redis_client.set(f"script_job:{job_id}:error", str(exc)[:500], ex=3600)
         await redis_client.set(f"script_job:{job_id}:status", "failed", ex=3600)
         return {"status": "failed", "error": str(exc)}
 
@@ -647,89 +664,85 @@ async def generate_ai_audiobook(ctx: dict, audiobook_id: str, payload: dict) -> 
         log.info("skip_llm_generation", reason="text already exists")
 
     if not has_existing_text:
-      try:
-        from shortsfactory.services.llm import OpenAICompatibleProvider
+        try:
+            from shortsfactory.services.llm import OpenAICompatibleProvider
 
-        # Try DB-configured LLM first, fall back to LM Studio
-        provider = None
-        async with session_factory() as session:
-            from shortsfactory.repositories.llm_config import LLMConfigRepository
-            from shortsfactory.core.security import decrypt_value
+            # Try DB-configured LLM first, fall back to LM Studio
+            provider = None
+            async with session_factory() as session:
+                from shortsfactory.core.security import decrypt_value
+                from shortsfactory.repositories.llm_config import LLMConfigRepository
 
-            llm_repo = LLMConfigRepository(session)
-            configs = await llm_repo.get_all()
-            if configs:
-                cfg = configs[0]
-                api_key = "not-needed"
-                if cfg.api_key_encrypted:
-                    api_key = decrypt_value(cfg.api_key_encrypted, settings.encryption_key)
+                llm_repo = LLMConfigRepository(session)
+                configs = await llm_repo.get_all()
+                if configs:
+                    cfg = configs[0]
+                    api_key = "not-needed"
+                    if cfg.api_key_encrypted:
+                        api_key = decrypt_value(cfg.api_key_encrypted, settings.encryption_key)
+                    provider = OpenAICompatibleProvider(
+                        base_url=cfg.base_url,
+                        model=cfg.model_name,
+                        api_key=api_key,
+                    )
+
+            if provider is None:
                 provider = OpenAICompatibleProvider(
-                    base_url=cfg.base_url,
-                    model=cfg.model_name,
-                    api_key=api_key,
+                    base_url=settings.lm_studio_base_url,
+                    model=settings.lm_studio_default_model,
                 )
 
-        if provider is None:
-            provider = OpenAICompatibleProvider(
-                base_url=settings.lm_studio_base_url,
-                model=settings.lm_studio_default_model,
+            characters = payload.get(
+                "characters",
+                [{"name": "Narrator", "description": "Omniscient narrator"}],
+            )
+            target_minutes = payload.get("target_minutes", 5)
+            target_words = int(target_minutes * 150)
+            mood = payload.get("mood", "neutral")
+            concept = payload.get("concept", "")
+
+            char_list = "\n".join(f"- {c['name']}: {c.get('description', '')}" for c in characters)
+
+            script_text = await _generate_audiobook_script_text(
+                provider=provider,
+                concept=concept,
+                char_list=char_list,
+                mood=mood,
+                target_words=target_words,
+                target_minutes=target_minutes,
+                log=log,
+            )
+            if script_text is None:
+                script_text = ""
+
+            # Extract title from first line
+            lines = script_text.split("\n")
+            title = lines[0].strip().lstrip("#").strip() if lines else "Untitled"
+
+            # Parse chapters
+            chapters_found = re.findall(r"^##\s+(.+)$", script_text, re.MULTILINE)
+            chapter_data = (
+                [{"title": ch, "text": ""} for ch in chapters_found] if chapters_found else None
             )
 
-        characters = payload.get(
-            "characters",
-            [{"name": "Narrator", "description": "Omniscient narrator"}],
-        )
-        target_minutes = payload.get("target_minutes", 5)
-        target_words = int(target_minutes * 150)
-        mood = payload.get("mood", "neutral")
-        concept = payload.get("concept", "")
-
-        char_list = "\n".join(
-            f"- {c['name']}: {c.get('description', '')}" for c in characters
-        )
-
-        script_text = await _generate_audiobook_script_text(
-            provider=provider,
-            concept=concept,
-            char_list=char_list,
-            mood=mood,
-            target_words=target_words,
-            target_minutes=target_minutes,
-            log=log,
-        )
-        if script_text is None:
-            script_text = ""
-
-        # Extract title from first line
-        lines = script_text.split("\n")
-        title = lines[0].strip().lstrip("#").strip() if lines else "Untitled"
-
-        # Parse chapters
-        chapters_found = re.findall(r"^##\s+(.+)$", script_text, re.MULTILINE)
-        chapter_data = (
-            [{"title": ch, "text": ""} for ch in chapters_found]
-            if chapters_found
-            else None
-        )
-
-        log.info(
-            "script_generated",
-            title=title,
-            word_count=len(script_text.split()),
-            chapters=len(chapters_found),
-        )
-
-      except Exception as exc:
-        log.error("script_generation_failed", error=str(exc), exc_info=True)
-        async with session_factory() as session:
-            ab_repo = AudiobookRepository(session)
-            await ab_repo.update(
-                parsed_id,
-                status="failed",
-                error_message=f"Script generation failed: {str(exc)[:500]}",
+            log.info(
+                "script_generated",
+                title=title,
+                word_count=len(script_text.split()),
+                chapters=len(chapters_found),
             )
-            await session.commit()
-        return {"status": "failed", "audiobook_id": audiobook_id}
+
+        except Exception as exc:
+            log.error("script_generation_failed", error=str(exc), exc_info=True)
+            async with session_factory() as session:
+                ab_repo = AudiobookRepository(session)
+                await ab_repo.update(
+                    parsed_id,
+                    status="failed",
+                    error_message=f"Script generation failed: {str(exc)[:500]}",
+                )
+                await session.commit()
+            return {"status": "failed", "audiobook_id": audiobook_id}
 
     # ── Step 2: Update audiobook with script (skip if already saved) ──
     if not has_existing_text:
@@ -762,9 +775,7 @@ async def generate_ai_audiobook(ctx: dict, audiobook_id: str, payload: dict) -> 
                 return {"status": "failed", "audiobook_id": audiobook_id}
 
             voice_profile = (
-                await vp_repo.get_by_id(ab.voice_profile_id)
-                if ab.voice_profile_id
-                else None
+                await vp_repo.get_by_id(ab.voice_profile_id) if ab.voice_profile_id else None
             )
             if not voice_profile:
                 await ab_repo.update(

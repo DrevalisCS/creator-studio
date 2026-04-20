@@ -18,12 +18,11 @@ Key behaviours under test
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, call
+from unittest.mock import AsyncMock
 
 import pytest
 
 from shortsfactory.services.llm import LLMPool, LLMResult
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -105,9 +104,7 @@ class TestLLMPoolRoundRobin:
 
     async def test_three_providers_each_called_twice_in_six_calls(self) -> None:
         providers = [_make_provider(_make_result(f"p{i}")) for i in range(3)]
-        pool = LLMPool(
-            providers=[(f"p{i}", providers[i]) for i in range(3)]
-        )
+        pool = LLMPool(providers=[(f"p{i}", providers[i]) for i in range(3)])
 
         for _ in range(6):
             await pool.generate("sys", "user")
@@ -122,9 +119,7 @@ class TestLLMPoolRoundRobin:
         p1 = _make_provider(_make_result("p1"))
         pool = LLMPool(providers=[("p0", p0), ("p1", p1)])
 
-        contents = [
-            (await pool.generate("sys", "user")).content for _ in range(6)
-        ]
+        contents = [(await pool.generate("sys", "user")).content for _ in range(6)]
 
         assert contents == ["p0", "p1", "p0", "p1", "p0", "p1"]
 
@@ -136,9 +131,7 @@ class TestLLMPoolRoundRobin:
 
 class TestAvailableCount:
     def test_all_available_initially(self) -> None:
-        pool = LLMPool(
-            providers=[("p0", _make_provider()), ("p1", _make_provider())]
-        )
+        pool = LLMPool(providers=[("p0", _make_provider()), ("p1", _make_provider())])
         assert pool.available_count == 2
 
     async def test_available_count_decrements_on_server_error(self) -> None:
@@ -223,7 +216,7 @@ class TestServerErrorFailover:
         p0 = _make_provider()
         # First attempt fails with server error; subsequent attempts succeed.
         p0.generate.side_effect = [
-            _server_error(),          # call 1: fail
+            _server_error(),  # call 1: fail
             _make_result("p0-back"),  # call 3 (after p1 on call 2)
         ]
 
@@ -287,9 +280,7 @@ class TestAllProvidersFailed:
             p.generate.side_effect = RuntimeError(f"500 error from p{i}")
             providers.append(p)
 
-        pool = LLMPool(
-            providers=[(f"p{i}", providers[i]) for i in range(3)]
-        )
+        pool = LLMPool(providers=[(f"p{i}", providers[i]) for i in range(3)])
 
         with pytest.raises(RuntimeError, match="500 error from p2"):
             await pool.generate("sys", "user")

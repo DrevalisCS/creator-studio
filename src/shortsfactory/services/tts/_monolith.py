@@ -122,9 +122,12 @@ class PiperTTSProvider:
 
         cmd = [
             self.piper_executable,
-            "--model", str(model_path),
-            "--output_file", str(output_path),
-            "--length_scale", str(1.0 / speed),
+            "--model",
+            str(model_path),
+            "--output_file",
+            str(output_path),
+            "--length_scale",
+            str(1.0 / speed),
             "--json",
         ]
 
@@ -145,14 +148,10 @@ class PiperTTSProvider:
                 return_code=proc.returncode,
                 stderr=stderr_text,
             )
-            raise RuntimeError(
-                f"Piper exited with code {proc.returncode}: {stderr_text}"
-            )
+            raise RuntimeError(f"Piper exited with code {proc.returncode}: {stderr_text}")
 
         if not output_path.exists():
-            raise FileNotFoundError(
-                f"Piper did not produce output file: {output_path}"
-            )
+            raise FileNotFoundError(f"Piper did not produce output file: {output_path}")
 
         # Parse word-level timestamps from JSON stdout when available.
         word_timestamps = self._parse_piper_json(stdout_bytes)
@@ -215,9 +214,7 @@ class PiperTTSProvider:
                 f"Invalid voice_id: must not contain path separators or '..': {voice_id!r}"
             )
         if not re.match(r"^[a-zA-Z0-9._-]+$", voice_id):
-            raise ValueError(
-                f"Invalid voice_id: contains disallowed characters: {voice_id!r}"
-            )
+            raise ValueError(f"Invalid voice_id: contains disallowed characters: {voice_id!r}")
         return voice_id
 
     def _resolve_model(self, voice_id: str) -> Path:
@@ -229,9 +226,7 @@ class PiperTTSProvider:
             # Also try treating voice_id as a filename within models_path.
             model = self.models_path / voice_id
         if not model.exists():
-            raise FileNotFoundError(
-                f"Piper model not found for voice_id={voice_id!r}"
-            )
+            raise FileNotFoundError(f"Piper model not found for voice_id={voice_id!r}")
 
         # Final containment check: ensure resolved path is within models_path
         resolved = model.resolve()
@@ -241,7 +236,7 @@ class PiperTTSProvider:
         except ValueError:
             raise ValueError(
                 f"Resolved model path escapes the models directory for voice_id={voice_id!r}"
-            )
+            ) from None
 
         return model
 
@@ -263,11 +258,7 @@ class PiperTTSProvider:
                 data = json.loads(raw_line)
                 # Piper JSON output structure varies by version.  We try
                 # several known keys.
-                words_data = (
-                    data.get("word_phonemes")
-                    or data.get("words")
-                    or []
-                )
+                words_data = data.get("word_phonemes") or data.get("words") or []
                 for entry in words_data:
                     word = entry.get("word") or entry.get("text", "")
                     start = float(entry.get("start", entry.get("start_seconds", 0)))
@@ -319,9 +310,8 @@ class KokoroTTSProvider:
                 self._pipeline = KPipeline(lang_code="a")  # 'a' = American English
             except ImportError:
                 raise RuntimeError(
-                    "Kokoro TTS is not installed. "
-                    "Install with: pip install kokoro soundfile"
-                )
+                    "Kokoro TTS is not installed. Install with: pip install kokoro soundfile"
+                ) from None
         return self._pipeline
 
     # -- public interface ---------------------------------------------------
@@ -350,15 +340,14 @@ class KokoroTTSProvider:
         )
 
         def _generate() -> tuple[object, int, list[WordTimestamp]]:
-            import numpy as np
-
             try:
+                import numpy as np  # used on line ~382 to concat chunk samples
                 import soundfile as sf  # type: ignore[import-untyped]
-            except ImportError:
+            except ImportError as exc:
                 raise RuntimeError(
-                    "soundfile is not installed. "
-                    "Install with: pip install soundfile"
-                )
+                    "Kokoro TTS requires numpy + soundfile. "
+                    "Install with: pip install soundfile numpy"
+                ) from exc
 
             samples: list[object] = []
             word_timestamps: list[WordTimestamp] = []
@@ -375,12 +364,8 @@ class KokoroTTSProvider:
                     for token in result.tokens:  # type: ignore[attr-defined]
                         token_text = getattr(token, "text", "")
                         if isinstance(token_text, str) and token_text.strip():
-                            start_t = current_time + getattr(
-                                token, "start_time", 0.0
-                            )
-                            end_t = current_time + getattr(
-                                token, "end_time", duration
-                            )
+                            start_t = current_time + getattr(token, "start_time", 0.0)
+                            end_t = current_time + getattr(token, "end_time", duration)
                             word_timestamps.append(
                                 WordTimestamp(
                                     word=token_text.strip(),
@@ -401,8 +386,6 @@ class KokoroTTSProvider:
             return full_audio, 24000, word_timestamps
 
         audio, sample_rate, word_timestamps = await asyncio.to_thread(_generate)
-
-        import numpy as np
 
         duration = len(audio) / sample_rate  # type: ignore[arg-type]
 
@@ -528,9 +511,7 @@ class ElevenLabsTTSProvider:
                 status=resp.status_code,
                 body=body[:500],
             )
-            raise RuntimeError(
-                f"ElevenLabs TTS failed ({resp.status_code}): {body[:300]}"
-            )
+            raise RuntimeError(f"ElevenLabs TTS failed ({resp.status_code}): {body[:300]}")
 
         output_path.write_bytes(resp.content)
 
@@ -563,9 +544,7 @@ class ElevenLabsTTSProvider:
         )
         if resp.status_code != 200:
             log.error("elevenlabs.list_voices.failed", status=resp.status_code)
-            raise RuntimeError(
-                f"ElevenLabs list voices failed ({resp.status_code})"
-            )
+            raise RuntimeError(f"ElevenLabs list voices failed ({resp.status_code})")
 
         data = resp.json()
         voices: list[VoiceInfo] = []
@@ -660,7 +639,7 @@ class EdgeTTSProvider:
         except ImportError:
             raise RuntimeError(
                 "edge-tts is not installed. Install with: pip install edge-tts"
-            )
+            ) from None
 
         rate_str = f"{int((speed - 1) * 100):+d}%"
         pitch_str = f"{int((pitch - 1) * 50):+d}Hz"
@@ -692,9 +671,7 @@ class EdgeTTSProvider:
                     )
         except Exception as exc:
             log.error("edge.synthesize.stream_failed", error=str(exc), exc_info=True)
-            raise RuntimeError(
-                f"Edge TTS streaming failed (requires internet): {exc}"
-            ) from exc
+            raise RuntimeError(f"Edge TTS streaming failed (requires internet): {exc}") from exc
 
         # Write MP3
         with open(mp3_path, "wb") as f:
@@ -703,8 +680,15 @@ class EdgeTTSProvider:
 
         # Convert MP3 -> WAV via ffmpeg (pipeline expects WAV)
         proc = await asyncio.create_subprocess_exec(
-            "ffmpeg", "-y", "-i", str(mp3_path),
-            "-ar", "24000", "-ac", "1", str(output_path),
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(mp3_path),
+            "-ar",
+            "24000",
+            "-ac",
+            "1",
+            str(output_path),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
@@ -899,9 +883,7 @@ class ComfyUIElevenLabsTTSProvider:
                 delay = min(delay * 1.5, 10.0)
 
             if history is None:
-                raise RuntimeError(
-                    f"ComfyUI ElevenLabs TTS timed out after {total_waited:.0f}s"
-                )
+                raise RuntimeError(f"ComfyUI ElevenLabs TTS timed out after {total_waited:.0f}s")
 
             # Check for execution errors first
             exec_status = history.get("status", {})
@@ -946,7 +928,9 @@ class ComfyUIElevenLabsTTSProvider:
                         for item in items:
                             if isinstance(item, dict) and "filename" in item:
                                 fname = item["filename"].lower()
-                                if any(fname.endswith(ext) for ext in (".mp3", ".wav", ".ogg", ".flac")):
+                                if any(
+                                    fname.endswith(ext) for ext in (".mp3", ".wav", ".ogg", ".flac")
+                                ):
                                     audio_info = item
                                     break
                                 # Accept any file if no audio extension found yet
@@ -973,9 +957,7 @@ class ComfyUIElevenLabsTTSProvider:
             subfolder = audio_info.get("subfolder", "")
             folder_type = audio_info.get("type", "output")
 
-            audio_bytes = await client.download_image(
-                filename, subfolder, folder_type
-            )
+            audio_bytes = await client.download_image(filename, subfolder, folder_type)
 
             # Write MP3 to disk
             mp3_path = output_path.with_suffix(".mp3")
@@ -983,23 +965,30 @@ class ComfyUIElevenLabsTTSProvider:
 
             # Convert MP3 -> WAV (pipeline expects WAV)
             proc = await asyncio.create_subprocess_exec(
-                "ffmpeg", "-y", "-i", str(mp3_path),
-                "-ar", "24000", "-ac", "1", str(output_path),
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(mp3_path),
+                "-ar",
+                "24000",
+                "-ac",
+                "1",
+                str(output_path),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
             _, stderr = await proc.communicate()
             if proc.returncode != 0:
                 stderr_text = stderr.decode("utf-8", errors="replace")
-                raise RuntimeError(
-                    f"FFmpeg MP3->WAV conversion failed: {stderr_text[:300]}"
-                )
+                raise RuntimeError(f"FFmpeg MP3->WAV conversion failed: {stderr_text[:300]}")
 
             mp3_path.unlink(missing_ok=True)
 
             # Clean up the generated file on the ComfyUI server to prevent disk fill
             try:
-                await client._client.post("/api/clear-output", json={"subfolder": subfolder, "filename": filename})
+                await client._client.post(
+                    "/api/clear-output", json={"subfolder": subfolder, "filename": filename}
+                )
             except Exception:
                 # Not all ComfyUI versions support this — also try clearing history
                 try:
@@ -1098,9 +1087,7 @@ class TTSService:
             return self.piper
         if voice_profile.provider == "elevenlabs":
             if self.elevenlabs is None:
-                raise RuntimeError(
-                    "ElevenLabs provider is not configured (missing API key)"
-                )
+                raise RuntimeError("ElevenLabs provider is not configured (missing API key)")
             return self.elevenlabs
         if voice_profile.provider == "kokoro":
             if self.kokoro is None:
@@ -1112,8 +1099,7 @@ class TTSService:
         if voice_profile.provider == "edge":
             if self.edge is None:
                 raise RuntimeError(
-                    "Edge TTS provider is not configured. "
-                    "Install with: pip install edge-tts"
+                    "Edge TTS provider is not configured. Install with: pip install edge-tts"
                 )
             return self.edge
         if voice_profile.provider == "comfyui_elevenlabs":
@@ -1198,7 +1184,7 @@ class TTSService:
         # Concurrency limited by number of ComfyUI servers (for ComfyUI TTS)
         # or 2 for other providers to avoid overloading
         max_parallel = 2
-        if hasattr(provider, '_servers'):
+        if hasattr(provider, "_servers"):
             max_parallel = max(2, len(provider._servers))
 
         sem = _asyncio.Semaphore(max_parallel)
@@ -1208,7 +1194,11 @@ class TTSService:
             async with sem:
                 try:
                     result = await provider.synthesize(
-                        text, voice_id, seg_path, speed=speed, pitch=pitch,
+                        text,
+                        voice_id,
+                        seg_path,
+                        speed=speed,
+                        pitch=pitch,
                     )
                     synth_results[idx] = result
                 except Exception as exc:
@@ -1300,15 +1290,11 @@ class TTSService:
         if voice_profile.provider == "kokoro":
             if voice_profile.kokoro_voice_name:
                 return voice_profile.kokoro_voice_name
-            raise ValueError(
-                f"VoiceProfile {voice_profile.name!r} (kokoro) has no voice name"
-            )
+            raise ValueError(f"VoiceProfile {voice_profile.name!r} (kokoro) has no voice name")
         if voice_profile.provider == "edge":
             if voice_profile.edge_voice_id:
                 return voice_profile.edge_voice_id
-            raise ValueError(
-                f"VoiceProfile {voice_profile.name!r} (edge) has no edge_voice_id"
-            )
+            raise ValueError(f"VoiceProfile {voice_profile.name!r} (edge) has no edge_voice_id")
         if voice_profile.provider == "comfyui_elevenlabs":
             if voice_profile.elevenlabs_voice_id:
                 return voice_profile.elevenlabs_voice_id
@@ -1343,7 +1329,9 @@ def _estimate_mp3_duration(path: Path) -> float:
     return (file_size * 8) / bitrate_bps
 
 
-def _generate_silence_wav(num_samples: int, sample_rate: int, channels: int, sample_width: int) -> bytes:
+def _generate_silence_wav(
+    num_samples: int, sample_rate: int, channels: int, sample_width: int
+) -> bytes:
     """Return raw PCM silence bytes."""
     return b"\x00" * (num_samples * channels * sample_width)
 
@@ -1435,7 +1423,7 @@ def _chars_to_words(
     word_start: float | None = None
     word_end: float = 0.0
 
-    for char, cs, ce in zip(characters, starts, ends):
+    for char, cs, ce in zip(characters, starts, ends, strict=False):
         if char == " ":
             if current_word_chars:
                 words.append(

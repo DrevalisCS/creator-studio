@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import httpx
 
-
 # -- Exceptions ----------------------------------------------------------------
 
 
@@ -179,7 +178,7 @@ class RunPodService:
 
     # -- Context manager -------------------------------------------------------
 
-    async def __aenter__(self) -> "RunPodService":
+    async def __aenter__(self) -> RunPodService:
         return self
 
     async def __aexit__(self, *_: object) -> None:
@@ -229,8 +228,7 @@ class RunPodService:
             errors = body["errors"]
             # Extract the first error message for a concise detail string.
             messages = [
-                e.get("message", str(e))
-                for e in (errors if isinstance(errors, list) else [errors])
+                e.get("message", str(e)) for e in (errors if isinstance(errors, list) else [errors])
             ]
             detail = "; ".join(messages)[:500]
             raise RunPodAPIError(status_code=400, detail=detail)
@@ -264,10 +262,7 @@ class RunPodService:
         data = await self._query(_QUERY_TEMPLATES)
         templates = data.get("podTemplates", [])
         if category:
-            templates = [
-                t for t in templates
-                if t.get("category", "").lower() == category.lower()
-            ]
+            templates = [t for t in templates if t.get("category", "").lower() == category.lower()]
         return templates
 
     # -- Pods ------------------------------------------------------------------

@@ -68,11 +68,7 @@ class YouTubeUploadRepository(BaseRepository[YouTubeUpload]):
 
     async def get_recent(self, limit: int = 50) -> list[YouTubeUpload]:
         """Return the most recent uploads across all episodes."""
-        stmt = (
-            select(YouTubeUpload)
-            .order_by(YouTubeUpload.created_at.desc())
-            .limit(limit)
-        )
+        stmt = select(YouTubeUpload).order_by(YouTubeUpload.created_at.desc()).limit(limit)
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
@@ -110,9 +106,7 @@ class YouTubePlaylistRepository(BaseRepository[YouTubePlaylist]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_by_youtube_playlist_id(
-        self, youtube_playlist_id: str
-    ) -> YouTubePlaylist | None:
+    async def get_by_youtube_playlist_id(self, youtube_playlist_id: str) -> YouTubePlaylist | None:
         """Lookup a playlist by its YouTube playlist ID string."""
         stmt = select(YouTubePlaylist).where(
             YouTubePlaylist.youtube_playlist_id == youtube_playlist_id

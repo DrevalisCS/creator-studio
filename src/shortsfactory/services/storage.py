@@ -94,7 +94,7 @@ class LocalStorage:
         except ValueError:
             raise PathTraversalError(
                 f"Path {resolved} is outside the storage root {self.base_path}"
-            )
+            ) from None
         return resolved
 
     def resolve_path(self, relative_path: str) -> Path:

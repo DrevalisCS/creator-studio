@@ -80,9 +80,7 @@ async def _check_redis(redis: Redis) -> ServiceHealth:
         pong = await redis.ping()
         if pong:
             return ServiceHealth(name="redis", status="ok")
-        return ServiceHealth(
-            name="redis", status="degraded", message="Ping returned False"
-        )
+        return ServiceHealth(name="redis", status="degraded", message="Ping returned False")
     except Exception as exc:
         return ServiceHealth(
             name="redis",
@@ -99,7 +97,6 @@ async def _check_comfyui_servers(db, default_url: str) -> list[ServiceHealth]:
     """
     import httpx
 
-    from shortsfactory.models.comfyui import ComfyUIServer
     from shortsfactory.repositories.comfyui import ComfyUIServerRepository
 
     results: list[ServiceHealth] = []

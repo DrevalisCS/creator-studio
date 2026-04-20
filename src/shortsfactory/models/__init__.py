@@ -15,8 +15,8 @@ from .llm_config import LLMConfig
 from .media_asset import MediaAsset
 from .prompt_template import PromptTemplate
 from .series import Series
-from .voice_profile import VoiceProfile
 from .video_template import VideoTemplate
+from .voice_profile import VoiceProfile
 from .youtube_channel import YouTubeChannel, YouTubeUpload
 
 __all__ = [

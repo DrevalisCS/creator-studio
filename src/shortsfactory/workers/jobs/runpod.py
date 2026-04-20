@@ -172,7 +172,9 @@ async def auto_deploy_runpod_pod(
                 registered=True,
                 service_url=proxy_url,
             )
-            log.info("auto_deploy_complete", pod_type="comfyui", proxy_url=proxy_url, connected=True)
+            log.info(
+                "auto_deploy_complete", pod_type="comfyui", proxy_url=proxy_url, connected=True
+            )
         else:
             await set_status(
                 "ready",
@@ -180,15 +182,16 @@ async def auto_deploy_runpod_pod(
                 registered=True,
                 service_url=proxy_url,
             )
-            log.info("auto_deploy_complete", pod_type="comfyui", proxy_url=proxy_url, connected=False)
+            log.info(
+                "auto_deploy_complete", pod_type="comfyui", proxy_url=proxy_url, connected=False
+            )
 
     elif pod_type == "vllm":
         import httpx
 
         from shortsfactory.core.config import Settings
-        from shortsfactory.core.security import encrypt_value
 
-        settings = Settings()  # type: ignore[call-arg]
+        Settings()  # type: ignore[call-arg]
         base_url = f"{proxy_url}/v1"
 
         async with session_factory() as session:
@@ -199,7 +202,6 @@ async def auto_deploy_runpod_pod(
 
             # vLLM pods are deployed without API key auth (RunPod proxy
             # strips Authorization headers anyway). Store empty key.
-            vllm_api_key = ""
             encrypted_key, key_ver = "", 1  # No encryption needed for empty key
 
             # Idempotent: skip creation if a config with this base_url already exists.

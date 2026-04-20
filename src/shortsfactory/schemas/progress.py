@@ -65,19 +65,15 @@ class ProgressMessage(BaseModel):
 
     episode_id: str = Field(..., description="UUID of the episode being generated")
     job_id: str = Field(..., description="UUID of the GenerationJob")
-    step: Literal["script", "voice", "scenes", "captions", "assembly", "thumbnail"] = (
-        Field(..., description="Pipeline step this message relates to")
+    step: Literal["script", "voice", "scenes", "captions", "assembly", "thumbnail"] = Field(
+        ..., description="Pipeline step this message relates to"
     )
     status: Literal["queued", "running", "done", "failed"] = Field(
         ..., description="Current status of the job"
     )
-    progress_pct: int = Field(
-        ..., ge=0, le=100, description="Progress percentage 0-100"
-    )
+    progress_pct: int = Field(..., ge=0, le=100, description="Progress percentage 0-100")
     message: str = Field(default="", description="Human-readable status message")
-    error: str | None = Field(
-        default=None, description="Error details when status is 'failed'"
-    )
+    error: str | None = Field(default=None, description="Error details when status is 'failed'")
     detail: dict[str, Any] | None = Field(
         default=None,
         description="Arbitrary extra data (e.g. scene_number, total_scenes)",

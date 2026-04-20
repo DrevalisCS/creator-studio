@@ -22,7 +22,9 @@ class NotFoundError(Exception):
 class InvalidStatusError(Exception):
     """Raised when an operation is attempted on a resource in an invalid state."""
 
-    def __init__(self, resource: str, resource_id: UUID | str, current: str, allowed: list[str]) -> None:
+    def __init__(
+        self, resource: str, resource_id: UUID | str, current: str, allowed: list[str]
+    ) -> None:
         self.resource = resource
         self.resource_id = resource_id
         self.current = current

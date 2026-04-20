@@ -71,8 +71,26 @@ select = [
     "UP",  # pyupgrade
     "B",   # flake8-bugbear
     "SIM", # flake8-simplify
-    "TCH", # flake8-type-checking
 ]
+ignore = [
+    # FastAPI / SQLAlchemy idioms that ruff flags but are canonical:
+    "B008",    # `Depends()` in default arg — FastAPI's intended pattern
+    "E501",    # line-too-long — formatter handles this; residual lines are URLs/strings
+    "SIM105",  # try/except/pass is clearer than contextlib.suppress in many places
+    "SIM102",  # nested if — often intentional for clarity
+    "SIM108",  # ternary — not always more readable
+    "SIM117",  # multiple with — fine when context vars belong together
+    "B007",    # unused loop variable — often intentional when iterating for side effects
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are allowed to have more relaxed style (long asserts, fixtures, etc.)
+"tests/**/*.py" = ["B017"]
+# conftest.py patches SQLAlchemy's UUID type before importing app modules;
+# the reordered imports are intentional and correct.
+"tests/conftest.py" = ["E402"]
+# Alembic auto-generated migrations have their own conventions
+"migrations/**/*.py" = ["E402", "F401", "F841"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["shortsfactory"]

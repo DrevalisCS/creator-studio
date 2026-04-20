@@ -60,9 +60,7 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         Returns the number of rows deleted.
         """
         stmt = (
-            delete(MediaAsset)
-            .where(MediaAsset.episode_id == episode_id)
-            .returning(MediaAsset.id)
+            delete(MediaAsset).where(MediaAsset.episode_id == episode_id).returning(MediaAsset.id)
         )
         result = await self.session.execute(stmt)
         await self.session.flush()

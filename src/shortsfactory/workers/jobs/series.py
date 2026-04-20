@@ -61,9 +61,7 @@ async def generate_series_async(ctx: dict, job_id: str, payload: dict) -> dict:
             # Resolve LLM provider
             llm_config_id = payload.get("llm_config_id")
             if llm_config_id:
-                llm_config = await LLMConfigRepository(session).get_by_id(
-                    UUID(llm_config_id)
-                )
+                llm_config = await LLMConfigRepository(session).get_by_id(UUID(llm_config_id))
                 if not llm_config:
                     raise ValueError("LLM config not found")
                 llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
@@ -187,9 +185,7 @@ Each episode topic should be specific and actionable, not vague."""
                 "episodes": episodes_created,
             }
 
-            await redis_client.set(
-                f"script_job:{job_id}:result", json.dumps(result_dict), ex=3600
-            )
+            await redis_client.set(f"script_job:{job_id}:result", json.dumps(result_dict), ex=3600)
             await redis_client.set(f"script_job:{job_id}:status", "done", ex=3600)
 
             log.info(
@@ -201,8 +197,6 @@ Each episode topic should be specific and actionable, not vague."""
 
     except Exception as exc:
         log.error("job_failed", error=str(exc), exc_info=True)
-        await redis_client.set(
-            f"script_job:{job_id}:error", str(exc)[:500], ex=3600
-        )
+        await redis_client.set(f"script_job:{job_id}:error", str(exc)[:500], ex=3600)
         await redis_client.set(f"script_job:{job_id}:status", "failed", ex=3600)
         return {"status": "failed", "error": str(exc)}

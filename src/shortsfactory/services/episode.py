@@ -45,8 +45,7 @@ class EpisodeInvalidStatusError(Exception):
         self.current_status = current_status
         self.allowed = allowed
         super().__init__(
-            f"Episode {episode_id} has status '{current_status}', "
-            f"expected one of {allowed}"
+            f"Episode {episode_id} has status '{current_status}', expected one of {allowed}"
         )
 
 
@@ -117,6 +116,4 @@ class EpisodeService:
     ) -> None:
         """Raise EpisodeInvalidStatusError if episode status is not in allowed list."""
         if episode.status not in allowed:
-            raise EpisodeInvalidStatusError(
-                episode.id, episode.status, allowed
-            )
+            raise EpisodeInvalidStatusError(episode.id, episode.status, allowed)

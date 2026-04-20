@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # -- Pod management schemas ----------------------------------------------------
 
 
@@ -65,10 +64,7 @@ class RunPodRegisterPodRequest(BaseModel):
     )
     server_name: str | None = Field(
         default=None,
-        description=(
-            "Name for the ComfyUI server entry. "
-            "Defaults to the pod ID if not supplied."
-        ),
+        description=("Name for the ComfyUI server entry. Defaults to the pod ID if not supplied."),
     )
     max_concurrent: int = Field(
         default=2,

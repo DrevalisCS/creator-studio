@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 import jwt
@@ -32,7 +32,7 @@ _EXPECTED_ISS = "drevalis-license-server"
 REDIS_STATE_VERSION_KEY = "license:state_version"
 
 
-async def bump_state_version(redis: "Redis") -> int:
+async def bump_state_version(redis: Redis) -> int:
     """Increment the cross-process state version. Call after any mutation."""
     try:
         return int(await redis.incr(REDIS_STATE_VERSION_KEY))
@@ -40,7 +40,7 @@ async def bump_state_version(redis: "Redis") -> int:
         return 0
 
 
-async def get_remote_version(redis: "Redis") -> int:
+async def get_remote_version(redis: Redis) -> int:
     try:
         raw = await redis.get(REDIS_STATE_VERSION_KEY)
         return int(raw) if raw else 0
@@ -49,8 +49,8 @@ async def get_remote_version(redis: "Redis") -> int:
 
 
 async def refresh_if_stale(
-    session_factory: "async_sessionmaker",  # type: ignore[type-arg]
-    redis: "Redis",
+    session_factory: async_sessionmaker,  # type: ignore[type-arg]
+    redis: Redis,
     *,
     public_key_override_pem: str | None = None,
 ) -> None:
@@ -123,7 +123,7 @@ def _classify(claims: LicenseClaims, *, now_unix: int) -> LicenseStatus:
 
 
 async def bootstrap_license_state(
-    session_factory: "async_sessionmaker",  # type: ignore[type-arg]
+    session_factory: async_sessionmaker,  # type: ignore[type-arg]
     *,
     public_key_override_pem: str | None = None,
 ) -> LicenseState:
@@ -154,7 +154,7 @@ async def bootstrap_license_state(
         logger.warning("license_bootstrap", status=state.status.value, error=str(exc)[:120])
         return state
 
-    now = int(datetime.now(tz=timezone.utc).timestamp())
+    now = int(datetime.now(tz=UTC).timestamp())
     status = _classify(claims, now_unix=now)
     state = LicenseState(status=status, claims=claims)
     set_state(state)

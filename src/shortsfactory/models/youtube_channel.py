@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import BOOLEAN, INTEGER, TEXT, TIMESTAMP, CheckConstraint, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -25,31 +25,25 @@ class YouTubeChannel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """
 
     __tablename__ = "youtube_channels"
-    __table_args__ = (
-        Index("ix_youtube_channels_channel_id", "channel_id", unique=True),
-    )
+    __table_args__ = (Index("ix_youtube_channels_channel_id", "channel_id", unique=True),)
 
     channel_id: Mapped[str] = mapped_column(TEXT, nullable=False, unique=True)
     channel_name: Mapped[str] = mapped_column(TEXT, nullable=False)
 
     # Encrypted OAuth tokens (Fernet)
-    access_token_encrypted: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    refresh_token_encrypted: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    access_token_encrypted: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    refresh_token_encrypted: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     token_key_version: Mapped[int] = mapped_column(
         INTEGER, nullable=False, server_default=text("1")
     )
 
-    token_expiry: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
+    token_expiry: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
 
-    is_active: Mapped[bool] = mapped_column(
-        BOOLEAN, nullable=False, server_default=text("true")
-    )
+    is_active: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, server_default=text("true"))
 
     # ── Scheduling preferences ────────────────────────────────────────
-    upload_days: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
-    upload_time: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    upload_days: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    upload_time: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     uploads: Mapped[list[YouTubeUpload]] = relationship(
@@ -97,17 +91,17 @@ class YouTubeUpload(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
 
-    youtube_video_id: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    youtube_url: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    youtube_video_id: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    youtube_url: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     title: Mapped[str] = mapped_column(TEXT, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    description: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     privacy_status: Mapped[str] = mapped_column(
         TEXT, nullable=False, server_default=text("'private'")
     )
     upload_status: Mapped[str] = mapped_column(
         TEXT, nullable=False, server_default=text("'pending'")
     )
-    error_message: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     episode: Mapped[Episode] = relationship()
@@ -145,8 +139,8 @@ class YouTubeAudiobookUpload(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
 
-    youtube_video_id: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    youtube_url: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    youtube_video_id: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    youtube_url: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     title: Mapped[str] = mapped_column(TEXT, nullable=False)
     privacy_status: Mapped[str] = mapped_column(
         TEXT, nullable=False, server_default=text("'private'")
@@ -154,8 +148,8 @@ class YouTubeAudiobookUpload(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     upload_status: Mapped[str] = mapped_column(
         TEXT, nullable=False, server_default=text("'pending'")
     )
-    error_message: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    playlist_id: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    playlist_id: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     audiobook: Mapped[Audiobook] = relationship()
@@ -186,13 +180,11 @@ class YouTubePlaylist(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     youtube_playlist_id: Mapped[str] = mapped_column(TEXT, nullable=False)
     title: Mapped[str] = mapped_column(TEXT, nullable=False)
-    description: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    description: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     privacy_status: Mapped[str] = mapped_column(
         TEXT, nullable=False, server_default=text("'private'")
     )
-    item_count: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default=text("0")
-    )
+    item_count: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default=text("0"))
 
     # ── Relationships ──────────────────────────────────────────────────
     channel: Mapped[YouTubeChannel] = relationship(back_populates="playlists")

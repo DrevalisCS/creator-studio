@@ -47,9 +47,7 @@ async def generate_episode(ctx: dict, episode_id: str) -> dict:
     _lic = _license_state()
     if not _lic.is_usable:
         log.warning("generate_episode_blocked_license", status=_lic.status.value)
-        raise RuntimeError(
-            f"license_not_usable:{_lic.status.value}"
-        )
+        raise RuntimeError(f"license_not_usable:{_lic.status.value}")
 
     parsed_id = uuid.UUID(episode_id)
     session_factory = ctx["session_factory"]
@@ -66,6 +64,7 @@ async def generate_episode(ctx: dict, episode_id: str) -> dict:
         async with session_factory() as _ps:
             from shortsfactory.repositories.episode import EpisodeRepository as _ER
             from shortsfactory.repositories.series import SeriesRepository as _SR
+
             _ep = await _ER(_ps).get_by_id(parsed_id)
             if _ep:
                 _series = await _SR(_ps).get_by_id(_ep.series_id)
@@ -73,21 +72,34 @@ async def generate_episode(ctx: dict, episode_id: str) -> dict:
                 if is_longform:
                     # Check if any shorts episodes are generating or queued
                     from sqlalchemy import text as _text
-                    _result = await _ps.execute(_text(
-                        "SELECT COUNT(*) FROM episodes e JOIN series s ON e.series_id = s.id "
-                        "WHERE e.status = 'generating' AND s.content_format = 'shorts'"
-                    ))
+
+                    _result = await _ps.execute(
+                        _text(
+                            "SELECT COUNT(*) FROM episodes e JOIN series s ON e.series_id = s.id "
+                            "WHERE e.status = 'generating' AND s.content_format = 'shorts'"
+                        )
+                    )
                     shorts_generating = _result.scalar() or 0
-                    _result2 = await _ps.execute(_text(
-                        "SELECT COUNT(*) FROM episodes e JOIN series s ON e.series_id = s.id "
-                        "WHERE e.status IN ('draft', 'failed') AND s.content_format = 'shorts'"
-                    ))
+                    _result2 = await _ps.execute(
+                        _text(
+                            "SELECT COUNT(*) FROM episodes e JOIN series s ON e.series_id = s.id "
+                            "WHERE e.status IN ('draft', 'failed') AND s.content_format = 'shorts'"
+                        )
+                    )
                     shorts_waiting = _result2.scalar() or 0
                     if shorts_generating > 0 or shorts_waiting > 2:
                         # Defer longform — re-enqueue with 60s delay
-                        log.info("longform_deferred", shorts_generating=shorts_generating, shorts_waiting=shorts_waiting)
+                        log.info(
+                            "longform_deferred",
+                            shorts_generating=shorts_generating,
+                            shorts_waiting=shorts_waiting,
+                        )
                         await ctx["redis"].enqueue_job("generate_episode", episode_id, _defer_by=60)
-                        return {"episode_id": episode_id, "status": "deferred", "reason": "shorts_first"}
+                        return {
+                            "episode_id": episode_id,
+                            "status": "deferred",
+                            "reason": "shorts_first",
+                        }
 
     # Acquire a fresh DB session for this job
     async with session_factory() as session:
@@ -145,9 +157,7 @@ async def reassemble_episode(ctx: dict, episode_id: str) -> dict:
         # Mark any previous done jobs for captions/assembly/thumbnail as non-done
         # so the orchestrator will re-execute them.
         for step_name in ("captions", "assembly", "thumbnail"):
-            existing = await job_repo.get_latest_by_episode_and_step(
-                parsed_id, step_name
-            )
+            existing = await job_repo.get_latest_by_episode_and_step(parsed_id, step_name)
             if existing and existing.status == "done":
                 await job_repo.update(
                     existing.id,
@@ -210,9 +220,7 @@ async def regenerate_voice(ctx: dict, episode_id: str) -> dict:
         # Mark voice, captions, assembly, thumbnail as queued so the
         # orchestrator will re-execute them.
         for step_name in ("voice", "captions", "assembly", "thumbnail"):
-            existing = await job_repo.get_latest_by_episode_and_step(
-                parsed_id, step_name
-            )
+            existing = await job_repo.get_latest_by_episode_and_step(parsed_id, step_name)
             if existing and existing.status == "done":
                 await job_repo.update(
                     existing.id,
@@ -299,16 +307,12 @@ async def regenerate_scene(
                 log.info("visual_prompt_updated")
 
         # Delete existing media assets for this scene so they get regenerated.
-        deleted = await asset_repo.delete_by_episode_and_scene(
-            parsed_id, scene_number
-        )
+        deleted = await asset_repo.delete_by_episode_and_scene(parsed_id, scene_number)
         log.info("scene_assets_deleted", count=deleted)
 
         # Mark scenes, captions, assembly, thumbnail steps as queued.
         for step_name in ("scenes", "captions", "assembly", "thumbnail"):
-            existing = await job_repo.get_latest_by_episode_and_step(
-                parsed_id, step_name
-            )
+            existing = await job_repo.get_latest_by_episode_and_step(parsed_id, step_name)
             if existing and existing.status == "done":
                 await job_repo.update(
                     existing.id,

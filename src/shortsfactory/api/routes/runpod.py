@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shortsfactory.core.config import Settings
 from shortsfactory.core.deps import get_db, get_settings
+from shortsfactory.core.license.features import fastapi_dep_require_feature
 from shortsfactory.core.security import decrypt_value
 from shortsfactory.repositories.api_key_store import ApiKeyStoreRepository
 from shortsfactory.repositories.comfyui import ComfyUIServerRepository
@@ -38,7 +39,6 @@ from shortsfactory.schemas.runpod import (
     RunPodRegisterResponse,
     RunPodTemplateResponse,
 )
-from shortsfactory.core.license.features import fastapi_dep_require_feature
 from shortsfactory.services.runpod import RunPodAPIError, RunPodService
 
 router = APIRouter(
@@ -337,8 +337,7 @@ async def stop_pod(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a RunPod pod",
     description=(
-        "Permanently deletes the pod and its persistent volume.  "
-        "This action cannot be undone."
+        "Permanently deletes the pod and its persistent volume.  This action cannot be undone."
     ),
 )
 async def delete_pod(
@@ -433,7 +432,9 @@ async def register_pod_as_comfyui_server(
     connection_ok = False
     message: str
     try:
-        async with httpx.AsyncClient(timeout=httpx.Timeout(10.0), headers={"Authorization": f"Bearer {api_key}"}) as client:
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0), headers={"Authorization": f"Bearer {api_key}"}
+        ) as client:
             resp = await client.get(f"{comfyui_url}/system_stats")
             connection_ok = resp.status_code == 200
             message = (
@@ -473,8 +474,8 @@ async def register_pod_as_llm_server(
 
     Derives the proxy URL, creates an LLM config entry, and tests the connection.
     """
-    from shortsfactory.core.security import encrypt_value as _encrypt
     from shortsfactory.repositories.llm_config import LLMConfigRepository
+
     llm_port = (payload or {}).get("port", 8000)
     model_name = (payload or {}).get("model", "auto")
 

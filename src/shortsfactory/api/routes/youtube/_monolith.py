@@ -349,6 +349,7 @@ async def upload_episode(
         channel = await channel_repo.get_by_id(payload.channel_id)
     if channel is None and episode.series_id:
         from shortsfactory.repositories.series import SeriesRepository
+
         series_repo = SeriesRepository(db)
         series = await series_repo.get_by_id(episode.series_id)
         if series and series.youtube_channel_id:
@@ -384,9 +385,14 @@ async def upload_episode(
         # Generate SEO on-the-fly
         try:
             import json as _json
+
             from shortsfactory.repositories.llm_config import LLMConfigRepository
-            from shortsfactory.services.llm import LLMService, OpenAICompatibleProvider, _extract_json
             from shortsfactory.schemas.script import EpisodeScript
+            from shortsfactory.services.llm import (
+                LLMService,
+                OpenAICompatibleProvider,
+                _extract_json,
+            )
 
             script_obj = EpisodeScript.model_validate(episode.script)
             narration = " ".join(s.narration for s in script_obj.scenes if s.narration)
@@ -410,7 +416,9 @@ async def upload_episode(
             result = await provider.generate(
                 seo_prompt,
                 f"Video title: {episode.title}\nContent: {narration[:1000]}\nGenerate SEO metadata:",
-                temperature=0.7, max_tokens=1024, json_mode=True,
+                temperature=0.7,
+                max_tokens=1024,
+                json_mode=True,
             )
             seo_data = _json.loads(_extract_json(result.content))
 
@@ -457,9 +465,7 @@ async def upload_episode(
     if not upload_tags and isinstance(script, dict):
         script_hashtags = script.get("hashtags")
         if script_hashtags and isinstance(script_hashtags, list):
-            upload_tags = [
-                h.lstrip("#") for h in script_hashtags if isinstance(h, str)
-            ]
+            upload_tags = [h.lstrip("#") for h in script_hashtags if isinstance(h, str)]
 
     # Check for thumbnail.
     thumb_path: Path | None = None
@@ -551,14 +557,18 @@ async def upload_episode(
                         # Store playlist ID in series metadata for reuse
                         series_meta["youtube_playlist_id"] = playlist_id
                         # Use raw SQL update to avoid model attribute issues
-                        from sqlalchemy import text as sa_text
                         import json as _json
+
+                        from sqlalchemy import text as sa_text
+
                         await db.execute(
                             sa_text("UPDATE series SET metadata = :meta WHERE id = :sid"),
                             {"meta": _json.dumps(series_meta), "sid": str(series.id)},
                         )
                         await db.commit()
-                        logger.info("youtube_playlist_created", series=series.name, playlist_id=playlist_id)
+                        logger.info(
+                            "youtube_playlist_created", series=series.name, playlist_id=playlist_id
+                        )
 
                 if playlist_id:
                     # Add video to the playlist
@@ -569,7 +579,11 @@ async def upload_episode(
                         playlist_id=playlist_id,
                         video_id=result["video_id"],
                     )
-                    logger.info("youtube_added_to_playlist", video_id=result["video_id"], playlist_id=playlist_id)
+                    logger.info(
+                        "youtube_added_to_playlist",
+                        video_id=result["video_id"],
+                        playlist_id=playlist_id,
+                    )
 
         except Exception as playlist_exc:
             # Non-fatal — video is uploaded, playlist is bonus

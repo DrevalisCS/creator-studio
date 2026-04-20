@@ -18,9 +18,7 @@ class SceneScript(BaseModel):
     """
 
     scene_number: int = Field(default=0, ge=0, description="1-based scene index")
-    narration: str = Field(
-        ..., min_length=1, description="Voice-over text for this scene"
-    )
+    narration: str = Field(..., min_length=1, description="Voice-over text for this scene")
     visual_prompt: str = Field(
         ...,
         min_length=1,
@@ -65,19 +63,11 @@ class EpisodeScript(BaseModel):
     """
 
     title: str = Field(..., min_length=1, description="Episode title")
-    hook: str = Field(
-        default="", description="Opening hook line to grab attention"
-    )
-    scenes: list[SceneScript] = Field(
-        ..., min_length=1, description="Ordered list of scenes"
-    )
+    hook: str = Field(default="", description="Opening hook line to grab attention")
+    scenes: list[SceneScript] = Field(..., min_length=1, description="Ordered list of scenes")
     outro: str = Field(default="", description="Closing line / call-to-action")
-    total_duration_seconds: float = Field(
-        default=0, ge=0, description="Sum of all scene durations"
-    )
-    language: str = Field(
-        default="en-US", description="BCP-47 language tag for the script"
-    )
+    total_duration_seconds: float = Field(default=0, ge=0, description="Sum of all scene durations")
+    language: str = Field(default="en-US", description="BCP-47 language tag for the script")
     # Extra fields the LLM might generate (stored but not required)
     description: str = Field(default="", description="YouTube description")
     hashtags: list[str] = Field(default_factory=list, description="Hashtags")
@@ -105,7 +95,12 @@ class EpisodeScript(BaseModel):
             total = 0.0
             for scene in data.get("scenes", []):
                 if isinstance(scene, dict):
-                    d = scene.get("duration_seconds") or scene.get("duration_hint") or scene.get("duration") or 0
+                    d = (
+                        scene.get("duration_seconds")
+                        or scene.get("duration_hint")
+                        or scene.get("duration")
+                        or 0
+                    )
                     total += float(d)
             data["total_duration_seconds"] = total
         return data

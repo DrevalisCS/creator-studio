@@ -25,7 +25,6 @@ import asyncio
 import json
 import os
 import secrets
-from typing import Any
 from uuid import UUID
 
 import structlog
@@ -178,7 +177,7 @@ async def _listen_redis_pubsub(
                     pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0),
                     timeout=5.0,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # No message within timeout -- loop and check stop_event
                 continue
             except Exception:
@@ -259,9 +258,7 @@ async def websocket_progress(websocket: WebSocket, episode_id: str) -> None:
     stop_event = asyncio.Event()
 
     # Start the Redis listener as a background task
-    listener_task = asyncio.create_task(
-        _listen_redis_pubsub(episode_id, websocket, stop_event)
-    )
+    listener_task = asyncio.create_task(_listen_redis_pubsub(episode_id, websocket, stop_event))
 
     try:
         # Keep the WebSocket alive by receiving (and discarding) client messages.
@@ -317,9 +314,7 @@ async def websocket_audiobook_progress(websocket: WebSocket, audiobook_id: str) 
     await manager.connect(key, websocket)
 
     stop_event = asyncio.Event()
-    listener_task = asyncio.create_task(
-        _listen_redis_pubsub(key, websocket, stop_event)
-    )
+    listener_task = asyncio.create_task(_listen_redis_pubsub(key, websocket, stop_event))
 
     try:
         while True:
@@ -374,7 +369,7 @@ async def websocket_all_progress(websocket: WebSocket) -> None:
                         pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0),
                         timeout=5.0,
                     )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     continue
                 except Exception:
                     logger.debug("pubsub_all_get_message_error", exc_info=True)

@@ -14,7 +14,9 @@ import structlog
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-async def generate_episode_music(ctx: dict, episode_id: str, mood: str, duration_seconds: float) -> dict:
+async def generate_episode_music(
+    ctx: dict, episode_id: str, mood: str, duration_seconds: float
+) -> dict:
     """Generate a background music track using AceStep 1.5 via ComfyUI.
 
     Parameters
@@ -34,9 +36,9 @@ async def generate_episode_music(ctx: dict, episode_id: str, mood: str, duration
     from shortsfactory.repositories.episode import EpisodeRepository
     from shortsfactory.services.comfyui import ComfyUIClient
     from shortsfactory.services.music import (
-        MusicService,
         _ACESTEP_MAX_DURATION,
         _MOOD_TAGS,
+        MusicService,
     )
 
     db = ctx["db"]
@@ -126,7 +128,9 @@ async def generate_episode_music(ctx: dict, episode_id: str, mood: str, duration
                         f"{msg_data.get('exception_message', 'unknown error')}"
                     )
                     break
-            logger.error("music_generate_job.workflow_error", detail=error_detail, prompt_id=prompt_id)
+            logger.error(
+                "music_generate_job.workflow_error", detail=error_detail, prompt_id=prompt_id
+            )
             return {"error": f"ComfyUI workflow error: {error_detail}"}
 
         # Locate the audio output.

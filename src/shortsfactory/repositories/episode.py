@@ -81,10 +81,6 @@ class EpisodeRepository(BaseRepository[Episode]):
 
     async def count_by_status(self, status: str) -> int:
         """Return the count of episodes with the given status."""
-        stmt = (
-            select(func.count())
-            .select_from(Episode)
-            .where(Episode.status == status)
-        )
+        stmt = select(func.count()).select_from(Episode).where(Episode.status == status)
         result = await self.session.execute(stmt)
         return result.scalar_one()

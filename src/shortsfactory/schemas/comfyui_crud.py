@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from shortsfactory.core.validators import validate_safe_url_or_localhost
 
-
 # ── ComfyUI Server schemas ────────────────────────────────────────────────
 
 

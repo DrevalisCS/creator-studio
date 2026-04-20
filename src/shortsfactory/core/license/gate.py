@@ -18,7 +18,7 @@ state is not usable.
 
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Iterable
 
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -54,9 +54,7 @@ class LicenseGateMiddleware(BaseHTTPMiddleware):
         self._exempt = tuple(exempt_prefixes)
         self._guarded = tuple(guarded_prefixes)
 
-    async def dispatch(
-        self, request: Request, call_next: RequestResponseEndpoint
-    ) -> Response:
+    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         path = request.url.path
 
         # Exempt paths always pass.

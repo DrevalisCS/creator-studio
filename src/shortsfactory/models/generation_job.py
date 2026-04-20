@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
-from sqlalchemy import INTEGER, TIMESTAMP, TEXT, CheckConstraint, ForeignKey, Index
+from sqlalchemy import INTEGER, TEXT, TIMESTAMP, CheckConstraint, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,29 +44,19 @@ class GenerationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         nullable=False,
     )
     step: Mapped[str] = mapped_column(TEXT, nullable=False)
-    status: Mapped[str] = mapped_column(
-        TEXT, nullable=False, server_default="'queued'"
-    )
-    progress_pct: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default="0"
-    )
-    started_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    completed_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    error_message: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    retry_count: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default="0"
-    )
-    worker_id: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    status: Mapped[str] = mapped_column(TEXT, nullable=False, server_default="'queued'")
+    progress_pct: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="0")
+    started_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    completed_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    retry_count: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="0")
+    worker_id: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Long-form granular tracking ──────────────────────────────────
-    chapter_number: Mapped[Optional[int]] = mapped_column(INTEGER, nullable=True)
-    scene_number: Mapped[Optional[int]] = mapped_column(INTEGER, nullable=True)
-    total_items: Mapped[Optional[int]] = mapped_column(INTEGER, nullable=True)
-    completed_items: Mapped[Optional[int]] = mapped_column(INTEGER, nullable=True)
+    chapter_number: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
+    scene_number: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
+    total_items: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
+    completed_items: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     episode: Mapped[Episode] = relationship(back_populates="generation_jobs")

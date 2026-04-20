@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shortsfactory.core.config import Settings
 from shortsfactory.core.deps import get_db, get_settings
-from shortsfactory.core.security import decrypt_value, encrypt_value
+from shortsfactory.core.security import encrypt_value
 from shortsfactory.repositories.llm_config import LLMConfigRepository
 from shortsfactory.schemas.llm_config import (
     LLMConfigCreate,
@@ -82,9 +82,7 @@ async def create_llm_config(
     api_key_encrypted = None
     api_key_version = 1
     if payload.api_key:
-        api_key_encrypted, api_key_version = encrypt_value(
-            payload.api_key, settings.encryption_key
-        )
+        api_key_encrypted, api_key_version = encrypt_value(payload.api_key, settings.encryption_key)
 
     config = await repo.create(
         name=payload.name,
@@ -228,9 +226,7 @@ async def test_llm_config(
         storage = LocalStorage(settings.storage_base_path)
         # Pass the encryption key to LLMService so it can decrypt API keys
         # internally without mutating the ORM object (M5 fix).
-        service = LLMService(
-            storage=storage, encryption_key=settings.encryption_key
-        )
+        service = LLMService(storage=storage, encryption_key=settings.encryption_key)
 
         # Expunge the config from the session so that no accidental
         # autoflush can persist decrypted values to the database.
@@ -251,7 +247,7 @@ async def test_llm_config(
             model=result.model,
             tokens_used=result.total_tokens,
         )
-    except Exception as exc:
+    except Exception:
         return LLMTestResponse(
             success=False,
             message="LLM test failed. Check server logs for details.",

@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import uuid
-from datetime import datetime
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import NUMERIC, TEXT, CheckConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -32,28 +30,28 @@ class VoiceProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     provider: Mapped[str] = mapped_column(TEXT, nullable=False)
 
     # Piper-specific
-    piper_model_path: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    piper_speaker_id: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    piper_model_path: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    piper_speaker_id: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # Shared tuning knobs
     speed: Mapped[Decimal] = mapped_column(NUMERIC, nullable=False, server_default="1.0")
     pitch: Mapped[Decimal] = mapped_column(NUMERIC, nullable=False, server_default="1.0")
 
     # ElevenLabs-specific
-    elevenlabs_voice_id: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    elevenlabs_voice_id: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # Kokoro-specific
-    kokoro_voice_name: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    kokoro_model_path: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    kokoro_voice_name: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    kokoro_model_path: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # Edge TTS-specific
-    edge_voice_id: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    edge_voice_id: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # Gender tag for voice casting
-    gender: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    gender: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # Optional sample audio for preview
-    sample_audio_path: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    sample_audio_path: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     series: Mapped[list[Series]] = relationship(

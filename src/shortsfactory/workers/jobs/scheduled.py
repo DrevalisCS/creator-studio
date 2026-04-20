@@ -7,6 +7,8 @@ Jobs
 
 from __future__ import annotations
 
+from datetime import UTC
+
 import structlog
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -19,7 +21,7 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
     upload using the channel's OAuth tokens. Other platforms are TODO.
     """
     import asyncio as _asyncio
-    from datetime import datetime, timezone
+    from datetime import datetime
     from pathlib import Path
 
     from shortsfactory.core.config import Settings
@@ -41,7 +43,7 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
 
     async with session_factory() as session:
         repo = ScheduledPostRepository(session)
-        pending = await repo.get_pending(before=datetime.now(timezone.utc))
+        pending = await repo.get_pending(before=datetime.now(UTC))
 
         published = 0
         failed = 0
@@ -94,7 +96,9 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
 
                     # Find video file
                     asset_repo = MediaAssetRepository(session)
-                    video_assets = await asset_repo.get_by_episode_and_type(post.content_id, "video")
+                    video_assets = await asset_repo.get_by_episode_and_type(
+                        post.content_id, "video"
+                    )
                     if not video_assets:
                         raise RuntimeError(f"No video asset for episode {post.content_id}")
                     video_path = Path(settings.storage_base_path) / video_assets[-1].file_path
@@ -103,7 +107,9 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
 
                     # Find thumbnail
                     thumb_path = None
-                    thumb_assets = await asset_repo.get_by_episode_and_type(post.content_id, "thumbnail")
+                    thumb_assets = await asset_repo.get_by_episode_and_type(
+                        post.content_id, "thumbnail"
+                    )
                     if thumb_assets:
                         candidate = Path(settings.storage_base_path) / thumb_assets[-1].file_path
                         if candidate.exists():
@@ -127,7 +133,9 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
                             break
                         except Exception as upload_exc:
                             if attempt < 2:
-                                log.warning("upload_retry", attempt=attempt + 1, error=str(upload_exc)[:100])
+                                log.warning(
+                                    "upload_retry", attempt=attempt + 1, error=str(upload_exc)[:100]
+                                )
                                 await _asyncio.sleep(10 * (attempt + 1))
                             else:
                                 raise
@@ -135,7 +143,7 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
                     await repo.update(
                         post.id,
                         status="published",
-                        published_at=datetime.now(timezone.utc),
+                        published_at=datetime.now(UTC),
                         remote_id=result["video_id"] if result else None,
                         remote_url=result["url"] if result else None,
                     )

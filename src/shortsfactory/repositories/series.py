@@ -47,9 +47,7 @@ class SeriesRepository(BaseRepository[Series]):
         Returns a list of ``(Series, episode_count)`` tuples ordered by
         series name.
         """
-        episode_count = (
-            func.count(Episode.id).label("episode_count")
-        )
+        episode_count = func.count(Episode.id).label("episode_count")
         stmt = (
             select(Series, episode_count)
             .outerjoin(Episode, Episode.series_id == Series.id)

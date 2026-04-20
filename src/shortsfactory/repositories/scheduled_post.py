@@ -29,7 +29,9 @@ class ScheduledPostRepository(BaseRepository[ScheduledPost]):
     async def get_by_content(self, content_type: str, content_id: UUID) -> list[ScheduledPost]:
         stmt = (
             select(ScheduledPost)
-            .where(ScheduledPost.content_type == content_type, ScheduledPost.content_id == content_id)
+            .where(
+                ScheduledPost.content_type == content_type, ScheduledPost.content_id == content_id
+            )
             .order_by(ScheduledPost.scheduled_at.desc())
         )
         result = await self.session.execute(stmt)

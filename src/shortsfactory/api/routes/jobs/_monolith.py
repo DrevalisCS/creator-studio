@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC
 from typing import Any
 from uuid import UUID
 
@@ -135,15 +136,17 @@ async def get_active_tasks(
     for ep_id, job in by_episode.items():
         ep_title = ep_titles.get(ep_id, f"Episode {str(ep_id)[:8]}")
 
-        tasks.append({
-            "type": "episode_generation",
-            "id": str(ep_id),
-            "title": ep_title,
-            "step": job.step,
-            "status": job.status,
-            "progress": job.progress_pct,
-            "url": f"/episodes/{ep_id}",
-        })
+        tasks.append(
+            {
+                "type": "episode_generation",
+                "id": str(ep_id),
+                "title": ep_title,
+                "step": job.step,
+                "status": job.status,
+                "progress": job.progress_pct,
+                "url": f"/episodes/{ep_id}",
+            }
+        )
 
     # ── 2. Audiobook generation (running in arq) ─────────────────────
     try:
@@ -152,15 +155,17 @@ async def get_active_tasks(
         ab_repo = AudiobookRepository(db)
         generating_abs = await ab_repo.get_by_status("generating")
         for ab in generating_abs:
-            tasks.append({
-                "type": "audiobook_generation",
-                "id": str(ab.id),
-                "title": ab.title,
-                "step": "tts",
-                "status": "running",
-                "progress": -1,
-                "url": f"/audiobooks/{ab.id}",
-            })
+            tasks.append(
+                {
+                    "type": "audiobook_generation",
+                    "id": str(ab.id),
+                    "title": ab.title,
+                    "step": "tts",
+                    "status": "running",
+                    "progress": -1,
+                    "url": f"/audiobooks/{ab.id}",
+                }
+            )
     except Exception:
         logger.debug("tasks_audiobook_query_failed", exc_info=True)
 
@@ -169,9 +174,7 @@ async def get_active_tasks(
     try:
         cursor: int = 0
         while True:
-            cursor, keys = await redis_client.scan(
-                cursor, match="script_job:*:status", count=50
-            )
+            cursor, keys = await redis_client.scan(cursor, match="script_job:*:status", count=50)
             for key in keys:
                 raw_val = await redis_client.get(key)
                 if not raw_val:
@@ -209,15 +212,17 @@ async def get_active_tasks(
                 if "Series" in title:
                     url = "/series"
 
-                tasks.append({
-                    "type": task_type,
-                    "id": jid,
-                    "title": title,
-                    "step": "llm",
-                    "status": "running",
-                    "progress": -1,
-                    "url": url,
-                })
+                tasks.append(
+                    {
+                        "type": task_type,
+                        "id": jid,
+                        "title": title,
+                        "step": "llm",
+                        "status": "running",
+                        "progress": -1,
+                        "url": url,
+                    }
+                )
 
             if cursor == 0:
                 break
@@ -257,9 +262,7 @@ async def cleanup_stale_jobs(
     for job in active_jobs:
         ep = await ep_repo.get_by_id(job.episode_id)
         if ep is None or ep.status != "generating":
-            await job_repo.update_status(
-                job.id, "failed", error_message="Cleaned up: orphaned job"
-            )
+            await job_repo.update_status(job.id, "failed", error_message="Cleaned up: orphaned job")
             cleaned_jobs += 1
 
     # 2. Reset stale generating episodes to draft
@@ -373,7 +376,9 @@ async def cancel_all_jobs(
     summary="Retry all failed episodes from their first failed step",
 )
 async def retry_all_failed(
-    priority: str = Query(default="shorts_first", description="Queue order: shorts_first, longform_first, fifo"),
+    priority: str = Query(
+        default="shorts_first", description="Queue order: shorts_first, longform_first, fifo"
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, Any]:
     """Find all episodes with status 'failed' and enqueue retry jobs.
@@ -390,9 +395,13 @@ async def retry_all_failed(
 
     # Sort by priority — shorts first by default
     if priority == "shorts_first":
-        failed_episodes.sort(key=lambda e: (0 if getattr(e, "content_format", "shorts") == "shorts" else 1))
+        failed_episodes.sort(
+            key=lambda e: 0 if getattr(e, "content_format", "shorts") == "shorts" else 1
+        )
     elif priority == "longform_first":
-        failed_episodes.sort(key=lambda e: (0 if getattr(e, "content_format", "shorts") == "longform" else 1))
+        failed_episodes.sort(
+            key=lambda e: 0 if getattr(e, "content_format", "shorts") == "longform" else 1
+        )
 
     retried = 0
     for episode in failed_episodes:
@@ -404,7 +413,9 @@ async def retry_all_failed(
             logger.debug("retry_all_enqueue_failed", episode_id=str(episode.id))
 
     await db.commit()
-    logger.info("retry_all_failed_done", retried=retried, total=len(failed_episodes), priority=priority)
+    logger.info(
+        "retry_all_failed_done", retried=retried, total=len(failed_episodes), priority=priority
+    )
     return {
         "message": f"Retried {retried} failed episode(s) (priority: {priority})",
         "retried": retried,
@@ -444,9 +455,7 @@ async def pause_all(
         jobs = await job_repo.get_by_episode(episode.id)
         for job in jobs:
             if job.status in ("running", "queued"):
-                await job_repo.update_status(
-                    job.id, "failed", error_message="Paused by user"
-                )
+                await job_repo.update_status(job.id, "failed", error_message="Paused by user")
 
         await ep_repo.update_status(episode.id, "failed")
         paused += 1
@@ -587,7 +596,7 @@ async def worker_health(
     a 120-second TTL.  If the key is present and was written within the last
     120 seconds the worker is considered alive.
     """
-    from datetime import datetime, timezone
+    from datetime import datetime
 
     redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
     try:
@@ -595,7 +604,7 @@ async def worker_health(
     finally:
         await redis_client.aclose()
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if raw is None:
         return {
@@ -610,7 +619,7 @@ async def worker_health(
         last_beat = datetime.fromisoformat(heartbeat_str)
         # Ensure the timestamp is timezone-aware for comparison
         if last_beat.tzinfo is None:
-            last_beat = last_beat.replace(tzinfo=timezone.utc)
+            last_beat = last_beat.replace(tzinfo=UTC)
         age_seconds = (now - last_beat).total_seconds()
     except ValueError:
         return {
@@ -723,8 +732,7 @@ async def cancel_job(
     # Check if there are other running/queued jobs for this episode.
     episode_jobs = await job_repo.get_by_episode(job.episode_id)
     remaining_active = [
-        j for j in episode_jobs
-        if j.id != job.id and j.status in ("running", "queued")
+        j for j in episode_jobs if j.id != job.id and j.status in ("running", "queued")
     ]
 
     episode_cancelled = False

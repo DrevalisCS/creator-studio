@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
-import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BOOLEAN, INTEGER, TIMESTAMP, TEXT, CheckConstraint, String
+from sqlalchemy import BOOLEAN, INTEGER, TEXT, TIMESTAMP, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,26 +28,16 @@ class ComfyUIServer(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     url: Mapped[str] = mapped_column(TEXT, nullable=False)
 
     # Fernet-encrypted API key + key-rotation version
-    api_key_encrypted: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
-    api_key_version: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default="1"
-    )
+    api_key_encrypted: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    api_key_version: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="1")
 
-    max_concurrent: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default="2"
-    )
-    is_active: Mapped[bool] = mapped_column(
-        BOOLEAN, nullable=False, server_default="true"
-    )
-    max_concurrent_video_jobs: Mapped[Optional[int]] = mapped_column(
-        INTEGER, nullable=True
-    )
+    max_concurrent: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="2")
+    is_active: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, server_default="true")
+    max_concurrent_video_jobs: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
 
     # Health-check tracking
-    last_tested_at: Mapped[Optional[datetime]] = mapped_column(
-        TIMESTAMP(timezone=True), nullable=True
-    )
-    last_test_status: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    last_tested_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    last_test_status: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     series: Mapped[list[Series]] = relationship(
@@ -68,15 +57,11 @@ class ComfyUIWorkflow(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "comfyui_workflows"
 
     name: Mapped[str] = mapped_column(TEXT, nullable=False, unique=True)
-    description: Mapped[Optional[str]] = mapped_column(TEXT, nullable=True)
+    description: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     workflow_json_path: Mapped[str] = mapped_column(TEXT, nullable=False)
-    version: Mapped[int] = mapped_column(
-        INTEGER, nullable=False, server_default="1"
-    )
+    version: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="1")
     input_mappings: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
-    content_format: Mapped[str] = mapped_column(
-        String(20), nullable=False, server_default="'any'"
-    )
+    content_format: Mapped[str] = mapped_column(String(20), nullable=False, server_default="'any'")
 
     # ── Relationships ──────────────────────────────────────────────────
     series: Mapped[list[Series]] = relationship(
