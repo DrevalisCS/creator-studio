@@ -202,8 +202,7 @@ export default function About() {
           </p>
 
           <p className="text-sm text-txt-tertiary mb-6">
-            Created by{' '}
-            <span className="font-semibold text-accent">varous555</span>
+            Created by <span className="font-semibold text-accent">Drevalis</span>
           </p>
 
           <p className="text-sm text-txt-secondary leading-relaxed max-w-xl mx-auto">
@@ -428,8 +427,8 @@ export default function About() {
       {/* ── Footer ────────────────────────────────────────────────────────── */}
       <footer className="mt-20 text-center" role="contentinfo">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-border bg-bg-surface">
-          <span className="text-xs text-txt-tertiary">Built with Claude Code by</span>
-          <span className="text-xs font-semibold text-accent">varous555</span>
+          <span className="text-xs text-txt-tertiary">Made by</span>
+          <span className="text-xs font-semibold text-accent">Drevalis</span>
           <Heart
             size={12}
             aria-label="with love"
