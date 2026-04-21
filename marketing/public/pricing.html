@@ -1,125 +1,239 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pricing — Drevalis Creator Studio</title>
-  <meta name="description" content="Solo, Pro, and Studio tiers for Drevalis Creator Studio. All tiers include every feature; tiers cap machine count, channels, and cloud GPU access." />
+  <meta name="description" content="Solo, Pro, and Studio tiers for Drevalis Creator Studio. Every tier ships every feature; tiers cap machine seats, channels, and cloud GPU access." />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/site.css" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = { darkMode: 'class', theme: { extend: {
-      fontFamily: { display: ['Outfit', 'sans-serif'], sans: ['DM Sans', 'sans-serif'] },
-      colors: { bg: { base: '#0A0B0E', elevated: '#14161B' }, txt: { primary: '#E8EAED', secondary: '#9AA0A6', muted: '#5F6368' }, accent: { DEFAULT: '#00E5B8', glow: '#00BFA8' } },
-    } } };
-  </script>
-  <style>
-    body { background:#0A0B0E; color:#E8EAED; font-family:'DM Sans',sans-serif; }
-    h1,h2,h3,h4 { font-family:'Outfit',sans-serif; }
-    .accent-gradient { background: linear-gradient(135deg,#00E5B8,#00BFA8); -webkit-background-clip: text; color: transparent; }
-    .card { background: rgba(20,22,27,.8); border: 1px solid rgba(255,255,255,.06); }
-    .glow-on-hover { transition: box-shadow .2s, transform .2s; }
-    .glow-on-hover:hover { box-shadow: 0 0 40px -10px rgba(0,229,184,.4); transform: translateY(-2px); }
-  </style>
 </head>
 
-<body>
-  <nav class="border-b border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-      <a href="/" class="font-display font-bold text-lg">Drevalis</a>
-      <div class="flex items-center gap-6 text-sm">
-        <a href="/#features" class="text-txt-secondary hover:text-txt-primary">Features</a>
-        <a href="/pricing" class="text-txt-primary">Pricing</a>
-        <a href="/download" class="text-txt-secondary hover:text-txt-primary">Download</a>
-        <a href="/account" class="text-txt-secondary hover:text-txt-primary">Account</a>
+<body class="antialiased">
+  <div class="noise"></div>
+
+  <nav class="site-nav">
+    <div class="site-nav-inner">
+      <a href="/" class="site-brand">
+        <span class="site-brand-mark">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg>
+        </span>
+        Drevalis
+      </a>
+      <div class="site-nav-links">
+        <a href="/#features" class="site-nav-link hide-xs">Features</a>
+        <a href="/#workflow" class="site-nav-link hide-sm">How it works</a>
+        <a href="/#hardware" class="site-nav-link hide-sm">Hardware</a>
+        <a href="/pricing" class="site-nav-link" aria-current="page">Pricing</a>
+        <a href="/download" class="site-nav-link">Download</a>
+        <a href="/account" class="site-nav-link hide-xs">Account</a>
+        <a href="/pricing#plans" class="btn btn-primary btn-sm">Get started</a>
       </div>
     </div>
   </nav>
 
-  <section class="max-w-6xl mx-auto px-6 py-20 text-center">
-    <h1 class="font-display text-5xl font-bold mb-4">Simple pricing. Everything unlocked.</h1>
-    <p class="text-xl text-txt-secondary mb-12 max-w-2xl mx-auto">
-      Every tier ships every feature. You're not paying for features — you're paying for how much work you want to do at once.
-    </p>
-
-    <div class="flex items-center justify-center gap-3 mb-12">
-      <span class="text-sm">Monthly</span>
-      <label class="relative inline-flex cursor-pointer items-center">
-        <input type="checkbox" data-interval-toggle class="peer sr-only" />
-        <div class="h-6 w-11 rounded-full bg-bg-elevated border border-white/10 peer-checked:bg-accent/30 peer-checked:border-accent/40"></div>
-        <div class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-txt-primary transition peer-checked:translate-x-5 peer-checked:bg-accent"></div>
-      </label>
-      <span class="text-sm">Yearly <span class="text-accent">(2 months free)</span></span>
-    </div>
-
-    <div class="grid md:grid-cols-3 gap-5 text-left">
-      <div class="card rounded-xl p-8 flex flex-col">
-        <h3 class="font-display text-xl font-bold mb-1">Solo</h3>
-        <p class="text-xs text-txt-secondary mb-6">For one creator, one channel.</p>
-        <div class="mb-6"><span class="text-4xl font-bold">$<span data-price data-price-monthly="19" data-price-yearly="190">19</span></span><span class="text-txt-secondary" data-interval-label>/mo</span></div>
-        <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
-          <li>✓ 1 machine</li>
-          <li>✓ 5 episodes / day</li>
-          <li>✓ 1 YouTube channel</li>
-          <li>✓ Edge / Piper / Kokoro TTS</li>
-          <li>✓ Updates included</li>
-        </ul>
-        <button data-checkout data-tier="solo" data-interval="monthly" class="rounded-md border border-white/10 py-3 font-semibold hover:bg-white/5">Subscribe</button>
-      </div>
-
-      <div class="card rounded-xl p-8 flex flex-col border-accent/40 bg-accent/5 relative">
-        <div class="absolute -top-3 left-1/2 -translate-x-1/2 text-xs font-semibold bg-gradient-to-r from-accent to-accent-glow text-bg-base px-3 py-1 rounded-full">Most popular</div>
-        <h3 class="font-display text-xl font-bold mb-1">Pro</h3>
-        <p class="text-xs text-txt-secondary mb-6">Scale up a few channels.</p>
-        <div class="mb-6"><span class="text-4xl font-bold">$<span data-price data-price-monthly="39" data-price-yearly="390">39</span></span><span class="text-txt-secondary" data-interval-label>/mo</span></div>
-        <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
-          <li>✓ 3 machines</li>
-          <li>✓ Unlimited episodes</li>
-          <li>✓ 3 YouTube channels</li>
-          <li>✓ RunPod cloud GPU offload</li>
-          <li>✓ Audiobook studio</li>
-          <li>✓ ElevenLabs TTS</li>
-        </ul>
-        <button data-checkout data-tier="pro" data-interval="monthly" class="rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold py-3 glow-on-hover">Subscribe</button>
-      </div>
-
-      <div class="card rounded-xl p-8 flex flex-col">
-        <h3 class="font-display text-xl font-bold mb-1">Studio</h3>
-        <p class="text-xs text-txt-secondary mb-6">Multi-platform operation.</p>
-        <div class="mb-6"><span class="text-4xl font-bold">$<span data-price data-price-monthly="99" data-price-yearly="990">99</span></span><span class="text-txt-secondary" data-interval-label>/mo</span></div>
-        <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
-          <li>✓ 5 machines</li>
-          <li>✓ Unlimited everything</li>
-          <li>✓ Unlimited YouTube channels</li>
-          <li>✓ TikTok + Instagram</li>
-          <li>✓ API access</li>
-          <li>✓ Priority support</li>
-        </ul>
-        <button data-checkout data-tier="studio" data-interval="monthly" class="rounded-md border border-white/10 py-3 font-semibold hover:bg-white/5">Subscribe</button>
-      </div>
-    </div>
-
-    <p class="text-xs text-txt-muted mt-12">
-      Billed in USD via Stripe. VAT / sales tax collected where applicable. Cancel from the
-      <a href="/account" class="text-accent underline">billing portal</a> anytime.
-    </p>
-  </section>
-
-  <section class="max-w-3xl mx-auto px-6 pb-24">
-    <h2 class="font-display text-3xl font-bold text-center mb-8">FAQ</h2>
-    <div class="space-y-3">
-      <details class="card rounded-xl p-5"><summary class="font-semibold cursor-pointer">Do I need a GPU?</summary><p class="text-sm text-txt-secondary mt-3">Strongly recommended — scene generation runs on ComfyUI locally. Minimum ~8 GB VRAM. No GPU? The Pro tier's RunPod integration rents cloud GPUs on-demand (billed separately by RunPod; you bring your own RunPod API key).</p></details>
-      <details class="card rounded-xl p-5"><summary class="font-semibold cursor-pointer">Can I change tiers?</summary><p class="text-sm text-txt-secondary mt-3">Yes, from the billing portal. Upgrades are prorated immediately; downgrades take effect at the next renewal.</p></details>
-      <details class="card rounded-xl p-5"><summary class="font-semibold cursor-pointer">Refund policy?</summary><p class="text-sm text-txt-secondary mt-3">14 days, no questions asked. Email support@drevalis.com.</p></details>
-      <details class="card rounded-xl p-5"><summary class="font-semibold cursor-pointer">What counts as a "machine"?</summary><p class="text-sm text-txt-secondary mt-3">A distinct physical or virtual computer running the Drevalis Creator Studio stack. A machine is identified by a stable hostname + MAC hash. Reinstalling on the same box does not consume an extra seat.</p></details>
+  <!-- Header -->
+  <section class="section-compact relative overflow-hidden">
+    <div class="bg-glow" style="background: var(--accent); top: -150px; left: 40%; width: 500px; height: 500px; opacity: 0.2;"></div>
+    <div class="container-xl text-center relative z-10 reveal">
+      <span class="eyebrow mb-5">Pricing</span>
+      <h1 class="display-hero mt-5 mb-5">Pay for how much you make, not which features.</h1>
+      <p class="lead max-w-2xl mx-auto">Every tier ships every feature. Tiers only cap the volume you produce in parallel and the number of channels you publish to. All plans include every future update inside your subscription period.</p>
     </div>
   </section>
 
-  <footer class="border-t border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6 py-8 text-xs text-txt-muted text-center">© 2026 Drevalis · <a href="mailto:support@drevalis.com" class="hover:text-txt-primary">support@drevalis.com</a></div>
+  <!-- Plans -->
+  <section id="plans" class="section-compact">
+    <div class="container-xl">
+      <div class="flex items-center justify-center gap-3 mb-12 reveal">
+        <span class="text-sm text-[var(--txt-secondary)]">Monthly</span>
+        <label class="relative inline-flex cursor-pointer items-center">
+          <input type="checkbox" data-interval-toggle class="peer sr-only" />
+          <div class="h-6 w-11 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-strong)] peer-checked:bg-[var(--accent)]/30 peer-checked:border-[var(--accent)]/50 transition"></div>
+          <div class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--txt-primary)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent)]"></div>
+        </label>
+        <span class="text-sm text-[var(--txt-secondary)]">Yearly <span class="pill pill-green">2 months free</span></span>
+      </div>
+
+      <div class="grid md:grid-cols-3 gap-5 reveal">
+
+        <!-- Solo -->
+        <div class="card p-8 flex flex-col">
+          <h2 class="text-xl mb-1">Solo</h2>
+          <p class="text-xs text-[var(--txt-muted)] mb-6">For one creator, one channel.</p>
+          <div class="mb-6">
+            <span class="text-5xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.025em;">$<span data-price data-price-monthly="19" data-price-yearly="190">19</span></span>
+            <span class="text-[var(--txt-secondary)] ml-1" data-interval-label>/mo</span>
+          </div>
+          <p class="text-xs text-[var(--txt-muted)] mb-6" data-interval-hint>Billed monthly</p>
+          <button data-checkout data-tier="solo" data-interval="monthly" class="btn btn-secondary mb-6">Start Solo</button>
+          <ul class="text-sm space-y-3 text-[var(--txt-secondary)] flex-1">
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 1 machine seat</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 5 episodes per day</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 1 YouTube channel</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Edge, Piper, Kokoro TTS</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> All future updates</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Email support</li>
+          </ul>
+        </div>
+
+        <!-- Pro -->
+        <div class="card card-featured p-8 flex flex-col relative">
+          <div class="absolute -top-3 left-1/2 -translate-x-1/2"><span class="pill pill-green" style="padding:4px 12px; font-size: 11px;">Most popular</span></div>
+          <h2 class="text-xl mb-1">Pro</h2>
+          <p class="text-xs text-[var(--txt-muted)] mb-6">A few channels, some volume.</p>
+          <div class="mb-6">
+            <span class="text-5xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.025em;">$<span data-price data-price-monthly="39" data-price-yearly="390">39</span></span>
+            <span class="text-[var(--txt-secondary)] ml-1" data-interval-label>/mo</span>
+          </div>
+          <p class="text-xs text-[var(--txt-muted)] mb-6" data-interval-hint>Billed monthly</p>
+          <button data-checkout data-tier="pro" data-interval="monthly" class="btn btn-primary mb-6">Start Pro</button>
+          <ul class="text-sm space-y-3 text-[var(--txt-secondary)] flex-1">
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 3 machine seats</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> <strong class="text-[var(--txt-primary)]">Unlimited</strong> episodes</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 3 YouTube channels</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> RunPod cloud GPU offload</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Audiobook studio</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> ElevenLabs TTS</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Email support</li>
+          </ul>
+        </div>
+
+        <!-- Studio -->
+        <div class="card p-8 flex flex-col">
+          <h2 class="text-xl mb-1">Studio</h2>
+          <p class="text-xs text-[var(--txt-muted)] mb-6">Multi-platform operation.</p>
+          <div class="mb-6">
+            <span class="text-5xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.025em;">$<span data-price data-price-monthly="99" data-price-yearly="990">99</span></span>
+            <span class="text-[var(--txt-secondary)] ml-1" data-interval-label>/mo</span>
+          </div>
+          <p class="text-xs text-[var(--txt-muted)] mb-6" data-interval-hint>Billed monthly</p>
+          <button data-checkout data-tier="studio" data-interval="monthly" class="btn btn-secondary mb-6">Start Studio</button>
+          <ul class="text-sm space-y-3 text-[var(--txt-secondary)] flex-1">
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 5 machine seats</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Unlimited everything</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Unlimited YouTube channels</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> TikTok + Instagram</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> REST API access</li>
+            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Priority support</li>
+          </ul>
+        </div>
+      </div>
+
+      <p class="text-center small-muted mt-8 reveal">
+        Billed in USD via Stripe · VAT / MWST collected where applicable · Cancel from the <a href="/account">billing portal</a> anytime
+      </p>
+    </div>
+  </section>
+
+  <!-- Full comparison -->
+  <section class="section">
+    <div class="container-xl">
+      <div class="text-center max-w-2xl mx-auto mb-10 reveal">
+        <h2 class="display-section mt-4 mb-4">Compare every feature</h2>
+        <p class="lead">Every row ships in all three tiers unless otherwise noted.</p>
+      </div>
+
+      <div class="card overflow-x-auto reveal">
+        <table class="compare">
+          <thead>
+            <tr>
+              <th style="width: 40%;">Feature</th>
+              <th class="text-center">Solo</th>
+              <th class="text-center">Pro</th>
+              <th class="text-center">Studio</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td class="feat" colspan="4" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Capacity</td></tr>
+            <tr><td class="feat">Machine seats</td><td class="text-center">1</td><td class="text-center">3</td><td class="text-center">5</td></tr>
+            <tr><td class="feat">Episodes per day</td><td class="text-center">5</td><td class="text-center">Unlimited</td><td class="text-center">Unlimited</td></tr>
+            <tr><td class="feat">Parallel generations</td><td class="text-center">up to 4</td><td class="text-center">up to 8</td><td class="text-center">up to 8</td></tr>
+
+            <tr><td class="feat" colspan="4" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Publishing</td></tr>
+            <tr><td class="feat">YouTube channels</td><td class="text-center">1</td><td class="text-center">3</td><td class="text-center">Unlimited</td></tr>
+            <tr><td class="feat">TikTok publishing</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Instagram Reels</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Scheduled publishing</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+
+            <tr><td class="feat" colspan="4" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Generation stack</td></tr>
+            <tr><td class="feat">Shorts &amp; long-form video</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Audiobook studio (with chapters + ID3)</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Multi-voice speaker casting</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Local TTS (Edge, Piper, Kokoro)</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">ElevenLabs TTS (bring your own key)</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">RunPod cloud GPU offload</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Word-level animated captions</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Background music + sidechain ducking</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+
+            <tr><td class="feat" colspan="4" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Operations</td></tr>
+            <tr><td class="feat">In-app updates</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Full tarball backup + restore</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Encrypted secrets at rest</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">REST API access</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Priority email support</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section">
+    <div class="container-md">
+      <h2 class="display-section text-center mb-10 reveal">Pricing questions</h2>
+      <div class="card divide-y divide-white/[0.05] reveal">
+        <details class="faq-item">
+          <summary>What counts as a "machine"?</summary>
+          <p>A distinct physical or virtual computer running the Drevalis Creator Studio stack. Identified by a hashed hostname + MAC address. Reinstalling on the same box does not consume an extra seat. Hit the cap? You can deactivate a machine from Settings → License, or from the activation screen on a new install.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Can I change tiers mid-subscription?</summary>
+          <p>Yes, from the <a href="/account">billing portal</a>. Upgrades are prorated immediately; downgrades take effect at the next renewal.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Do I need a GPU?</summary>
+          <p>Strongly recommended — scene generation runs on ComfyUI locally. Minimum ~8 GB VRAM. No GPU? The Pro tier's RunPod integration rents cloud GPUs on-demand (billed separately by RunPod; you bring your own RunPod API key).</p>
+        </details>
+        <details class="faq-item">
+          <summary>Refund policy?</summary>
+          <p>14 days, no questions asked — unless the license has been activated on more than one machine or used to publish more than 10 uploads. Email <a href="mailto:support@drevalis.com">support@drevalis.com</a>.</p>
+        </details>
+        <details class="faq-item">
+          <summary>What happens to my videos if I cancel?</summary>
+          <p>Nothing. Episodes live on your disk. Cancellation gives you a 7-day grace window during which generation and upload still work; after that they lock but existing files are untouched and playable.</p>
+        </details>
+        <details class="faq-item">
+          <summary>Do you offer team or enterprise plans?</summary>
+          <p>Not yet. Studio with its 5 seats and unlimited channels covers most small teams. For larger deployments or on-prem agreements, email <a href="mailto:support@drevalis.com">support@drevalis.com</a> and we'll talk.</p>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="site-footer">
+    <div class="site-footer-grid">
+      <div class="site-footer-about">
+        <a href="/" class="site-brand mb-3">
+          <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
+          Drevalis
+        </a>
+        <p class="text-sm text-[var(--txt-secondary)] max-w-sm mt-3">Self-hosted AI video &amp; audiobook creation. Made in Switzerland.</p>
+        <p class="small-muted mt-3">© 2026 Drevalis · Creator Studio is a trademark of Drevalis.</p>
+      </div>
+      <div><div class="site-footer-heading">Product</div><ul class="site-footer-list"><li><a href="/#features">Features</a></li><li><a href="/#workflow">How it works</a></li><li><a href="/#hardware">Hardware</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/download">Download</a></li></ul></div>
+      <div><div class="site-footer-heading">Account</div><ul class="site-footer-list"><li><a href="/account">Manage subscription</a></li><li><a href="mailto:support@drevalis.com">Support</a></li><li><a href="mailto:abuse@drevalis.com">Report abuse</a></li></ul></div>
+      <div><div class="site-footer-heading">Legal</div><ul class="site-footer-list"><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/acceptable-use">Acceptable Use</a></li><li><a href="/impressum">Impressum</a></li></ul></div>
+    </div>
+    <div class="site-footer-bottom">
+      <span>Made in Switzerland · Hosted in the EU</span>
+      <span><a href="mailto:support@drevalis.com" class="text-[var(--txt-muted)] hover:text-[var(--txt-primary)]">support@drevalis.com</a></span>
+    </div>
   </footer>
 
   <script src="/assets/site.js"></script>

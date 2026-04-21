@@ -1,125 +1,130 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Terms of Service - Drevalis Creator Studio</title>
+  <title>Terms of Service — Drevalis Creator Studio</title>
   <meta name="robots" content="index, follow" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet" />
-  <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
-  <script>
-    tailwind.config = { darkMode: 'class', theme: { extend: {
-      fontFamily: { display: ['Outfit','sans-serif'], sans: ['DM Sans','sans-serif'] },
-      colors: { bg:{ base:'#0A0B0E', elevated:'#14161B' }, txt:{ primary:'#E8EAED', secondary:'#9AA0A6', muted:'#5F6368' }, accent:{ DEFAULT:'#00E5B8' } },
-    } } };
-  </script>
-  <style>
-    body { background:#0A0B0E; color:#E8EAED; font-family:'DM Sans',sans-serif; }
-    h1,h2,h3,h4 { font-family:'Outfit',sans-serif; letter-spacing:-.01em; }
-    .prose h2 { margin-top: 2.5rem; margin-bottom: .75rem; font-weight: 700; font-size: 1.5rem; color: #E8EAED; }
-    .prose h3 { margin-top: 1.75rem; margin-bottom: .5rem; font-weight: 600; font-size: 1.125rem; color: #E8EAED; }
-    .prose p  { margin: .75rem 0; color: #C8CBD0; line-height: 1.7; }
-    .prose ul { margin: .75rem 0 .75rem 1.25rem; color: #C8CBD0; list-style: disc; line-height: 1.7; }
-    .prose li { margin: .25rem 0; }
-    .prose a  { color: #00E5B8; text-decoration: underline; }
-    .prose strong { color: #E8EAED; }
-  </style>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/site.css" />
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
-  <nav class="border-b border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-      <a href="/" class="font-display font-bold text-lg">Drevalis</a>
-      <div class="flex items-center gap-6 text-sm">
-        <a href="/#features" class="text-txt-secondary hover:text-txt-primary">Features</a>
-        <a href="/#pricing" class="text-txt-secondary hover:text-txt-primary">Pricing</a>
-        <a href="/download" class="text-txt-secondary hover:text-txt-primary">Download</a>
-        <a href="/account" class="text-txt-secondary hover:text-txt-primary">Account</a>
+
+<body class="antialiased">
+  <div class="noise"></div>
+
+  <nav class="site-nav">
+    <div class="site-nav-inner">
+      <a href="/" class="site-brand">
+        <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
+        Drevalis
+      </a>
+      <div class="site-nav-links">
+        <a href="/#features" class="site-nav-link hide-xs">Features</a>
+        <a href="/pricing" class="site-nav-link">Pricing</a>
+        <a href="/download" class="site-nav-link">Download</a>
+        <a href="/account" class="site-nav-link hide-xs">Account</a>
       </div>
     </div>
   </nav>
 
-  <main class="max-w-3xl mx-auto px-6 py-16 prose">
-    <h1 class="font-display text-5xl font-bold mb-3">Terms of Service</h1>
-    <p class="text-txt-muted text-sm">Last updated: 2026-04-21. In force for purchases made on or after this date.</p>
+  <main class="section">
+    <div class="container-md prose">
+      <h1>Terms of Service</h1>
+      <p class="intro">Last updated: 2026-04-21 · In force for purchases made on or after this date · Governed by Swiss law.</p>
 
-    <p>These Terms govern your use of Drevalis Creator Studio ("the Software"), operated by Drevalis ("we", "us"). By installing or using the Software you agree to these Terms. If you disagree, uninstall the Software and request a refund within the 14-day window described below.</p>
+      <p>These Terms govern your use of Drevalis Creator Studio ("the Software"), operated by Drevalis ("we", "us"). By installing or using the Software you agree to these Terms. If you disagree, uninstall the Software and request a refund within the 14-day window described below.</p>
 
-    <h2>1. License grant</h2>
-    <p>On purchase of a subscription we grant you a non-exclusive, non-transferable, revocable license to install and use the Software for the machine and user counts of your tier, for the duration of your paid-for subscription period. Title to the Software stays with us; you are not buying a copy.</p>
-    <p>You may not: redistribute, resell, sublicense, reverse-engineer for the purpose of cloning the product, remove license-enforcement code, or share your license key with third parties.</p>
+      <h2>1. License grant</h2>
+      <p>On purchase of a subscription we grant you a non-exclusive, non-transferable, revocable license to install and use the Software, for the machine count and user count of your tier, for the duration of your paid-for subscription period. Title to the Software stays with us; you are not buying a copy.</p>
+      <p>You may not: redistribute, resell, sublicense, reverse-engineer for the purpose of cloning the product, remove license-enforcement code, or share your license key with third parties.</p>
 
-    <h2>2. Subscription, billing, cancellation</h2>
-    <ul>
-      <li>Subscriptions are billed in advance via Stripe on a monthly or annual basis at the price shown on our pricing page at time of purchase.</li>
-      <li>Renewals are automatic. You can cancel any time via the self-service billing portal at <a href="/account">/account</a>; cancellation stops the next renewal, and access continues until the end of the current paid period.</li>
-      <li>After cancellation or payment failure, the Software enters a 7-day offline-grace window during which it keeps working. After the grace window expires, generation and upload lock until you re-subscribe. Existing files on your disk are untouched.</li>
-      <li>Price changes do not affect your current paid period. We will notify you by email at least 14 days before a renewal at a new price.</li>
-    </ul>
+      <h2>2. Subscription, billing, cancellation</h2>
+      <ul>
+        <li>Subscriptions are billed in advance via Stripe on a monthly or annual basis at the price shown on our pricing page at time of purchase.</li>
+        <li>Renewals are automatic. You can cancel any time via the self-service billing portal at <a href="/account">/account</a>; cancellation stops the next renewal, and access continues until the end of the current paid period.</li>
+        <li>After cancellation or payment failure, the Software enters a 7-day offline-grace window during which it keeps working. After the grace window expires, generation and upload lock until you re-subscribe. Existing files on your disk are untouched.</li>
+        <li>Price changes do not affect your current paid period. We will notify you by email at least 14 days before a renewal at a new price.</li>
+        <li>Swiss VAT (MWST) where applicable, EU VAT for consumers in the EU/EEA, and other sales taxes are handled by Stripe and added at checkout.</li>
+      </ul>
 
-    <h2>3. Refund policy</h2>
-    <p>You can request a full refund within 14 days of your first purchase by emailing <a href="mailto:support@drevalis.com">support@drevalis.com</a>, subject to the following exclusions:</p>
-    <ul>
-      <li>You have activated the license on more than one machine;</li>
-      <li>You have successfully uploaded more than 10 finished outputs (videos or audiobooks) via the Software;</li>
-      <li>The request is for a subsequent renewal (renewals are non-refundable once the billing date passes; cancel before renewal to avoid the charge).</li>
-    </ul>
-    <p>EU consumers retain the statutory 14-day right of withdrawal under the Consumer Rights Directive (2011/83/EU). By starting to use the Software within 14 days of purchase, you expressly consent to performance of the service beginning during the withdrawal period and acknowledge that your right of withdrawal lapses once the service is fully performed; our 14-day refund policy above is more generous and applies by default.</p>
+      <h2>3. Refund policy</h2>
+      <p>You can request a full refund within 14 days of your first purchase by emailing <a href="mailto:support@drevalis.com">support@drevalis.com</a>, subject to the following exclusions:</p>
+      <ul>
+        <li>You have activated the license on more than one machine;</li>
+        <li>You have successfully uploaded more than 10 finished outputs (videos or audiobooks) via the Software;</li>
+        <li>The request is for a subsequent renewal (renewals are non-refundable once the billing date passes; cancel before renewal to avoid the charge).</li>
+      </ul>
+      <p>This 14-day policy is a commercial promise. Swiss law does not give consumers a statutory right of withdrawal for digital services comparable to the EU's Art. 16 Directive 2011/83/EU. If you are resident in the EU/EEA, the statutory EU right of withdrawal applies in addition to our policy, subject to its usual exceptions for digital content.</p>
 
-    <h2>4. Your content</h2>
-    <p><strong>You own everything you create with the Software.</strong> We do not claim rights over your scripts, voices, thumbnails, or videos. We do not access them.</p>
-    <p>You are solely responsible for whether your use of the Software complies with:</p>
-    <ul>
-      <li>Copyright, trademark, publicity, and likeness laws in your jurisdiction;</li>
-      <li>The terms of service of any platform you upload to (YouTube, TikTok, Instagram, etc.), including rules on AI-generated or altered content disclosure;</li>
-      <li>The licenses of any third-party models, voices, or prompts you feed into the pipeline (Qwen Image, Wan, Kokoro, ElevenLabs, etc.);</li>
-      <li>Applicable child safety, hate-speech, and defamation laws.</li>
-    </ul>
-    <p>We take no editorial control over your output. If your use of the Software breaks the law in your jurisdiction, that is your responsibility, not ours.</p>
+      <h2>4. Your content</h2>
+      <p><strong>You own everything you create with the Software.</strong> We do not claim rights over your scripts, voices, thumbnails, or videos. We do not access them.</p>
+      <p>You are solely responsible for whether your use of the Software complies with:</p>
+      <ul>
+        <li>Copyright (URG), trademark (MSchG), personality rights (ZGB Art. 28), and image rights in your jurisdiction;</li>
+        <li>The terms of service of any platform you upload to (YouTube, TikTok, Instagram, etc.), including rules on AI-generated or altered content disclosure;</li>
+        <li>The licenses of any third-party models, voices, or prompts you feed into the pipeline (Qwen Image, Wan, Kokoro, ElevenLabs, and so on);</li>
+        <li>Applicable child-protection, anti-discrimination, and defamation law.</li>
+      </ul>
+      <p>We take no editorial control over your output. If your use of the Software breaks the law in your jurisdiction, that is your responsibility, not ours.</p>
 
-    <h2>5. Acceptable use</h2>
-    <p>See the separate <a href="/acceptable-use">Acceptable Use Policy</a>. Violating it is a material breach of this agreement; we may suspend or terminate your license without refund.</p>
+      <h2>5. Acceptable use</h2>
+      <p>See the separate <a href="/acceptable-use">Acceptable Use Policy</a>. Violating it is a material breach of this agreement; we may suspend or terminate your license without refund.</p>
 
-    <h2>6. No warranty</h2>
-    <p>The Software is provided "as is" and "as available". To the maximum extent permitted by law, we disclaim all warranties, express or implied, including merchantability, fitness for a particular purpose, and non-infringement. We do not warrant that:</p>
-    <ul>
-      <li>the Software will be uninterrupted, timely, secure, or error-free;</li>
-      <li>outputs will meet your expectations of quality, coherence, or legal compliance;</li>
-      <li>the Software is compatible with every possible hardware/OS/model combination.</li>
-    </ul>
+      <h2>6. No warranty</h2>
+      <p>The Software is provided "as is" and "as available". To the maximum extent permitted by law, we disclaim all warranties, express or implied, including fitness for a particular purpose, merchantability, and non-infringement. We do not warrant that:</p>
+      <ul>
+        <li>the Software will be uninterrupted, timely, secure, or error-free;</li>
+        <li>outputs will meet your expectations of quality, coherence, or legal compliance;</li>
+        <li>the Software is compatible with every possible hardware / OS / model combination.</li>
+      </ul>
 
-    <h2>7. Limitation of liability</h2>
-    <p>To the maximum extent permitted by law, our aggregate liability to you for any claim arising out of or relating to the Software is limited to the amount you paid us in the twelve (12) months preceding the event giving rise to the claim.</p>
-    <p>In no event are we liable for lost profits, lost revenue, lost uploads, lost subscribers, lost data, platform demonetization, platform bans, reputational harm, or any indirect, incidental, special, consequential, or punitive damages - even if we have been advised of the possibility of such damages.</p>
-    <p>Nothing in these Terms excludes liability that cannot be excluded under mandatory consumer-protection law in your jurisdiction (for instance, liability for gross negligence or wilful misconduct).</p>
+      <h2>7. Limitation of liability</h2>
+      <p>To the maximum extent permitted by Swiss law, our aggregate liability to you for any claim arising out of or relating to the Software is limited to the amount you paid us in the twelve (12) months preceding the event giving rise to the claim.</p>
+      <p>In no event are we liable for lost profits, lost revenue, lost uploads, lost subscribers, lost data, platform demonetization, platform bans, reputational harm, or any indirect, incidental, special, consequential, or punitive damages — even if we have been advised of the possibility of such damages.</p>
+      <p>Nothing in these Terms excludes liability that cannot be excluded under mandatory Swiss law, including liability for intentional damage or gross negligence (OR Art. 100).</p>
 
-    <h2>8. Updates &amp; discontinuation</h2>
-    <p>We release updates periodically. Updates may add, change, or remove features. We may discontinue the Software or any of its features with at least 30 days' notice to active subscribers; in that case pro-rated refunds for the unused portion of the current period will be issued.</p>
+      <h2>8. Updates &amp; discontinuation</h2>
+      <p>We release updates periodically. Updates may add, change, or remove features. We may discontinue the Software or any of its features with at least 30 days' notice to active subscribers; in that case pro-rated refunds for the unused portion of the current period will be issued.</p>
 
-    <h2>9. Termination</h2>
-    <p>You can terminate at any time by cancelling your subscription and uninstalling the Software. We can terminate your license with notice if you materially breach these Terms or the Acceptable Use Policy. On termination, the license ends, but you keep the files already on your disk.</p>
+      <h2>9. Termination</h2>
+      <p>You can terminate at any time by cancelling your subscription and uninstalling the Software. We can terminate your license with notice if you materially breach these Terms or the Acceptable Use Policy. On termination, the license ends, but you keep the files already on your disk.</p>
 
-    <h2>10. Governing law &amp; venue</h2>
-    <p>These Terms are governed by the laws of Austria, without regard to conflict-of-laws principles. Disputes shall be resolved in the competent courts of Vienna, Austria, subject to mandatory consumer-protection forum rules that give you the right to sue in the courts of your country of residence if you are a consumer.</p>
+      <h2>10. Governing law &amp; venue</h2>
+      <p>These Terms are governed by Swiss substantive law, to the exclusion of its conflict-of-laws rules and of the United Nations Convention on Contracts for the International Sale of Goods (CISG).</p>
+      <p>Place of jurisdiction is the competent court at our registered seat in [Canton], Switzerland. Consumers domiciled in Switzerland retain the right under Art. 32 of the Swiss Code of Civil Procedure (ZPO) to sue at the court of their domicile. Consumers domiciled in the EU/EEA retain their mandatory consumer-protection forum rights.</p>
 
-    <h2>11. Changes to these Terms</h2>
-    <p>We may update these Terms. Material changes are notified by email at least 14 days before they take effect. Continued use after that date constitutes acceptance; otherwise you may terminate under section 9.</p>
+      <h2>11. Changes to these Terms</h2>
+      <p>We may update these Terms. Material changes are notified by email at least 14 days before they take effect. Continued use after that date constitutes acceptance; otherwise you may terminate under section 9.</p>
 
-    <h2>12. Contact</h2>
-    <p>Drevalis - see <a href="/impressum">Impressum</a> for the full commercial contact. Questions about these Terms: <a href="mailto:support@drevalis.com">support@drevalis.com</a>.</p>
+      <h2>12. Contact</h2>
+      <p>Drevalis — see <a href="/impressum">Impressum</a> for the full commercial contact. Questions about these Terms: <a href="mailto:support@drevalis.com">support@drevalis.com</a>.</p>
+    </div>
   </main>
 
-  <footer class="border-t border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6 py-6 text-xs text-txt-muted flex flex-wrap gap-4 justify-between">
-      <span>(c) 2026 Drevalis</span>
-      <span class="flex gap-4">
-        <a href="/terms" class="hover:text-txt-primary">Terms</a>
-        <a href="/privacy" class="hover:text-txt-primary">Privacy</a>
-        <a href="/acceptable-use" class="hover:text-txt-primary">Acceptable Use</a>
-        <a href="/impressum" class="hover:text-txt-primary">Impressum</a>
-      </span>
+  <footer class="site-footer">
+    <div class="site-footer-grid">
+      <div class="site-footer-about">
+        <a href="/" class="site-brand mb-3">
+          <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
+          Drevalis
+        </a>
+        <p class="text-sm text-[var(--txt-secondary)] max-w-sm mt-3">Self-hosted AI video &amp; audiobook creation. Made in Switzerland.</p>
+        <p class="small-muted mt-3">© 2026 Drevalis · Creator Studio is a trademark of Drevalis.</p>
+      </div>
+      <div><div class="site-footer-heading">Product</div><ul class="site-footer-list"><li><a href="/#features">Features</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/download">Download</a></li></ul></div>
+      <div><div class="site-footer-heading">Account</div><ul class="site-footer-list"><li><a href="/account">Manage subscription</a></li><li><a href="mailto:support@drevalis.com">Support</a></li></ul></div>
+      <div><div class="site-footer-heading">Legal</div><ul class="site-footer-list"><li><a href="/terms" aria-current="page">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/acceptable-use">Acceptable Use</a></li><li><a href="/impressum">Impressum</a></li></ul></div>
+    </div>
+    <div class="site-footer-bottom">
+      <span>Made in Switzerland · Hosted in the EU</span>
+      <span><a href="mailto:support@drevalis.com" class="text-[var(--txt-muted)] hover:text-[var(--txt-primary)]">support@drevalis.com</a></span>
     </div>
   </footer>
+
+  <script src="/assets/site.js"></script>
 </body>
 </html>

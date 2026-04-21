@@ -1,9 +1,11 @@
-// Shared client-side logic for all marketing pages.
+// Shared client-side logic for the Drevalis marketing site.
 //
 // Responsibilities:
-// 1. Wire "Subscribe" buttons to the license server's /checkout endpoint
-// 2. Wire the "Manage subscription" form to the license server's /portal endpoint
-// 3. Email collection UX (stash in sessionStorage, prefill later)
+//   1. Wire "Subscribe" buttons to the license server's /checkout endpoint
+//   2. Wire the "Manage subscription" form to the license server's /portal endpoint
+//   3. Monthly / yearly pricing toggle
+//   4. Progressive reveal-on-scroll for .reveal elements
+//   5. Email collection UX (stash in sessionStorage, prefill later)
 
 const LICENSE_SERVER = 'https://license.drevalis.com';
 
@@ -55,8 +57,7 @@ async function openBillingPortal({ license_key }) {
   }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Subscribe buttons
+function wireCheckoutButtons() {
   document.querySelectorAll('[data-checkout]').forEach((btn) => {
     btn.addEventListener('click', (e) => {
       e.preventDefault();
@@ -66,34 +67,73 @@ document.addEventListener('DOMContentLoaded', () => {
       startCheckout({ tier, interval, email });
     });
   });
+}
 
-  // Billing interval toggle (monthly / yearly)
+function wireIntervalToggle() {
   const toggle = document.querySelector('[data-interval-toggle]');
-  if (toggle) {
-    toggle.addEventListener('change', () => {
-      const yearly = toggle.checked;
-      document.querySelectorAll('[data-price]').forEach((el) => {
-        const v = yearly ? el.dataset.priceYearly : el.dataset.priceMonthly;
-        el.textContent = v;
-      });
-      document.querySelectorAll('[data-interval-label]').forEach((el) => {
-        el.textContent = yearly ? '/yr' : '/mo';
-      });
-      document.querySelectorAll('[data-checkout]').forEach((btn) => {
-        btn.dataset.interval = yearly ? 'yearly' : 'monthly';
-      });
+  if (!toggle) return;
+  const sync = () => {
+    const yearly = toggle.checked;
+    document.querySelectorAll('[data-price]').forEach((el) => {
+      el.textContent = yearly ? el.dataset.priceYearly : el.dataset.priceMonthly;
     });
-  }
+    document.querySelectorAll('[data-interval-label]').forEach((el) => {
+      el.textContent = yearly ? '/yr' : '/mo';
+    });
+    document.querySelectorAll('[data-checkout]').forEach((btn) => {
+      btn.dataset.interval = yearly ? 'yearly' : 'monthly';
+    });
+    document.querySelectorAll('[data-interval-hint]').forEach((el) => {
+      el.textContent = yearly ? 'Billed annually' : 'Billed monthly';
+    });
+  };
+  toggle.addEventListener('change', sync);
+  sync();
+}
 
-  // Account page — billing portal form
-  const portalForm = document.querySelector('[data-portal-form]');
-  if (portalForm) {
-    portalForm.addEventListener('submit', (e) => {
-      e.preventDefault();
-      const input = portalForm.querySelector('input[name="license_key"]');
-      const license_key = input.value.trim();
-      if (!license_key) return;
-      openBillingPortal({ license_key });
-    });
+function wireBillingPortalForm() {
+  const form = document.querySelector('[data-portal-form]');
+  if (!form) return;
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const input = form.querySelector('input[name="license_key"]');
+    const key = input.value.trim();
+    if (!key) return;
+    openBillingPortal({ license_key: key });
+  });
+}
+
+function wireReveal() {
+  if (!('IntersectionObserver' in window)) {
+    document.querySelectorAll('.reveal').forEach((el) => el.classList.add('revealed'));
+    return;
   }
+  const io = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add('revealed');
+          io.unobserve(entry.target);
+        }
+      });
+    },
+    { rootMargin: '0px 0px -10% 0px', threshold: 0.1 },
+  );
+  document.querySelectorAll('.reveal').forEach((el) => io.observe(el));
+}
+
+function wireImageFallback() {
+  // If a product screenshot hasn't been dropped in yet, the broken-image
+  // icon is ugly. Remove the <img> so the .img-slot's ::after hint shows.
+  document.querySelectorAll('.img-slot img').forEach((img) => {
+    img.addEventListener('error', () => img.remove(), { once: true });
+  });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  wireCheckoutButtons();
+  wireIntervalToggle();
+  wireBillingPortalForm();
+  wireReveal();
+  wireImageFallback();
 });

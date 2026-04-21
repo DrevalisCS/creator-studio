@@ -1,94 +1,109 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Impressum / Legal Notice - Drevalis</title>
+  <title>Impressum — Drevalis</title>
   <meta name="robots" content="index, follow" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/site.css" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = { darkMode:'class', theme:{ extend:{
-      fontFamily:{ display:['Outfit','sans-serif'], sans:['DM Sans','sans-serif'] },
-      colors:{ bg:{ base:'#0A0B0E', elevated:'#14161B' }, txt:{ primary:'#E8EAED', secondary:'#9AA0A6', muted:'#5F6368' }, accent:{ DEFAULT:'#00E5B8' } },
-    } } };
-  </script>
-  <style>
-    body { background:#0A0B0E; color:#E8EAED; font-family:'DM Sans',sans-serif; }
-    h1,h2,h3,h4 { font-family:'Outfit',sans-serif; letter-spacing:-.01em; }
-    .prose h2 { margin-top: 2.5rem; margin-bottom: .75rem; font-weight: 700; font-size: 1.5rem; color: #E8EAED; }
-    .prose p  { margin: .75rem 0; color: #C8CBD0; line-height: 1.7; }
-    .prose a  { color: #00E5B8; text-decoration: underline; }
-    .prose strong { color: #E8EAED; }
-  </style>
 </head>
-<body>
-  <nav class="border-b border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
-      <a href="/" class="font-display font-bold text-lg">Drevalis</a>
-      <div class="flex items-center gap-6 text-sm">
-        <a href="/#features" class="text-txt-secondary hover:text-txt-primary">Features</a>
-        <a href="/#pricing" class="text-txt-secondary hover:text-txt-primary">Pricing</a>
-        <a href="/download" class="text-txt-secondary hover:text-txt-primary">Download</a>
-        <a href="/account" class="text-txt-secondary hover:text-txt-primary">Account</a>
+
+<body class="antialiased">
+  <div class="noise"></div>
+
+  <nav class="site-nav">
+    <div class="site-nav-inner">
+      <a href="/" class="site-brand">
+        <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
+        Drevalis
+      </a>
+      <div class="site-nav-links">
+        <a href="/#features" class="site-nav-link hide-xs">Features</a>
+        <a href="/pricing" class="site-nav-link">Pricing</a>
+        <a href="/download" class="site-nav-link">Download</a>
+        <a href="/account" class="site-nav-link hide-xs">Account</a>
       </div>
     </div>
   </nav>
 
-  <main class="max-w-3xl mx-auto px-6 py-16 prose">
-    <h1 class="font-display text-5xl font-bold mb-3">Impressum</h1>
-    <p class="text-txt-muted text-sm">Information in accordance with Section 5 TMG (DE) / Section 5 ECG (AT) / Section 24 MedienG.</p>
+  <main class="section">
+    <div class="container-md prose">
+      <h1>Impressum</h1>
+      <p class="intro">Legal notice in accordance with Swiss Federal Act against Unfair Competition (UWG) Art. 3(1)(s) and the Federal Act on Electronic Commerce, and with Swiss Code of Obligations (OR) Art. 954a.</p>
 
-    <h2>Operator</h2>
-    <p>
-      <strong>Drevalis</strong><br/>
-      [Your full legal name or company name]<br/>
-      [Street address]<br/>
-      [Postal code and city]<br/>
-      [Country]
-    </p>
+      <h2>Operator of this website</h2>
+      <p>
+        <strong>[Legal name of sole proprietorship or company]</strong><br/>
+        [Street and number]<br/>
+        [Postal code] [City]<br/>
+        Switzerland
+      </p>
 
-    <h2>Contact</h2>
-    <p>
-      Email: <a href="mailto:support@drevalis.com">support@drevalis.com</a><br/>
-      Privacy: <a href="mailto:privacy@drevalis.com">privacy@drevalis.com</a><br/>
-      Abuse reports: <a href="mailto:abuse@drevalis.com">abuse@drevalis.com</a>
-    </p>
+      <h2>Contact</h2>
+      <p>
+        Email: <a href="mailto:support@drevalis.com">support@drevalis.com</a><br/>
+        Privacy: <a href="mailto:privacy@drevalis.com">privacy@drevalis.com</a><br/>
+        Abuse reports: <a href="mailto:abuse@drevalis.com">abuse@drevalis.com</a><br/>
+        Phone: [+41 XX XXX XX XX]
+      </p>
 
-    <h2>Commercial register / VAT</h2>
-    <p>
-      [Trade register number, if applicable]<br/>
-      [VAT ID, e.g. ATU12345678]<br/>
-      [Regulatory authority, if applicable]
-    </p>
+      <h2>Commercial register / VAT</h2>
+      <p>
+        Commercial register entry: [CHE-XXX.XXX.XXX, registered at the Commercial Register of the Canton of [Canton]] <em>— fill in if your structure is registered; sole proprietorships with annual revenue below CHF 100 000 are not required to register.</em><br/>
+        Swiss VAT (MWST) number: [CHE-XXX.XXX.XXX MWST] <em>— fill in if VAT-registered; compulsory above CHF 100 000 annual turnover.</em>
+      </p>
 
-    <h2>Responsible for content</h2>
-    <p>[Your name], at the address above.</p>
+      <h2>Responsible for content</h2>
+      <p>[Natural person's name], at the address above.</p>
 
-    <h2>EU Online Dispute Resolution</h2>
-    <p>The European Commission provides a platform for online dispute resolution at <a href="https://ec.europa.eu/consumers/odr" target="_blank" rel="noreferrer">ec.europa.eu/consumers/odr</a>. We are not obliged to participate in dispute-resolution proceedings before a consumer arbitration board, but we are willing to.</p>
+      <h2>Supervisory / data-protection authority</h2>
+      <p>
+        Federal Data Protection and Information Commissioner (FDPIC / EDÖB)<br/>
+        Feldeggweg 1, CH-3003 Bern<br/>
+        <a href="https://www.edoeb.admin.ch" target="_blank" rel="noreferrer">www.edoeb.admin.ch</a>
+      </p>
 
-    <h2>Disclaimer</h2>
-    <p>All trademarks referenced on this site (YouTube, TikTok, Instagram, Docker, ComfyUI, Claude, ElevenLabs, etc.) are the property of their respective owners and are used for identification purposes only.</p>
-    <p>Drevalis Creator Studio is not affiliated with, endorsed by, or sponsored by any of the above.</p>
+      <h2>Consumer dispute resolution</h2>
+      <p>Switzerland is not part of the EU Online Dispute Resolution platform. For consumer disputes, the competent court is determined by Art. 32 of the Swiss Code of Civil Procedure (ZPO) — consumers domiciled in Switzerland may sue at the court of their own domicile or at our registered seat.</p>
 
-    <p class="text-xs text-txt-muted mt-12">
-      <strong>Note to deployer:</strong> replace the placeholder fields above with your real legal-registration details before going live. Austria requires the Impressum to contain the operator's real name and address; EU e-commerce law (Dir. 2000/31/EC, transposed nationally) requires the same for any commercial website.
-    </p>
+      <h2>Trademarks &amp; third-party references</h2>
+      <p>All trademarks referenced on this site (YouTube, TikTok, Instagram, Docker, ComfyUI, Claude, ElevenLabs, RunPod, and others) are the property of their respective owners and are used for identification purposes only. Drevalis Creator Studio is not affiliated with, endorsed by, or sponsored by any of these.</p>
+
+      <h2>Copyright</h2>
+      <p>© 2026 Drevalis. All content on this website (text, graphics, logos) is protected by Swiss copyright law (URG) and international copyright treaties. Reproduction or use without prior written consent is prohibited.</p>
+
+      <h2>Liability</h2>
+      <p>Despite careful content review, we accept no liability for the content of external links. Responsibility for the content of linked pages lies solely with their operators.</p>
+
+      <p class="small-muted mt-12"><strong>Note to deployer:</strong> fill in every bracketed placeholder above with your actual legal-registration details before going live. In Switzerland the Impressum must contain the operator's real identity and a postal address; for sole proprietorships the natural person's full legal name is sufficient.</p>
+    </div>
   </main>
 
-  <footer class="border-t border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6 py-6 text-xs text-txt-muted flex flex-wrap gap-4 justify-between">
-      <span>(c) 2026 Drevalis</span>
-      <span class="flex gap-4">
-        <a href="/terms" class="hover:text-txt-primary">Terms</a>
-        <a href="/privacy" class="hover:text-txt-primary">Privacy</a>
-        <a href="/acceptable-use" class="hover:text-txt-primary">Acceptable Use</a>
-        <a href="/impressum" class="hover:text-txt-primary">Impressum</a>
-      </span>
+  <footer class="site-footer">
+    <div class="site-footer-grid">
+      <div class="site-footer-about">
+        <a href="/" class="site-brand mb-3">
+          <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
+          Drevalis
+        </a>
+        <p class="text-sm text-[var(--txt-secondary)] max-w-sm mt-3">Self-hosted AI video &amp; audiobook creation. Made in Switzerland.</p>
+        <p class="small-muted mt-3">© 2026 Drevalis · Creator Studio is a trademark of Drevalis.</p>
+      </div>
+      <div><div class="site-footer-heading">Product</div><ul class="site-footer-list"><li><a href="/#features">Features</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/download">Download</a></li></ul></div>
+      <div><div class="site-footer-heading">Account</div><ul class="site-footer-list"><li><a href="/account">Manage subscription</a></li><li><a href="mailto:support@drevalis.com">Support</a></li></ul></div>
+      <div><div class="site-footer-heading">Legal</div><ul class="site-footer-list"><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/acceptable-use">Acceptable Use</a></li><li><a href="/impressum" aria-current="page">Impressum</a></li></ul></div>
+    </div>
+    <div class="site-footer-bottom">
+      <span>Made in Switzerland · Hosted in the EU</span>
+      <span><a href="mailto:support@drevalis.com" class="text-[var(--txt-muted)] hover:text-[var(--txt-primary)]">support@drevalis.com</a></span>
     </div>
   </footer>
+
+  <script src="/assets/site.js"></script>
 </body>
 </html>

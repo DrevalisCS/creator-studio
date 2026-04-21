@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" class="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -7,80 +7,105 @@
   <meta name="robots" content="noindex" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/assets/site.css" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <script>
-    tailwind.config = { darkMode: 'class', theme: { extend: {
-      fontFamily: { display: ['Outfit', 'sans-serif'], sans: ['DM Sans', 'sans-serif'] },
-      colors: { bg: { base: '#0A0B0E', elevated: '#14161B' }, txt: { primary: '#E8EAED', secondary: '#9AA0A6', muted: '#5F6368' }, accent: { DEFAULT: '#00E5B8', glow: '#00BFA8' } },
-    } } };
-  </script>
-  <style>
-    body { background:#0A0B0E; color:#E8EAED; font-family:'DM Sans',sans-serif; }
-    h1,h2,h3 { font-family:'Outfit',sans-serif; }
-    .accent-gradient { background: linear-gradient(135deg,#00E5B8,#00BFA8); -webkit-background-clip: text; color: transparent; }
-    .card { background: rgba(20,22,27,.8); border: 1px solid rgba(255,255,255,.06); }
-  </style>
 </head>
 
-<body>
-  <section class="max-w-3xl mx-auto px-6 py-20 text-center">
-    <div class="w-16 h-16 rounded-full bg-accent/20 flex items-center justify-center mx-auto mb-6">
-      <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#00E5B8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        <polyline points="20 6 9 17 4 12"></polyline>
-      </svg>
+<body class="antialiased">
+  <div class="noise"></div>
+
+  <nav class="site-nav">
+    <div class="site-nav-inner">
+      <a href="/" class="site-brand">
+        <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
+        Drevalis
+      </a>
+      <div class="site-nav-links">
+        <a href="/pricing" class="site-nav-link">Pricing</a>
+        <a href="/download" class="site-nav-link">Download</a>
+        <a href="/account" class="site-nav-link">Account</a>
+      </div>
     </div>
-    <h1 class="font-display text-4xl font-bold mb-3">Payment received.</h1>
-    <p class="text-lg text-txt-secondary mb-10">
-      Your license key is on its way — check your inbox in the next minute or two.
-      (It's a UUID. If you don't see it, check spam or contact support.)
-    </p>
-  </section>
+  </nav>
 
-  <section class="max-w-3xl mx-auto px-6 pb-24">
-    <h2 class="font-display text-2xl font-bold mb-6">Next steps</h2>
-
-    <ol class="space-y-4">
-      <li class="card rounded-xl p-6 flex gap-5">
-        <div class="w-8 h-8 rounded-full bg-accent text-bg-base font-bold flex items-center justify-center flex-shrink-0">1</div>
-        <div>
-          <h3 class="font-semibold mb-1">Grab your license key from your inbox</h3>
-          <p class="text-sm text-txt-secondary">Sent from <code class="text-txt-primary">no-reply@drevalis.com</code>. Save it to your password manager — you'll paste it into the app once.</p>
-        </div>
-      </li>
-      <li class="card rounded-xl p-6 flex gap-5">
-        <div class="w-8 h-8 rounded-full bg-accent text-bg-base font-bold flex items-center justify-center flex-shrink-0">2</div>
-        <div>
-          <h3 class="font-semibold mb-1">Install Drevalis Creator Studio</h3>
-          <p class="text-sm text-txt-secondary mb-3">Self-hosted, Docker-based. The quick-install runs one command:</p>
-          <pre class="text-xs bg-bg-base rounded-md p-3 overflow-x-auto"><code>curl -fsSL https://drevalis.com/install.sh | bash</code></pre>
-          <p class="text-xs text-txt-muted mt-2">Full install guide: <a href="/download" class="text-accent underline">drevalis.com/download</a></p>
-        </div>
-      </li>
-      <li class="card rounded-xl p-6 flex gap-5">
-        <div class="w-8 h-8 rounded-full bg-accent text-bg-base font-bold flex items-center justify-center flex-shrink-0">3</div>
-        <div>
-          <h3 class="font-semibold mb-1">Activate</h3>
-          <p class="text-sm text-txt-secondary">Open <code class="text-txt-primary">http://localhost:3000</code> after the install finishes. Paste the license key from step 1 into the activation screen. Done.</p>
-        </div>
-      </li>
-      <li class="card rounded-xl p-6 flex gap-5">
-        <div class="w-8 h-8 rounded-full bg-accent text-bg-base font-bold flex items-center justify-center flex-shrink-0">4</div>
-        <div>
-          <h3 class="font-semibold mb-1">Manage your subscription anytime</h3>
-          <p class="text-sm text-txt-secondary">Upgrade, downgrade, change card, or cancel from <a href="/account" class="text-accent underline">drevalis.com/account</a>.</p>
-        </div>
-      </li>
-    </ol>
-
-    <div class="mt-10 p-5 card rounded-xl text-sm text-txt-secondary">
-      <strong class="text-txt-primary">Stuck on install?</strong> Reply to the license email or write to
-      <a href="mailto:support@drevalis.com" class="text-accent underline">support@drevalis.com</a>. Reply within a business day.
+  <section class="section relative overflow-hidden">
+    <div class="bg-glow" style="background: var(--accent); top: -100px; left: 50%; transform: translateX(-50%); width: 500px; height: 500px; opacity: 0.25;"></div>
+    <div class="container-md text-center relative z-10 reveal">
+      <div class="w-16 h-16 rounded-full bg-[var(--accent)]/15 border border-[var(--accent)]/40 flex items-center justify-center mx-auto mb-6">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="20 6 9 17 4 12"></polyline>
+        </svg>
+      </div>
+      <h1 class="display-hero mb-4">Payment received.</h1>
+      <p class="lead max-w-xl mx-auto">Your license key is on its way — check your inbox in the next minute or two. It's a UUID. If it doesn't arrive, check spam or email support.</p>
     </div>
   </section>
 
-  <footer class="border-t border-white/[0.06]">
-    <div class="max-w-6xl mx-auto px-6 py-8 text-xs text-txt-muted text-center">© 2026 Drevalis</div>
+  <section class="section-compact">
+    <div class="container-md">
+      <h2 class="display-section mb-8 reveal">Next steps</h2>
+      <ol class="space-y-4 reveal">
+        <li class="card p-6 flex gap-5">
+          <div class="w-8 h-8 rounded-md bg-[var(--accent)] text-[var(--bg-base)] font-bold flex items-center justify-center flex-shrink-0">1</div>
+          <div>
+            <h4 class="mb-1">Grab your license key from your inbox</h4>
+            <p class="text-sm text-[var(--txt-secondary)]">Sent from <code class="inline">no-reply@drevalis.com</code>. Save it to your password manager — you'll paste it into the app once.</p>
+          </div>
+        </li>
+        <li class="card p-6 flex gap-5">
+          <div class="w-8 h-8 rounded-md bg-[var(--accent)] text-[var(--bg-base)] font-bold flex items-center justify-center flex-shrink-0">2</div>
+          <div class="min-w-0 flex-1">
+            <h4 class="mb-1">Install Drevalis Creator Studio</h4>
+            <p class="text-sm text-[var(--txt-secondary)] mb-3">Self-hosted Docker stack. Linux &amp; macOS one-liner:</p>
+            <pre class="text-xs"><code>curl -fsSL https://drevalis.com/install.sh | bash</code></pre>
+            <p class="small-muted mt-2">Windows, full install guide, or manual compose: <a href="/download">drevalis.com/download</a></p>
+          </div>
+        </li>
+        <li class="card p-6 flex gap-5">
+          <div class="w-8 h-8 rounded-md bg-[var(--accent)] text-[var(--bg-base)] font-bold flex items-center justify-center flex-shrink-0">3</div>
+          <div>
+            <h4 class="mb-1">Activate</h4>
+            <p class="text-sm text-[var(--txt-secondary)]">Open <code class="inline">http://localhost:3000</code> after the install finishes. Paste the license key into the activation screen. Done.</p>
+          </div>
+        </li>
+        <li class="card p-6 flex gap-5">
+          <div class="w-8 h-8 rounded-md bg-[var(--accent)] text-[var(--bg-base)] font-bold flex items-center justify-center flex-shrink-0">4</div>
+          <div>
+            <h4 class="mb-1">Manage your subscription anytime</h4>
+            <p class="text-sm text-[var(--txt-secondary)]">Upgrade, downgrade, change card, or cancel at <a href="/account">drevalis.com/account</a>.</p>
+          </div>
+        </li>
+      </ol>
+
+      <div class="card p-6 mt-8 reveal" style="border-color: rgba(0,229,184,0.2); background: linear-gradient(135deg, rgba(0,229,184,0.04), rgba(20,22,27,0.85));">
+        <h4 class="mb-2">Stuck on install?</h4>
+        <p class="text-sm text-[var(--txt-secondary)]">Reply to the license email or write to <a href="mailto:support@drevalis.com">support@drevalis.com</a>. Reply within one business day, usually faster.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="site-footer-grid">
+      <div class="site-footer-about">
+        <a href="/" class="site-brand mb-3">
+          <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
+          Drevalis
+        </a>
+        <p class="text-sm text-[var(--txt-secondary)] max-w-sm mt-3">Self-hosted AI video &amp; audiobook creation. Made in Switzerland.</p>
+        <p class="small-muted mt-3">© 2026 Drevalis · Creator Studio is a trademark of Drevalis.</p>
+      </div>
+      <div><div class="site-footer-heading">Product</div><ul class="site-footer-list"><li><a href="/#features">Features</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/download">Download</a></li></ul></div>
+      <div><div class="site-footer-heading">Account</div><ul class="site-footer-list"><li><a href="/account">Manage subscription</a></li><li><a href="mailto:support@drevalis.com">Support</a></li></ul></div>
+      <div><div class="site-footer-heading">Legal</div><ul class="site-footer-list"><li><a href="/terms">Terms of Service</a></li><li><a href="/privacy">Privacy Policy</a></li><li><a href="/acceptable-use">Acceptable Use</a></li><li><a href="/impressum">Impressum</a></li></ul></div>
+    </div>
+    <div class="site-footer-bottom">
+      <span>Made in Switzerland · Hosted in the EU</span>
+      <span><a href="mailto:support@drevalis.com" class="text-[var(--txt-muted)] hover:text-[var(--txt-primary)]">support@drevalis.com</a></span>
+    </div>
   </footer>
+
+  <script src="/assets/site.js"></script>
 </body>
 </html>
