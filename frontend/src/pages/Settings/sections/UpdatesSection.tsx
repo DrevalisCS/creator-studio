@@ -10,6 +10,7 @@ import {
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
+import { UpdateProgressOverlay } from '@/components/UpdateProgressOverlay';
 import { updates, type UpdateStatus, formatError } from '@/lib/api';
 
 /** Human-readable "2 minutes ago" from a Date. */
@@ -31,6 +32,7 @@ export function UpdatesSection() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [applying, setApplying] = useState(false);
+  const [overlayOpen, setOverlayOpen] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
 
   const refresh = useCallback(
@@ -87,15 +89,19 @@ export function UpdatesSection() {
   const onApply = async () => {
     if (
       !confirm(
-        'Pull the new images and restart the stack? The app will be unavailable for ~60 seconds.',
+        'Pull the new images and restart the stack? The app will be unavailable for ~60 seconds. A live progress overlay will show you each phase.',
       )
     ) {
       return;
     }
     setApplying(true);
     try {
-      const r = await updates.apply();
-      toast.success('Update queued', { description: r.hint });
+      await updates.apply();
+      // Surface the overlay immediately so the user has something to
+      // watch while the updater sidecar picks up the flag. The overlay
+      // polls /api/v1/updates/progress + /health and auto-reloads when
+      // the new stack is alive.
+      setOverlayOpen(true);
     } catch (e) {
       toast.error('Could not queue update', { description: formatError(e) });
     } finally {
@@ -113,6 +119,8 @@ export function UpdatesSection() {
 
   return (
     <div className="space-y-4">
+      <UpdateProgressOverlay open={overlayOpen} onClose={() => setOverlayOpen(false)} />
+
       {/* Header + prominent Check button */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>

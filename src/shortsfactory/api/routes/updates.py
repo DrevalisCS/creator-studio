@@ -41,6 +41,27 @@ class ApplyResponse(BaseModel):
     hint: str
 
 
+class ProgressResponse(BaseModel):
+    """Last status frame written by the updater sidecar.
+
+    Phases (sequential):
+      - ``idle``        : no update in progress
+      - ``pulling``     : ``docker compose pull`` running
+      - ``pulled``      : pull finished, about to recreate services
+      - ``restarting``  : ``docker compose up -d`` running
+      - ``done``        : stack restarted successfully
+      - ``failed``      : pull or restart failed; ``detail`` explains why
+
+    ``started_at`` is set on the first frame of a cycle and kept until
+    the cycle finishes, so the UI can render elapsed time.
+    """
+
+    phase: str = "idle"
+    detail: str = ""
+    ts: str = ""
+    started_at: str = ""
+
+
 @router.get("/status", response_model=UpdateStatusResponse)
 async def get_status(
     force: bool = Query(False, description="Bypass cache"),
@@ -53,6 +74,33 @@ async def get_status(
         force=force,
     )
     return UpdateStatusResponse(**manifest)
+
+
+@router.get("/progress", response_model=ProgressResponse)
+async def get_progress() -> ProgressResponse:
+    """Return the last phase the updater wrote.
+
+    Polled by the frontend's full-screen update overlay at ~1.5s cadence.
+    During the ``restarting`` phase this app container itself gets
+    recycled, so the frontend also needs to handle the endpoint going
+    unreachable - that transition is itself a progress signal.
+    """
+    import json
+    from pathlib import Path
+
+    status_path = Path("/shared/update_status.json")
+    if not status_path.exists():
+        return ProgressResponse()  # idle defaults
+    try:
+        data = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ProgressResponse(phase="idle", detail="status file unreadable")
+    return ProgressResponse(
+        phase=data.get("phase", "idle"),
+        detail=data.get("detail", ""),
+        ts=data.get("ts", ""),
+        started_at=data.get("started_at", ""),
+    )
 
 
 @router.post("/apply", response_model=ApplyResponse)

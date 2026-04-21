@@ -1000,8 +1000,16 @@ export interface UpdateStatus {
   reason: string | null;
 }
 
+export interface UpdateProgress {
+  phase: 'idle' | 'pulling' | 'pulled' | 'restarting' | 'done' | 'failed' | string;
+  detail: string;
+  ts: string;
+  started_at: string;
+}
+
 export const updates = {
   status: (force: boolean = false) =>
     get<UpdateStatus>(`/api/v1/updates/status${force ? '?force=true' : ''}`),
   apply: () => post<{ queued: boolean; hint: string }>('/api/v1/updates/apply'),
+  progress: () => get<UpdateProgress>('/api/v1/updates/progress'),
 };
