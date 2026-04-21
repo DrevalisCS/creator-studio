@@ -29,7 +29,31 @@ _CACHE_TTL = 6 * 3600  # 6h
 # Bind-mounted at /shared in both the app and the updater sidecar. See
 # docker-compose.yml — the ``updater_shared`` named volume.
 _UPDATE_FLAG_PATH = "/shared/do_update"
-_CURRENT_VERSION = "0.1.0"  # keep in sync with pyproject.toml + FastAPI version
+
+
+def _resolve_current_version() -> str:
+    """Return the installed version.
+
+    Baked into the image by the release workflow via ``APP_VERSION`` build
+    arg → env var. In local dev where the env var is unset we fall back
+    to the package metadata (pyproject ``version``), and finally to the
+    ``0.0.0-dev`` sentinel so the UI clearly signals that the running
+    process wasn't built through a release tag.
+    """
+    import os
+
+    env = os.environ.get("APP_VERSION")
+    if env and env.strip():
+        return env.strip()
+    try:
+        from importlib.metadata import PackageNotFoundError, version
+
+        return version("shortsfactory")
+    except Exception:
+        return "0.0.0-dev"
+
+
+_CURRENT_VERSION = _resolve_current_version()
 
 
 class UpdateCheckError(Exception):

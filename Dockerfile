@@ -41,6 +41,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PATH="/app/.venv/bin:/opt/piper:$PATH"
 
+# Baked in by the release workflow (--build-arg APP_VERSION=0.1.7). Local
+# `docker build .` without the arg leaves it at 0.0.0-dev, which the
+# Settings/Updates UI uses to signal "unreleased build".
+ARG APP_VERSION=0.0.0-dev
+ENV APP_VERSION=${APP_VERSION}
+
 # Install runtime system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \

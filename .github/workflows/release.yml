@@ -73,6 +73,8 @@ jobs:
           tags: |
             ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ matrix.image }}:${{ steps.ver.outputs.version }}
             ${{ env.REGISTRY }}/${{ env.OWNER_LC }}/${{ matrix.image }}:stable
+          build-args: |
+            APP_VERSION=${{ steps.ver.outputs.version }}
           cache-from: type=gha,scope=${{ matrix.image }}
           cache-to: type=gha,scope=${{ matrix.image }},mode=max
 
