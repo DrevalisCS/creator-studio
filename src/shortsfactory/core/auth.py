@@ -41,11 +41,17 @@ class OptionalAPIKeyMiddleware(BaseHTTPMiddleware):
 
     def __init__(self, app: Any, token: str | None = None) -> None:
         super().__init__(app)
-        self._token: str | None = token or os.environ.get("API_AUTH_TOKEN")
+        raw = token if token is not None else os.environ.get("API_AUTH_TOKEN")
+        # Treat empty/whitespace same as unset. The installer writes
+        # `API_AUTH_TOKEN=` to seed a blank slot for future hardening;
+        # without this coercion the middleware would enforce against an
+        # empty expected value, fail every request, and lock out the IP
+        # with 429 after 10 failures — bricking a fresh install.
+        self._token: str | None = raw.strip() if (raw and raw.strip()) else None
 
     async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
         # If no token is configured, allow everything (local dev mode).
-        if self._token is None:
+        if not self._token:
             return await call_next(request)
 
         path = request.url.path
