@@ -16,6 +16,17 @@ log() {
   printf '[updater] %s\n' "$*"
 }
 
+# Named volumes are initialised root:root 0755 by Docker, which blocks
+# the non-root `appuser` (UID 1000) in the app container from creating
+# the flag file (observed: `[Errno 13] Permission denied: '/shared/do_update'`).
+# The updater runs as root, so it's the only place that can relax the
+# permissions once on startup. After this chmod, the app can freely
+# toggle the flag and no race exists — this runs before the poll loop
+# even begins, and the app only writes the flag on a user-initiated update.
+mkdir -p /shared
+chmod 0777 /shared
+log "shared volume readied (0777 /shared)"
+
 log "watching ${FLAG} (poll ${POLL_SECONDS}s)"
 
 while true; do
