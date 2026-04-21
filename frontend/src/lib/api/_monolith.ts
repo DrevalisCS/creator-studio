@@ -977,12 +977,42 @@ export interface LicenseStatus {
   error: string | null;
 }
 
+export interface ActivationEntry {
+  machine_id: string;
+  first_seen: number | null;
+  last_heartbeat: number | null;
+  last_known_version: string | null;
+  is_this_machine: boolean;
+}
+
+export interface ActivationsResponse {
+  tier: string;
+  cap: number;
+  this_machine_id: string;
+  activations: ActivationEntry[];
+}
+
 export const license = {
   status: () => get<LicenseStatus>('/api/v1/license/status'),
   activate: (license_jwt: string) =>
     post<LicenseStatus>('/api/v1/license/activate', { license_jwt }),
   deactivate: () => post<LicenseStatus>('/api/v1/license/deactivate'),
   portal: () => post<{ url: string }>('/api/v1/license/portal'),
+  listActivations: () =>
+    get<ActivationsResponse>('/api/v1/license/activations'),
+  deactivateMachine: (machine_id: string) =>
+    post<ActivationsResponse>(
+      `/api/v1/license/activations/${encodeURIComponent(machine_id)}/deactivate`,
+    ),
+  // Seat management without a local activation (used by the activation
+  // wizard to recover from the seat-cap lockout).
+  listActivationsByKey: (license_key: string) =>
+    post<ActivationsResponse>('/api/v1/license/activations/query', { license_key }),
+  freeSeatByKey: (license_key: string, machine_id: string) =>
+    post<ActivationsResponse>('/api/v1/license/activations/free-seat', {
+      license_key,
+      machine_id,
+    }),
 };
 
 // ---------------------------------------------------------------------------

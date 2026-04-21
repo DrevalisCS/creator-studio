@@ -33,4 +33,6 @@ export type {
   LicenseStatus,
   UpdateStatus,
   UpdateProgress,
+  ActivationEntry,
+  ActivationsResponse,
 } from './_monolith';

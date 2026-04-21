@@ -19,8 +19,10 @@ from shortsfactory.core.deps import get_redis, get_settings
 from shortsfactory.core.license.activation import (
     ActivationError,
     ActivationNetworkError,
+    deactivate_machine_with_server,
     deactivate_with_server,
     exchange_key_for_jwt,
+    list_activations_with_server,
     looks_like_jwt,
 )
 from shortsfactory.core.license.claims import LicenseClaims
@@ -227,6 +229,263 @@ async def deactivate_license(
     set_state(LicenseState(status=LicenseStatus.UNACTIVATED))
     await bump_state_version(redis)
     return await get_license_status(session, settings, redis)
+
+
+# ─────────────────────────── Activations management ───────────────────
+
+
+class ActivationEntry(BaseModel):
+    machine_id: str
+    first_seen: int | None = None
+    last_heartbeat: int | None = None
+    last_known_version: str | None = None
+    is_this_machine: bool = False
+
+
+class ActivationsResponse(BaseModel):
+    tier: str
+    cap: int
+    this_machine_id: str
+    activations: list[ActivationEntry]
+
+
+@router.get("/activations", response_model=ActivationsResponse)
+async def list_activations(
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+) -> ActivationsResponse:
+    """Return every machine currently holding a seat on this license.
+
+    Reads the license key from the locally-stored JWT's ``jti`` claim
+    and forwards it to the license server. The ``is_this_machine`` flag
+    on each entry tells the UI which row is the one the user is looking
+    at right now (so it can label it differently and prevent accidental
+    self-deactivation of the session in use).
+    """
+    if not settings.license_server_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "license_server_not_configured"},
+        )
+    state = get_state()
+    if state.claims is None or not state.claims.jti:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "no_active_license"},
+        )
+
+    try:
+        raw = await list_activations_with_server(
+            settings.license_server_url,
+            license_key=state.claims.jti,
+        )
+    except ActivationNetworkError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "license_server_unreachable", "reason": str(exc)[:200]},
+        ) from exc
+    except ActivationError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"error": exc.error, **exc.detail},
+        ) from exc
+
+    this_id = stable_machine_id()
+    entries: list[ActivationEntry] = []
+    for a in raw.get("activations", []) or []:
+        if not isinstance(a, dict):
+            continue
+        mid = str(a.get("machine_id") or "")
+        entries.append(
+            ActivationEntry(
+                machine_id=mid,
+                first_seen=a.get("first_seen"),
+                last_heartbeat=a.get("last_heartbeat"),
+                last_known_version=a.get("last_known_version"),
+                is_this_machine=(mid == this_id),
+            )
+        )
+    return ActivationsResponse(
+        tier=str(raw.get("tier", "")),
+        cap=int(raw.get("cap", 1)),
+        this_machine_id=this_id,
+        activations=entries,
+    )
+
+
+class ActivationsByKeyRequest(BaseModel):
+    license_key: str = Field(min_length=8)
+
+
+class DeactivateByKeyRequest(BaseModel):
+    license_key: str = Field(min_length=8)
+    machine_id: str = Field(min_length=4, max_length=64)
+
+
+@router.post(
+    "/activations/query",
+    response_model=ActivationsResponse,
+    summary="List seats for a license key (no local activation required)",
+)
+async def list_activations_by_key(
+    body: ActivationsByKeyRequest,
+    settings: Settings = Depends(get_settings),
+) -> ActivationsResponse:
+    """List seats using a license key supplied in the request body.
+
+    Used by the activation wizard when the local JWT is missing (new
+    install or seat-cap lockout). Accepts the key the user pastes from
+    their purchase email; relays to the license server which itself
+    treats the key as the auth credential.
+    """
+    if not settings.license_server_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "license_server_not_configured"},
+        )
+    try:
+        raw = await list_activations_with_server(
+            settings.license_server_url,
+            license_key=body.license_key,
+        )
+    except ActivationNetworkError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "license_server_unreachable", "reason": str(exc)[:200]},
+        ) from exc
+    except ActivationError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"error": exc.error, **exc.detail},
+        ) from exc
+
+    this_id = stable_machine_id()
+    entries: list[ActivationEntry] = []
+    for a in raw.get("activations", []) or []:
+        if not isinstance(a, dict):
+            continue
+        mid = str(a.get("machine_id") or "")
+        entries.append(
+            ActivationEntry(
+                machine_id=mid,
+                first_seen=a.get("first_seen"),
+                last_heartbeat=a.get("last_heartbeat"),
+                last_known_version=a.get("last_known_version"),
+                is_this_machine=(mid == this_id),
+            )
+        )
+    return ActivationsResponse(
+        tier=str(raw.get("tier", "")),
+        cap=int(raw.get("cap", 1)),
+        this_machine_id=this_id,
+        activations=entries,
+    )
+
+
+@router.post(
+    "/activations/free-seat",
+    response_model=ActivationsResponse,
+    summary="Deactivate a machine via license key (works pre-activation)",
+)
+async def deactivate_machine_by_key(
+    body: DeactivateByKeyRequest,
+    settings: Settings = Depends(get_settings),
+) -> ActivationsResponse:
+    """Release the seat for *machine_id* using a license key supplied
+    in the request body.
+
+    Used by the activation wizard to recover from seat-cap lockout when
+    the user can't access the other machines holding seats. Does NOT
+    touch local state (there's nothing to clear pre-activation).
+    """
+    if not settings.license_server_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "license_server_not_configured"},
+        )
+    try:
+        await deactivate_machine_with_server(
+            settings.license_server_url,
+            license_key=body.license_key,
+            machine_id=body.machine_id,
+        )
+    except ActivationNetworkError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "license_server_unreachable", "reason": str(exc)[:200]},
+        ) from exc
+    except ActivationError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"error": exc.error, **exc.detail},
+        ) from exc
+
+    return await list_activations_by_key(
+        ActivationsByKeyRequest(license_key=body.license_key), settings
+    )
+
+
+@router.post(
+    "/activations/{machine_id}/deactivate",
+    response_model=ActivationsResponse,
+    summary="Deactivate a specific machine",
+)
+async def deactivate_machine(
+    machine_id: str,
+    session: AsyncSession = Depends(get_db_session),
+    settings: Settings = Depends(get_settings),
+    redis: Redis = Depends(get_redis),
+) -> ActivationsResponse:
+    """Release the seat held by ``machine_id`` on this license.
+
+    If ``machine_id`` matches the caller's own machine, additionally
+    clears the local JWT — same effect as POST /deactivate. If it's a
+    different machine, only the server-side seat is released; the other
+    install will lock on its next heartbeat (24h) or next protected
+    request that tries to re-bootstrap.
+    """
+    if not settings.license_server_url:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "license_server_not_configured"},
+        )
+    state = get_state()
+    if state.claims is None or not state.claims.jti:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"error": "no_active_license"},
+        )
+
+    try:
+        await deactivate_machine_with_server(
+            settings.license_server_url,
+            license_key=state.claims.jti,
+            machine_id=machine_id,
+        )
+    except ActivationNetworkError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"error": "license_server_unreachable", "reason": str(exc)[:200]},
+        ) from exc
+    except ActivationError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"error": exc.error, **exc.detail},
+        ) from exc
+
+    # If the caller just released this very install's seat, also zero
+    # our local JWT so the next request flips the UI to the activation
+    # wizard. Otherwise the UI would keep showing "active" while the
+    # server has already revoked us.
+    if machine_id == stable_machine_id():
+        repo = LicenseStateRepository(session)
+        await repo.clear()
+        await session.commit()
+        set_state(LicenseState(status=LicenseStatus.UNACTIVATED))
+        await bump_state_version(redis)
+
+    # Re-fetch the list so the UI can render the new state in one round-trip.
+    return await list_activations(session, settings)
 
 
 # ─────────────────────────── Billing portal ───────────────────────────

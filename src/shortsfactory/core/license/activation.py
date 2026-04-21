@@ -145,3 +145,80 @@ async def deactivate_with_server(
             await client.post(url, json=payload)
     except Exception as exc:
         logger.info("license_server_deactivate_failed", error=str(exc)[:120])
+
+
+async def list_activations_with_server(
+    server_url: str,
+    *,
+    license_key: str,
+    timeout: float = 10.0,
+) -> dict[str, Any]:
+    """POST ``/activations`` → every machine currently holding a seat.
+
+    Returns ``{tier, cap, activations: [{machine_id, first_seen,
+    last_heartbeat, last_known_version}]}``. Raises :class:`ActivationError`
+    on 4xx / 5xx or :class:`ActivationNetworkError` on transport failures.
+    """
+    url = server_url.rstrip("/") + "/activations"
+    payload = {"license_key": license_key}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload)
+    except (httpx.NetworkError, httpx.TimeoutException) as exc:
+        raise ActivationNetworkError(str(exc)[:200]) from exc
+
+    if resp.status_code >= 400:
+        detail: dict[str, Any] = {}
+        try:
+            detail = resp.json().get("detail", {})
+        except Exception:
+            pass
+        error_name = (
+            detail.get("error") if isinstance(detail, dict) else str(detail)
+        ) or resp.reason_phrase
+        raise ActivationError(
+            status_code=resp.status_code,
+            error=str(error_name) or "list_failed",
+            detail=detail if isinstance(detail, dict) else {"raw": detail},
+        )
+    body: dict[str, Any] = resp.json()
+    return body
+
+
+async def deactivate_machine_with_server(
+    server_url: str,
+    *,
+    license_key: str,
+    machine_id: str,
+    timeout: float = 10.0,
+) -> None:
+    """POST ``/deactivate`` for an arbitrary ``machine_id``.
+
+    Differs from :func:`deactivate_with_server` in that it surfaces
+    server errors to the caller rather than swallowing them — useful
+    when the UI shows a table of activations and wants to report why a
+    specific deactivate failed ("this install is no longer registered",
+    network down, etc.).
+    """
+    url = server_url.rstrip("/") + "/deactivate"
+    payload = {"license_key": license_key, "machine_id": machine_id}
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.post(url, json=payload)
+    except (httpx.NetworkError, httpx.TimeoutException) as exc:
+        raise ActivationNetworkError(str(exc)[:200]) from exc
+
+    if resp.status_code >= 400:
+        detail: dict[str, object] = {}
+        try:
+            detail = resp.json().get("detail", {})
+        except Exception:
+            pass
+        error_name = (
+            detail.get("error") if isinstance(detail, dict) else str(detail)
+        ) or resp.reason_phrase
+        raise ActivationError(
+            status_code=resp.status_code,
+            error=str(error_name) or "deactivate_failed",
+            detail=detail if isinstance(detail, dict) else {"raw": detail},
+        )

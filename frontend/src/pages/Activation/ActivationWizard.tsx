@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Trash2, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { license } from '@/lib/api';
+import { license, type ActivationsResponse } from '@/lib/api';
 
 interface Props {
   status: 'unactivated' | 'expired' | 'invalid';
@@ -19,6 +20,28 @@ export function ActivationWizard({ status, stateError, machineId, onActivated }:
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Seat-manager state, shown only when activation hits the cap error.
+  const [seatCap, setSeatCap] = useState<{ cap: number; tier: string } | null>(null);
+  const [seats, setSeats] = useState<ActivationsResponse | null>(null);
+  const [seatsLoading, setSeatsLoading] = useState(false);
+  const [freeingMachine, setFreeingMachine] = useState<string | null>(null);
+
+  const loadSeats = async (pastedKey: string) => {
+    setSeatsLoading(true);
+    try {
+      const res = await license.listActivationsByKey(pastedKey);
+      setSeats(res);
+    } catch (err: any) {
+      setError(
+        `Could not load seat list: ${
+          typeof err?.detail === 'string' ? err.detail : err?.message ?? 'unknown'
+        }`,
+      );
+    } finally {
+      setSeatsLoading(false);
+    }
+  };
+
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
@@ -27,10 +50,48 @@ export function ActivationWizard({ status, stateError, machineId, onActivated }:
       await license.activate(key.trim());
       onActivated();
     } catch (err: any) {
+      // Friendly message for the seat-cap error - the generic JSON
+      // dump "{"error":"seat_cap_exceeded",...}" wasn't actionable.
       const detail = err?.detail ?? err?.message ?? 'activation failed';
-      setError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+      if (typeof detail === 'object' && detail?.error === 'seat_cap_exceeded') {
+        setSeatCap({ cap: detail.cap, tier: detail.tier });
+        setError(
+          `All ${detail.cap} machine seats on your ${detail.tier} tier are already in use. ` +
+            'Deactivate one of the machines below, then click Activate again.',
+        );
+        await loadSeats(key.trim());
+      } else if (typeof detail === 'string') {
+        setError(detail);
+      } else {
+        setError(JSON.stringify(detail));
+      }
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const onFreeSeat = async (targetMachineId: string) => {
+    if (
+      !confirm(
+        `Free the seat held by machine ${targetMachineId.slice(0, 8)}...? That install will lock on its next heartbeat.`,
+      )
+    ) {
+      return;
+    }
+    setFreeingMachine(targetMachineId);
+    try {
+      const res = await license.freeSeatByKey(key.trim(), targetMachineId);
+      setSeats(res);
+    } catch (err: any) {
+      setError(
+        `Could not deactivate: ${
+          typeof err?.detail === 'string'
+            ? err.detail
+            : err?.detail?.reason ?? err?.message ?? 'unknown'
+        }`,
+      );
+    } finally {
+      setFreeingMachine(null);
     }
   };
 
@@ -51,7 +112,62 @@ export function ActivationWizard({ status, stateError, machineId, onActivated }:
     <div className="min-h-screen flex items-center justify-center bg-bg-base p-6">
       <div className="w-full max-w-lg bg-bg-elevated/80 backdrop-blur-sm border border-white/[0.06] rounded-lg p-8 shadow-lg">
         <h1 className="text-2xl font-semibold text-txt-primary mb-2">{heading}</h1>
-        <p className="text-sm text-txt-secondary mb-6">{sub}</p>
+        <p className="text-sm text-txt-secondary mb-6">{sub}</p>{seatCap ? (
+          <div className="mb-4 p-4 rounded border border-amber-500/30 bg-amber-500/5">
+            <div className="flex items-center gap-2 mb-2">
+              <Monitor size={14} className="text-amber-400" />
+              <span className="text-xs font-semibold text-amber-200">
+                Seat cap: {seats?.activations.length ?? seatCap.cap} / {seatCap.cap} used on{' '}
+                {seatCap.tier}
+              </span>
+            </div>
+            <p className="text-xs text-txt-secondary mb-3">
+              Free a seat below, then click Activate again. The other install will lock on its
+              next heartbeat (within 24 hours).
+            </p>
+            {seatsLoading && !seats && (
+              <div className="text-xs text-txt-muted">Loading seat list...</div>
+            )}
+            {seats && seats.activations.length === 0 && (
+              <div className="text-xs text-txt-muted">No machines currently registered.</div>
+            )}
+            <div className="space-y-2">
+              {seats?.activations.map((a) => (
+                <div
+                  key={a.machine_id}
+                  className="flex items-center justify-between gap-3 p-2 rounded bg-bg-base/50"
+                >
+                  <div className="min-w-0">
+                    <code className="text-[11px] font-mono text-txt-primary truncate block">
+                      {a.machine_id}
+                    </code>
+                    <div className="text-[10px] text-txt-muted">
+                      {a.last_known_version && (
+                        <span className="mr-2">v{a.last_known_version}</span>
+                      )}
+                      last heartbeat{' '}
+                      {a.last_heartbeat
+                        ? new Date(
+                            (a.last_heartbeat < 1e12 ? a.last_heartbeat * 1000 : a.last_heartbeat),
+                          ).toLocaleString()
+                        : 'unknown'}
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => onFreeSeat(a.machine_id)}
+                    disabled={freeingMachine === a.machine_id}
+                    className="shrink-0 text-error hover:bg-error/10"
+                  >
+                    <Trash2 size={12} />
+                    {freeingMachine === a.machine_id ? '...' : 'Free seat'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
 
         {stateError && (
           <div className="mb-4 p-3 rounded border border-error/30 bg-error/10 text-xs text-error">

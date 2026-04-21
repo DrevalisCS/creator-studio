@@ -1,10 +1,21 @@
-import { useState } from 'react';
-import { KeyRound, Copy, CheckCircle2, XCircle, Clock, AlertTriangle, ExternalLink } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import {
+  KeyRound,
+  Copy,
+  CheckCircle2,
+  XCircle,
+  Clock,
+  AlertTriangle,
+  ExternalLink,
+  Monitor,
+  Trash2,
+  RefreshCw,
+} from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { useToast } from '@/components/ui/Toast';
-import { license } from '@/lib/api';
+import { license, formatError, type ActivationsResponse } from '@/lib/api';
 import { useLicense } from '@/lib/useLicense';
 
 function StateBadge({ state }: { state: string }) {
@@ -38,6 +49,19 @@ function StateBadge({ state }: { state: string }) {
   }
 }
 
+function tsToRelative(ts: number | null | undefined): string {
+  if (!ts) return '-';
+  const ms = ts < 1e12 ? ts * 1000 : ts; // unix seconds -> ms if needed
+  const diff = Date.now() - ms;
+  if (diff < 60_000) return 'just now';
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 48) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+}
+
 export function LicenseSection() {
   const { status, loading, refresh } = useLicense();
   const { toast } = useToast();
@@ -45,6 +69,57 @@ export function LicenseSection() {
   const [replacing, setReplacing] = useState(false);
   const [deactivating, setDeactivating] = useState(false);
   const [openingPortal, setOpeningPortal] = useState(false);
+
+  // Activations list (server-side seat tracking)
+  const [activations, setActivations] = useState<ActivationsResponse | null>(null);
+  const [activationsLoading, setActivationsLoading] = useState(false);
+  const [deactivatingMachine, setDeactivatingMachine] = useState<string | null>(null);
+
+  const loadActivations = useCallback(async () => {
+    if (!status || status.state === 'unactivated' || status.state === 'invalid') {
+      setActivations(null);
+      return;
+    }
+    setActivationsLoading(true);
+    try {
+      const res = await license.listActivations();
+      setActivations(res);
+    } catch (e) {
+      // License server unreachable or endpoint missing (older server) -
+      // surface the cause once, keep UI functional.
+      toast.warning('Could not load seat list', { description: formatError(e) });
+      setActivations(null);
+    } finally {
+      setActivationsLoading(false);
+    }
+  }, [status, toast]);
+
+  useEffect(() => {
+    loadActivations();
+  }, [loadActivations]);
+
+  const onDeactivateMachine = async (machineId: string) => {
+    const isSelf = machineId === activations?.this_machine_id;
+    const msg = isSelf
+      ? "Deactivate THIS machine's seat? The app will lock until you paste a new license."
+      : `Free the seat held by machine ${machineId.slice(0, 8)}...? The other install locks on its next heartbeat.`;
+    if (!confirm(msg)) return;
+    setDeactivatingMachine(machineId);
+    try {
+      const res = await license.deactivateMachine(machineId);
+      setActivations(res);
+      toast.success(isSelf ? 'This machine deactivated' : 'Seat released');
+      if (isSelf) {
+        // Our own JWT was cleared server-side AND locally; refresh status
+        // so LicenseGate flips back to the activation wizard.
+        await refresh();
+      }
+    } catch (e) {
+      toast.error('Deactivation failed', { description: formatError(e) });
+    } finally {
+      setDeactivatingMachine(null);
+    }
+  };
 
   const onManageSubscription = async () => {
     setOpeningPortal(true);
@@ -230,16 +305,102 @@ export function LicenseSection() {
         </div>
       </Card>
 
+      {/* Activated machines (all seats held by this license) */}
+      <Card className="p-5">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div>
+            <h4 className="text-sm font-semibold text-txt-primary flex items-center gap-2">
+              <Monitor size={14} />
+              Activated machines
+            </h4>
+            <p className="text-xs text-txt-secondary mt-1">
+              {activations
+                ? `${activations.activations.length} of ${activations.cap} seats used on your ${activations.tier} tier.`
+                : 'Seats currently held by this license key.'}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={loadActivations}
+            disabled={activationsLoading}
+            title="Re-check seat list"
+          >
+            <RefreshCw size={13} className={activationsLoading ? 'animate-spin' : ''} />
+          </Button>
+        </div>
+
+        {activations === null ? (
+          <div className="text-xs text-txt-muted py-3 text-center">
+            {activationsLoading ? 'Loading...' : 'Seat list not available.'}
+          </div>
+        ) : activations.activations.length === 0 ? (
+          <div className="text-xs text-txt-muted py-3 text-center">
+            No machines currently registered.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {activations.activations.map((a) => (
+              <div
+                key={a.machine_id}
+                className={[
+                  'flex items-center justify-between gap-3 p-3 rounded border',
+                  a.is_this_machine
+                    ? 'border-accent/40 bg-accent/[0.04]'
+                    : 'border-white/[0.06] bg-bg-elevated/50',
+                ].join(' ')}
+              >
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <code className="text-xs font-mono text-txt-primary truncate">
+                      {a.machine_id}
+                    </code>
+                    {a.is_this_machine && (
+                      <Badge variant="success" className="text-[10px]">
+                        This machine
+                      </Badge>
+                    )}
+                    {a.last_known_version && (
+                      <span className="text-[10px] text-txt-muted">v{a.last_known_version}</span>
+                    )}
+                  </div>
+                  <div className="text-[11px] text-txt-muted mt-0.5">
+                    First seen {tsToRelative(a.first_seen)} &middot; Last heartbeat{' '}
+                    {tsToRelative(a.last_heartbeat)}
+                  </div>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onDeactivateMachine(a.machine_id)}
+                  disabled={deactivatingMachine === a.machine_id}
+                  className="shrink-0 text-error hover:bg-error/10"
+                  title={
+                    a.is_this_machine
+                      ? 'Deactivate this machine (the app will lock)'
+                      : 'Free the seat held by this remote machine'
+                  }
+                >
+                  <Trash2 size={13} />
+                  {deactivatingMachine === a.machine_id ? 'Working...' : 'Deactivate'}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
       <Card className="p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
             <h4 className="text-sm font-semibold text-txt-primary">Deactivate this machine</h4>
             <p className="text-xs text-txt-secondary mt-1">
-              Clears the stored license. The app will lock until a new key is pasted.
+              Clears the stored license. The app will lock until a new key is pasted. Equivalent to
+              hitting &ldquo;Deactivate&rdquo; next to the highlighted row above.
             </p>
           </div>
           <Button variant="destructive" size="md" onClick={onDeactivate} disabled={deactivating}>
-            {deactivating ? 'Working…' : 'Deactivate'}
+            {deactivating ? 'Working...' : 'Deactivate'}
           </Button>
         </div>
       </Card>
