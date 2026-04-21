@@ -89,8 +89,11 @@ class LicenseGateMiddleware(BaseHTTPMiddleware):
             return await call_next(request)
 
         # Not usable → 402 with a machine-readable detail the frontend uses
-        # to route to the activation wizard.
-        logger.info(
+        # to route to the activation wizard. This is the *normal* state
+        # during onboarding — every request the wizard doesn't explicitly
+        # ping generates one line, so keep it at DEBUG to avoid drowning
+        # the operator in expected-output.
+        logger.debug(
             "license_gate_blocked",
             path=path,
             status=state.status.value,
