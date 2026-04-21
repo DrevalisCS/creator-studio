@@ -58,10 +58,13 @@ logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 BACKUP_SCHEMA_VERSION = "1"
 
-# Ordered so that dependents come after their parents (import order);
-# reverse is deletion order.
+# Ordered so that dependents come after their parents (insert order);
+# deletion is reversed. Series has FKs to voice_profiles, comfyui_servers,
+# comfyui_workflows, llm_configs, prompt_templates, youtube_channels — so
+# all of those must be inserted first. Episodes / audiobooks / uploads /
+# scheduled_posts come after their parents for the same reason.
 _TABLE_ORDER: list[tuple[str, type[Any]]] = [
-    ("series", Series),
+    # ── Parents (no FKs into this set) ──
     ("voice_profiles", VoiceProfile),
     ("llm_configs", LLMConfig),
     ("comfyui_servers", ComfyUIServer),
@@ -71,8 +74,11 @@ _TABLE_ORDER: list[tuple[str, type[Any]]] = [
     ("youtube_channels", YouTubeChannel),
     ("social_platforms", SocialPlatform),
     ("video_templates", VideoTemplate),
+    # ── Mid-tier (reference the parents above) ──
+    ("series", Series),
     ("episodes", Episode),
     ("audiobooks", Audiobook),
+    # ── Leaves (reference episodes / series / channels) ──
     ("generation_jobs", GenerationJob),
     ("media_assets", MediaAsset),
     ("youtube_uploads", YouTubeUpload),
