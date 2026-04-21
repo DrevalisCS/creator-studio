@@ -408,7 +408,17 @@ async def regenerate_audiobook_chapter(
             log.error("audiobook_not_found")
             return {"audiobook_id": audiobook_id, "status": "failed", "error": "not found"}
 
-        # If new text was provided, update the chapter text in the full text
+        # If new text was provided, update just the affected chapter in the
+        # full text. Prior implementation parsed + re-joined with ``"\n\n"``
+        # which flattened user whitespace, always emitted ``## `` headers
+        # (converting ``---``-separated audiobooks to ``##``-headered ones
+        # on first edit, permanently losing the original style), and
+        # dropped the synthetic "Introduction" label producing duplicate
+        # intros on the next regenerate.
+        #
+        # Fix: locate the chapter substring in the ORIGINAL text and
+        # replace only those bytes - preserving every other character
+        # exactly as the user wrote it.
         text = audiobook.text
         if new_chapter_text is not None:
             from shortsfactory.services.audiobook import AudiobookService as _Svc
@@ -420,17 +430,30 @@ async def regenerate_audiobook_chapter(
             )
             chapters = svc_tmp._parse_chapters(text)
             if 0 <= chapter_index < len(chapters):
-                chapters[chapter_index]["text"] = new_chapter_text
-                # Reconstruct the full text from chapters
-                parts: list[str] = []
-                for ch in chapters:
-                    if ch["title"] not in ("Full Text", "Introduction"):
-                        parts.append(f"## {ch['title']}")
-                    elif ch["title"] == "Introduction":
-                        # Introduction comes before any ## header
-                        pass
-                    parts.append(ch["text"])
-                text = "\n\n".join(parts)
+                old_body = chapters[chapter_index]["text"]
+                # ``_parse_chapters`` strips the body; search for the
+                # stripped form in the original text. str.find returns
+                # -1 when the body has been transformed beyond recognition
+                # (very rare - e.g. the user inserted trailing whitespace
+                # inside the chapter and the parser removed it).
+                start = text.find(old_body)
+                if start >= 0:
+                    text = text[:start] + new_chapter_text + text[start + len(old_body) :]
+                else:
+                    log.warning(
+                        "chapter_body_not_locatable_falling_back_to_rewrite",
+                        chapter_index=chapter_index,
+                    )
+                    # Fallback: rebuild using ## headers. Acceptable as a
+                    # last resort; the alternative is silently losing the
+                    # user's edit.
+                    parts: list[str] = []
+                    for i, ch in enumerate(chapters):
+                        body = new_chapter_text if i == chapter_index else ch["text"]
+                        if ch["title"] not in ("Full Text", "Introduction"):
+                            parts.append(f"## {ch['title']}")
+                        parts.append(body)
+                    text = "\n\n".join(parts)
                 await ab_repo.update(parsed_id, text=text)
                 await session.commit()
                 log.info("chapter_text_updated", chapter_index=chapter_index)

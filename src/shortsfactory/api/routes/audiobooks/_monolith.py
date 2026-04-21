@@ -967,22 +967,37 @@ async def upload_audiobook_to_youtube(
         encryption_key=settings.encryption_key,
     )
 
-    # Validate YouTube channel is connected
-    channel_repo = YouTubeChannelRepository(db)
-    channel = await channel_repo.get_active()
-    if channel is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No YouTube channel connected. Please authorize first.",
-        )
-
-    # Validate audiobook exists and has a video
+    # Validate audiobook exists and has a video FIRST so we can use its
+    # per-audiobook youtube_channel_id to resolve the channel (respects
+    # the multi-channel contract; falls back to single-channel install).
     repo = AudiobookRepository(db)
     audiobook = await repo.get_by_id(audiobook_id)
     if audiobook is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Audiobook {audiobook_id} not found",
+        )
+
+    channel_repo = YouTubeChannelRepository(db)
+    channel = None
+    # 1. Per-audiobook assignment.
+    if getattr(audiobook, "youtube_channel_id", None):
+        channel = await channel_repo.get_by_id(audiobook.youtube_channel_id)
+    # 2. Single-channel install: implicit pick.
+    if channel is None:
+        all_channels = await channel_repo.get_all_channels()
+        if len(all_channels) == 1:
+            channel = all_channels[0]
+    if channel is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "no_channel_selected",
+                "hint": (
+                    "Assign a youtube_channel_id to the audiobook, or connect a "
+                    "single YouTube channel so the target is unambiguous."
+                ),
+            },
         )
 
     if not audiobook.video_path:

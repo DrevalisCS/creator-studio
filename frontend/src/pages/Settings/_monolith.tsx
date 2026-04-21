@@ -116,10 +116,10 @@ function Settings() {
         </p>
       </div>
 
-      <div className="grid grid-cols-12 gap-6">
-        {/* Left nav */}
-        <div className="col-span-3">
-          <nav className="space-y-0.5">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+        {/* Left nav — stacks horizontally below md, vertical on md+ */}
+        <div className="md:col-span-3">
+          <nav className="flex md:flex-col gap-0.5 overflow-x-auto md:overflow-visible -mx-4 md:mx-0 px-4 md:px-0 snap-x md:snap-none">
             {SECTIONS.map((section) => {
               const isActive = activeSection === section.id;
               return (
@@ -127,7 +127,7 @@ function Settings() {
                   key={section.id}
                   onClick={() => setActiveSection(section.id)}
                   className={[
-                    'flex items-center gap-2.5 w-full px-3 py-2 rounded-md text-sm font-medium transition-colors duration-fast text-left',
+                    'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-fast text-left whitespace-nowrap shrink-0 md:w-full snap-start',
                     isActive
                       ? 'bg-accent-muted text-accent'
                       : 'text-txt-secondary hover:text-txt-primary hover:bg-bg-hover',
@@ -142,7 +142,7 @@ function Settings() {
         </div>
 
         {/* Right content */}
-        <div className="col-span-9">
+        <div className="md:col-span-9">
           {activeSection === 'license' && <LicenseSection />}
           {activeSection === 'updates' && <UpdatesSection />}
           {activeSection === 'backup' && <BackupSection />}

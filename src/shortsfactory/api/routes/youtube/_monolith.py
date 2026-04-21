@@ -237,13 +237,34 @@ async def disconnect(
     channel_id: UUID | None = Query(None, description="Specific channel to disconnect"),
     db: AsyncSession = Depends(get_db),
 ) -> dict[str, str]:
-    """Remove a YouTube channel connection. Defaults to the active channel."""
+    """Remove a YouTube channel connection.
+
+    Destructive by design. When multiple channels are connected,
+    ``channel_id`` is REQUIRED so the operator can't accidentally
+    disconnect the wrong account via the UI's default state.
+    """
     repo = YouTubeChannelRepository(db)
 
     if channel_id:
         channel = await repo.get_by_id(channel_id)
     else:
-        channel = await repo.get_active()
+        all_channels = await repo.get_all_channels()
+        if len(all_channels) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": "channel_id_required",
+                    "reason": (
+                        "Multiple channels are connected; disconnect is "
+                        "destructive, so the caller must specify which one. "
+                        "Pass ?channel_id=<uuid>."
+                    ),
+                    "connected_channels": [
+                        {"id": str(c.id), "name": c.channel_name} for c in all_channels
+                    ],
+                },
+            )
+        channel = all_channels[0] if all_channels else None
 
     if channel is None:
         raise HTTPException(
@@ -688,13 +709,68 @@ async def list_uploads(
 
 
 def _require_active_channel(channel: Any | None) -> Any:
-    """Raise 400 if no active channel is connected."""
+    """Raise 400 if no active channel is connected.
+
+    Deprecated: prefer :func:`_resolve_channel` which respects the
+    multi-channel contract (several connected channels, operator
+    explicitly picks one).
+    """
     if channel is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="No YouTube channel connected. Please authorize first.",
         )
     return channel
+
+
+async def _resolve_channel(
+    repo: YouTubeChannelRepository,
+    channel_id: UUID | None,
+) -> Any:
+    """Resolve which YouTube channel a playlist / analytics call should
+    target.
+
+    Rules (in order):
+      1. If ``channel_id`` is supplied, look it up; 404 on miss.
+      2. Otherwise, if exactly one channel is connected, use it
+         implicitly - single-channel installs don't need to specify.
+      3. Otherwise, 400 with instructions to pass ``channel_id``.
+
+    Prevents the multi-channel foot-gun where a legacy call to
+    ``get_active()`` picked an arbitrary row and silently sent
+    playlist mutations to the wrong account.
+    """
+    if channel_id is not None:
+        ch = await repo.get_by_id(channel_id)
+        if ch is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"YouTube channel {channel_id} not found",
+            )
+        return ch
+    all_channels = await repo.get_all_channels()
+    if not all_channels:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No YouTube channel connected. Please authorize first.",
+        )
+    if len(all_channels) == 1:
+        return all_channels[0]
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "error": "channel_id_required",
+            "reason": (
+                "Multiple YouTube channels are connected. Pass "
+                "?channel_id=<uuid> to specify which channel this "
+                "operation targets."
+            ),
+            "connected_channels": [
+                {"id": str(c.id), "channel_id": c.channel_id, "name": c.channel_name}
+                for c in all_channels
+            ],
+        },
+    )
 
 
 @router.post(
@@ -705,18 +781,19 @@ def _require_active_channel(channel: Any | None) -> Any:
 )
 async def create_playlist(
     payload: PlaylistCreate,
+    channel_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> PlaylistResponse:
-    """Create a new playlist on the connected YouTube channel.
+    """Create a new playlist on the specified YouTube channel.
 
-    The playlist is also persisted in the local ``youtube_playlists`` table
-    for reference.
+    Pass ``?channel_id=<uuid>`` to target a specific channel. When only
+    one channel is connected, the parameter is optional.
     """
     svc = _get_youtube_service(settings)
 
     channel_repo = YouTubeChannelRepository(db)
-    channel = _require_active_channel(await channel_repo.get_active())
+    channel = await _resolve_channel(channel_repo, channel_id)
 
     updated_tokens = await svc.refresh_tokens_if_needed(
         channel.access_token_encrypted or "",
@@ -771,14 +848,16 @@ async def create_playlist(
     summary="List managed YouTube playlists",
 )
 async def list_playlists(
+    channel_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
 ) -> list[PlaylistResponse]:
-    """Return all playlists stored locally for the active channel.
+    """Return all playlists stored locally for a channel.
 
-    These are playlists previously created through this application.
+    Pass ``?channel_id=<uuid>`` to scope to that channel. With a single
+    channel connected the parameter is optional.
     """
     channel_repo = YouTubeChannelRepository(db)
-    channel = _require_active_channel(await channel_repo.get_active())
+    channel = await _resolve_channel(channel_repo, channel_id)
 
     playlist_repo = YouTubePlaylistRepository(db)
     playlists = await playlist_repo.get_by_channel(channel.id)
@@ -798,14 +877,11 @@ async def add_video_to_playlist(
 ) -> dict[str, str]:
     """Add a YouTube video to one of the managed playlists.
 
-    ``playlist_id`` is the local database UUID; the YouTube playlist ID is
-    looked up automatically.  ``payload.video_id`` is the YouTube video ID
-    (e.g. ``dQw4w9WgXcQ``).
+    ``playlist_id`` is the local database UUID; the channel is inferred
+    from the playlist's ``channel_id`` so operators never have to pass
+    it alongside.
     """
     svc = _get_youtube_service(settings)
-
-    channel_repo = YouTubeChannelRepository(db)
-    channel = _require_active_channel(await channel_repo.get_active())
 
     playlist_repo = YouTubePlaylistRepository(db)
     playlist = await playlist_repo.get_by_id(playlist_id)
@@ -814,10 +890,15 @@ async def add_video_to_playlist(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Playlist {playlist_id} not found",
         )
-    if playlist.channel_id != channel.id:
+
+    # Resolve the channel from the playlist itself. Multi-channel safe:
+    # the playlist knows which account created it.
+    channel_repo = YouTubeChannelRepository(db)
+    channel = await channel_repo.get_by_id(playlist.channel_id)
+    if channel is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Playlist does not belong to the active channel",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Channel {playlist.channel_id} for playlist not found",
         )
 
     updated_tokens = await svc.refresh_tokens_if_needed(
@@ -875,12 +956,9 @@ async def delete_playlist(
 ) -> dict[str, str]:
     """Delete a playlist from YouTube and remove it from the local database.
 
-    ``playlist_id`` is the local database UUID.
+    Channel is inferred from the playlist's ``channel_id``.
     """
     svc = _get_youtube_service(settings)
-
-    channel_repo = YouTubeChannelRepository(db)
-    channel = _require_active_channel(await channel_repo.get_active())
 
     playlist_repo = YouTubePlaylistRepository(db)
     playlist = await playlist_repo.get_by_id(playlist_id)
@@ -889,10 +967,12 @@ async def delete_playlist(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Playlist {playlist_id} not found",
         )
-    if playlist.channel_id != channel.id:
+    channel_repo = YouTubeChannelRepository(db)
+    channel = await channel_repo.get_by_id(playlist.channel_id)
+    if channel is None:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Playlist does not belong to the active channel",
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Channel {playlist.channel_id} for playlist not found",
         )
 
     updated_tokens = await svc.refresh_tokens_if_needed(
@@ -954,19 +1034,24 @@ async def get_video_analytics(
         ...,
         description="Comma-separated list of YouTube video IDs (max 50)",
     ),
+    channel_id: UUID | None = Query(
+        None,
+        description="Channel whose OAuth token is used to query the Data API. "
+        "Required when multiple channels are connected.",
+    ),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> list[VideoStatsResponse]:
     """Return view, like, and comment counts for a list of YouTube video IDs.
 
-    ``video_ids`` is a comma-separated string, e.g.
-    ``?video_ids=abc123,def456``.  The YouTube API silently omits any IDs
-    that are not accessible, so the response may be shorter than the input.
+    ``video_ids`` is a comma-separated string. Pass ``channel_id`` to
+    specify which connected channel's credentials to use (optional with
+    a single channel connected).
     """
     svc = _get_youtube_service(settings)
 
     channel_repo = YouTubeChannelRepository(db)
-    channel = _require_active_channel(await channel_repo.get_active())
+    channel = await _resolve_channel(channel_repo, channel_id)
 
     ids = [v.strip() for v in video_ids.split(",") if v.strip()]
     if not ids:
