@@ -26,6 +26,8 @@ dependencies = [
     "google-auth-oauthlib>=1.2.0",
     "google-auth>=2.25.0",
     "pyjwt[crypto]>=2.10.0",
+    # Image magic-byte verification on cover uploads.
+    "Pillow>=10.0.0",
 ]
 
 [project.optional-dependencies]
@@ -46,6 +48,8 @@ dev = [
     "httpx>=0.28.0",
     "bandit>=1.7.0",
     "pip-audit>=2.7.0",
+    # Type stubs for third-party libs mypy analyzes
+    "types-aiofiles>=24.1.0",
 ]
 
 [build-system]

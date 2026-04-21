@@ -25,6 +25,7 @@ import asyncio
 import copy
 import random
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 import structlog
@@ -40,7 +41,7 @@ log = structlog.get_logger(__name__)
 #   "98" -- EmptyAceStep1.5LatentAudio (seconds)
 #   "3"  -- KSampler                   (seed)
 #   "107"-- SaveAudioMP3               (output node)
-_ACESTEP_WORKFLOW_TEMPLATE: dict = {
+_ACESTEP_WORKFLOW_TEMPLATE: dict[str, Any] = {
     "3": {
         "inputs": {
             "seed": 0,
@@ -333,7 +334,7 @@ class MusicService:
             # on slower hardware; use a 10-minute ceiling to match the pipeline.
             delay = 2.0
             total_waited = 0.0
-            history: dict | None = None
+            history: dict[str, Any] | None = None
             while total_waited < 600.0:
                 await asyncio.sleep(delay)
                 total_waited += delay
@@ -409,7 +410,7 @@ class MusicService:
         duration_seconds: float,
         seed: int,
         mood: str = "",
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Return a deep-copied AceStep workflow with parameters injected.
 
         Args:
@@ -454,7 +455,7 @@ class MusicService:
         return workflow
 
     @staticmethod
-    def _extract_audio_output(outputs: dict) -> dict | None:
+    def _extract_audio_output(outputs: dict[str, Any]) -> dict[str, Any] | None:
         """Find the first audio file entry in a ComfyUI history outputs dict.
 
         ComfyUI nodes report outputs under varying keys (``audio``,
@@ -469,7 +470,7 @@ class MusicService:
             A dict with at minimum a ``"filename"`` key, or ``None``.
         """
         audio_extensions = {".mp3", ".wav", ".ogg", ".flac"}
-        candidate: dict | None = None
+        candidate: dict[str, Any] | None = None
 
         for _node_id, node_output in outputs.items():
             for key in ("audio", "audios", "files", "gifs", "images", "videos"):
@@ -550,8 +551,8 @@ class MusicService:
     ) -> Path | None:
         """Synchronous MusicGen generation (runs in a thread)."""
         try:
-            from audiocraft.data.audio import audio_write  # type: ignore[import-untyped]
-            from audiocraft.models import MusicGen  # type: ignore[import-untyped]
+            from audiocraft.data.audio import audio_write
+            from audiocraft.models import MusicGen
         except ImportError:
             log.debug("music.audiocraft_not_installed")
             return None

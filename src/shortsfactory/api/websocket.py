@@ -164,7 +164,7 @@ async def _listen_redis_pubsub(
     """
     channel = f"progress:{episode_id}"
     pool: ConnectionPool = get_pool()
-    redis_client: Redis = Redis(connection_pool=pool)  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=pool)
     pubsub: PubSub = redis_client.pubsub()
 
     try:
@@ -217,7 +217,7 @@ async def _listen_redis_pubsub(
     finally:
         try:
             await pubsub.unsubscribe(channel)
-            await pubsub.aclose()
+            await pubsub.aclose()  # type: ignore[no-untyped-call]
         except Exception:
             pass
         try:
@@ -353,7 +353,7 @@ async def websocket_all_progress(websocket: WebSocket) -> None:
     logger.info("ws_all_progress_connected")
 
     pool: ConnectionPool = get_pool()
-    redis_client: Redis = Redis(connection_pool=pool)  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=pool)
     pubsub: PubSub = redis_client.pubsub()
 
     stop_event = asyncio.Event()
@@ -394,7 +394,7 @@ async def websocket_all_progress(websocket: WebSocket) -> None:
         finally:
             try:
                 await pubsub.punsubscribe("progress:*")
-                await pubsub.aclose()
+                await pubsub.aclose()  # type: ignore[no-untyped-call]
             except Exception:
                 pass
             try:

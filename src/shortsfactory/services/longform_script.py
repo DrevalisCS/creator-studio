@@ -235,7 +235,10 @@ class LongFormScriptService:
             json_mode=True,
         )
 
-        return self._parse_json(result.content)
+        parsed = self._parse_json(result.content)
+        if not isinstance(parsed, dict):
+            raise ValueError(f"Expected JSON object, got {type(parsed).__name__}")
+        return parsed
 
     # ── Phase 2: Chapter scenes ──────────────────────────────────────────
 

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -56,7 +56,7 @@ class BaseRepository(Generic[ModelT]):
 
     # ── Write ───────────────────────────────────────────────────────────
 
-    async def create(self, **kwargs) -> ModelT:
+    async def create(self, **kwargs: Any) -> ModelT:
         """Insert a new row and return the refreshed ORM instance."""
         instance = self.model(**kwargs)
         self.session.add(instance)
@@ -64,7 +64,7 @@ class BaseRepository(Generic[ModelT]):
         await self.session.refresh(instance)
         return instance
 
-    async def update(self, id: UUID, **kwargs) -> ModelT | None:
+    async def update(self, id: UUID, **kwargs: Any) -> ModelT | None:
         """Update an existing row by PK.  Returns *None* if not found."""
         instance = await self.session.get(self.model, id)
         if instance is None:

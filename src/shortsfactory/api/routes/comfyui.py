@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shortsfactory.core.config import Settings
 from shortsfactory.core.deps import get_db, get_settings
 from shortsfactory.core.security import decrypt_value, encrypt_value
+from shortsfactory.models.comfyui import ComfyUIServer
 from shortsfactory.repositories.comfyui import (
     ComfyUIServerRepository,
     ComfyUIWorkflowRepository,
@@ -32,7 +33,7 @@ router = APIRouter(prefix="/api/v1/comfyui", tags=["comfyui"])
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 
-def _server_to_response(server) -> ComfyUIServerResponse:
+def _server_to_response(server: ComfyUIServer) -> ComfyUIServerResponse:
     """Convert a ComfyUIServer ORM object to a response with has_api_key."""
     return ComfyUIServerResponse(
         id=server.id,

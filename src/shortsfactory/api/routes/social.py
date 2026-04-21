@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import secrets
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from uuid import UUID
 
 import httpx
@@ -16,6 +17,7 @@ from shortsfactory.core.config import Settings
 from shortsfactory.core.deps import get_db, get_settings
 from shortsfactory.core.license.features import fastapi_dep_require_feature
 from shortsfactory.core.security import encrypt_value
+from shortsfactory.models.social_platform import SocialPlatform
 from shortsfactory.repositories.social import (
     SocialPlatformRepository,
     SocialUploadRepository,
@@ -88,7 +90,7 @@ async def _get_tiktok_credentials(db: AsyncSession, settings: Settings) -> tuple
     return client_key, client_secret, redirect_uri
 
 
-def _platform_to_response(platform) -> PlatformResponse:
+def _platform_to_response(platform: SocialPlatform) -> PlatformResponse:
     """Convert a SocialPlatform ORM instance to a response schema."""
     return PlatformResponse(
         id=platform.id,
@@ -142,7 +144,7 @@ async def tiktok_auth_url(
 
     from shortsfactory.core.redis import get_pool
 
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         await redis_client.set(
             f"tiktok_pkce:{state}",
@@ -219,7 +221,7 @@ async def tiktok_callback(
     from shortsfactory.core.redis import get_pool
 
     code_verifier = ""
-    redis_client: RedisClient = RedisClient(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: RedisClient = RedisClient(connection_pool=get_pool())
     try:
         raw = await redis_client.get(f"tiktok_pkce:{state}")
         if raw:
@@ -239,7 +241,7 @@ async def tiktok_callback(
     if code_verifier:
         token_payload["code_verifier"] = code_verifier
 
-    token_data: dict
+    token_data: dict[str, Any]
     async with httpx.AsyncClient(timeout=30.0) as client:
         token_resp = await client.post(
             _TIKTOK_TOKEN_URL,

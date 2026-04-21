@@ -15,22 +15,28 @@ Helpers
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING, Any
 
 import structlog
+
+if TYPE_CHECKING:
+    from redis.asyncio import Redis
+
+    from shortsfactory.services.llm import LLMPool, LLMProvider
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
 async def _generate_audiobook_script_text(
-    provider: object,
+    provider: LLMProvider | LLMPool,
     concept: str,
     char_list: str,
     mood: str,
     target_words: int,
     target_minutes: float,
-    redis_client: object = None,
+    redis_client: Redis | None = None,
     job_id: str | None = None,
-    log: object = None,
+    log: structlog.stdlib.BoundLogger | None = None,
 ) -> str | None:
     """Generate an audiobook script, using chunked generation for long content.
 
@@ -233,7 +239,9 @@ Write naturally with emotion and tension. Every line tagged."""
     return script_text
 
 
-async def generate_audiobook(ctx: dict, audiobook_id: str, generate_video: bool = False) -> dict:
+async def generate_audiobook(
+    ctx: dict[str, Any], audiobook_id: str, generate_video: bool = False
+) -> dict[str, Any]:
     """arq job: generate an audiobook from stored text.
 
     Reads all configuration (output_format, voice_casting, music settings,
@@ -356,11 +364,11 @@ async def generate_audiobook(ctx: dict, audiobook_id: str, generate_video: bool 
 
 
 async def regenerate_audiobook_chapter(
-    ctx: dict,
+    ctx: dict[str, Any],
     audiobook_id: str,
     chapter_index: int,
     new_chapter_text: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Regenerate a single chapter's audio, then re-concatenate the full audiobook.
 
     Parameters
@@ -499,7 +507,9 @@ async def regenerate_audiobook_chapter(
             return {"audiobook_id": audiobook_id, "status": "failed", "error": str(exc)}
 
 
-async def generate_script_async(ctx: dict, job_id: str, payload: dict) -> dict:
+async def generate_script_async(
+    ctx: dict[str, Any], job_id: str, payload: dict[str, Any]
+) -> dict[str, Any]:
     """Background LLM script generation for audiobooks.
 
     The LLM logic that was previously inline in the route handler now runs
@@ -533,7 +543,7 @@ async def generate_script_async(ctx: dict, job_id: str, payload: dict) -> dict:
 
         from shortsfactory.services.llm import OpenAICompatibleProvider
 
-        settings = Settings()  # type: ignore[call-arg]
+        settings = Settings()
 
         # Try DB-configured LLM first, fall back to LM Studio
         provider = None
@@ -616,7 +626,9 @@ async def generate_script_async(ctx: dict, job_id: str, payload: dict) -> dict:
         return {"status": "failed", "error": str(exc)}
 
 
-async def generate_ai_audiobook(ctx: dict, audiobook_id: str, payload: dict) -> dict:
+async def generate_ai_audiobook(
+    ctx: dict[str, Any], audiobook_id: str, payload: dict[str, Any]
+) -> dict[str, Any]:
     """Combined job: LLM writes script, then TTS generates audio, music, and assembly.
 
     This is the single-form AI audiobook creator -- the user fills one form,
@@ -644,7 +656,7 @@ async def generate_ai_audiobook(ctx: dict, audiobook_id: str, payload: dict) -> 
 
     parsed_id = uuid.UUID(audiobook_id)
     session_factory = ctx["session_factory"]
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()
 
     # ── Step 1: Generate script with LLM (skip if text already exists) ──
     # Check if audiobook already has script text (e.g., from a previous

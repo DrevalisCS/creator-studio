@@ -13,6 +13,7 @@ import {
   ListOrdered,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/Badge';
+import { LiveStatus } from '@/components/ui/LiveStatus';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -118,8 +119,10 @@ export function ActivityMonitor() {
     return (stored as PriorityMode | null) ?? 'shorts_first';
   });
 
-  // Live WebSocket progress updates for all active jobs
-  const { latestByEpisode } = useActiveJobsProgress();
+  // Live WebSocket progress updates for all active jobs. `connected`
+  // surfaces the pubsub link health — users otherwise see stale
+  // progress with no hint that reconnection is in flight.
+  const { latestByEpisode, connected: wsConnected } = useActiveJobsProgress();
 
   // Poll unified tasks endpoint + queue status every 3s
   useEffect(() => {
@@ -412,6 +415,12 @@ export function ActivityMonitor() {
                     )}
                     Restart
                   </Button>
+                </div>
+
+                {/* Live-progress WebSocket status */}
+                <div className="flex items-center justify-between text-[10px] text-txt-tertiary">
+                  <span>Progress stream</span>
+                  <LiveStatus connected={wsConnected} />
                 </div>
 
                 {/* Divider */}

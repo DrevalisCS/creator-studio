@@ -6,6 +6,7 @@ import json
 import re
 import shutil
 from pathlib import Path
+from typing import Any
 from uuid import UUID, uuid4
 
 import structlog
@@ -36,7 +37,7 @@ router = APIRouter(prefix="/api/v1/audiobooks", tags=["audiobooks"])
 
 class AudiobookScriptRequest(BaseModel):
     concept: str = Field(..., min_length=10)
-    characters: list[dict] = Field(
+    characters: list[dict[str, Any]] = Field(
         default_factory=lambda: [{"name": "Narrator", "description": "Omniscient narrator"}]
     )
     target_minutes: int = Field(default=10, ge=1, le=180)
@@ -84,7 +85,7 @@ async def generate_audiobook_script(
     """
     job_id = str(uuid4())
 
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         await redis_client.set(f"script_job:{job_id}:status", "generating", ex=3600)
         await redis_client.set(
@@ -116,7 +117,7 @@ async def generate_audiobook_script(
 )
 async def get_script_job(job_id: str) -> ScriptJobStatusResponse:
     """Return the current status (and result when done) of a script job."""
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         raw_status = await redis_client.get(f"script_job:{job_id}:status")
         if not raw_status:
@@ -157,7 +158,7 @@ async def get_script_job(job_id: str) -> ScriptJobStatusResponse:
 )
 async def cancel_script_job(job_id: str) -> dict[str, str]:
     """Mark a script generation job as cancelled."""
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         existing = await redis_client.get(f"script_job:{job_id}:status")
         if not existing:
@@ -184,7 +185,7 @@ class AudiobookAICreateRequest(BaseModel):
     """
 
     concept: str = Field(..., min_length=10)
-    characters: list[dict] = Field(
+    characters: list[dict[str, Any]] = Field(
         default_factory=lambda: [
             {
                 "name": "Narrator",
@@ -215,7 +216,7 @@ async def create_ai_audiobook(
     payload: AudiobookAICreateRequest,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
-) -> dict:
+) -> dict[str, Any]:
     """Create an AI audiobook: the LLM writes the script, then TTS generates
     audio.  All heavy work runs in the background.
 
@@ -556,18 +557,56 @@ async def upload_cover_image(
 ) -> dict[str, str]:
     """Upload a cover image to be used with audio_image output format.
 
-    The image is stored in ``storage/audiobooks/covers/`` and the relative
-    path is returned for use in the ``cover_image_path`` field when
-    creating an audiobook.
+    Size-capped at 10 MiB and magic-byte-verified via Pillow so an
+    operator (or malicious LAN client on an exposed install) can't OOM
+    the worker with a multi-GB body or smuggle an HTML/JS polyglot
+    through the ``.png`` extension filter and have it served back from
+    ``/storage/audiobooks/``.
     """
+    MAX_COVER_BYTES = 10 * 1024 * 1024
+
     if file.content_type and not file.content_type.startswith("image/"):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"File must be an image, got {file.content_type}",
         )
 
+    # Stream-read with an explicit cap so `file.read()` can't be used to
+    # exhaust process memory. `UploadFile` chunks into a SpooledTemporaryFile
+    # so memory usage stays bounded until we copy out.
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(1024 * 1024)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > MAX_COVER_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail=f"Cover image exceeds {MAX_COVER_BYTES // (1024 * 1024)} MiB limit.",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
+
+    # Verify real image bytes (magic + structure) — rejects HTML polyglots
+    # and corrupt uploads. Fail fast before anything hits disk.
+    try:
+        import io as _io
+
+        from PIL import Image as _Image
+        from PIL import UnidentifiedImageError as _UnidentifiedImageError
+
+        with _Image.open(_io.BytesIO(content)) as img:
+            img.verify()
+    except (_UnidentifiedImageError, Exception) as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Uploaded file is not a valid image.",
+        ) from exc
+
     # Generate a unique filename
-    ext = Path(file.filename).suffix if file.filename else ".png"
+    ext = Path(file.filename).suffix.lower() if file.filename else ".png"
     if ext not in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
         ext = ".png"
     unique_name = f"{uuid4()}{ext}"
@@ -576,8 +615,6 @@ async def upload_cover_image(
     covers_dir.mkdir(parents=True, exist_ok=True)
 
     dest = covers_dir / unique_name
-
-    content = await file.read()
     dest.write_bytes(content)
 
     rel_path = f"audiobooks/covers/{unique_name}"
@@ -681,7 +718,7 @@ async def update_audiobook_text(
 
     audiobook = await repo.update(audiobook_id, text=payload.text)
     await db.commit()
-    await db.refresh(audiobook)  # type: ignore[arg-type]
+    await db.refresh(audiobook)
 
     log.info(
         "audiobook.text_updated",
@@ -709,7 +746,7 @@ async def regenerate_chapter(
     chapter_index: int,
     payload: ChapterRegeneratePayload | None = None,
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Regenerate a single chapter's audio, then re-concatenate the full audiobook.
 
     If ``text`` is provided in the payload, the chapter text is updated before
@@ -767,9 +804,11 @@ async def regenerate_chapter(
 )
 async def update_audiobook_voices(
     audiobook_id: UUID,
-    payload: dict,  # {"voice_casting": {"Narrator": "id", "Jack": "id"}, "regenerate": true}
+    payload: dict[
+        str, Any
+    ],  # {"voice_casting": {"Narrator": "id", "Jack": "id"}, "regenerate": true}
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Update voice assignments for an audiobook. Optionally regenerate audio."""
     repo = AudiobookRepository(db)
     audiobook = await repo.get_by_id(audiobook_id)
@@ -779,7 +818,7 @@ async def update_audiobook_voices(
     voice_casting = payload.get("voice_casting")
     default_voice_id = payload.get("voice_profile_id")
 
-    updates: dict = {}
+    updates: dict[str, Any] = {}
     if voice_casting:
         updates["voice_casting"] = voice_casting
     if default_voice_id:
@@ -808,7 +847,7 @@ async def update_audiobook_voices(
 async def regenerate_audiobook(
     audiobook_id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Regenerate the entire audiobook from its current text.
 
     Marks the audiobook as ``generating`` and enqueues the job.
@@ -900,7 +939,7 @@ async def upload_audiobook_to_youtube(
     payload: AudiobookYouTubeUploadRequest,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
-) -> dict:
+) -> dict[str, Any]:
     """Upload the audiobook's video to YouTube.
 
     Requires an active YouTube channel connection and a generated video
@@ -1041,7 +1080,7 @@ async def upload_audiobook_to_youtube(
 async def list_audiobook_uploads(
     audiobook_id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> list[dict]:
+) -> list[dict[str, Any]]:
     """Return all YouTube upload attempts for a given audiobook, newest first."""
     from shortsfactory.repositories.youtube import YouTubeAudiobookUploadRepository
 

@@ -32,25 +32,16 @@ jobs:
         run: ruff format --check src/ tests/
 
   typecheck:
-    name: Mypy (non-strict)
+    name: Mypy (typecheck)
     runs-on: ubuntu-latest
-    # Non-strict for now — see TECHDEBT.md §2 for the path to strict coverage.
-    # continue-on-error so mypy findings surface as warnings until we burn
-    # them down per-package.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install -e . && pip install mypy
-      # Point mypy at the installed package (``-p shortsfactory``) instead
-      # of the ``src/`` tree. With the editable install from ``pip install -e .``
-      # both paths resolve to the same files, but passing ``src/`` as a
-      # positional argument caused ``Source file found twice under different
-      # module names``. ``-p shortsfactory`` resolves via the installed
-      # package only and avoids the conflict.
-      - run: mypy -p shortsfactory --no-strict-optional
+      - run: pip install -e ".[dev]" && pip install python-multipart
+      - name: mypy
+        run: mypy -p shortsfactory --no-strict-optional
 
   test:
     name: Pytest (unit)

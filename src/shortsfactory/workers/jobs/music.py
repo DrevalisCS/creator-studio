@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import asyncio
 import random
+from typing import Any
+from uuid import UUID
 
 import structlog
 
@@ -15,8 +17,8 @@ logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
 async def generate_episode_music(
-    ctx: dict, episode_id: str, mood: str, duration_seconds: float
-) -> dict:
+    ctx: dict[str, Any], episode_id: str, mood: str, duration_seconds: float
+) -> dict[str, Any]:
     """Generate a background music track using AceStep 1.5 via ComfyUI.
 
     Parameters
@@ -42,7 +44,7 @@ async def generate_episode_music(
     )
 
     db = ctx["db"]
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()
 
     logger.info(
         "music_generate_job.start",
@@ -52,7 +54,7 @@ async def generate_episode_music(
     )
 
     ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
+    episode = await ep_repo.get_by_id(UUID(episode_id))
     if episode is None:
         logger.error("music_generate_job.episode_not_found", episode_id=episode_id)
         return {"error": f"Episode {episode_id} not found"}
@@ -103,7 +105,7 @@ async def generate_episode_music(
         # Poll with exponential backoff up to 10 minutes.
         delay = 2.0
         total_waited = 0.0
-        history: dict | None = None
+        history: dict[str, Any] | None = None
         while total_waited < 600.0:
             await asyncio.sleep(delay)
             total_waited += delay

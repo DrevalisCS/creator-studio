@@ -178,17 +178,25 @@ function Dashboard() {
 
   // Refresh active jobs periodically
   useEffect(() => {
+    // Suppress duplicate toasts during extended outages — single toast
+    // per failure burst, reset once a poll succeeds again.
+    let lastErrShown = false;
     const interval = setInterval(async () => {
       try {
         const res = await jobsApi.active();
         setActiveJobs(res);
+        lastErrShown = false;
       } catch (err) {
-        console.error('Dashboard fetch failed:', err);
-        // TODO: replace with toast.error() once Toast component is available
+        if (!lastErrShown) {
+          toast.error('Failed to refresh active jobs', {
+            description: String(err),
+          });
+          lastErrShown = true;
+        }
       }
     }, 10000);
     return () => clearInterval(interval);
-  }, []);
+  }, [toast]);
 
   // --- Stats ---
   const totalEpisodes = allEpisodes.length;

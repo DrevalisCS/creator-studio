@@ -7,13 +7,15 @@ during LLM inference (can take up to 30 minutes on slow local models).
 from __future__ import annotations
 
 import json as _json
+from typing import Any
+from uuid import UUID
 
 import structlog
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-async def generate_seo_async(ctx: dict, episode_id: str) -> dict:
+async def generate_seo_async(ctx: dict[str, Any], episode_id: str) -> dict[str, Any]:
     """Generate SEO-optimized metadata for an episode using LLM.
 
     Parameters
@@ -34,12 +36,12 @@ async def generate_seo_async(ctx: dict, episode_id: str) -> dict:
     )
 
     db = ctx["db"]
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()
 
     logger.info("seo_generate_job.start", episode_id=episode_id)
 
     ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
+    episode = await ep_repo.get_by_id(UUID(episode_id))
     if not episode or not episode.script:
         logger.error("seo_generate_job.episode_not_found", episode_id=episode_id)
         return {"error": "Episode not found or has no script"}
@@ -50,7 +52,7 @@ async def generate_seo_async(ctx: dict, episode_id: str) -> dict:
     # Resolve LLM
     configs = await LLMConfigRepository(db).get_all(limit=1)
     if configs:
-        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
+        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
         provider = llm_service.get_provider(configs[0])
     else:
         provider = OpenAICompatibleProvider(
@@ -100,4 +102,5 @@ async def generate_seo_async(ctx: dict, episode_id: str) -> dict:
         virality_score=data.get("virality_score", 0),
     )
 
-    return data
+    response: dict[str, Any] = data
+    return response

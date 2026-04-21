@@ -19,7 +19,7 @@ def get_settings() -> Settings:
 
     Uses ``functools.lru_cache`` so the ``.env`` file is read at most once.
     """
-    return Settings()  # type: ignore[call-arg]
+    return Settings()
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
@@ -28,7 +28,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         yield session
 
 
-async def get_redis() -> AsyncGenerator[Redis, None]:  # type: ignore[type-arg]
+async def get_redis() -> AsyncGenerator[Redis, None]:
     """Yield a Redis client from the connection pool."""
     async for client in _get_redis():
         yield client

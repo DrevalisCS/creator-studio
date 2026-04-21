@@ -64,7 +64,9 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         )
         result = await self.session.execute(stmt)
         await self.session.flush()
-        return result.rowcount  # type: ignore[return-value]
+        # ``Result.rowcount`` isn't typed on the async ``Result[...]`` returned
+        # by ``returning(...)``; count the returned PKs instead.
+        return len(result.scalars().all())
 
     async def get_by_episode_and_scene(
         self,
@@ -102,4 +104,4 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         )
         result = await self.session.execute(stmt)
         await self.session.flush()
-        return result.rowcount  # type: ignore[return-value]
+        return len(result.scalars().all())

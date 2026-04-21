@@ -18,7 +18,7 @@ import json
 import wave
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 
 import httpx
@@ -305,7 +305,7 @@ class KokoroTTSProvider:
         """
         if self._pipeline is None:
             try:
-                from kokoro import KPipeline  # type: ignore[import-untyped]
+                from kokoro import KPipeline
 
                 self._pipeline = KPipeline(lang_code="a")  # 'a' = American English
             except ImportError:
@@ -342,26 +342,26 @@ class KokoroTTSProvider:
         def _generate() -> tuple[object, int, list[WordTimestamp]]:
             try:
                 import numpy as np  # used on line ~382 to concat chunk samples
-                import soundfile as sf  # type: ignore[import-untyped]
+                import soundfile as sf
             except ImportError as exc:
                 raise RuntimeError(
                     "Kokoro TTS requires numpy + soundfile. "
                     "Install with: pip install soundfile numpy"
                 ) from exc
 
-            samples: list[object] = []
+            samples: list[Any] = []
             word_timestamps: list[WordTimestamp] = []
             current_time = 0.0
 
             for result in pipeline(text, voice=voice_id, speed=speed):  # type: ignore[operator]
-                audio = result.audio  # type: ignore[attr-defined]
+                audio = result.audio
                 sr = 24000  # Kokoro outputs at 24 kHz
                 duration = len(audio) / sr
 
                 # Try to extract word-level timestamps when the API
                 # exposes token-level timing information.
-                if hasattr(result, "tokens") and result.tokens:  # type: ignore[attr-defined]
-                    for token in result.tokens:  # type: ignore[attr-defined]
+                if hasattr(result, "tokens") and result.tokens:
+                    for token in result.tokens:
                         token_text = getattr(token, "text", "")
                         if isinstance(token_text, str) and token_text.strip():
                             start_t = current_time + getattr(token, "start_time", 0.0)
@@ -380,7 +380,7 @@ class KokoroTTSProvider:
             if not samples:
                 raise RuntimeError("Kokoro produced no audio output")
 
-            full_audio = np.concatenate(samples)
+            full_audio: Any = np.concatenate(samples)
             sf.write(str(output_path), full_audio, 24000)
 
             return full_audio, 24000, word_timestamps
@@ -789,7 +789,7 @@ class ComfyUIElevenLabsTTSProvider:
         self.stability = stability
         self.output_format = output_format
 
-    def _build_workflow(self, text: str, voice_name: str) -> dict:
+    def _build_workflow(self, text: str, voice_name: str) -> dict[str, Any]:
         """Build a minimal ComfyUI workflow for ElevenLabs TTS.
 
         The ``ElevenLabsTextToDialogue`` node requires hidden
@@ -865,7 +865,7 @@ class ComfyUIElevenLabsTTSProvider:
         )
         client = ComfyUIClient(base_url=server_url, api_key=server_key)
         try:
-            extra_data: dict = {}
+            extra_data: dict[str, Any] = {}
             if server_key:
                 extra_data["api_key_comfy_org"] = server_key
             prompt_id = await client.queue_prompt(workflow, extra_data=extra_data)

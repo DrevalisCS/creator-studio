@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import secrets
+from typing import Any
 
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
 from starlette.requests import Request
@@ -38,7 +39,7 @@ class OptionalAPIKeyMiddleware(BaseHTTPMiddleware):
       (S-4, CWE-307, OWASP A07:2021).
     """
 
-    def __init__(self, app, token: str | None = None) -> None:  # type: ignore[override]
+    def __init__(self, app: Any, token: str | None = None) -> None:
         super().__init__(app)
         self._token: str | None = token or os.environ.get("API_AUTH_TOKEN")
 
@@ -75,7 +76,7 @@ class OptionalAPIKeyMiddleware(BaseHTTPMiddleware):
 
             from shortsfactory.core.redis import get_pool
 
-            _redis: _Redis = _Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+            _redis: _Redis = _Redis(connection_pool=get_pool())
             try:
                 fail_count_raw = await _redis.get(rate_key)
                 fail_count: int = int(fail_count_raw) if fail_count_raw else 0
@@ -129,7 +130,7 @@ async def _record_auth_failure(client_ip: str) -> None:
 
         from shortsfactory.core.redis import get_pool
 
-        _redis: _Redis = _Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+        _redis: _Redis = _Redis(connection_pool=get_pool())
         try:
             pipe = _redis.pipeline()
             pipe.incr(rate_key)

@@ -19,6 +19,7 @@ state is not usable.
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 import structlog
 from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
@@ -45,7 +46,7 @@ _GUARDED_PREFIXES: tuple[str, ...] = ("/api/", "/ws/")
 class LicenseGateMiddleware(BaseHTTPMiddleware):
     def __init__(
         self,
-        app,
+        app: Any,
         *,
         exempt_prefixes: Iterable[str] = _EXEMPT_PREFIXES,
         guarded_prefixes: Iterable[str] = _GUARDED_PREFIXES,

@@ -80,13 +80,13 @@ def get_arq_pool() -> ArqRedis:
     return _arq_pool
 
 
-async def get_redis() -> AsyncGenerator[Redis, None]:  # type: ignore[type-arg]
+async def get_redis() -> AsyncGenerator[Redis, None]:
     """FastAPI dependency that yields a Redis client from the pool.
 
     The client is automatically closed when the request finishes.
     """
     pool = get_pool()
-    client: Redis = Redis(connection_pool=pool)  # type: ignore[type-arg]
+    client: Redis = Redis(connection_pool=pool)
     try:
         yield client
     finally:

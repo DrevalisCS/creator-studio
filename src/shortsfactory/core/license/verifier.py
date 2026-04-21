@@ -11,8 +11,12 @@ import structlog
 from shortsfactory.core.license.claims import LicenseClaims
 from shortsfactory.core.license.keys import get_public_keys
 from shortsfactory.core.license.state import (
-    LicenseState,
-    LicenseStatus,
+    LicenseState as LicenseState,
+)
+from shortsfactory.core.license.state import (
+    LicenseStatus as LicenseStatus,
+)
+from shortsfactory.core.license.state import (
     get_local_version,
     set_local_version,
     set_state,
@@ -138,16 +142,22 @@ async def bootstrap_license_state(
 
     async with session_factory() as session:
         repo = LicenseStateRepository(session)
-        row = await repo.get()
+        try:
+            plaintext_jwt = await repo.get_plaintext_jwt()
+        except ValueError as exc:
+            state = LicenseState(status=LicenseStatus.INVALID, error=str(exc))
+            set_state(state)
+            logger.error("license_bootstrap_decrypt_failed", error=str(exc)[:200])
+            return state
 
-    if row is None or not row.jwt:
+    if not plaintext_jwt:
         state = LicenseState(status=LicenseStatus.UNACTIVATED)
         set_state(state)
         logger.info("license_bootstrap", status=state.status.value)
         return state
 
     try:
-        claims = verify_jwt(row.jwt, public_key_override_pem=public_key_override_pem)
+        claims = verify_jwt(plaintext_jwt, public_key_override_pem=public_key_override_pem)
     except LicenseVerificationError as exc:
         state = LicenseState(status=LicenseStatus.INVALID, error=str(exc))
         set_state(state)

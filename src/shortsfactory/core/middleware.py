@@ -88,3 +88,30 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         structlog.contextvars.clear_contextvars()
 
         return response
+
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    """Set conservative defense-in-depth headers on every response.
+
+    The single-tenant local-first architecture makes these mostly
+    defensive — but ``/storage/*`` serves user-generated files whose
+    content type we don't fully trust, so ``X-Content-Type-Options:
+    nosniff`` + ``X-Frame-Options: DENY`` prevent a hostile upload
+    (VULN-008 family) from being reinterpreted as HTML/JS by a
+    permissive browser or iframed into a UI-redress attack.
+    """
+
+    async def dispatch(
+        self,
+        request: Request,
+        call_next: RequestResponseEndpoint,
+    ) -> Response:
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault(
+            "Permissions-Policy",
+            "geolocation=(), camera=(), microphone=()",
+        )
+        return response

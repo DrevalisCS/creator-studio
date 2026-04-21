@@ -550,7 +550,7 @@ class AudiobookService:
     # Chapter parsing
     # ══════════════════════════════════════════════════════════════════════
 
-    def _parse_chapters(self, text: str) -> list[dict[str, str]]:
+    def _parse_chapters(self, text: str) -> list[dict[str, Any]]:
         """Split text by ``## headers`` or ``---`` separators into chapters.
 
         Returns a list of ``{"title": ..., "text": ...}`` dicts.  Falls back
@@ -559,7 +559,7 @@ class AudiobookService:
         # Try ## headers first
         parts = re.split(r"^##\s+(.+)$", text, flags=re.MULTILINE)
         if len(parts) > 1:
-            chapters: list[dict[str, str]] = []
+            chapters: list[dict[str, Any]] = []
             if parts[0].strip():
                 chapters.append({"title": "Introduction", "text": parts[0].strip()})
             for i in range(1, len(parts), 2):
@@ -1082,6 +1082,7 @@ class AudiobookService:
                             img_data = await client.download_image(
                                 output_images[0]["filename"],
                                 output_images[0].get("subfolder", ""),
+                                output_images[0].get("type", "output"),
                             )
                             img_path.write_bytes(img_data)
                             log.info(

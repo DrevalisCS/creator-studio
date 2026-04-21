@@ -18,9 +18,9 @@ import json
 import random
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import httpx
@@ -68,6 +68,10 @@ class GeneratedImage:
     height: int
     seed: int
     prompt: str
+    # Preserved through partial-failure gather() so callers map back to
+    # the originating scene without positional indexing. None when the
+    # image wasn't generated in a per-scene context (e.g. cover art).
+    scene_number: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -80,6 +84,7 @@ class GeneratedVideo:
     height: int
     seed: int
     prompt: str
+    scene_number: int | None = None
 
 
 # ── Low-level client ───────────────────────────────────────────────────────
@@ -114,8 +119,8 @@ class ComfyUIClient:
 
     async def queue_prompt(
         self,
-        workflow: dict,
-        extra_data: dict | None = None,
+        workflow: dict[str, Any],
+        extra_data: dict[str, Any] | None = None,
     ) -> str:
         """Submit a workflow for execution.
 
@@ -123,7 +128,7 @@ class ComfyUIClient:
         ``extra_data`` is passed alongside the prompt for hidden inputs
         like ``auth_token_comfy_org`` required by platform nodes.
         """
-        payload: dict = {"prompt": workflow}
+        payload: dict[str, Any] = {"prompt": workflow}
         if extra_data:
             payload["extra_data"] = extra_data
         logger.debug("comfyui_queue_prompt", url=self.base_url)
@@ -147,7 +152,7 @@ class ComfyUIClient:
         )
         return prompt_id
 
-    async def get_history(self, prompt_id: str) -> dict | None:
+    async def get_history(self, prompt_id: str) -> dict[str, Any] | None:
         """Retrieve execution results for *prompt_id*.
 
         Returns ``None`` if the prompt is still executing.
@@ -158,13 +163,15 @@ class ComfyUIClient:
         data = response.json()
         if prompt_id not in data:
             return None
-        return data[prompt_id]
+        result: dict[str, Any] = data[prompt_id]
+        return result
 
-    async def get_queue_status(self) -> dict:
+    async def get_queue_status(self) -> dict[str, Any]:
         """Return the current queue length and running prompts."""
         response = await self._client.get("/queue")
         response.raise_for_status()
-        return response.json()
+        body: dict[str, Any] = response.json()
+        return body
 
     async def download_image(
         self,
@@ -203,7 +210,7 @@ class ComfyUIClient:
         result = response.json()
         uploaded_name = result.get("name", filename)
         logger.info("comfyui_image_uploaded", filename=uploaded_name)
-        return uploaded_name
+        return str(uploaded_name)
 
     async def download_video(
         self,
@@ -438,14 +445,14 @@ class ComfyUIService:
 
     @staticmethod
     def inject_params(
-        workflow: dict,
+        workflow: dict[str, Any],
         mappings: WorkflowInputMapping,
         prompt: str,
         negative_prompt: str,
         width: int,
         height: int,
         seed: int,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Inject dynamic parameters into a ComfyUI API-format workflow.
 
         Returns a **new** dict — the original is not mutated.
@@ -493,10 +500,10 @@ class ComfyUIService:
 
         return wf
 
-    async def _load_workflow(self, workflow_path: str) -> dict:
+    async def _load_workflow(self, workflow_path: str) -> dict[str, Any]:
         """Load a workflow JSON file from storage."""
         raw = await self._storage.read_file(workflow_path)
-        workflow: dict = json.loads(raw)
+        workflow: dict[str, Any] = json.loads(raw)
         return workflow
 
     async def _poll_until_complete(
@@ -505,7 +512,7 @@ class ComfyUIService:
         prompt_id: str,
         *,
         on_poll: Callable[[float, int], Awaitable[None]] | None = None,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Poll ``/history`` with exponential backoff until the prompt finishes.
 
         If *on_poll* is provided, it is called on each poll iteration with
@@ -553,10 +560,10 @@ class ComfyUIService:
 
     def _extract_output_images(
         self,
-        history: dict,
+        history: dict[str, Any],
         output_node_id: str,
         output_field_name: str,
-    ) -> list[dict]:
+    ) -> list[dict[str, Any]]:
         """Pull output metadata dicts from the history entry.
 
         Works for both image and video outputs.  ComfyUI stores image
@@ -582,7 +589,7 @@ class ComfyUIService:
         node_output = outputs.get(output_node_id, {})
 
         # Step 1: try the explicitly configured field name
-        result: list[dict] = node_output.get(output_field_name, [])
+        result: list[dict[str, Any]] = node_output.get(output_field_name, [])
 
         # Step 2: try "videos" key (for video workflow nodes)
         if not result:
@@ -907,7 +914,9 @@ class ComfyUIService:
                         scene.scene_number,
                     )
 
-                return result
+                # Stamp the scene identity so the caller can map successes
+                # back to their scene after partial-failure filtering.
+                return replace(result, scene_number=scene.scene_number)
 
         tasks = [asyncio.create_task(_gen_one(scene)) for scene in scenes]
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -915,9 +924,9 @@ class ComfyUIService:
         # Separate successful results from failures so a single bad scene does
         # not cancel all in-flight work.
         generated: list[GeneratedImage] = []
-        failures: list[tuple[int, Exception]] = []
+        failures: list[tuple[int, BaseException]] = []
         for i, result in enumerate(raw_results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 failures.append((i, result))
                 logger.warning(
                     "scene_generation_failed",
@@ -1225,6 +1234,7 @@ class ComfyUIService:
                         height=1280,
                         seed=0,
                         prompt=full_prompt,
+                        scene_number=scene.scene_number,
                     )
 
                     # Broadcast: scene video done
@@ -1254,7 +1264,7 @@ class ComfyUIService:
                             scene.scene_number,
                         )
 
-                    return result
+                    return replace(result, scene_number=scene.scene_number)
 
         tasks = [asyncio.create_task(_gen_one(s)) for s in scenes]
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1262,9 +1272,9 @@ class ComfyUIService:
         # Separate successful results from failures so a single bad scene does
         # not cancel all in-flight work.
         generated_videos: list[GeneratedVideo] = []
-        failures: list[tuple[int, Exception]] = []
+        failures: list[tuple[int, BaseException]] = []
         for i, result in enumerate(raw_results):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 failures.append((i, result))
                 logger.warning(
                     "scene_video_generation_failed",

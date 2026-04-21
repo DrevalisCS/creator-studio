@@ -122,16 +122,20 @@ async def get_active_tasks(
         if existing is None or job.status == "running":
             by_episode[job.episode_id] = job
 
-    # Fetch episode titles in bulk to avoid lazy-load MissingGreenlet errors
+    # Fetch episode titles in a single bulk query. Previous per-id loop was
+    # O(n) round-trips; Activity Monitor polls this every 2-3s so with 8
+    # concurrent jobs it burned 8x DB calls per poll.
     ep_titles: dict[UUID, str] = {}
     if by_episode:
-        from shortsfactory.repositories.episode import EpisodeRepository as _EpRepo
+        from sqlalchemy import select as _select
 
-        _ep_repo = _EpRepo(db)
-        for eid in by_episode:
-            ep = await _ep_repo.get_by_id(eid)
-            if ep:
-                ep_titles[eid] = ep.title
+        from shortsfactory.models.episode import Episode as _Episode
+
+        result = await db.execute(
+            _select(_Episode.id, _Episode.title).where(_Episode.id.in_(list(by_episode.keys())))
+        )
+        for ep_id, ep_title in result.all():
+            ep_titles[ep_id] = ep_title
 
     for ep_id, job in by_episode.items():
         ep_title = ep_titles.get(ep_id, f"Episode {str(ep_id)[:8]}")
@@ -170,7 +174,7 @@ async def get_active_tasks(
         logger.debug("tasks_audiobook_query_failed", exc_info=True)
 
     # ── 3. LLM script/series jobs (from Redis) ───────────────────────
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         cursor: int = 0
         while True:
@@ -598,7 +602,7 @@ async def worker_health(
     """
     from datetime import datetime
 
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         raw = await redis_client.get("worker:heartbeat")
     finally:
@@ -750,7 +754,7 @@ async def cancel_job(
         cancel_msg = ProgressMessage(
             episode_id=str(job.episode_id),
             job_id=str(job.id),
-            step=job.step,  # type: ignore[arg-type]
+            step=job.step,
             status="failed",
             progress_pct=0,
             message="Job cancelled by user",

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import HTTPException, status
 
 from shortsfactory.core.license.state import get_state
@@ -116,7 +118,7 @@ def require_tier(minimum: str) -> None:
         )
 
 
-def fastapi_dep_require_feature(feature: str):
+def fastapi_dep_require_feature(feature: str) -> Callable[[], None]:
     """Factory that returns a FastAPI dependency for ``require_feature``.
 
     Usage:
@@ -129,7 +131,7 @@ def fastapi_dep_require_feature(feature: str):
     return _dep
 
 
-def fastapi_dep_require_tier(minimum: str):
+def fastapi_dep_require_tier(minimum: str) -> Callable[[], None]:
     def _dep() -> None:
         require_tier(minimum)
 

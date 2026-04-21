@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import BOOLEAN, INTEGER, TEXT, TIMESTAMP, CheckConstraint, ForeignKey, Index, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -42,7 +42,7 @@ class YouTubeChannel(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, server_default=text("true"))
 
     # ── Scheduling preferences ────────────────────────────────────────
-    upload_days: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    upload_days: Mapped[list[Any] | None] = mapped_column(JSONB, nullable=True)
     upload_time: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────

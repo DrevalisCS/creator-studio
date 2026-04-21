@@ -15,7 +15,7 @@ from shortsfactory.core.auth import OptionalAPIKeyMiddleware
 from shortsfactory.core.config import Settings
 from shortsfactory.core.database import close_db, init_db
 from shortsfactory.core.logging import setup_logging
-from shortsfactory.core.middleware import RequestLoggingMiddleware
+from shortsfactory.core.middleware import RequestLoggingMiddleware, SecurityHeadersMiddleware
 from shortsfactory.core.redis import close_redis, init_redis
 
 log = structlog.stdlib.get_logger(__name__)
@@ -24,7 +24,7 @@ log = structlog.stdlib.get_logger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan — startup and shutdown logic."""
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()
 
     # ── Startup ───────────────────────────────────────────────────────────
     setup_logging(debug=settings.debug)
@@ -85,6 +85,9 @@ def create_app() -> FastAPI:
     # ── Request logging middleware (observability) ──────────────────────
     application.add_middleware(RequestLoggingMiddleware)
 
+    # ── Security headers (defense-in-depth for /storage/*) ──────────────
+    application.add_middleware(SecurityHeadersMiddleware)
+
     # ── Auth middleware (H4: optional API key authentication) ────────────
     application.add_middleware(OptionalAPIKeyMiddleware)
 
@@ -119,7 +122,7 @@ def create_app() -> FastAPI:
     # storage_base_path for consistency.
     from fastapi.staticfiles import StaticFiles
 
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()
     episodes_path = settings.storage_base_path / "episodes"
     episodes_path.mkdir(parents=True, exist_ok=True)
     application.mount(

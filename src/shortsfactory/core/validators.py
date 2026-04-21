@@ -75,7 +75,7 @@ def _check_hostname(hostname: str) -> str:
 
     first_ip: str = ""
     for family, _, _, _, sockaddr in addr_infos:
-        ip_str = sockaddr[0]
+        ip_str = str(sockaddr[0])
         try:
             addr = ipaddress.ip_address(ip_str)
         except ValueError:

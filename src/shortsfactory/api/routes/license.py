@@ -9,7 +9,7 @@ key from the user).
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -23,6 +23,7 @@ from shortsfactory.core.license.activation import (
     exchange_key_for_jwt,
     looks_like_jwt,
 )
+from shortsfactory.core.license.claims import LicenseClaims
 from shortsfactory.core.license.machine import stable_machine_id
 from shortsfactory.core.license.state import LicenseStatus, get_state, set_state
 from shortsfactory.core.license.verifier import (
@@ -110,7 +111,7 @@ async def get_license_status(
     )
 
 
-def _classify_now(claims) -> LicenseStatus:
+def _classify_now(claims: LicenseClaims) -> LicenseStatus:
     now = int(datetime.now(tz=UTC).timestamp())
     if now < claims.nbf:
         return LicenseStatus.INVALID
@@ -274,7 +275,7 @@ async def open_billing_portal(
         ) from exc
 
     if resp.status_code >= 400:
-        detail: dict = {}
+        detail: dict[str, Any] = {}
         try:
             detail = resp.json().get("detail", {})
         except Exception:

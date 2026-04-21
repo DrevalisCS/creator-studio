@@ -13,6 +13,8 @@ the next request flips the app into the EXPIRED/UNACTIVATED state.
 
 from __future__ import annotations
 
+from typing import Any
+
 import httpx
 import structlog
 
@@ -22,7 +24,9 @@ logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 class ActivationError(Exception):
     """Raised when the license server rejects an activation attempt."""
 
-    def __init__(self, *, status_code: int, error: str, detail: dict | None = None) -> None:
+    def __init__(
+        self, *, status_code: int, error: str, detail: dict[str, Any] | None = None
+    ) -> None:
         super().__init__(f"{status_code}: {error}")
         self.status_code = status_code
         self.error = error
@@ -61,7 +65,7 @@ async def exchange_key_for_jwt(
         raise ActivationNetworkError(str(exc)) from exc
 
     if resp.status_code >= 400:
-        detail: dict = {}
+        detail: dict[str, Any] = {}
         try:
             detail = resp.json().get("detail", {})
         except Exception:
@@ -79,7 +83,7 @@ async def exchange_key_for_jwt(
     token = body.get("license_jwt")
     if not token:
         raise ActivationError(status_code=500, error="malformed_response", detail=body)
-    return token
+    return str(token)
 
 
 async def heartbeat_with_server(
@@ -103,7 +107,7 @@ async def heartbeat_with_server(
         raise ActivationNetworkError(str(exc)) from exc
 
     if resp.status_code >= 400:
-        detail: dict = {}
+        detail: dict[str, Any] = {}
         try:
             detail = resp.json().get("detail", {})
         except Exception:

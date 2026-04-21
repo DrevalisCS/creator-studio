@@ -340,7 +340,7 @@ async def create_template_from_series(
     # Extract caption_style preset from the series JSONB if present.
     caption_preset: str | None = None
     if series.caption_style and isinstance(series.caption_style, dict):
-        caption_preset = series.caption_style.get("preset")  # type: ignore[assignment]
+        caption_preset = series.caption_style.get("preset")
 
     template_repo = VideoTemplateRepository(db)
     template = await template_repo.create(

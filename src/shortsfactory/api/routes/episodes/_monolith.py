@@ -59,7 +59,7 @@ _PIPELINE_STEPS: list[str] = [
 # ── Concurrency gate (DB-based) ───────────────────────────────────────────
 
 
-_slot_cache: dict = {"value": None, "expires": 0.0}
+_slot_cache: dict[str, Any] = {"value": None, "expires": 0.0}
 
 
 async def _get_dynamic_max_slots(settings: Settings, db: AsyncSession) -> int:
@@ -72,7 +72,7 @@ async def _get_dynamic_max_slots(settings: Settings, db: AsyncSession) -> int:
     import time
 
     if _slot_cache["value"] is not None and time.time() < _slot_cache["expires"]:
-        return _slot_cache["value"]
+        return int(_slot_cache["value"])
 
     base = settings.max_concurrent_generations
     result = base
@@ -122,12 +122,12 @@ async def _check_generation_slots(
 # ── Helper: build EpisodeResponse with relations ─────────────────────────
 
 
-def _episode_to_response(episode) -> EpisodeResponse:
+def _episode_to_response(episode: Episode) -> EpisodeResponse:
     """Convert an Episode ORM object (with relations loaded) to a response."""
     return EpisodeResponse.model_validate(episode)
 
 
-def _episode_to_list(episode) -> EpisodeListResponse:
+def _episode_to_list(episode: Episode) -> EpisodeListResponse:
     """Convert an Episode ORM object to a list response."""
     return EpisodeListResponse.model_validate(episode)
 
@@ -616,7 +616,7 @@ async def retry_episode_step(
 async def get_episode_script(
     episode_id: UUID,
     db: AsyncSession = Depends(get_db),
-) -> dict | None:
+) -> dict[str, Any] | None:
     """Return the script JSONB field for an episode."""
     repo = EpisodeRepository(db)
     episode = await repo.get_by_id(episode_id)
@@ -641,7 +641,7 @@ async def update_episode_script(
     episode_id: UUID,
     payload: ScriptUpdate,
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> dict[str, Any]:
     """Validate and persist a new script for the episode."""
     # Validate against EpisodeScript schema.
     try:
@@ -1225,7 +1225,7 @@ async def estimate_cost(
     episode_id: UUID,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
-) -> dict:
+) -> dict[str, Any]:
     """Estimate TTS cost and duration for generating this episode.
 
     Useful before long-form generation to show expected cost.

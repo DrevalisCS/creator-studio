@@ -8,10 +8,11 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from shortsfactory.core.config import Settings
-from shortsfactory.core.deps import get_db, get_settings
+from shortsfactory.core.deps import get_db, get_redis, get_settings
 from shortsfactory.repositories.episode import EpisodeRepository
 from shortsfactory.repositories.media_asset import MediaAssetRepository
 from shortsfactory.repositories.youtube import (
@@ -69,10 +70,21 @@ def _get_youtube_service(settings: Settings) -> YouTubeService:
 )
 async def get_auth_url(
     settings: Settings = Depends(get_settings),
+    redis: Redis = Depends(get_redis),
 ) -> YouTubeAuthURLResponse:
-    """Generate and return the Google OAuth consent URL."""
+    """Generate and return the Google OAuth consent URL.
+
+    The ``state`` parameter is recorded in Redis (10-minute TTL) so the
+    callback endpoint can verify it has not been forged. This prevents
+    CSRF attacks where an attacker tricks the operator into binding an
+    attacker-controlled YouTube channel to this install.
+    """
     svc = _get_youtube_service(settings)
     url, state = svc.get_auth_url()
+    try:
+        await redis.setex(f"youtube_oauth_state:{state}", 600, "1")
+    except Exception:
+        logger.warning("youtube_oauth_state_persist_failed", exc_info=True)
     logger.info("youtube_auth_url_generated", state=state)
     return YouTubeAuthURLResponse(auth_url=url)
 
@@ -88,8 +100,36 @@ async def oauth_callback(
     state: str | None = Query(None, description="OAuth state parameter"),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    redis: Redis = Depends(get_redis),
 ) -> YouTubeChannelResponse:
-    """Exchange the OAuth authorization code for tokens, store channel info."""
+    """Exchange the OAuth authorization code for tokens, store channel info.
+
+    Validates that ``state`` was issued by this install (via Redis lookup).
+    Rejects callbacks where ``state`` is missing, unknown, or already
+    consumed — these indicate either a forged/replayed flow or a stale
+    browser tab, neither of which should be allowed to bind a channel.
+    """
+    if not state:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing OAuth state parameter.",
+        )
+    state_key = f"youtube_oauth_state:{state}"
+    try:
+        # GETDEL is atomic — prevents state reuse (double-submit replay).
+        stored = await redis.getdel(state_key)
+    except Exception as exc:
+        logger.error("youtube_oauth_state_lookup_failed", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="OAuth state store unavailable.",
+        ) from exc
+    if not stored:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired OAuth state; retry the connect flow.",
+        )
+
     svc = _get_youtube_service(settings)
 
     try:
@@ -377,7 +417,7 @@ async def upload_episode(
         )
 
     # Auto-generate SEO-optimized metadata using LLM if not already cached.
-    seo_data: dict = {}
+    seo_data: dict[str, Any] = {}
     episode_meta = episode.metadata_ or {}
     if isinstance(episode_meta, dict) and "seo" in episode_meta:
         seo_data = episode_meta["seo"]
@@ -399,7 +439,7 @@ async def upload_episode(
 
             configs = await LLMConfigRepository(db).get_all(limit=1)
             if configs:
-                llm_svc = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
+                llm_svc = LLMService(storage=None, encryption_key=settings.encryption_key)
                 provider = llm_svc.get_provider(configs[0])
             else:
                 provider = OpenAICompatibleProvider(
@@ -501,7 +541,7 @@ async def upload_episode(
 
     # Perform the upload.
     try:
-        result = await svc.upload_video(
+        upload_result = await svc.upload_video(
             access_token_encrypted=channel.access_token_encrypted or "",
             refresh_token_encrypted=channel.refresh_token_encrypted,
             token_expiry=channel.token_expiry,
@@ -513,8 +553,8 @@ async def upload_episode(
             thumbnail_path=thumb_path,
         )
 
-        upload.youtube_video_id = result["video_id"]
-        upload.youtube_url = result["url"]
+        upload.youtube_video_id = upload_result["video_id"]
+        upload.youtube_url = upload_result["url"]
         upload.upload_status = "done"
 
         # Update episode status to exported
@@ -526,7 +566,7 @@ async def upload_episode(
         logger.info(
             "youtube_upload_success",
             episode_id=str(episode_id),
-            video_id=result["video_id"],
+            video_id=upload_result["video_id"],
         )
 
         # Auto-add to series playlist (create playlist if it doesn't exist)
@@ -577,11 +617,11 @@ async def upload_episode(
                         refresh_token_encrypted=channel.refresh_token_encrypted,
                         token_expiry=channel.token_expiry,
                         playlist_id=playlist_id,
-                        video_id=result["video_id"],
+                        video_id=upload_result["video_id"],
                     )
                     logger.info(
                         "youtube_added_to_playlist",
-                        video_id=result["video_id"],
+                        video_id=upload_result["video_id"],
                         playlist_id=playlist_id,
                     )
 

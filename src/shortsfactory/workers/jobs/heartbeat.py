@@ -8,13 +8,14 @@ Jobs
 from __future__ import annotations
 
 from datetime import UTC
+from typing import Any
 
 import structlog
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-async def worker_heartbeat(ctx: dict) -> None:
+async def worker_heartbeat(ctx: dict[str, Any]) -> None:
     """Write a heartbeat timestamp to Redis every minute.
 
     The key ``worker:heartbeat`` is set with a 120-second TTL so that the

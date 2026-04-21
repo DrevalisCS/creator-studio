@@ -8,6 +8,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, status
 from redis.asyncio import Redis
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from shortsfactory.core.config import Settings
 from shortsfactory.core.deps import get_db, get_redis, get_settings
@@ -59,7 +60,7 @@ async def storage_usage(
 # ── System health check ──────────────────────────────────────────────────
 
 
-async def _check_database(db) -> ServiceHealth:
+async def _check_database(db: AsyncSession) -> ServiceHealth:
     """Check PostgreSQL connectivity with a simple query."""
     try:
         from sqlalchemy import text
@@ -89,7 +90,7 @@ async def _check_redis(redis: Redis) -> ServiceHealth:
         )
 
 
-async def _check_comfyui_servers(db, default_url: str) -> list[ServiceHealth]:
+async def _check_comfyui_servers(db: AsyncSession, default_url: str) -> list[ServiceHealth]:
     """Check each active ComfyUI server's connectivity.
 
     Queries the database for all active servers and tests each one.
@@ -268,7 +269,7 @@ async def _check_lm_studio(base_url: str) -> ServiceHealth:
     summary="System health check (DB, Redis, ComfyUI, FFmpeg, Piper TTS, LM Studio)",
 )
 async def system_health(
-    db=Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
     settings: Settings = Depends(get_settings),
 ) -> HealthCheckResponse:

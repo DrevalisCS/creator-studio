@@ -12,13 +12,14 @@ Jobs
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 import structlog
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-async def generate_episode(ctx: dict, episode_id: str) -> dict:
+async def generate_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, Any]:
     """Main arq job: run the full pipeline for an episode.
 
     Parameters
@@ -88,18 +89,27 @@ async def generate_episode(ctx: dict, episode_id: str) -> dict:
                     )
                     shorts_waiting = _result2.scalar() or 0
                     if shorts_generating > 0 or shorts_waiting > 2:
-                        # Defer longform — re-enqueue with 60s delay
+                        # Defer longform — re-enqueue with 60s delay.
+                        # Must use ctx["arq_redis"] (ArqRedis): the plain
+                        # decode_responses client at ctx["redis"] lacks
+                        # enqueue_job and would AttributeError here.
                         log.info(
                             "longform_deferred",
                             shorts_generating=shorts_generating,
                             shorts_waiting=shorts_waiting,
                         )
-                        await ctx["redis"].enqueue_job("generate_episode", episode_id, _defer_by=60)
-                        return {
-                            "episode_id": episode_id,
-                            "status": "deferred",
-                            "reason": "shorts_first",
-                        }
+                        arq_redis = ctx.get("arq_redis")
+                        if arq_redis is None:
+                            log.warning("longform_deferral_skipped_no_arq_redis")
+                        else:
+                            await arq_redis.enqueue_job(
+                                "generate_episode", episode_id, _defer_by=60
+                            )
+                            return {
+                                "episode_id": episode_id,
+                                "status": "deferred",
+                                "reason": "shorts_first",
+                            }
 
     # Acquire a fresh DB session for this job
     async with session_factory() as session:
@@ -129,7 +139,7 @@ async def generate_episode(ctx: dict, episode_id: str) -> dict:
             return {"episode_id": episode_id, "status": "failed", "error": str(exc)}
 
 
-async def reassemble_episode(ctx: dict, episode_id: str) -> dict:
+async def reassemble_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, Any]:
     """Re-run captions + assembly + thumbnail only.
 
     Voice and scene assets are kept.  Existing caption/video/thumbnail
@@ -192,7 +202,7 @@ async def reassemble_episode(ctx: dict, episode_id: str) -> dict:
             return {"episode_id": episode_id, "status": "failed", "error": str(exc)}
 
 
-async def regenerate_voice(ctx: dict, episode_id: str) -> dict:
+async def regenerate_voice(ctx: dict[str, Any], episode_id: str) -> dict[str, Any]:
     """Re-run voice + captions + assembly + thumbnail.
 
     Scene images are kept.  Useful when changing voice profiles or
@@ -254,11 +264,11 @@ async def regenerate_voice(ctx: dict, episode_id: str) -> dict:
 
 
 async def regenerate_scene(
-    ctx: dict,
+    ctx: dict[str, Any],
     episode_id: str,
     scene_number: int,
     visual_prompt: str | None = None,
-) -> dict:
+) -> dict[str, Any]:
     """Regenerate a single scene's image/video and then reassemble.
 
     Parameters
@@ -355,7 +365,7 @@ async def regenerate_scene(
             }
 
 
-async def retry_episode_step(ctx: dict, episode_id: str, step: str) -> dict:
+async def retry_episode_step(ctx: dict[str, Any], episode_id: str, step: str) -> dict[str, Any]:
     """Retry a specific failed step for an episode.
 
     Resets the failed job status to ``queued`` so the orchestrator will

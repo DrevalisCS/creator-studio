@@ -20,7 +20,7 @@ import traceback
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import structlog
@@ -41,11 +41,12 @@ if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
 
     from shortsfactory.models.episode import Episode
+    from shortsfactory.models.prompt_template import PromptTemplate
     from shortsfactory.models.series import Series
     from shortsfactory.services.captions import CaptionService
     from shortsfactory.services.comfyui import ComfyUIService
     from shortsfactory.services.ffmpeg import FFmpegService
-    from shortsfactory.services.llm import LLMPool, LLMService
+    from shortsfactory.services.llm import LLMPool, LLMProvider, LLMService
     from shortsfactory.services.music import MusicService  # noqa: TCH004
     from shortsfactory.services.storage import LocalStorage
     from shortsfactory.services.tts import TTSService
@@ -95,7 +96,7 @@ class PipelineOrchestrator:
         self,
         episode_id: UUID,
         db_session: AsyncSession,
-        redis: Redis,  # type: ignore[type-arg]
+        redis: Redis,
         llm_service: LLMService,
         comfyui_service: ComfyUIService,
         tts_service: TTSService,
@@ -187,6 +188,21 @@ class PipelineOrchestrator:
             title=episode.title,
         )
 
+        # Check cancellation BEFORE flipping the episode to "generating".
+        # Otherwise a cancel issued while the job was queued would be
+        # observed here, we'd exit cleanly — but the status would already
+        # have been flipped back to "generating", leaving the episode
+        # stuck until the next worker restart triggered orphan cleanup.
+        try:
+            await self._check_cancelled()
+        except asyncio.CancelledError:
+            self.log.info("pipeline_cancelled_before_start")
+            await self.episode_repo.update_status(self.episode_id, "failed")
+            await self.db.commit()
+            await metrics.record_generation(success=False)
+            clear_pipeline_context()
+            return
+
         await self.episode_repo.update_status(self.episode_id, "generating")
         await self.db.commit()
 
@@ -203,9 +219,14 @@ class PipelineOrchestrator:
                     "Generation cancelled by user",
                     error="Cancelled by user",
                 )
+                # Episode status stays "failed" (set by the cancel endpoint).
+                # Defensive: flip it again here so a cancel-mid-run also
+                # leaves a consistent record on disk.
+                await self.episode_repo.update_status(self.episode_id, "failed")
+                await self.db.commit()
                 await metrics.record_generation(success=False)
                 clear_pipeline_context()
-                return  # Exit cleanly -- the cancel endpoint already set episode to failed.
+                return  # Exit cleanly.
 
             # Check if step already completed
             existing_job = await self.job_repo.get_latest_by_episode_and_step(
@@ -436,7 +457,7 @@ class PipelineOrchestrator:
             # Best-effort visual prompt refinement via template (shorts path).
             # Failures are swallowed to preserve the generated script.
             if series.visual_prompt_template:
-                script_data_shorts: dict = script.model_dump()
+                script_data_shorts: dict[str, Any] = script.model_dump()
                 shorts_provider = self.llm_service.get_provider(llm_config)
                 await self._refine_visual_prompts(
                     script_data=script_data_shorts,
@@ -468,9 +489,9 @@ class PipelineOrchestrator:
 
     async def _refine_visual_prompts(
         self,
-        script_data: dict,
-        provider: object,
-        template: object,
+        script_data: dict[str, Any],
+        provider: LLMProvider,
+        template: PromptTemplate | None,
         visual_style: str,
         character_description: str,
     ) -> None:
@@ -520,7 +541,7 @@ class PipelineOrchestrator:
                 refine_user += f"\nCharacter: {character_description}"
 
             try:
-                result = await provider.generate(  # type: ignore[union-attr]
+                result = await provider.generate(
                     refine_system,
                     refine_user,
                     temperature=0.5,
@@ -801,10 +822,17 @@ class PipelineOrchestrator:
                 base_seed=base_seed,
             )
 
-            for idx, vid in enumerate(generated_videos):
-                # Map back to the original scene_number from scenes_to_generate
-                # (the list preserves ordering from script.scenes).
-                scene_number = scenes_to_generate[idx].scene_number
+            for vid in generated_videos:
+                # Use the scene_number carried by the result so partial
+                # failures (some scenes raised, filtered out) don't shift
+                # remaining successes onto the wrong scene_number.
+                if vid.scene_number is None:
+                    self.log.warning(
+                        "scene_video_missing_scene_number",
+                        file_path=vid.file_path,
+                    )
+                    continue
+                scene_number = vid.scene_number
 
                 # Skip if an asset already exists for this scene number to avoid
                 # duplicate DB rows when partial results were already committed.
@@ -855,9 +883,16 @@ class PipelineOrchestrator:
                 base_seed=base_seed,
             )
 
-            for idx, img in enumerate(generated_images):
-                # Map back to the original scene_number from scenes_to_generate.
-                scene_number = scenes_to_generate[idx].scene_number
+            for img in generated_images:
+                # Use the scene_number carried by the result so partial
+                # failures don't shift remaining successes onto the wrong scene.
+                if img.scene_number is None:
+                    self.log.warning(
+                        "scene_image_missing_scene_number",
+                        file_path=img.file_path,
+                    )
+                    continue
+                scene_number = img.scene_number
 
                 # Skip if an asset already exists for this scene number to avoid
                 # duplicate DB rows when partial results were already committed.
@@ -1193,7 +1228,7 @@ class PipelineOrchestrator:
                 try:
                     bg_path = await self.music_service.get_music_for_episode(
                         mood=series.music_mood,
-                        target_duration=total_duration,
+                        target_duration=float(total_duration),
                         episode_id=self.episode_id,
                     )
                     if bg_path and bg_path.exists():
@@ -1339,9 +1374,9 @@ class PipelineOrchestrator:
         self,
         episode: Episode,
         series: Series,
-        chapters: list[dict],
+        chapters: list[dict[str, Any]],
         scene_inputs: list[SceneInput] | None,
-        video_assets: list | None,
+        video_assets: list[Any] | None,
         voiceover_path: Path,
         music_volume_db: float,
     ) -> Path | None:
@@ -1589,7 +1624,7 @@ class PipelineOrchestrator:
         status: str,
         message: str = "",
         *,
-        detail: dict | None = None,
+        detail: dict[str, Any] | None = None,
         error: str | None = None,
     ) -> None:
         """Publish progress to Redis pub/sub for WebSocket delivery."""
@@ -1615,11 +1650,16 @@ class PipelineOrchestrator:
                 exc_info=True,
             )
 
-        # Also update the job record progress in the database
+        # Also update the job record progress in the database. Don't commit
+        # per call — progress pings happen 3-5× per step, and a full commit
+        # each time previously amounted to ~30 synchronous fsyncs per
+        # pipeline run. Step-boundary commits (_ensure_job, _mark_step_done)
+        # already persist status transitions; in-between progress updates
+        # ride on the next step-level commit for durability that's plenty
+        # for a progress bar.
         if self._current_job_id:
             try:
                 await self.job_repo.update_progress(self._current_job_id, pct)
-                await self.db.commit()
             except Exception:
                 self.log.debug("job_progress_update_failed", exc_info=True)
 
@@ -1726,7 +1766,7 @@ class PipelineOrchestrator:
 
     _llm_round_robin: int = 0
 
-    async def _auto_select_llm_config(self):
+    async def _auto_select_llm_config(self) -> Any:
         """Select an LLM config using round-robin across all available configs.
 
         With multiple LLM servers, different episodes get distributed to
@@ -1784,7 +1824,7 @@ class PipelineOrchestrator:
         self.log.info("llm_pool_built", provider_count=len(providers))
         return LLMPool(providers)
 
-    async def _auto_select_voice_profile(self):
+    async def _auto_select_voice_profile(self) -> Any:
         """Fall back to the first available voice profile in the database."""
         from shortsfactory.repositories.voice_profile import VoiceProfileRepository
 
@@ -1795,7 +1835,7 @@ class PipelineOrchestrator:
             return profiles[0]
         return None
 
-    async def _auto_select_prompt_template(self, template_type: str):
+    async def _auto_select_prompt_template(self, template_type: str) -> Any:
         """Fall back to the first available prompt template of the given type."""
         from shortsfactory.repositories.prompt_template import PromptTemplateRepository
 
@@ -1823,7 +1863,7 @@ class PipelineOrchestrator:
         except Exception:
             self.log.warning("comfyui_pool_refresh_failed", exc_info=True)
 
-    async def _auto_select_comfyui_server(self):
+    async def _auto_select_comfyui_server(self) -> Any:
         """Fall back to the first active ComfyUI server in the database."""
         from shortsfactory.repositories.comfyui import ComfyUIServerRepository
 
@@ -1834,7 +1874,7 @@ class PipelineOrchestrator:
             return servers[0]
         return None
 
-    async def _auto_select_comfyui_workflow(self):
+    async def _auto_select_comfyui_workflow(self) -> Any:
         """Fall back to the first available image workflow in the database.
 
         Skips video-only and longform-only workflows for shorts episodes.

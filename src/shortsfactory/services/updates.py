@@ -33,7 +33,9 @@ _CURRENT_VERSION = "0.1.0"  # keep in sync with pyproject.toml + FastAPI version
 
 
 class UpdateCheckError(Exception):
-    def __init__(self, *, status_code: int, error: str, detail: dict | None = None) -> None:
+    def __init__(
+        self, *, status_code: int, error: str, detail: dict[str, Any] | None = None
+    ) -> None:
         super().__init__(f"{status_code}: {error}")
         self.status_code = status_code
         self.error = error
@@ -45,7 +47,7 @@ async def _fetch_manifest(server_url: str, license_key: str) -> dict[str, Any]:
     async with httpx.AsyncClient(timeout=10.0) as client:
         resp = await client.get(url, params={"license": license_key, "current": _CURRENT_VERSION})
     if resp.status_code >= 400:
-        detail: dict = {}
+        detail: dict[str, Any] = {}
         try:
             detail = resp.json().get("detail", {})
         except Exception:
@@ -56,7 +58,8 @@ async def _fetch_manifest(server_url: str, license_key: str) -> dict[str, Any]:
             or "update_check_failed",
             detail=detail if isinstance(detail, dict) else {"raw": detail},
         )
-    return resp.json()
+    body: dict[str, Any] = resp.json()
+    return body
 
 
 async def check_for_updates(
@@ -89,7 +92,8 @@ async def check_for_updates(
         try:
             cached = await redis.get(_CACHE_KEY)
             if cached:
-                return json.loads(cached)
+                cached_body: dict[str, Any] = json.loads(cached)
+                return cached_body
         except Exception:
             pass
 

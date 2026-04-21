@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 from uuid import UUID
 
 import structlog
@@ -96,7 +96,7 @@ class OpenAICompatibleProvider:
         json_mode: bool = False,
     ) -> LLMResult:
 
-        kwargs: dict = {
+        kwargs: dict[str, Any] = {
             "model": self._model,
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -447,7 +447,7 @@ class LLMService:
         *,
         temperature: float = 0.7,
         max_tokens: int = 4096,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Generate a completion that must be valid JSON.
 
         Retries up to :data:`_MAX_JSON_RETRIES` times on parse failure.
@@ -467,7 +467,7 @@ class LLMService:
             extracted = _extract_json(raw)
 
             try:
-                parsed: dict = json.loads(extracted)
+                parsed: dict[str, Any] = json.loads(extracted)
                 return parsed
             except json.JSONDecodeError as exc:
                 last_error = exc

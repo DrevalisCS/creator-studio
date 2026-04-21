@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
@@ -67,7 +68,7 @@ class GenerationJobRepository(BaseRepository[GenerationJob]):
         error_message: str | None = None,
     ) -> GenerationJob | None:
         """Update the status and optionally set an error message."""
-        kwargs: dict = {"status": status}
+        kwargs: dict[str, Any] = {"status": status}
         if error_message is not None:
             kwargs["error_message"] = error_message
         return await self.update(id, **kwargs)

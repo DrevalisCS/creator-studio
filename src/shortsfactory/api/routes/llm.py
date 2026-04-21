@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shortsfactory.core.config import Settings
 from shortsfactory.core.deps import get_db, get_settings
 from shortsfactory.core.security import encrypt_value
+from shortsfactory.models.llm_config import LLMConfig
 from shortsfactory.repositories.llm_config import LLMConfigRepository
 from shortsfactory.schemas.llm_config import (
     LLMConfigCreate,
@@ -25,7 +26,7 @@ router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
 # ── Helpers ───────────────────────────────────────────────────────────────
 
 
-def _config_to_response(config) -> LLMConfigResponse:
+def _config_to_response(config: LLMConfig) -> LLMConfigResponse:
     """Convert an LLMConfig ORM object to a response with has_api_key."""
     return LLMConfigResponse(
         id=config.id,

@@ -7,12 +7,16 @@ Jobs
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-async def generate_series_async(ctx: dict, job_id: str, payload: dict) -> dict:
+async def generate_series_async(
+    ctx: dict[str, Any], job_id: str, payload: dict[str, Any]
+) -> dict[str, Any]:
     """Background LLM series generation.
 
     Generates series configuration and episodes via LLM, persists them to
@@ -54,7 +58,7 @@ async def generate_series_async(ctx: dict, job_id: str, payload: dict) -> dict:
             _extract_json,
         )
 
-        settings = Settings()  # type: ignore[call-arg]
+        settings = Settings()
 
         session_factory = ctx["session_factory"]
         async with session_factory() as session:
@@ -64,7 +68,7 @@ async def generate_series_async(ctx: dict, job_id: str, payload: dict) -> dict:
                 llm_config = await LLMConfigRepository(session).get_by_id(UUID(llm_config_id))
                 if not llm_config:
                     raise ValueError("LLM config not found")
-                llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
+                llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
                 provider = llm_service.get_provider(llm_config)
             else:
                 provider = OpenAICompatibleProvider(
@@ -103,7 +107,7 @@ Each episode topic should be specific and actionable, not vague."""
             # Call LLM with retry
             max_retries = 2
             last_error: Exception | None = None
-            data: dict | None = None
+            data: dict[str, Any] | None = None
 
             for attempt in range(max_retries + 1):
                 # Check cancellation between retries
@@ -164,7 +168,7 @@ Each episode topic should be specific and actionable, not vague."""
 
             # Create episodes
             episode_repo = EpisodeRepository(session)
-            episodes_created: list[dict] = []
+            episodes_created: list[dict[str, Any]] = []
 
             for ep_data in data.get("episodes", [])[:episode_count]:
                 title = str(ep_data.get("title", "Untitled"))[:500]

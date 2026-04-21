@@ -99,7 +99,7 @@ async def generate_series(
     """
     job_id = str(uuid4())
 
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         await redis_client.set(f"script_job:{job_id}:status", "generating", ex=3600)
         await redis_client.set(
@@ -131,7 +131,7 @@ async def generate_series(
 )
 async def get_series_generate_job(job_id: str) -> SeriesGenerateJobStatusResponse:
     """Return the current status (and result when done) of a series generation job."""
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         raw_status = await redis_client.get(f"script_job:{job_id}:status")
         if not raw_status:
@@ -172,7 +172,7 @@ async def get_series_generate_job(job_id: str) -> SeriesGenerateJobStatusRespons
 )
 async def cancel_series_generate_job(job_id: str) -> dict[str, str]:
     """Mark a series generation job as cancelled."""
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         existing = await redis_client.get(f"script_job:{job_id}:status")
         if not existing:
@@ -236,13 +236,13 @@ async def generate_series_sync(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="LLM config not found",
             )
-        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
+        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
         provider = llm_service.get_provider(llm_config)
     else:
         # Auto-select first available LLM config from DB
         configs = await LLMConfigRepository(db).get_all(limit=1)
         if configs:
-            llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
+            llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
             provider = llm_service.get_provider(configs[0])
         else:
             provider = OpenAICompatibleProvider(
@@ -261,7 +261,7 @@ async def generate_series_sync(
 
     # ── Call LLM with retry on malformed JSON ─────────────────────────
     last_error: Exception | None = None
-    data: dict | None = None
+    data: dict[str, Any] | None = None
 
     for attempt in range(_MAX_GENERATE_RETRIES + 1):
         try:
@@ -529,13 +529,13 @@ async def add_episodes_ai(
         llm_config = await LLMConfigRepository(db).get_by_id(payload.llm_config_id)
         if not llm_config:
             raise HTTPException(status_code=404, detail="LLM config not found")
-        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
+        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
         provider = llm_service.get_provider(llm_config)
     else:
         # Auto-select first available LLM config
         configs = await LLMConfigRepository(db).get_all(limit=1)
         if configs:
-            llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
+            llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
             provider = llm_service.get_provider(configs[0])
         else:
             provider = OpenAICompatibleProvider(
@@ -552,7 +552,7 @@ async def add_episodes_ai(
         f"Return the JSON now:"
     )
 
-    data: dict | None = None
+    data: dict[str, Any] | None = None
     for attempt in range(3):
         try:
             result = await provider.generate(
@@ -629,7 +629,7 @@ async def suggest_trending_topics(
     # Resolve LLM
     configs = await LLMConfigRepository(db).get_all(limit=1)
     if configs:
-        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)  # type: ignore[arg-type]
+        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
         provider = llm_service.get_provider(configs[0])
     else:
         provider = OpenAICompatibleProvider(

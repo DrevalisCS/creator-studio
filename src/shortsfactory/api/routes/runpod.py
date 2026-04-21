@@ -28,7 +28,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shortsfactory.core.config import Settings
 from shortsfactory.core.deps import get_db, get_settings
 from shortsfactory.core.license.features import fastapi_dep_require_feature
-from shortsfactory.core.security import decrypt_value
+from shortsfactory.core.security import decrypt_value, encrypt_value
 from shortsfactory.repositories.api_key_store import ApiKeyStoreRepository
 from shortsfactory.repositories.comfyui import ComfyUIServerRepository
 from shortsfactory.schemas.runpod import (
@@ -415,11 +415,15 @@ async def register_pod_as_comfyui_server(
     existing_servers = await comfyui_repo.get_all()
     existing = next((s for s in existing_servers if s.url == comfyui_url), None)
 
+    settings = Settings()
+    encrypted_key, key_version = encrypt_value(api_key, settings.encryption_key)
+
     if existing is None:
         server = await comfyui_repo.create(
             name=server_name,
             url=comfyui_url,
-            api_key_encrypted=api_key,  # Store RunPod API key for auth
+            api_key_encrypted=encrypted_key,
+            api_key_version=key_version,
             max_concurrent=payload.max_concurrent,
             is_active=True,
         )
@@ -589,7 +593,7 @@ async def get_deploy_status(pod_id: str) -> dict[str, Any]:
 
     from shortsfactory.core.redis import get_pool
 
-    redis_client: Redis = Redis(connection_pool=get_pool())  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=get_pool())
     try:
         raw = await redis_client.get(f"runpod_deploy:{pod_id}:status")
         if raw is None:

@@ -23,16 +23,22 @@ mocks and assertions to match, remove from the `_STALE_TESTS` set.
 | `test_validators_ssrf.py::TestUnsafeURLErrorNotSwallowed` | 1 | `UnsafeURLError` hierarchy changed |
 | `test_worker_jobs.py::TestGenerate*` | 4 | Music/SEO jobs migrated from sync HTTP handlers; mocks patch old paths |
 
-## 2. Strict mypy coverage
+## 2. Mypy (gated in CI)
 
-`mypy --strict` currently reports ~600 errors across 90 files. The CI
-workflow runs non-strict mypy; strict coverage is a per-module cleanup
-task.
+Mypy **is** a CI gate as of this commit. The whole-package run
+`mypy -p shortsfactory --no-strict-optional` returns 0 errors across
+138 source files.
 
-**Roadmap:** enable strict mypy one top-level package at a time by adding
-`[[tool.mypy.overrides]]` entries in `pyproject.toml` with
-`strict = true`. Start with `core/`, then `models/`, `repositories/`,
-then `services/`, and finally `api/`.
+Remaining debt is on the strictness axis:
+
+- [ ] Tighten to `--strict` per package (blocked on each package's own
+      `Any`-leak audit). Start with `shortsfactory.core.license` and
+      `shortsfactory.services.updates` — both are small and entirely
+      authored in-repo.
+- [ ] Remove the `--no-strict-optional` flag once the `None`-handling
+      drift in repositories/ORM paths is cleaned up.
+- [ ] Audit the `# type: ignore[...]` comments that remain for
+      legitimacy (should be narrow and commented, not blanket).
 
 ## 3. Bandit / pip-audit
 

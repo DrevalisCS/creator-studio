@@ -14,12 +14,14 @@ carries the app through the 7-day offline grace window.
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-async def license_heartbeat(ctx: dict) -> dict:
+async def license_heartbeat(ctx: dict[str, Any]) -> dict[str, Any]:
     from shortsfactory.core.config import Settings
     from shortsfactory.core.license.activation import (
         ActivationError,
@@ -35,7 +37,7 @@ async def license_heartbeat(ctx: dict) -> dict:
     )
     from shortsfactory.repositories.license_state import LicenseStateRepository
 
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()
     session_factory = ctx["session_factory"]
     redis = ctx.get("redis")
 
@@ -55,8 +57,16 @@ async def license_heartbeat(ctx: dict) -> dict:
             return {"skipped": "no_license"}
 
         try:
+            plaintext_jwt = await repo.get_plaintext_jwt()
+        except ValueError as exc:
+            log.error("heartbeat_stored_jwt_decrypt_failed", error=str(exc)[:200])
+            return {"skipped": "jwt_decrypt_failed"}
+        if not plaintext_jwt:
+            return {"skipped": "no_license"}
+
+        try:
             claims = verify_jwt(
-                row.jwt,
+                plaintext_jwt,
                 public_key_override_pem=settings.license_public_key_override,
             )
         except LicenseVerificationError as exc:

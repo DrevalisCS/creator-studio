@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import func, select
@@ -97,7 +98,7 @@ class SocialUploadRepository(BaseRepository[SocialUpload]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_platform_stats(self) -> list[dict]:
+    async def get_platform_stats(self) -> list[dict[str, Any]]:
         """Aggregate upload counts and engagement per platform.
 
         Returns a list of dicts with keys: platform, total_uploads,

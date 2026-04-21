@@ -8,13 +8,14 @@ Jobs
 from __future__ import annotations
 
 from datetime import UTC
+from typing import Any
 
 import structlog
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-async def publish_scheduled_posts(ctx: dict) -> dict:
+async def publish_scheduled_posts(ctx: dict[str, Any]) -> dict[str, Any]:
     """Periodic job: check for scheduled posts that are due and publish them.
 
     Runs every 5 minutes via arq cron. For YouTube posts, performs the actual
@@ -38,7 +39,7 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
     log = logger.bind(job="publish_scheduled_posts")
     log.info("job_start")
 
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()
     session_factory = ctx["session_factory"]
 
     async with session_factory() as session:
@@ -65,13 +66,16 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
                         encryption_key=settings.encryption_key,
                     )
 
-                    # Resolve YouTube channel
+                    # Resolve YouTube channel: per-post override first, then
+                    # the series' assigned channel. No "active channel"
+                    # fallback — multi-channel contract requires the
+                    # operator to declare the target explicitly so uploads
+                    # never silently land on the wrong channel.
                     ch_repo = YouTubeChannelRepository(session)
                     channel = None
                     if post.youtube_channel_id:
                         channel = await ch_repo.get_by_id(post.youtube_channel_id)
                     if channel is None:
-                        # Fall back to series channel
                         ep_repo = EpisodeRepository(session)
                         episode = await ep_repo.get_by_id(post.content_id)
                         if episode:
@@ -79,11 +83,14 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
                             if series and getattr(series, "youtube_channel_id", None):
                                 channel = await ch_repo.get_by_id(series.youtube_channel_id)
                     if channel is None:
-                        channel = await ch_repo.get_active()
-                    if channel is None:
-                        raise RuntimeError("No YouTube channel available for upload")
+                        raise RuntimeError(
+                            "No YouTube channel assigned: set youtube_channel_id on "
+                            "the scheduled post or on the episode's series."
+                        )
 
-                    # Refresh tokens
+                    # Refresh tokens once up-front; the per-attempt loop below
+                    # also refreshes before each retry so a 401 mid-upload
+                    # doesn't cascade through all attempts.
                     updated = await svc.refresh_tokens_if_needed(
                         channel.access_token_encrypted or "",
                         channel.refresh_token_encrypted,
@@ -115,10 +122,24 @@ async def publish_scheduled_posts(ctx: dict) -> dict:
                         if candidate.exists():
                             thumb_path = candidate
 
-                    # Upload with retry
+                    # Upload with retry. Refresh tokens on each attempt —
+                    # a multi-minute upload can exhaust the 1h access token
+                    # between attempts #2 and #3, so re-using the original
+                    # refreshed token would 401 on subsequent retries.
                     result = None
                     for attempt in range(3):
                         try:
+                            refreshed = await svc.refresh_tokens_if_needed(
+                                channel.access_token_encrypted or "",
+                                channel.refresh_token_encrypted,
+                                channel.token_expiry,
+                            )
+                            if refreshed:
+                                for k, v in refreshed.items():
+                                    setattr(channel, k, v)
+                                await session.flush()
+                                await session.commit()
+
                             result = await svc.upload_video(
                                 access_token_encrypted=channel.access_token_encrypted or "",
                                 refresh_token_encrypted=channel.refresh_token_encrypted,

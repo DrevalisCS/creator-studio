@@ -9,6 +9,7 @@ Functions
 from __future__ import annotations
 
 from datetime import UTC
+from typing import Any
 
 import structlog
 
@@ -17,7 +18,7 @@ from shortsfactory.core.config import Settings
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
-async def startup(ctx: dict) -> None:
+async def startup(ctx: dict[str, Any]) -> None:
     """arq worker startup: initialise DB engine, Redis, and all services."""
     from redis.asyncio import ConnectionPool, Redis
     from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -34,7 +35,7 @@ async def startup(ctx: dict) -> None:
         TTSService,
     )
 
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()
     logger.info(
         "worker_startup",
         database_url=settings.database_url[:30] + "...",
@@ -57,14 +58,21 @@ async def startup(ctx: dict) -> None:
     ctx["session_factory"] = session_factory
 
     # ── Redis client ──────────────────────────────────────────────────
+    # arq pre-populates ctx["redis"] with an ArqRedis that supports
+    # enqueue_job; we keep that under ctx["arq_redis"] so job code can
+    # re-enqueue itself (e.g. priority deferral). The "redis" key is then
+    # overwritten with a decode_responses=True client needed by pub/sub
+    # and key reads used across services.
+    arq_redis = ctx.get("redis")
     pool = ConnectionPool.from_url(
         settings.redis_url,
         decode_responses=True,
         max_connections=10,
     )
-    redis_client: Redis = Redis(connection_pool=pool)  # type: ignore[type-arg]
+    redis_client: Redis = Redis(connection_pool=pool)
     ctx["redis_pool"] = pool
     ctx["redis"] = redis_client
+    ctx["arq_redis"] = arq_redis
     ctx["redis_url"] = settings.redis_url
 
     # ── Storage ───────────────────────────────────────────────────────
@@ -212,18 +220,6 @@ async def startup(ctx: dict) -> None:
     )
     ctx["music_service"] = music_service
 
-    # ── Reset orphaned "generating" episodes from previous crashed runs ──
-    from shortsfactory.repositories.episode import EpisodeRepository
-
-    async with session_factory() as session:
-        ep_repo = EpisodeRepository(session)
-        orphaned = await ep_repo.get_by_status("generating", limit=500)
-        if orphaned:
-            for ep in orphaned:
-                await ep_repo.update_status(ep.id, "draft")
-            await session.commit()
-            logger.info("orphaned_episodes_reset", count=len(orphaned))
-
     # Write initial heartbeat so the API sees the worker as alive immediately
     try:
         from datetime import datetime
@@ -236,11 +232,20 @@ async def startup(ctx: dict) -> None:
     except Exception:
         pass
 
-    # Reset orphaned episodes and audiobooks stuck in "generating" from previous crash
+    # Reset orphaned episodes and audiobooks stuck in "generating" from previous
+    # crash. A single UPDATE → "failed" is the documented behaviour (CLAUDE.md):
+    # orphans must surface in the "failed" bucket so retry-all-failed can
+    # pick them up. The earlier two-phase reset (→draft, then →failed) had
+    # the second phase match zero rows because the first had already moved
+    # everything out of "generating".
     try:
         async with session_factory() as _cleanup_ses:
             from sqlalchemy import text as _text
 
+            # ``Session.execute`` returns a CursorResult at runtime for DML,
+            # but SQLAlchemy's static type is the base ``Result`` which
+            # omits ``rowcount``. ``getattr`` short-circuits the false
+            # positive without blanket-silencing other attr errors.
             result_ep = await _cleanup_ses.execute(
                 _text("UPDATE episodes SET status = 'failed' WHERE status = 'generating'")
             )
@@ -248,10 +253,12 @@ async def startup(ctx: dict) -> None:
                 _text("UPDATE audiobooks SET status = 'failed' WHERE status = 'generating'")
             )
             await _cleanup_ses.commit()
-            if result_ep.rowcount > 0:
-                logger.warning("orphaned_episodes_reset", count=result_ep.rowcount)
-            if result_ab.rowcount > 0:
-                logger.warning("orphaned_audiobooks_reset", count=result_ab.rowcount)
+            ep_count = getattr(result_ep, "rowcount", 0)
+            ab_count = getattr(result_ab, "rowcount", 0)
+            if ep_count > 0:
+                logger.warning("orphaned_episodes_reset", count=ep_count)
+            if ab_count > 0:
+                logger.warning("orphaned_audiobooks_reset", count=ab_count)
     except Exception:
         logger.debug("orphan_cleanup_failed", exc_info=True)
 
@@ -273,8 +280,9 @@ async def startup(ctx: dict) -> None:
                 )
             )
             await _catchup_ses.commit()
-            if result_posts.rowcount > 0:
-                logger.warning("missed_scheduled_posts_requeued", count=result_posts.rowcount)
+            posts_count = getattr(result_posts, "rowcount", 0)
+            if posts_count > 0:
+                logger.warning("missed_scheduled_posts_requeued", count=posts_count)
     except Exception:
         logger.debug("scheduled_post_catchup_failed", exc_info=True)
 
@@ -306,7 +314,7 @@ _LICENSE_EXEMPT_JOBS: frozenset[str] = frozenset(
 )
 
 
-async def on_job_start(ctx: dict) -> None:
+async def on_job_start(ctx: dict[str, Any]) -> None:
     """Defer protected jobs when no valid license is active.
 
     Reads the process-wide license state populated by ``startup``. Raises
@@ -335,7 +343,7 @@ async def on_job_start(ctx: dict) -> None:
     raise Retry(defer=3600)
 
 
-async def shutdown(ctx: dict) -> None:
+async def shutdown(ctx: dict[str, Any]) -> None:
     """arq worker shutdown: close connections and clean up resources."""
     logger.info("worker_shutdown_start")
 

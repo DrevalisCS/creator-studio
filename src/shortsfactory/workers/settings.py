@@ -51,7 +51,7 @@ from shortsfactory.workers.lifecycle import on_job_start, shutdown, startup
 
 def _redis_settings_from_config() -> RedisSettings:
     """Parse the application Redis URL into arq ``RedisSettings``."""
-    settings = Settings()  # type: ignore[call-arg]
+    settings = Settings()
     url = settings.redis_url  # e.g. "redis://localhost:6379/0"
 
     from urllib.parse import urlparse

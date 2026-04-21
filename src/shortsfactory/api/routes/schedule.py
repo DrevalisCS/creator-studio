@@ -53,7 +53,7 @@ async def create_scheduled_post(
     settings: Settings = Depends(get_settings),
 ) -> ScheduleResponse:
     repo = ScheduledPostRepository(db)
-    create_kwargs: dict = dict(
+    create_kwargs: dict[str, Any] = dict[str, Any](
         content_type=payload.content_type,
         content_id=payload.content_id,
         platform=payload.platform,

@@ -10,6 +10,8 @@ a single, specific exception type.
 
 from __future__ import annotations
 
+from typing import Any, cast
+
 import httpx
 
 # -- Exceptions ----------------------------------------------------------------
@@ -193,8 +195,8 @@ class RunPodService:
     async def _query(
         self,
         query: str,
-        variables: dict | None = None,  # type: ignore[type-arg]
-    ) -> dict:  # type: ignore[type-arg]
+        variables: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Execute a GraphQL query/mutation and return the ``data`` payload.
 
         Raises:
@@ -233,11 +235,11 @@ class RunPodService:
             detail = "; ".join(messages)[:500]
             raise RunPodAPIError(status_code=400, detail=detail)
 
-        return body.get("data", {})
+        return cast(dict[str, Any], body.get("data", {}))
 
     # -- GPU types -------------------------------------------------------------
 
-    async def get_gpu_types(self) -> list[dict]:  # type: ignore[type-arg]
+    async def get_gpu_types(self) -> list[dict[str, Any]]:
         """List GPU types available for on-demand pod provisioning.
 
         Returns:
@@ -247,9 +249,9 @@ class RunPodService:
             (float, $/hr).
         """
         data = await self._query(_QUERY_GPU_TYPES)
-        return data.get("gpuTypes", [])
+        return cast(list[dict[str, Any]], data.get("gpuTypes", []))
 
-    async def get_templates(self, category: str | None = None) -> list[dict]:  # type: ignore[type-arg]
+    async def get_templates(self, category: str | None = None) -> list[dict[str, Any]]:
         """List available RunPod pod templates.
 
         Args:
@@ -260,14 +262,14 @@ class RunPodService:
             ``imageName``, ``isPublic``, and ``category``.
         """
         data = await self._query(_QUERY_TEMPLATES)
-        templates = data.get("podTemplates", [])
+        templates: list[dict[str, Any]] = data.get("podTemplates", [])
         if category:
             templates = [t for t in templates if t.get("category", "").lower() == category.lower()]
         return templates
 
     # -- Pods ------------------------------------------------------------------
 
-    async def list_pods(self) -> list[dict]:  # type: ignore[type-arg]
+    async def list_pods(self) -> list[dict[str, Any]]:
         """Return all pods associated with the API key.
 
         Returns:
@@ -276,7 +278,7 @@ class RunPodService:
         """
         data = await self._query(_QUERY_PODS)
         myself = data.get("myself", {})
-        return myself.get("pods", [])
+        return cast(list[dict[str, Any]], myself.get("pods", []))
 
     async def create_pod(
         self,
@@ -326,9 +328,9 @@ class RunPodService:
             _MUTATION_CREATE_POD,
             variables={"input": input_vars},
         )
-        return data.get("podFindAndDeployOnDemand", {})
+        return cast(dict[str, Any], data.get("podFindAndDeployOnDemand", {}))
 
-    async def stop_pod(self, pod_id: str) -> dict:  # type: ignore[type-arg]
+    async def stop_pod(self, pod_id: str) -> dict[str, Any]:
         """Stop a running pod (suspend billing without deleting storage).
 
         Args:
@@ -341,9 +343,9 @@ class RunPodService:
             _MUTATION_STOP_POD,
             variables={"podId": pod_id},
         )
-        return data.get("podStop", {})
+        return cast(dict[str, Any], data.get("podStop", {}))
 
-    async def start_pod(self, pod_id: str) -> dict:  # type: ignore[type-arg]
+    async def start_pod(self, pod_id: str) -> dict[str, Any]:
         """Resume a stopped pod (resume billing).
 
         Args:
@@ -357,7 +359,7 @@ class RunPodService:
             _MUTATION_RESUME_POD,
             variables={"podId": pod_id},
         )
-        return data.get("podResume", {})
+        return cast(dict[str, Any], data.get("podResume", {}))
 
     async def delete_pod(self, pod_id: str) -> None:
         """Permanently delete a pod and its storage.

@@ -7,18 +7,20 @@ Jobs
 
 from __future__ import annotations
 
+from typing import Any
+
 import structlog
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
 async def auto_deploy_runpod_pod(
-    ctx: dict,
+    ctx: dict[str, Any],
     pod_id: str,
     pod_type: str,
     api_key: str,
     register_port: int,
-) -> dict:
+) -> dict[str, Any]:
     """Background job: poll RunPod pod until RUNNING, then auto-register.
 
     Parameters
@@ -53,7 +55,7 @@ async def auto_deploy_runpod_pod(
     # Helper to persist status in Redis with a 1-hour TTL so the frontend
     # can poll GET /pods/{pod_id}/deploy-status at any point during the run.
     async def set_status(status: str, message: str, **extra: object) -> None:
-        data: dict = {
+        data: dict[str, Any] = {
             "pod_id": pod_id,
             "status": status,
             "message": message,
@@ -119,6 +121,8 @@ async def auto_deploy_runpod_pod(
 
     if pod_type == "comfyui":
         async with session_factory() as session:
+            from shortsfactory.core.config import Settings
+            from shortsfactory.core.security import encrypt_value
             from shortsfactory.repositories.comfyui import ComfyUIServerRepository
 
             repo = ComfyUIServerRepository(session)
@@ -126,13 +130,16 @@ async def auto_deploy_runpod_pod(
 
             # Idempotent: skip creation if a server with this URL already exists.
             existing_servers = await repo.get_all()
-            existing = next((s for s in existing_servers if s.url == proxy_url), None)
+            existing_server = next((s for s in existing_servers if s.url == proxy_url), None)
 
-            if existing is None:
+            if existing_server is None:
+                settings = Settings()
+                encrypted_key, key_version = encrypt_value(api_key, settings.encryption_key)
                 await repo.create(
                     name=server_name,
                     url=proxy_url,
-                    api_key_encrypted=api_key,
+                    api_key_encrypted=encrypted_key,
+                    api_key_version=key_version,
                     max_concurrent=2,
                     is_active=True,
                 )
@@ -191,13 +198,13 @@ async def auto_deploy_runpod_pod(
 
         from shortsfactory.core.config import Settings
 
-        Settings()  # type: ignore[call-arg]
+        Settings()
         base_url = f"{proxy_url}/v1"
 
         async with session_factory() as session:
             from shortsfactory.repositories.llm_config import LLMConfigRepository
 
-            repo = LLMConfigRepository(session)
+            llm_repo = LLMConfigRepository(session)
             server_name = f"runpod-llm-{pod_id}"
 
             # vLLM pods are deployed without API key auth (RunPod proxy
@@ -205,11 +212,11 @@ async def auto_deploy_runpod_pod(
             encrypted_key, key_ver = "", 1  # No encryption needed for empty key
 
             # Idempotent: skip creation if a config with this base_url already exists.
-            existing_configs = await repo.get_all()
-            existing = next((c for c in existing_configs if c.base_url == base_url), None)
+            existing_configs = await llm_repo.get_all()
+            existing_config = next((c for c in existing_configs if c.base_url == base_url), None)
 
-            if existing is None:
-                await repo.create(
+            if existing_config is None:
+                await llm_repo.create(
                     name=server_name,
                     base_url=base_url,
                     model_name="auto",

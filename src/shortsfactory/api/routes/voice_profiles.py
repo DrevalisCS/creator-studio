@@ -241,7 +241,9 @@ async def create_voice_profile(
         preview_dir.mkdir(parents=True, exist_ok=True)
         preview_path = preview_dir / f"{profile.id}.wav"
 
-        provider = None
+        from shortsfactory.services.tts import TTSProvider
+
+        provider: TTSProvider | None = None
         voice_id: str | None = None
 
         if profile.provider == "edge":
@@ -396,11 +398,15 @@ async def test_voice_profile(
             EdgeTTSProvider,
             KokoroTTSProvider,
             PiperTTSProvider,
+            TTSProvider,
         )
 
         output_dir = settings.storage_base_path / "temp" / "voice_tests"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / f"test_{profile_id}.wav"
+
+        provider: TTSProvider
+        voice_id: str
 
         if profile.provider == "piper":
             provider = PiperTTSProvider(models_path=settings.piper_models_path)

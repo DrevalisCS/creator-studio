@@ -22,7 +22,11 @@ class LicenseStateRow(Base):
     # Fixed PK = 1 so there's always exactly one row (no composite logic needed).
     id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
 
+    # Stored Fernet-encrypted when ``jwt_key_version`` is not None.
+    # Legacy rows (jwt_key_version IS NULL) hold the raw JWT and are
+    # transparently re-encrypted on the next write.
     jwt: Mapped[str | None] = mapped_column(Text, nullable=True)
+    jwt_key_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Machine ID presented to the license server on last activate/heartbeat.
     # Persisted so we can show it in the UI and pass it on renewal.
