@@ -32,4 +32,5 @@ export type {
   SocialPlatformStats,
   LicenseStatus,
   UpdateStatus,
+  UpdateProgress,
 } from './_monolith';

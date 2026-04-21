@@ -107,8 +107,29 @@ def _json_default(obj: Any) -> Any:
 
 
 def _row_to_dict(row: Any) -> dict[str, Any]:
-    """Serialise a SQLAlchemy model instance to a plain dict."""
-    return {c.name: getattr(row, c.name) for c in row.__table__.columns}
+    """Serialise a SQLAlchemy model instance to a plain dict.
+
+    Uses the ORM inspector so a column whose DB name clashes with a
+    declarative-base attribute (e.g. ``metadata`` -> ``Episode.metadata_``)
+    resolves to the right value. Naive ``getattr(row, c.name)`` would
+    hit SQLAlchemy's ``Base.metadata`` MetaData object instead of the
+    mapped column.
+    """
+    from sqlalchemy import inspect as _inspect
+
+    mapper = _inspect(row.__class__)
+    out: dict[str, Any] = {}
+    for col in row.__table__.columns:
+        # Find the ORM attribute name that wraps this column (may differ
+        # from col.name when the column uses a reserved or clashing
+        # DB name).
+        attr_name = col.name
+        for key, prop in mapper.column_attrs.items():
+            if prop.columns and prop.columns[0].name == col.name:
+                attr_name = key
+                break
+        out[col.name] = getattr(row, attr_name)
+    return out
 
 
 def _encryption_key_hash(key: str) -> str:
