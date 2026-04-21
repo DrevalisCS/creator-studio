@@ -77,8 +77,28 @@ while true; do
       write_status "pulled" "images pulled, about to restart services"
       log "pull ok -- restarting stack"
 
-      write_status "restarting" "docker compose up -d (services are now being recreated)"
-      if docker compose "${compose_args[@]}" up -d --remove-orphans 2>&1 | tee /tmp/up.log; then
+      # Restart every service EXCEPT this updater itself. If we included
+      # 'updater' in the up -d call, docker compose would SIGTERM us
+      # mid-flight while recreating the updater service, leaving the app
+      # container stuck in 'Created' state (never started). Compose is
+      # synchronous and runs in a child of this bash script -- kill the
+      # script and you kill compose too.
+      #
+      # Trade-off: if the UPDATER image itself changed in this release,
+      # the new updater image is pulled but not started until the next
+      # manual `docker compose up -d updater`. That's rare and safe.
+      services_to_restart=$(docker compose "${compose_args[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
+      if [[ -z "${services_to_restart// /}" ]]; then
+        write_status "failed" "could not enumerate compose services"
+        log "could not enumerate services -- aborting"
+        rm -f "${FLAG}"
+        continue
+      fi
+      log "restarting services (excluding self): ${services_to_restart}"
+
+      write_status "restarting" "docker compose up -d ${services_to_restart}"
+      # shellcheck disable=SC2086 # intentional word-splitting of service list
+      if docker compose "${compose_args[@]}" up -d --remove-orphans ${services_to_restart} 2>&1 | tee /tmp/up.log; then
         write_status "done" "stack recreated on the new image"
         log "restart ok"
       else
