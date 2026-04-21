@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     )
     db_pool_size: int = 10
     db_max_overflow: int = 20
+    # SQLAlchemy echoes every executed statement when enabled. Previously
+    # coupled to `debug`, which meant a developer who just wanted verbose
+    # Python logs also got a firehose of SQL printouts on every endpoint
+    # — unreadable and CPU-bound under polling. Now opt-in.
+    db_echo: bool = False
 
     # ── Redis ─────────────────────────────────────────────────────────────
     redis_url: str = "redis://localhost:6379/0"

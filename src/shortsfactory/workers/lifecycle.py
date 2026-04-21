@@ -47,7 +47,7 @@ async def startup(ctx: dict[str, Any]) -> None:
         settings.database_url,
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
-        echo=settings.debug,
+        echo=settings.db_echo,
     )
     session_factory = async_sessionmaker(
         bind=engine,

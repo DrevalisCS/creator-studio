@@ -29,7 +29,7 @@ async def init_db(settings: Settings) -> None:
         settings.database_url,
         pool_size=settings.db_pool_size,
         max_overflow=settings.db_max_overflow,
-        echo=settings.debug,
+        echo=settings.db_echo,
     )
     _session_factory = async_sessionmaker(
         bind=_engine,
