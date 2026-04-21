@@ -84,3 +84,19 @@ class EpisodeRepository(BaseRepository[Episode]):
         stmt = select(func.count()).select_from(Episode).where(Episode.status == status)
         result = await self.session.execute(stmt)
         return result.scalar_one()
+
+    async def count_non_draft_for_series(self, series_id: UUID) -> int:
+        """Count episodes of *series_id* that have moved past the ``draft``
+        status (i.e. generating, review, editing, exported, or failed).
+
+        Used by the series-update endpoint to enforce that pipeline-
+        critical fields are not changed once they would affect an
+        already-committed render.
+        """
+        stmt = (
+            select(func.count())
+            .select_from(Episode)
+            .where(Episode.series_id == series_id, Episode.status != "draft")
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one()

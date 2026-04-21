@@ -433,7 +433,15 @@ async def update_series(
     payload: SeriesUpdate,
     db: AsyncSession = Depends(get_db),
 ) -> SeriesResponse:
-    """Update an existing series. Only provided (non-None) fields are changed."""
+    """Update an existing series. Only provided (non-None) fields are changed.
+
+    Pipeline-critical fields (``content_format``, ``aspect_ratio``) are
+    read by the script step from the series but by the assembly step from
+    the episode. Changing them on a series that already has non-draft
+    episodes produces letterboxed / mis-formatted re-renders. We reject
+    those specific field changes once any episode has moved past
+    ``draft``; the caller must clone the series instead.
+    """
     repo = SeriesRepository(db)
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
@@ -441,6 +449,41 @@ async def update_series(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="No fields to update",
         )
+
+    current = await repo.get_by_id(series_id)
+    if current is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Series {series_id} not found",
+        )
+
+    IMMUTABLE_AFTER_FIRST_GENERATION = ("content_format", "aspect_ratio")
+    locked_fields = [
+        f
+        for f in IMMUTABLE_AFTER_FIRST_GENERATION
+        if f in update_data and getattr(current, f, None) != update_data[f]
+    ]
+    if locked_fields:
+        from shortsfactory.repositories.episode import EpisodeRepository
+
+        ep_repo = EpisodeRepository(db)
+        non_draft = await ep_repo.count_non_draft_for_series(series_id)
+        if non_draft > 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "error": "series_field_locked",
+                    "locked_fields": locked_fields,
+                    "reason": (
+                        "These fields are immutable once any episode has moved "
+                        "past 'draft' - changing them would silently mis-render "
+                        "existing episodes on reassemble. Duplicate the series "
+                        "into a new one with the desired format instead."
+                    ),
+                    "non_draft_episode_count": non_draft,
+                },
+            )
+
     series = await repo.update(series_id, **update_data)
     if series is None:
         raise HTTPException(

@@ -57,6 +57,12 @@ class Episode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Relative path to the episode's media directory
     base_path: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
+    # Human-readable reason the episode last failed. Written when the
+    # pipeline aborts outside the per-step job scope (e.g. DB hiccup on
+    # initial load, license flip mid-generation) so the UI has something
+    # to show beyond "failed". Cleared on the next successful step start.
+    error_message: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+
     # Opaque log of generation steps / events
     generation_log: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 

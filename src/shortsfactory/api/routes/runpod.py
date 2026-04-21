@@ -216,9 +216,50 @@ async def create_pod(
     settings: Settings = Depends(get_settings),
     api_key: str = Depends(_get_runpod_api_key),
 ) -> RunPodPodResponse:
-    """Provision a new GPU pod on RunPod. Auto-injects HF_TOKEN if stored."""
+    """Provision a new GPU pod on RunPod. Auto-injects HF_TOKEN if stored.
+
+    Guards against accidental double-submit (frontend double-click, flaky
+    network retry) by caching the (name, gpu_type, image) fingerprint
+    in Redis for 60s. A second identical request within that window
+    returns 409 instead of creating - and paying for - a duplicate pod.
+    """
+    import hashlib
+
+    from shortsfactory.core.redis import get_pool as _get_redis_pool
     from shortsfactory.core.security import decrypt_value as _dec
     from shortsfactory.repositories.api_key_store import ApiKeyStoreRepository
+
+    fingerprint = hashlib.sha256(
+        f"{payload.name}|{payload.gpu_type_id}|{payload.image}".encode()
+    ).hexdigest()[:16]
+    idem_key = f"runpod_create:{fingerprint}"
+    try:
+        from redis.asyncio import Redis as _Redis
+
+        _rc: _Redis = _Redis(connection_pool=_get_redis_pool())
+        try:
+            # SET NX EX 60 - succeeds only if the key doesn't exist.
+            if not await _rc.set(idem_key, "1", ex=60, nx=True):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail={
+                        "error": "duplicate_create",
+                        "hint": (
+                            "A create-pod request with the same name, GPU type, and "
+                            "image was submitted within the last 60s. Retry in a minute "
+                            "if this was intentional, or check /pods to see the pod that "
+                            "is already being provisioned."
+                        ),
+                    },
+                )
+        finally:
+            await _rc.aclose()
+    except HTTPException:
+        raise
+    except Exception:
+        # Redis unavailable - allow the request through. Losing the
+        # dedup guard is preferable to blocking pod creation entirely.
+        pass
 
     async with RunPodService(api_key) as svc:
         try:

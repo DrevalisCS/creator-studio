@@ -13,6 +13,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { SetupChecklist } from '@/components/SetupChecklist';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
@@ -230,6 +231,9 @@ function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {/* Onboarding checklist (self-hides when complete / dismissed) */}
+      <SetupChecklist />
+
       {/* Top row: 4 stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <StatCard

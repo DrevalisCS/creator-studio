@@ -1756,7 +1756,16 @@ class PipelineOrchestrator:
                 retry_count=job.retry_count + 1,
             )
 
-            await self.episode_repo.update_status(self.episode_id, "failed")
+            # Also mirror the error onto the episode so the detail view
+            # has something to render even in the corner case where
+            # ``job`` is not what the frontend looked up first (happens
+            # when a job row is created-then-failed within a single
+            # request cycle).
+            await self.episode_repo.update(
+                self.episode_id,
+                status="failed",
+                error_message=f"{step.value}: {error_msg[:1900]}",
+            )
             await self.db.commit()
         except Exception:
             self.log.error("handle_step_failure_db_error", exc_info=True)

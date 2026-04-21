@@ -515,16 +515,32 @@ async def upload_episode(
         if candidate.exists():
             thumb_path = candidate
 
-    # Refresh tokens if needed.
-    updated_tokens = await svc.refresh_tokens_if_needed(
-        channel.access_token_encrypted or "",
-        channel.refresh_token_encrypted,
-        channel.token_expiry,
-    )
+    # Refresh tokens if needed. COMMIT immediately so a crash during the
+    # multi-minute upload_video call below doesn't lose the newly-minted
+    # token - Google has already rotated on their side, and the old one
+    # in-memory is stale once upload_video returns or errors.
+    from shortsfactory.services.youtube import YouTubeTokenExpiredError
+
+    try:
+        updated_tokens = await svc.refresh_tokens_if_needed(
+            channel.access_token_encrypted or "",
+            channel.refresh_token_encrypted,
+            channel.token_expiry,
+        )
+    except YouTubeTokenExpiredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "youtube_token_expired",
+                "reason": str(exc),
+                "hint": "Reconnect this channel via Settings -> YouTube.",
+            },
+        ) from exc
     if updated_tokens:
         for key, value in updated_tokens.items():
             setattr(channel, key, value)
         await db.flush()
+        await db.commit()
 
     # Create upload record.
     upload_repo = YouTubeUploadRepository(db)

@@ -19,6 +19,15 @@ from shortsfactory.core.security import decrypt_value, encrypt_value
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
+class YouTubeTokenExpiredError(Exception):
+    """Raised when the access token is expired and cannot be refreshed.
+
+    Distinct from a generic network error - it means the stored grant is
+    dead and the user must re-auth through the OAuth flow. The frontend
+    maps this to a "Reconnect YouTube" CTA.
+    """
+
+
 class YouTubeService:
     """High-level service for YouTube OAuth and video uploads."""
 
@@ -302,13 +311,24 @@ class YouTubeService:
         Returns updated encrypted tokens dict if refreshed, or ``None`` if
         the token is still valid.
         """
+        expired = False
         if token_expiry:
             # Ensure both datetimes are timezone-aware for comparison
             expiry = token_expiry if token_expiry.tzinfo else token_expiry.replace(tzinfo=UTC)
             if expiry > datetime.now(UTC):
                 return None
+            expired = True
 
         if not refresh_token_encrypted:
+            # If the token is already expired and we have no refresh token,
+            # bail loudly - callers that silently continue will hit a
+            # cryptic 401 on the next API call. Raise so the caller can
+            # surface a meaningful "reconnect this channel" error.
+            if expired:
+                raise YouTubeTokenExpiredError(
+                    "YouTube access token has expired and no refresh token is "
+                    "stored. Reconnect the channel via Settings -> YouTube."
+                )
             logger.warning("youtube_no_refresh_token")
             return None
 

@@ -191,6 +191,33 @@ async def publish_scheduled_posts(ctx: dict[str, Any]) -> dict[str, Any]:
                         post_id=str(post.id),
                         video_id=result.get("video_id") if result else None,
                     )
+
+                    # Broadcast so the frontend refreshes episode list/
+                    # detail without a manual F5 - previously a scheduled
+                    # publish happening at 2am left the UI showing stale
+                    # status indefinitely.
+                    if post.content_type == "episode" and ctx.get("redis") is not None:
+                        import json as _json
+
+                        try:
+                            await ctx["redis"].publish(
+                                f"progress:{post.content_id}",
+                                _json.dumps(
+                                    {
+                                        "episode_id": str(post.content_id),
+                                        "step": "publish",
+                                        "status": "published",
+                                        "progress_pct": 100,
+                                        "message": "Scheduled upload complete",
+                                        "detail": {
+                                            "remote_url": result["url"] if result else None,
+                                            "video_id": result.get("video_id") if result else None,
+                                        },
+                                    }
+                                ),
+                            )
+                        except Exception:
+                            log.debug("progress_broadcast_failed", exc_info=True)
                 else:
                     # Other platforms: mark as failed with clear message
                     await repo.update(
