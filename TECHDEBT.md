@@ -4,7 +4,7 @@ Known debt, scoped and tracked so each item is visible in CI and fixable
 independently. Nothing here blocks shipping; everything here should be
 worked down over time.
 
-## 1. Quarantined tests (22)
+## 1. Quarantined tests (18)
 
 Tests that were written against an earlier version of the codebase and no
 longer match the current structure. They're marked `xfail(strict=False)` in
@@ -19,8 +19,6 @@ mocks and assertions to match, remove from the `_STALE_TESTS` set.
 | `test_ffmpeg.py::TestBuildAssemblyCommand` | 4 | `FFmpegService.build_assembly_command` signature changed (Ken Burns, aspect ratio params) |
 | `test_llm.py::TestProviderSelection` | 4 | Provider factory moved to `LLMPool`; tests patch the wrong symbols |
 | `test_pipeline.py::TestPipeline*` | 5 | `PipelineOrchestrator` API changed for long-form pipeline work |
-| `test_schemas.py::TestEpisodeScript` + `TestSceneScript` | 3 | Validators relaxed; required-field assertions no longer hold |
-| `test_validators_ssrf.py::TestUnsafeURLErrorNotSwallowed` | 1 | `UnsafeURLError` hierarchy changed |
 | `test_worker_jobs.py::TestGenerate*` | 4 | Music/SEO jobs migrated from sync HTTP handlers; mocks patch old paths |
 
 ## 2. Mypy (gated in CI)

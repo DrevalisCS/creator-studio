@@ -389,12 +389,6 @@ _STALE_TESTS: frozenset[str] = frozenset(
         "tests/unit/test_pipeline.py::TestPipelineRunsAllSteps::test_pipeline_runs_all_steps_in_order",
         "tests/unit/test_pipeline.py::TestPipelineSkipsCompletedSteps::test_pipeline_skips_completed_steps",
         "tests/unit/test_pipeline.py::TestPipelineUpdatesEpisodeStatus::test_pipeline_updates_episode_status",
-        # EpisodeScript/SceneScript validators relaxed; these assertions no longer hold
-        "tests/unit/test_schemas.py::TestEpisodeScript::test_episode_script_missing_fields",
-        "tests/unit/test_schemas.py::TestEpisodeScript::test_episode_script_zero_duration_rejected",
-        "tests/unit/test_schemas.py::TestSceneScript::test_scene_script_zero_scene_number",
-        # SSRF validator error class hierarchy changed
-        "tests/unit/test_validators_ssrf.py::TestUnsafeURLErrorNotSwallowed::test_link_local_raises_unsafe",
         # Worker jobs migrated from sync HTTP handlers; mocks patch wrong paths
         "tests/unit/test_worker_jobs.py::TestGenerateEpisodeMusicJob::test_returns_error_when_episode_not_found",
         "tests/unit/test_worker_jobs.py::TestGenerateEpisodeMusicJob::test_returns_error_when_no_comfyui_server",

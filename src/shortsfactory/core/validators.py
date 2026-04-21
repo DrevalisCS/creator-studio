@@ -88,21 +88,29 @@ def _check_hostname(hostname: str) -> str:
 
 
 def _check_ip(addr: ipaddress.IPv4Address | ipaddress.IPv6Address) -> None:
-    """Raise UnsafeURLError if *addr* is a private/internal address."""
+    """Raise UnsafeURLError if *addr* is a private/internal address.
+
+    Order matters: Python's ``ipaddress`` classifies 169.254/16 as BOTH
+    private and link-local. If the private check ran first every cloud
+    metadata endpoint would surface to the operator as "private
+    network address" — technically correct, but useless for debugging
+    SSRF attempts against metadata services. Link-local runs first so
+    the error message points at the real category.
+    """
     if addr.is_loopback:
         raise UnsafeURLError(f"Loopback addresses are not allowed: {addr}")
+    if addr.is_link_local:
+        raise UnsafeURLError(f"Link-local addresses are not allowed: {addr}")
+    # Additional explicit 169.254/16 guard covers any edge where
+    # is_link_local returns False but the address is still in range.
+    if isinstance(addr, ipaddress.IPv4Address) and addr in ipaddress.IPv4Network("169.254.0.0/16"):
+        raise UnsafeURLError(f"Link-local addresses are not allowed: {addr}")
     if addr.is_private:
         raise UnsafeURLError(f"Private network addresses are not allowed: {addr}")
     if addr.is_reserved:
         raise UnsafeURLError(f"Reserved addresses are not allowed: {addr}")
-    if addr.is_link_local:
-        raise UnsafeURLError(f"Link-local addresses are not allowed: {addr}")
     if addr.is_multicast:
         raise UnsafeURLError(f"Multicast addresses are not allowed: {addr}")
-    # Specifically block 169.254.x.x (link-local, already covered above but explicit)
-    if isinstance(addr, ipaddress.IPv4Address):
-        if addr in ipaddress.IPv4Network("169.254.0.0/16"):
-            raise UnsafeURLError(f"Link-local addresses are not allowed: {addr}")
 
 
 def validate_safe_url_or_localhost(url: str) -> str:

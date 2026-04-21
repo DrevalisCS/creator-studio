@@ -42,25 +42,23 @@ class TestEpisodeScript:
         assert script.outro == ""  # default
         assert script.language == "en-US"  # default
 
-    def test_episode_script_missing_fields(self) -> None:
-        # Missing required 'hook' field
-        with pytest.raises(ValidationError) as exc_info:
-            EpisodeScript(
-                title="Title",
-                # hook is missing
-                scenes=[
-                    SceneScript(
-                        scene_number=1,
-                        narration="Text",
-                        visual_prompt="Prompt",
-                        duration_seconds=5.0,
-                    )
-                ],
-                total_duration_seconds=5.0,
-            )
-        errors = exc_info.value.errors()
-        field_names = [e["loc"][0] for e in errors]
-        assert "hook" in field_names
+    def test_episode_script_missing_hook_defaults_to_empty(self) -> None:
+        # ``hook`` is no longer required (defaults to "") so that LLM
+        # outputs missing the field still validate. The caller's
+        # ``_step_script`` treats an empty hook as a silent no-op.
+        script = EpisodeScript(
+            title="Title",
+            scenes=[
+                SceneScript(
+                    scene_number=1,
+                    narration="Text",
+                    visual_prompt="Prompt",
+                    duration_seconds=5.0,
+                )
+            ],
+            total_duration_seconds=5.0,
+        )
+        assert script.hook == ""
 
     def test_episode_script_empty_title_rejected(self) -> None:
         with pytest.raises(ValidationError):
@@ -87,21 +85,25 @@ class TestEpisodeScript:
                 total_duration_seconds=5.0,
             )
 
-    def test_episode_script_zero_duration_rejected(self) -> None:
-        with pytest.raises(ValidationError):
-            EpisodeScript(
-                title="Title",
-                hook="Hook",
-                scenes=[
-                    SceneScript(
-                        scene_number=1,
-                        narration="text",
-                        visual_prompt="prompt",
-                        duration_seconds=5.0,
-                    )
-                ],
-                total_duration_seconds=0,  # gt=0
-            )
+    def test_episode_script_zero_duration_accepted(self) -> None:
+        # ``total_duration_seconds`` is a derived / advisory field; the
+        # assembly step computes the real duration from scene assets.
+        # Zero is accepted so partial LLM outputs don't fail validation
+        # before the pipeline can recompute.
+        script = EpisodeScript(
+            title="Title",
+            hook="Hook",
+            scenes=[
+                SceneScript(
+                    scene_number=1,
+                    narration="text",
+                    visual_prompt="prompt",
+                    duration_seconds=5.0,
+                )
+            ],
+            total_duration_seconds=0,
+        )
+        assert script.total_duration_seconds == 0
 
 
 class TestSceneScript:
@@ -117,14 +119,17 @@ class TestSceneScript:
         assert scene.scene_number == 1
         assert scene.duration_seconds == 3.5
 
-    def test_scene_script_zero_scene_number(self) -> None:
-        with pytest.raises(ValidationError):
-            SceneScript(
-                scene_number=0,  # ge=1
-                narration="text",
-                visual_prompt="prompt",
-                duration_seconds=5.0,
-            )
+    def test_scene_script_zero_scene_number_accepted(self) -> None:
+        # ``scene_number=0`` is accepted (ge=0) so LLM outputs that
+        # forget to number the hook/intro scene still validate. The
+        # pipeline re-numbers scenes deterministically before storage.
+        scene = SceneScript(
+            scene_number=0,
+            narration="text",
+            visual_prompt="prompt",
+            duration_seconds=5.0,
+        )
+        assert scene.scene_number == 0
 
     def test_scene_script_negative_duration(self) -> None:
         with pytest.raises(ValidationError):
