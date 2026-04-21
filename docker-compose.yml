@@ -46,29 +46,13 @@ services:
       timeout: 5s
       retries: 5
 
-  # ── Alembic migrations (one-shot) ───────────────────────────────────────────
-  # Runs `alembic upgrade head` once, then exits. `app` and `worker` wait on
-  # this via `service_completed_successfully`, so a fresh DB — or a pulled
-  # image whose models expect new columns — is always migrated before the
-  # services try to read those columns and 500.
-  migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    env_file:
-      - .env
-    environment:
-      DATABASE_URL: postgresql+asyncpg://shortsfactory:shortsfactory@postgres:5432/shortsfactory
-      PYTHONPATH: /app/src
-    volumes:
-      - ./src:/app/src
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: alembic upgrade head
-    restart: "no"
-
   # ── FastAPI Application ─────────────────────────────────────────────────────
+  # Runs `alembic upgrade head` inline before uvicorn. Previous setup used a
+  # separate `migrate` one-shot with `depends_on.service_completed_successfully`,
+  # but that deadlocked the stack (502 on all endpoints) when the migrate
+  # container failed for any reason. Inline is more robust: every container
+  # restart re-asserts schema, and an alembic failure surfaces in `app` logs
+  # where operators actually look.
   app:
     build:
       context: .
@@ -92,20 +76,20 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      start_period: 60s
     deploy:
       resources:
         limits:
           cpus: "8"
           memory: 8G
-    command: python -m uvicorn shortsfactory.main:app --host 0.0.0.0 --port 8000 --workers 4
+    command: >
+      sh -c "alembic upgrade head &&
+             exec python -m uvicorn shortsfactory.main:app --host 0.0.0.0 --port 8000 --workers 4"
 
   # ── arq Worker ──────────────────────────────────────────────────────────────
   worker:
@@ -127,8 +111,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      migrate:
-        condition: service_completed_successfully
+      app:
+        condition: service_healthy
     deploy:
       resources:
         limits:
