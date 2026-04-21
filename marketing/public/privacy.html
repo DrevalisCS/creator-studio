@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Privacy Policy - Drevalis Creator Studio</title>
+  <meta name="robots" content="index, follow" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { darkMode:'class', theme:{ extend:{
+      fontFamily:{ display:['Outfit','sans-serif'], sans:['DM Sans','sans-serif'] },
+      colors:{ bg:{ base:'#0A0B0E', elevated:'#14161B' }, txt:{ primary:'#E8EAED', secondary:'#9AA0A6', muted:'#5F6368' }, accent:{ DEFAULT:'#00E5B8' } },
+    } } };
+  </script>
+  <style>
+    body { background:#0A0B0E; color:#E8EAED; font-family:'DM Sans',sans-serif; }
+    h1,h2,h3,h4 { font-family:'Outfit',sans-serif; letter-spacing:-.01em; }
+    .prose h2 { margin-top: 2.5rem; margin-bottom: .75rem; font-weight: 700; font-size: 1.5rem; color: #E8EAED; }
+    .prose h3 { margin-top: 1.75rem; margin-bottom: .5rem; font-weight: 600; font-size: 1.125rem; color: #E8EAED; }
+    .prose p  { margin: .75rem 0; color: #C8CBD0; line-height: 1.7; }
+    .prose ul { margin: .75rem 0 .75rem 1.25rem; color: #C8CBD0; list-style: disc; line-height: 1.7; }
+    .prose li { margin: .25rem 0; }
+    .prose a  { color: #00E5B8; text-decoration: underline; }
+    .prose strong { color: #E8EAED; }
+    .prose code { font-family: 'JetBrains Mono', monospace; background: rgba(255,255,255,.05); padding: 0 .3em; border-radius: 4px; font-size: .875em; }
+  </style>
+</head>
+<body>
+  <nav class="border-b border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="font-display font-bold text-lg">Drevalis</a>
+      <div class="flex items-center gap-6 text-sm">
+        <a href="/#features" class="text-txt-secondary hover:text-txt-primary">Features</a>
+        <a href="/#pricing" class="text-txt-secondary hover:text-txt-primary">Pricing</a>
+        <a href="/download" class="text-txt-secondary hover:text-txt-primary">Download</a>
+        <a href="/account" class="text-txt-secondary hover:text-txt-primary">Account</a>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-3xl mx-auto px-6 py-16 prose">
+    <h1 class="font-display text-5xl font-bold mb-3">Privacy Policy</h1>
+    <p class="text-txt-muted text-sm">Last updated: 2026-04-21. GDPR-compliant. Applies to residents worldwide.</p>
+
+    <h2>Summary (the short version)</h2>
+    <ul>
+      <li><strong>Your content stays on your machine.</strong> Scripts, voices, videos, models, OAuth tokens for YouTube/TikTok/Instagram - all on your disk. We have no access.</li>
+      <li>We only hold the minimum data required to sell and license the Software: your email, payment metadata (held by Stripe), license state, and the machines that have activated.</li>
+      <li>We do not sell, rent, or share personal data for marketing. We use three subprocessors: Stripe (billing), Resend (transactional email), and Hetzner (hosting of our license server).</li>
+    </ul>
+
+    <h2>1. Controller</h2>
+    <p>Drevalis - see <a href="/impressum">Impressum</a> for the full commercial details. Contact for privacy matters: <a href="mailto:privacy@drevalis.com">privacy@drevalis.com</a>.</p>
+
+    <h2>2. What we collect and why</h2>
+
+    <h3>a) Purchase &amp; licensing</h3>
+    <p>When you buy a subscription we receive via Stripe: your email address, country (for VAT), and a Stripe customer ID. Payment card details never touch our servers - Stripe processes and stores them. We keep this data for the lifetime of your account plus 10 years for tax-record compliance.</p>
+    <p>We generate a license record that includes: license UUID, tier, period end, and revocation status. This is what your install checks against on a 24-hour heartbeat.</p>
+    <p>Legal basis: Art. 6(1)(b) GDPR (performance of contract) and Art. 6(1)(c) (legal obligation - tax records).</p>
+
+    <h3>b) Machine activation</h3>
+    <p>When your install activates or heartbeats it sends us: the license key, a SHA-256-derived machine identifier (not reversible to your hostname or MAC), the Software version, and the current timestamp. We respond with a fresh signed JWT.</p>
+    <p>We store the activation list so we can enforce the seat cap of your tier and respond to revocation. We do not receive IP addresses beyond what any webserver log records, and we retain access logs for 14 days.</p>
+    <p>Legal basis: Art. 6(1)(b) GDPR (performance of contract).</p>
+
+    <h3>c) Transactional email</h3>
+    <p>We send three kinds of email: purchase receipts, renewal reminders, and important security updates. You can unsubscribe from renewal reminders; receipts and security updates are sent regardless because they are part of the contract.</p>
+    <p>Legal basis: Art. 6(1)(b) GDPR (performance of contract) and Art. 6(1)(f) (legitimate interest in informing paying users of security fixes).</p>
+
+    <h3>d) Website analytics</h3>
+    <p>drevalis.com does not use cookies, Google Analytics, Facebook Pixel, or any third-party tracker. The webserver logs IP, User-Agent, and path per request for 14 days for security / debugging; these logs are not cross-referenced against user accounts.</p>
+
+    <h2>3. What we do NOT collect</h2>
+    <ul>
+      <li>The content of your scripts, voices, videos, or audiobooks;</li>
+      <li>The YouTube / TikTok / Instagram OAuth tokens you paste into the Software - these stay on your disk, encrypted with a per-install Fernet key;</li>
+      <li>Third-party API keys you configure (ElevenLabs, OpenAI, Anthropic, RunPod) - same story, local and encrypted;</li>
+      <li>Your prompts, your topics, your model selections;</li>
+      <li>Any telemetry about how you use individual features.</li>
+    </ul>
+    <p>The Software does not phone home with usage data. The only traffic from your install to our infrastructure is the 24-hour license heartbeat.</p>
+
+    <h2>4. Subprocessors</h2>
+    <table class="w-full text-sm mt-3" style="border-collapse:collapse">
+      <thead>
+        <tr style="border-bottom: 1px solid rgba(255,255,255,.1)">
+          <th class="text-left py-2 pr-4 text-txt-secondary font-medium">Service</th>
+          <th class="text-left py-2 pr-4 text-txt-secondary font-medium">What it does</th>
+          <th class="text-left py-2 text-txt-secondary font-medium">Data processed</th>
+        </tr>
+      </thead>
+      <tbody class="text-txt-secondary">
+        <tr><td class="py-2 pr-4">Stripe, Inc.</td><td class="py-2 pr-4">Billing, tax, invoicing</td><td class="py-2">Name, email, card details, billing address</td></tr>
+        <tr><td class="py-2 pr-4">Resend, Inc.</td><td class="py-2 pr-4">Transactional email delivery</td><td class="py-2">Email address, message content</td></tr>
+        <tr><td class="py-2 pr-4">Hetzner Online GmbH</td><td class="py-2 pr-4">Hosting of license server</td><td class="py-2">License / activation records (EU region)</td></tr>
+      </tbody>
+    </table>
+    <p>All three are contractually bound under Art. 28 GDPR data-processing agreements. Stripe and Resend are US-based and rely on Standard Contractual Clauses for EU-US transfer; Hetzner is EU-only.</p>
+
+    <h2>5. Your rights (GDPR)</h2>
+    <p>If you are an EU/EEA resident, you have the right to:</p>
+    <ul>
+      <li>Access the personal data we hold about you;</li>
+      <li>Rectify inaccurate data;</li>
+      <li>Erase it ("right to be forgotten") - subject to our 10-year tax-record retention;</li>
+      <li>Restrict or object to processing;</li>
+      <li>Data portability (receive your data in a machine-readable format);</li>
+      <li>Lodge a complaint with your national data-protection authority (in Austria: dsb.gv.at).</li>
+    </ul>
+    <p>To exercise any of these, email <a href="mailto:privacy@drevalis.com">privacy@drevalis.com</a> from the email address on your account. We respond within 30 days.</p>
+
+    <h2>6. Security</h2>
+    <p>Our license server runs on a hardened Hetzner Cloud instance with fail2ban, ufw, key-only SSH, and automatic security updates. License JWTs are signed with Ed25519; activation heartbeats use HTTPS (TLS 1.2+). Customer data in our database is limited to what's listed in section 2.</p>
+    <p>Inside your install, OAuth tokens and third-party API keys are encrypted at rest with a Fernet key unique to your install (stored in <code>.env</code>; never sent to us).</p>
+
+    <h2>7. Children</h2>
+    <p>The Software is not directed to children under 16. We do not knowingly collect data from anyone under 16. If you believe we have, contact us and we will delete it.</p>
+
+    <h2>8. Changes to this policy</h2>
+    <p>Material changes are notified to active subscribers by email at least 14 days before taking effect.</p>
+
+    <h2>9. Questions</h2>
+    <p>Email <a href="mailto:privacy@drevalis.com">privacy@drevalis.com</a>. For general support, <a href="mailto:support@drevalis.com">support@drevalis.com</a>.</p>
+  </main>
+
+  <footer class="border-t border-white/[0.06]">
+    <div class="max-w-6xl mx-auto px-6 py-6 text-xs text-txt-muted flex flex-wrap gap-4 justify-between">
+      <span>(c) 2026 Drevalis</span>
+      <span class="flex gap-4">
+        <a href="/terms" class="hover:text-txt-primary">Terms</a>
+        <a href="/privacy" class="hover:text-txt-primary">Privacy</a>
+        <a href="/acceptable-use" class="hover:text-txt-primary">Acceptable Use</a>
+        <a href="/impressum" class="hover:text-txt-primary">Impressum</a>
+      </span>
+    </div>
+  </footer>
+</body>
+</html>

@@ -46,7 +46,7 @@ def _resolve_current_version() -> str:
     if env and env.strip():
         return env.strip()
     try:
-        from importlib.metadata import PackageNotFoundError, version
+        from importlib.metadata import version
 
         return version("shortsfactory")
     except Exception:

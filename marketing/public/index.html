@@ -3,16 +3,16 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Drevalis Creator Studio — AI-powered YouTube Shorts automation</title>
-  <meta name="description" content="Self-hosted, end-to-end YouTube Shorts creation: LLM scripts, TTS voiceover, ComfyUI scenes, captions, and upload. Your GPU, your content, your IP." />
+  <title>Drevalis Creator Studio - AI-powered YouTube Shorts, long-form video, and audiobook creation</title>
+  <meta name="description" content="Self-hosted, end-to-end content creation: LLM scripts, TTS voiceover, ComfyUI scenes, captions, and upload. Your GPU, your content, your IP." />
   <meta property="og:title" content="Drevalis Creator Studio" />
-  <meta property="og:description" content="Self-hosted YouTube Shorts automation. Script → voice → scenes → upload, fully local." />
+  <meta property="og:description" content="Self-hosted AI content creation. Script, voice, scenes, captions, upload. Runs entirely on your hardware." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://drevalis.com/" />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono&amp;display=swap" rel="stylesheet" />
 
   <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
   <script>
@@ -43,6 +43,16 @@
     .glow-on-hover { transition: box-shadow .2s, transform .2s; }
     .glow-on-hover:hover { box-shadow: 0 0 40px -10px rgba(0,229,184,.4); transform: translateY(-2px); }
     .noise { position: fixed; inset: 0; pointer-events: none; opacity: .03; z-index: 0; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='1'/%3E%3C/svg%3E"); }
+    pre, code.inline { font-family: 'JetBrains Mono', monospace; }
+    .step-num { display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; border-radius:50%; background:linear-gradient(135deg,#00E5B8,#00BFA8); color:#0A0B0E; font-weight:700; font-size:14px; }
+    table.specs { border-collapse: collapse; width:100%; font-size: .875rem; }
+    table.specs th, table.specs td { border-bottom: 1px solid rgba(255,255,255,.06); padding: .75rem 1rem; text-align: left; vertical-align: top; }
+    table.specs th { color:#9AA0A6; font-weight:500; font-size: .75rem; text-transform: uppercase; letter-spacing: .05em; }
+    .pill { display:inline-block; padding: 2px 8px; border-radius: 9999px; font-size: 11px; font-weight:500; }
+    .pill-green { background: rgba(0,229,184,.12); color: #00E5B8; }
+    .pill-amber { background: rgba(251,191,36,.12); color: #FBBF24; }
+    .pill-red { background: rgba(239,68,68,.12); color: #EF4444; }
+    .pill-blue { background: rgba(96,165,250,.12); color: #60A5FA; }
   </style>
 </head>
 
@@ -58,10 +68,12 @@
       </a>
       <div class="flex items-center gap-6 text-sm">
         <a href="#features" class="text-txt-secondary hover:text-txt-primary">Features</a>
+        <a href="#workflow" class="text-txt-secondary hover:text-txt-primary">Workflow</a>
+        <a href="#hardware" class="text-txt-secondary hover:text-txt-primary">Hardware</a>
         <a href="#pricing" class="text-txt-secondary hover:text-txt-primary">Pricing</a>
         <a href="/download" class="text-txt-secondary hover:text-txt-primary">Download</a>
         <a href="/account" class="text-txt-secondary hover:text-txt-primary">Account</a>
-        <a href="#pricing" class="rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold px-4 py-2 text-sm glow-on-hover">Start free trial</a>
+        <a href="#pricing" class="rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold px-4 py-2 text-sm glow-on-hover">Start</a>
       </div>
     </div>
   </nav>
@@ -71,19 +83,22 @@
     <div class="max-w-6xl mx-auto px-6 py-24 text-center relative z-10">
       <div class="inline-flex items-center gap-2 text-xs text-accent border border-accent/20 bg-accent/5 rounded-full px-3 py-1 mb-6">
         <span class="w-1.5 h-1.5 bg-accent rounded-full animate-pulse"></span>
-        Self-hosted · Your GPU · Your IP
+        Self-hosted &middot; Your GPU &middot; Your IP
       </div>
       <h1 class="font-display text-5xl md:text-7xl font-bold mb-6 leading-[1.05]">
-        YouTube Shorts,<br/>
-        <span class="accent-gradient">on autopilot.</span>
+        Shorts, long-form &amp; audiobooks,<br/>
+        <span class="accent-gradient">automated on your hardware.</span>
       </h1>
       <p class="text-xl text-txt-secondary max-w-2xl mx-auto mb-10">
-        Drevalis Creator Studio turns a series topic into a finished, captioned, uploaded Short. Scripts by an LLM, voiceover by Edge/Kokoro/ElevenLabs, scenes by ComfyUI, all on <strong class="text-txt-primary">your own hardware</strong>.
+        Drevalis Creator Studio turns a topic into a finished, captioned, uploaded video or audiobook. LLM scripts, TTS voiceover, ComfyUI scenes, FFmpeg assembly - <strong class="text-txt-primary">all on your own machine</strong>.
       </p>
       <div class="flex items-center justify-center gap-4">
         <a href="#pricing" class="rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold px-6 py-3 glow-on-hover">See pricing</a>
-        <a href="/download" class="rounded-md border border-white/10 px-6 py-3 text-txt-primary hover:bg-bg-hover">Install guide →</a>
+        <a href="/download" class="rounded-md border border-white/10 px-6 py-3 text-txt-primary hover:bg-bg-hover">Install guide -&gt;</a>
       </div>
+      <p class="text-xs text-txt-muted mt-6">
+        14-day money-back guarantee &middot; No content leaves your machine &middot; Cancel anytime
+      </p>
     </div>
   </section>
 
@@ -92,9 +107,9 @@
     <div class="card rounded-xl p-2 shadow-2xl shadow-accent/10">
       <div class="aspect-video rounded-lg bg-bg-base flex items-center justify-center text-txt-muted border border-white/[0.04]">
         <div class="text-center">
-          <div class="text-6xl mb-3">▶</div>
-          <div class="text-sm">Drop a demo video / screen recording here</div>
-          <div class="text-xs mt-1">60–90 seconds, topic in → finished MP4 out</div>
+          <div class="text-6xl mb-3">&gt;</div>
+          <div class="text-sm">Product demo - 60-90 sec walkthrough</div>
+          <div class="text-xs mt-1">Topic in, finished video out</div>
         </div>
       </div>
     </div>
@@ -102,60 +117,273 @@
 
   <!-- Features -->
   <section id="features" class="max-w-6xl mx-auto px-6 py-24">
-    <h2 class="font-display text-4xl font-bold text-center mb-3">Everything in one pipeline</h2>
-    <p class="text-txt-secondary text-center mb-14 max-w-xl mx-auto">Six automated steps, fully local. No data leaves your machine unless you want it to.</p>
+    <h2 class="font-display text-4xl font-bold text-center mb-3">What it can do today</h2>
+    <p class="text-txt-secondary text-center mb-14 max-w-xl mx-auto">Every feature below ships in the current release. Nothing on this list is "coming soon" - see the <a href="#roadmap" class="text-accent underline">Roadmap</a> for that.</p>
 
     <div class="grid md:grid-cols-3 gap-5">
-      <!-- Feature cards -->
       <div class="card rounded-xl p-6">
-        <div class="text-2xl mb-3">✍️</div>
         <h3 class="font-semibold mb-2">LLM scripts</h3>
-        <p class="text-sm text-txt-secondary">Plug in LM Studio, Ollama, or Claude. Series bibles keep voice consistent across episodes.</p>
+        <p class="text-sm text-txt-secondary">LM Studio, Ollama, vLLM, or Claude via API. Series bibles keep voice consistent across episodes. 3-phase chunked generation for long-form.</p>
       </div>
       <div class="card rounded-xl p-6">
-        <div class="text-2xl mb-3">🎙</div>
         <h3 class="font-semibold mb-2">TTS voiceover</h3>
-        <p class="text-sm text-txt-secondary">17 free Edge voices, Kokoro, Piper, or ElevenLabs — <span class="text-txt-primary">whichever you prefer</span>.</p>
+        <p class="text-sm text-txt-secondary">17 Microsoft Edge voices (free), Kokoro, Piper (both local), or ElevenLabs. Per-speaker tags let audiobooks do multiple characters.</p>
       </div>
       <div class="card rounded-xl p-6">
-        <div class="text-2xl mb-3">🎞</div>
         <h3 class="font-semibold mb-2">Scene generation</h3>
-        <p class="text-sm text-txt-secondary">ComfyUI workflows (Qwen Image for Shorts, Wan 2.2 for long-form). Your models, your style.</p>
+        <p class="text-sm text-txt-secondary">ComfyUI workflows - Qwen Image for 9:16 Shorts, Wan 2.2 for 16:9 long-form. Your models, your style. Multi-server pool for parallel generation.</p>
       </div>
       <div class="card rounded-xl p-6">
-        <div class="text-2xl mb-3">💬</div>
         <h3 class="font-semibold mb-2">Word-level captions</h3>
-        <p class="text-sm text-txt-secondary">faster-whisper produces timed ASS subtitles with animated presets. Burned in for social.</p>
+        <p class="text-sm text-txt-secondary">faster-whisper aligns the TTS audio word-by-word. Burned-in animated ASS subtitles with style presets.</p>
       </div>
       <div class="card rounded-xl p-6">
-        <div class="text-2xl mb-3">🎬</div>
-        <h3 class="font-semibold mb-2">FFmpeg assembly</h3>
-        <p class="text-sm text-txt-secondary">9:16 / 16:9 / 1:1. Ken Burns pans, background music with sidechain ducking, thumbnails.</p>
+        <h3 class="font-semibold mb-2">Video assembly</h3>
+        <p class="text-sm text-txt-secondary">FFmpeg composites scenes + captions + voice + music (sidechain ducking). 9:16, 16:9, 1:1 outputs. Ken Burns pans, transitions.</p>
       </div>
       <div class="card rounded-xl p-6">
-        <div class="text-2xl mb-3">📤</div>
-        <h3 class="font-semibold mb-2">Multi-platform upload</h3>
-        <p class="text-sm text-txt-secondary">YouTube OAuth, multiple channels, scheduled publishing. TikTok + Instagram on Studio tier.</p>
+        <h3 class="font-semibold mb-2">Audiobook studio</h3>
+        <p class="text-sm text-txt-secondary">Paste a long text; get a chaptered audiobook with cover image, music, and optional video. Multi-voice casting via bracketed speaker tags.</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <h3 class="font-semibold mb-2">YouTube upload</h3>
+        <p class="text-sm text-txt-secondary">OAuth connect, multiple channels, scheduled publishing with retry. SEO metadata + thumbnail picker per episode.</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <h3 class="font-semibold mb-2">Cloud GPU offload</h3>
+        <p class="text-sm text-txt-secondary">RunPod integration (Pro tier+). Spin up a ComfyUI pod or a vLLM pod on demand when your local GPU isn't enough.</p>
+      </div>
+      <div class="card rounded-xl p-6">
+        <h3 class="font-semibold mb-2">Background jobs</h3>
+        <p class="text-sm text-txt-secondary">Generates multiple episodes in parallel, resumes partial failures per-scene, and broadcasts progress via WebSocket.</p>
       </div>
     </div>
   </section>
 
-  <!-- What's different -->
+  <!-- Workflow -->
+  <section id="workflow" class="max-w-5xl mx-auto px-6 py-24">
+    <h2 class="font-display text-4xl font-bold text-center mb-3">How a typical workflow looks</h2>
+    <p class="text-txt-secondary text-center mb-14 max-w-xl mx-auto">Once. Once set up, producing the next episode is 3 clicks.</p>
+
+    <div class="space-y-6">
+      <div class="card rounded-xl p-6 flex gap-5">
+        <span class="step-num shrink-0">1</span>
+        <div>
+          <h3 class="font-semibold mb-1">Set up a series (one-time, ~10 min)</h3>
+          <p class="text-sm text-txt-secondary">Define a series bible (tone, characters, visual style), pick a voice, pick a ComfyUI workflow, pick output format (Shorts / long-form). Reusable across every episode in that series.</p>
+        </div>
+      </div>
+
+      <div class="card rounded-xl p-6 flex gap-5">
+        <span class="step-num shrink-0">2</span>
+        <div>
+          <h3 class="font-semibold mb-1">Give it a topic</h3>
+          <p class="text-sm text-txt-secondary">Click "Generate episode" and type or paste a topic. The LLM writes the script in your series voice with scene-level visual prompts. Chunked generation for 10+ minute videos keeps coherence across chapters.</p>
+        </div>
+      </div>
+
+      <div class="card rounded-xl p-6 flex gap-5">
+        <span class="step-num shrink-0">3</span>
+        <div>
+          <h3 class="font-semibold mb-1">Review &amp; edit (optional)</h3>
+          <p class="text-sm text-txt-secondary">Tweak narration, reorder scenes, regenerate individual scene images, swap voices, change caption style - each step is independently re-runnable. Nothing forces you to approve an AI-generated frame before shipping.</p>
+        </div>
+      </div>
+
+      <div class="card rounded-xl p-6 flex gap-5">
+        <span class="step-num shrink-0">4</span>
+        <div>
+          <h3 class="font-semibold mb-1">Let the pipeline run</h3>
+          <p class="text-sm text-txt-secondary">Six background steps: script - voice - scenes - captions - assembly - thumbnail. Progress is live in the Activity Monitor. Run up to 8 episodes in parallel (hardware permitting).</p>
+        </div>
+      </div>
+
+      <div class="card rounded-xl p-6 flex gap-5">
+        <span class="step-num shrink-0">5</span>
+        <div>
+          <h3 class="font-semibold mb-1">Publish</h3>
+          <p class="text-sm text-txt-secondary">Upload to YouTube (one click), schedule for later, or export the raw MP4 + thumbnail + description. Studio tier adds TikTok and Instagram.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Hardware / performance -->
+  <section id="hardware" class="max-w-6xl mx-auto px-6 py-24">
+    <h2 class="font-display text-4xl font-bold text-center mb-3">Hardware &amp; expected times</h2>
+    <p class="text-txt-secondary text-center mb-12 max-w-2xl mx-auto">Realistic numbers from typical builds. Scene generation dominates - the GPU tier is what moves these the most. LLM and TTS steps are fast even on modest CPUs.</p>
+
+    <div class="card rounded-xl overflow-x-auto">
+      <table class="specs">
+        <thead>
+          <tr>
+            <th>Build</th>
+            <th>CPU</th>
+            <th>RAM</th>
+            <th>GPU</th>
+            <th>60s Short</th>
+            <th>10 min long-form</th>
+            <th>30 min audiobook</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>
+              <div class="font-semibold">Entry</div>
+              <span class="pill pill-amber">works, slow</span>
+            </td>
+            <td>Ryzen 5 / i5, 6 cores</td>
+            <td>16 GB</td>
+            <td>RTX 3060 8 GB<br/><span class="text-txt-muted text-xs">or RunPod cloud</span></td>
+            <td>20 - 40 min</td>
+            <td>2.5 - 5 h</td>
+            <td>4 - 10 min</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="font-semibold">Mid</div>
+              <span class="pill pill-green">sweet spot</span>
+            </td>
+            <td>Ryzen 7 / i7, 8 cores</td>
+            <td>32 GB</td>
+            <td>RTX 4070 12 GB</td>
+            <td>8 - 15 min</td>
+            <td>45 - 90 min</td>
+            <td>2 - 5 min</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="font-semibold">High</div>
+              <span class="pill pill-blue">pro</span>
+            </td>
+            <td>Ryzen 9 / i9, 12+ cores</td>
+            <td>64 GB</td>
+            <td>RTX 4090 24 GB</td>
+            <td>3 - 7 min</td>
+            <td>20 - 40 min</td>
+            <td>1 - 3 min</td>
+          </tr>
+          <tr>
+            <td>
+              <div class="font-semibold">Cloud-only</div>
+              <span class="pill pill-blue">Pro tier+</span>
+            </td>
+            <td>any quad-core</td>
+            <td>16 GB</td>
+            <td>RunPod A100 / H100<br/><span class="text-txt-muted text-xs">~$1-3/hr when running</span></td>
+            <td>3 - 8 min</td>
+            <td>30 - 60 min</td>
+            <td>2 - 5 min</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="text-xs text-txt-muted mt-4 max-w-3xl">
+      <strong>Method:</strong> numbers are end-to-end wall time measured on published models (Qwen Image / Wan 2.2 for scenes, Kokoro 24kHz for voice, faster-whisper base for captions). First run is slower (model downloads). Times scale linearly with episode length and number of scenes.
+    </p>
+    <p class="text-xs text-txt-muted mt-2 max-w-3xl">
+      <strong>Caveats:</strong> Wan 2.2 video generation can push 16 GB+ VRAM peak. Under 8 GB VRAM, use image-only scene workflows, or offload scenes to RunPod. Audiobooks are CPU/TTS-bound - GPU matters only if you enable per-chapter images.
+    </p>
+  </section>
+
+  <!-- What it does NOT do (transparency) -->
+  <section class="max-w-5xl mx-auto px-6 py-24">
+    <div class="card rounded-2xl p-10 md:p-14 border-amber-500/20 bg-amber-500/5">
+      <h2 class="font-display text-3xl font-bold mb-3">What it does <em>not</em> do</h2>
+      <p class="text-txt-secondary mb-8">Being honest upfront is cheaper than refunds. Here is what this software is <strong>not</strong>:</p>
+      <div class="grid md:grid-cols-2 gap-5 text-sm text-txt-secondary">
+        <div class="card rounded-xl p-5 bg-bg-elevated/50">
+          <h4 class="text-txt-primary font-semibold mb-1.5">Not a content-rights clearing service</h4>
+          <p>We generate scripts and imagery via AI models. Whether the output infringes trademarks, likenesses, or copyrights depends on your prompts and the models you load. You are responsible for clearing rights before publishing.</p>
+        </div>
+        <div class="card rounded-xl p-5 bg-bg-elevated/50">
+          <h4 class="text-txt-primary font-semibold mb-1.5">Not a backup service</h4>
+          <p>Your episodes live on your disk. We do not have access to them. Back them up like any other local data. Delete your install and they are gone.</p>
+        </div>
+        <div class="card rounded-xl p-5 bg-bg-elevated/50">
+          <h4 class="text-txt-primary font-semibold mb-1.5">Not a "one click and done" magic machine</h4>
+          <p>Good output needs good prompts, good TTS voices, and reasonable ComfyUI models. The tool saves 90% of the mechanical work. It does not replace editorial judgment - review the AI-generated script before publishing.</p>
+        </div>
+        <div class="card rounded-xl p-5 bg-bg-elevated/50">
+          <h4 class="text-txt-primary font-semibold mb-1.5">Not a substitute for YouTube's own rules</h4>
+          <p>YouTube, TikTok, and Instagram each have their own policies on AI-generated content, disclosure, and authenticity. Follow them. We only hand the file to the upload API; the platform decides.</p>
+        </div>
+        <div class="card rounded-xl p-5 bg-bg-elevated/50">
+          <h4 class="text-txt-primary font-semibold mb-1.5">Not guaranteed stable on exotic setups</h4>
+          <p>We test Docker + Ubuntu 24.04, macOS Docker Desktop, and Windows 11 + WSL2 + Docker Desktop. Arch, BSD, Podman, rootless Docker, corporate-proxied networks - may work, may not. Email support and we will help best-effort.</p>
+        </div>
+        <div class="card rounded-xl p-5 bg-bg-elevated/50">
+          <h4 class="text-txt-primary font-semibold mb-1.5">Not "free forever" if you stop paying</h4>
+          <p>Existing videos keep working. Generation and updates stop 7 days after your subscription lapses. No content is deleted. Re-subscribe and you are back in.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Roadmap -->
+  <section id="roadmap" class="max-w-5xl mx-auto px-6 py-24">
+    <h2 class="font-display text-4xl font-bold text-center mb-3">Roadmap</h2>
+    <p class="text-txt-secondary text-center mb-12 max-w-xl mx-auto">What is actually in active development. Items here are intents, not commitments - plans change based on user feedback.</p>
+
+    <div class="grid md:grid-cols-3 gap-5">
+      <div class="card rounded-xl p-6">
+        <div class="pill pill-amber mb-3">In progress</div>
+        <h3 class="font-semibold mb-3">Q2 2026</h3>
+        <ul class="text-sm text-txt-secondary space-y-2">
+          <li>&bull; First-run onboarding wizard (ComfyUI / LLM / voice setup)</li>
+          <li>&bull; YouTube analytics pull-back (views, CTR, retention)</li>
+          <li>&bull; In-app thumbnail editor with text overlay</li>
+          <li>&bull; Audiobook ID3 tags + chapter markers</li>
+          <li>&bull; SEO score hints during script review</li>
+          <li>&bull; Per-scene partial download as ZIP</li>
+        </ul>
+      </div>
+
+      <div class="card rounded-xl p-6">
+        <div class="pill pill-blue mb-3">Planned</div>
+        <h3 class="font-semibold mb-3">Q3 2026</h3>
+        <ul class="text-sm text-txt-secondary space-y-2">
+          <li>&bull; Cross-platform bulk publish (YT + TikTok + IG in one action)</li>
+          <li>&bull; Drag-drop content calendar</li>
+          <li>&bull; Series A/B testing (hook variants, voice variants)</li>
+          <li>&bull; Custom music upload + per-track sidechain</li>
+          <li>&bull; Usage + cost dashboard (token &amp; GPU minutes per job)</li>
+          <li>&bull; Backup / export everything as a tarball</li>
+        </ul>
+      </div>
+
+      <div class="card rounded-xl p-6">
+        <div class="pill pill-red mb-3">Exploring</div>
+        <h3 class="font-semibold mb-3">Later</h3>
+        <ul class="text-sm text-txt-secondary space-y-2">
+          <li>&bull; Multi-language script &amp; voice (auto-translate a series)</li>
+          <li>&bull; Team / workspace mode (multi-user, roles)</li>
+          <li>&bull; Public API for external automation</li>
+          <li>&bull; Streaming / live avatars</li>
+          <li>&bull; Hosted version (cloud-managed, same UI)</li>
+        </ul>
+        <p class="text-xs text-txt-muted mt-4">Vote via <a href="mailto:support@drevalis.com?subject=Roadmap%20feedback" class="text-accent underline">support@drevalis.com</a>.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Why self-hosted -->
   <section class="max-w-5xl mx-auto px-6 py-24">
     <div class="card rounded-2xl p-10 md:p-14">
       <h2 class="font-display text-3xl md:text-4xl font-bold mb-8">Why self-hosted?</h2>
       <div class="grid md:grid-cols-3 gap-8 text-sm">
         <div>
           <h4 class="text-accent font-semibold mb-2">You own the pipeline</h4>
-          <p class="text-txt-secondary">Scripts, voices, models, workflows — all on your disk. No platform can take them away.</p>
+          <p class="text-txt-secondary">Scripts, voices, models, workflows, OAuth tokens - all on your disk. Drevalis has no ability to access, edit, or delete them.</p>
         </div>
         <div>
           <h4 class="text-accent font-semibold mb-2">Your GPU, your cost</h4>
-          <p class="text-txt-secondary">Pay only for the license. Compute runs on your hardware. Rent a RunPod GPU on-demand (Pro tier+) if you need more.</p>
+          <p class="text-txt-secondary">Pay the license. Compute runs on your hardware. No per-generation fees. Rent a cloud GPU on-demand (Pro tier+) only when you need more.</p>
         </div>
         <div>
-          <h4 class="text-accent font-semibold mb-2">No creator-account lock-in</h4>
-          <p class="text-txt-secondary">Switch LLMs, swap voices, change models. Nothing in the pipeline is proprietary to Drevalis.</p>
+          <h4 class="text-accent font-semibold mb-2">No vendor lock-in</h4>
+          <p class="text-txt-secondary">Swap the LLM, swap the TTS, swap ComfyUI workflows. The app orchestrates open tools; nothing in the pipeline is proprietary to Drevalis.</p>
         </div>
       </div>
     </div>
@@ -164,7 +392,7 @@
   <!-- Pricing -->
   <section id="pricing" class="max-w-6xl mx-auto px-6 py-24">
     <h2 class="font-display text-4xl font-bold text-center mb-3">Pricing</h2>
-    <p class="text-txt-secondary text-center mb-8">All tiers include every feature — tiers cap concurrency, channels, and cloud GPU access.</p>
+    <p class="text-txt-secondary text-center mb-8">All tiers include every feature. Tiers cap concurrency, channels, and cloud GPU access.</p>
 
     <div class="flex items-center justify-center gap-3 mb-12">
       <span class="text-sm text-txt-secondary">Monthly</span>
@@ -186,11 +414,11 @@
           <span class="text-txt-secondary" data-interval-label>/mo</span>
         </div>
         <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
-          <li>✓ 1 machine</li>
-          <li>✓ 5 episodes / day</li>
-          <li>✓ 1 YouTube channel</li>
-          <li>✓ Edge, Piper, Kokoro TTS</li>
-          <li>✓ Updates included</li>
+          <li>+ 1 machine</li>
+          <li>+ 5 episodes / day</li>
+          <li>+ 1 YouTube channel</li>
+          <li>+ Edge, Piper, Kokoro TTS</li>
+          <li>+ Updates included</li>
         </ul>
         <button data-checkout data-tier="solo" data-interval="monthly"
                 class="rounded-md border border-white/10 py-3 font-semibold text-txt-primary hover:bg-bg-hover">
@@ -210,12 +438,12 @@
           <span class="text-txt-secondary" data-interval-label>/mo</span>
         </div>
         <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
-          <li>✓ 3 machines</li>
-          <li>✓ <strong class="text-txt-primary">Unlimited</strong> episodes</li>
-          <li>✓ 3 YouTube channels</li>
-          <li>✓ RunPod cloud GPU offload</li>
-          <li>✓ Audiobook studio</li>
-          <li>✓ ElevenLabs TTS</li>
+          <li>+ 3 machines</li>
+          <li>+ <strong class="text-txt-primary">Unlimited</strong> episodes</li>
+          <li>+ 3 YouTube channels</li>
+          <li>+ RunPod cloud GPU offload</li>
+          <li>+ Audiobook studio</li>
+          <li>+ ElevenLabs TTS</li>
         </ul>
         <button data-checkout data-tier="pro" data-interval="monthly"
                 class="rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold py-3 glow-on-hover">
@@ -232,12 +460,12 @@
           <span class="text-txt-secondary" data-interval-label>/mo</span>
         </div>
         <ul class="text-sm space-y-2 text-txt-secondary mb-8 flex-1">
-          <li>✓ 5 machines</li>
-          <li>✓ Unlimited everything</li>
-          <li>✓ Unlimited YouTube channels</li>
-          <li>✓ TikTok + Instagram</li>
-          <li>✓ API access</li>
-          <li>✓ Priority email support</li>
+          <li>+ 5 machines</li>
+          <li>+ Unlimited everything</li>
+          <li>+ Unlimited YouTube channels</li>
+          <li>+ TikTok + Instagram</li>
+          <li>+ API access</li>
+          <li>+ Priority email support</li>
         </ul>
         <button data-checkout data-tier="studio" data-interval="monthly"
                 class="rounded-md border border-white/10 py-3 font-semibold text-txt-primary hover:bg-bg-hover">
@@ -247,7 +475,7 @@
     </div>
 
     <p class="text-center text-xs text-txt-muted mt-8">
-      14-day money-back guarantee · Cancel anytime · VAT/sales tax handled via Stripe
+      14-day money-back guarantee &middot; Cancel anytime &middot; VAT / sales tax handled via Stripe
     </p>
   </section>
 
@@ -256,63 +484,68 @@
     <h2 class="font-display text-3xl font-bold text-center mb-10">Questions</h2>
     <div class="space-y-4">
       <details class="card rounded-xl p-5 group">
-        <summary class="font-semibold cursor-pointer flex justify-between items-center">What hardware do I need?<span class="text-txt-muted group-open:rotate-180 transition">⌃</span></summary>
-        <p class="text-sm text-txt-secondary mt-4">
-          Minimum: 16 GB RAM, an NVIDIA GPU with ≥ 8 GB VRAM for scenes, ~20 GB disk. For long-form video (Wan 2.2), 24 GB+ VRAM is recommended. No GPU? Use the RunPod integration on Pro/Studio — scenes run on a rented cloud GPU on-demand.
-        </p>
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">What hardware do I need? <span class="text-txt-muted group-open:rotate-180 transition">v</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">See the <a href="#hardware" class="text-accent underline">hardware matrix</a>. Minimum to generate anything: 16 GB RAM + an NVIDIA GPU with 8 GB VRAM (or RunPod on Pro tier). Long-form video benefits a lot from 16 GB+ VRAM.</p>
       </details>
       <details class="card rounded-xl p-5 group">
-        <summary class="font-semibold cursor-pointer flex justify-between items-center">Do I need to install ComfyUI and LM Studio separately?<span class="text-txt-muted group-open:rotate-180 transition">⌃</span></summary>
-        <p class="text-sm text-txt-secondary mt-4">
-          Yes — both run as external services so you control the models. Our install guide walks through it. Alternatively, wire the app to a RunPod ComfyUI (Pro tier) and Anthropic Claude for scripts — zero local GPU needed.
-        </p>
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">Do I need to install ComfyUI and LM Studio separately? <span class="text-txt-muted group-open:rotate-180 transition">v</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">Yes - both run as external services so you control the models. The install guide walks through it. Alternatively, on Pro tier, point at a RunPod ComfyUI pod and use Claude / OpenAI for scripts - zero local GPU needed.</p>
       </details>
       <details class="card rounded-xl p-5 group">
-        <summary class="font-semibold cursor-pointer flex justify-between items-center">Can I upgrade or cancel later?<span class="text-txt-muted group-open:rotate-180 transition">⌃</span></summary>
-        <p class="text-sm text-txt-secondary mt-4">
-          Yes. Visit <a href="/account" class="text-accent underline">drevalis.com/account</a> at any time to open Stripe's billing portal — upgrade, downgrade, change payment method, cancel, or view invoices.
-        </p>
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">Can I upgrade or cancel later? <span class="text-txt-muted group-open:rotate-180 transition">v</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">Yes. Visit <a href="/account" class="text-accent underline">drevalis.com/account</a> any time to open Stripe's billing portal - upgrade, downgrade, change payment method, cancel, or view invoices.</p>
       </details>
       <details class="card rounded-xl p-5 group">
-        <summary class="font-semibold cursor-pointer flex justify-between items-center">What happens if I don't renew?<span class="text-txt-muted group-open:rotate-480 transition">⌃</span></summary>
-        <p class="text-sm text-txt-secondary mt-4">
-          Your install keeps running for a 7-day grace window, then locks. You can still open the app to view past episodes — generation and upload stop until you renew. Updates are paused.
-        </p>
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">What happens if I don't renew? <span class="text-txt-muted group-open:rotate-180 transition">v</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">7-day grace window where everything keeps running. Then generation and upload lock until you renew. Past episodes remain on disk and playable - nothing is deleted, nothing is transmitted.</p>
       </details>
       <details class="card rounded-xl p-5 group">
-        <summary class="font-semibold cursor-pointer flex justify-between items-center">Is my data sent anywhere?<span class="text-txt-muted group-open:rotate-180 transition">⌃</span></summary>
-        <p class="text-sm text-txt-secondary mt-4">
-          No. Scripts, voices, videos, and channel credentials stay on your machine. Drevalis servers only handle licensing: a 24-hour heartbeat checks whether your subscription is still active. Nothing about your content is transmitted.
-        </p>
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">Is my data sent anywhere? <span class="text-txt-muted group-open:rotate-180 transition">v</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">Scripts, voices, videos, and channel credentials stay on your machine. Drevalis servers only handle licensing - a 24h heartbeat checks your subscription. See the <a href="/privacy" class="text-accent underline">Privacy Policy</a> for the short, specific list.</p>
+      </details>
+      <details class="card rounded-xl p-5 group">
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">Am I legally allowed to publish AI-generated videos? <span class="text-txt-muted group-open:rotate-180 transition">v</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">Depends on jurisdiction, platform, and what the video contains. YouTube requires disclosure for altered / synthetic content that might be mistaken for real. TikTok similar. You are responsible for the disclosure and for not infringing copyrights or impersonating real people. See <a href="/acceptable-use" class="text-accent underline">Acceptable Use</a>.</p>
+      </details>
+      <details class="card rounded-xl p-5 group">
+        <summary class="font-semibold cursor-pointer flex justify-between items-center">Refund policy? <span class="text-txt-muted group-open:rotate-180 transition">v</span></summary>
+        <p class="text-sm text-txt-secondary mt-4">14 days, full refund, no questions asked - unless the license has been activated on more than one machine or used to publish more than 10 uploads. See <a href="/terms" class="text-accent underline">Terms</a>.</p>
       </details>
     </div>
   </section>
 
   <!-- Footer -->
   <footer class="border-t border-white/[0.06] mt-24">
-    <div class="max-w-6xl mx-auto px-6 py-10 flex flex-col md:flex-row items-start justify-between gap-6">
-      <div>
+    <div class="max-w-6xl mx-auto px-6 py-10 grid gap-6 md:grid-cols-4">
+      <div class="md:col-span-2">
         <div class="flex items-center gap-2 mb-2">
+          <svg width="24" height="24" viewBox="0 0 28 28" fill="none"><rect x="2" y="2" width="24" height="24" rx="6" fill="url(#g2)"/><path d="M9 9 L19 14 L9 19 Z" fill="#0A0B0E"/><defs><linearGradient id="g2" x1="0" y1="0" x2="28" y2="28"><stop stop-color="#00E5B8"/><stop offset="1" stop-color="#00BFA8"/></linearGradient></defs></svg>
           <span class="font-display font-bold">Drevalis</span>
         </div>
-        <p class="text-xs text-txt-muted">© 2026 Drevalis. Creator Studio is a trademark of Drevalis.</p>
+        <p class="text-xs text-txt-muted max-w-sm">Self-hosted AI video &amp; audiobook creation. You own the content, the pipeline, and the infrastructure.</p>
+        <p class="text-xs text-txt-muted mt-3">(c) 2026 Drevalis. Creator Studio is a trademark of Drevalis.</p>
       </div>
-      <div class="flex gap-10 text-sm">
-        <div>
-          <div class="text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">Product</div>
-          <ul class="space-y-1.5 text-txt-secondary">
-            <li><a href="#features" class="hover:text-txt-primary">Features</a></li>
-            <li><a href="#pricing" class="hover:text-txt-primary">Pricing</a></li>
-            <li><a href="/download" class="hover:text-txt-primary">Download</a></li>
-          </ul>
-        </div>
-        <div>
-          <div class="text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">Account</div>
-          <ul class="space-y-1.5 text-txt-secondary">
-            <li><a href="/account" class="hover:text-txt-primary">Manage subscription</a></li>
-            <li><a href="mailto:support@drevalis.com" class="hover:text-txt-primary">Support</a></li>
-          </ul>
-        </div>
+      <div>
+        <div class="text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">Product</div>
+        <ul class="space-y-1.5 text-sm text-txt-secondary">
+          <li><a href="#features" class="hover:text-txt-primary">Features</a></li>
+          <li><a href="#workflow" class="hover:text-txt-primary">Workflow</a></li>
+          <li><a href="#hardware" class="hover:text-txt-primary">Hardware</a></li>
+          <li><a href="#pricing" class="hover:text-txt-primary">Pricing</a></li>
+          <li><a href="#roadmap" class="hover:text-txt-primary">Roadmap</a></li>
+          <li><a href="/download" class="hover:text-txt-primary">Download</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="text-xs font-semibold text-txt-secondary uppercase tracking-wider mb-2">Legal &amp; Account</div>
+        <ul class="space-y-1.5 text-sm text-txt-secondary">
+          <li><a href="/account" class="hover:text-txt-primary">Manage subscription</a></li>
+          <li><a href="mailto:support@drevalis.com" class="hover:text-txt-primary">Support</a></li>
+          <li><a href="/terms" class="hover:text-txt-primary">Terms of Service</a></li>
+          <li><a href="/privacy" class="hover:text-txt-primary">Privacy Policy</a></li>
+          <li><a href="/acceptable-use" class="hover:text-txt-primary">Acceptable Use</a></li>
+          <li><a href="/impressum" class="hover:text-txt-primary">Impressum</a></li>
+        </ul>
       </div>
     </div>
   </footer>
