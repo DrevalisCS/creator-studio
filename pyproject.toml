@@ -121,10 +121,18 @@ module = [
     "numpy.*",
     "edge_tts.*",
     "google.*",
-    "google_auth_oauthlib.*",
     "googleapiclient.*",
 ]
 ignore_missing_imports = true
+
+# google-auth ships partial inline type info; its `Credentials` constructor
+# is seen as untyped by some mypy versions / stub availability combinations
+# (CI hits no-untyped-call; local installs may see it as typed and flag the
+# ignore as unused). Suppress the diagnostic for the google.oauth2 path
+# specifically so the code is portable without per-call ignore comments.
+[[tool.mypy.overrides]]
+module = ["shortsfactory.services.youtube"]
+disable_error_code = ["no-untyped-call"]
 
 # ── pytest ────────────────────────────────────────────────────────────────────
 
