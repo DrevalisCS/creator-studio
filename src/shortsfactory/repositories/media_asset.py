@@ -105,3 +105,32 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         result = await self.session.execute(stmt)
         await self.session.flush()
         return len(result.scalars().all())
+
+    async def delete_by_episode_and_types(
+        self,
+        episode_id: UUID,
+        asset_types: list[str],
+    ) -> int:
+        """Bulk-delete media assets for an episode matching any of
+        ``asset_types`` (e.g. ``["voiceover", "caption", "video", "thumbnail"]``).
+
+        Used by the regenerate-voice / reassemble-episode / regenerate-captions
+        flows to clear stale downstream artifacts before re-running the
+        relevant pipeline steps. Without this, orphan rows accumulate on
+        every regeneration and caption lookup can silently pick the oldest.
+
+        Returns the number of rows deleted.
+        """
+        if not asset_types:
+            return 0
+        stmt = (
+            delete(MediaAsset)
+            .where(
+                MediaAsset.episode_id == episode_id,
+                MediaAsset.asset_type.in_(asset_types),
+            )
+            .returning(MediaAsset.id)
+        )
+        result = await self.session.execute(stmt)
+        await self.session.flush()
+        return len(result.scalars().all())

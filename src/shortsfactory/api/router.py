@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from shortsfactory.api.routes.api_keys import router as api_keys_router
 from shortsfactory.api.routes.audiobooks import router as audiobooks_router
+from shortsfactory.api.routes.backup import router as backup_router
 from shortsfactory.api.routes.comfyui import router as comfyui_router
 from shortsfactory.api.routes.episodes import router as episodes_router
 from shortsfactory.api.routes.jobs import router as jobs_router
@@ -65,3 +66,4 @@ router.include_router(social_router)
 router.include_router(youtube_router)
 router.include_router(schedule_router)
 router.include_router(video_templates_router)
+router.include_router(backup_router)

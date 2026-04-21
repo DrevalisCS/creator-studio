@@ -44,10 +44,12 @@ import {
   Loader2,
   KeyRound,
   ArrowUpCircle,
+  Archive,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { LicenseSection } from '@/pages/Settings/sections/LicenseSection';
 import { UpdatesSection } from '@/pages/Settings/sections/UpdatesSection';
+import { BackupSection } from '@/pages/Settings/sections/BackupSection';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -83,6 +85,7 @@ import type {
 const SECTIONS = [
   { id: 'license', label: 'License', icon: KeyRound },
   { id: 'updates', label: 'Updates', icon: ArrowUpCircle },
+  { id: 'backup', label: 'Backup', icon: Archive },
   { id: 'health', label: 'Health', icon: CheckCircle2 },
   { id: 'comfyui', label: 'ComfyUI Servers', icon: Server },
   { id: 'voice', label: 'Voice Profiles', icon: Mic2 },
@@ -142,6 +145,7 @@ function Settings() {
         <div className="col-span-9">
           {activeSection === 'license' && <LicenseSection />}
           {activeSection === 'updates' && <UpdatesSection />}
+          {activeSection === 'backup' && <BackupSection />}
           {activeSection === 'health' && <HealthSection />}
           {activeSection === 'comfyui' && <ComfyUISection />}
           {activeSection === 'voice' && <VoiceSection />}

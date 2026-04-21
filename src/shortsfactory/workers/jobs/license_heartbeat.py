@@ -88,9 +88,24 @@ async def license_heartbeat(ctx: dict[str, Any]) -> dict[str, Any]:
             await session.commit()
             return {"status": "network_error"}
         except ActivationError as exc:
-            # Revoked / not found / any non-2xx — zero the JWT so the app
-            # locks on the next request, matching the behavior of an
-            # explicit deactivate.
+            # ONLY 4xx should be treated as revocation. A transient 5xx
+            # from the license server (brief outage, cold-start) must not
+            # brick every client that happens to heartbeat during the
+            # window — that would zero the JWT, flip state to EXPIRED,
+            # and require every customer to re-activate by hand.
+            if 500 <= exc.status_code < 600:
+                log.warning(
+                    "heartbeat_server_5xx_treat_as_network",
+                    status_code=exc.status_code,
+                    error=exc.error,
+                )
+                await repo.record_heartbeat(f"server_error:{exc.status_code}")
+                await session.commit()
+                return {"status": "server_error", "code": exc.status_code}
+
+            # 4xx: explicit revocation / not-found / bad request. Zero
+            # the JWT so the app locks on the next request, matching the
+            # behavior of an explicit deactivate.
             log.warning(
                 "heartbeat_rejected",
                 status_code=exc.status_code,

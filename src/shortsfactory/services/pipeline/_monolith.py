@@ -387,13 +387,20 @@ class PipelineOrchestrator:
 
         if content_format == "longform":
             # Long-form: chunked multi-chapter generation
+            from shortsfactory.services.llm import LLMPool as _LLMPool
             from shortsfactory.services.longform_script import LongFormScriptService
 
-            # Use the full pool for load balancing across all configured LLM
-            # providers.  Long-form generation is the most expensive pipeline
-            # step, so distributing retries across backends reduces failure
-            # probability on slow or rate-limited servers.
-            pool = await self._build_llm_pool()
+            # Respect episode-level override — users who pin "use Claude
+            # for this specific premium long-form episode" expect that
+            # exact provider, not a round-robin across every configured
+            # LLM. Fall back to the full pool only when no override is
+            # set, so load balancing + retries across backends still
+            # happens for standard generations.
+            if episode.override_llm_config is not None:
+                override_provider = self.llm_service.get_provider(episode.override_llm_config)
+                pool: _LLMPool = _LLMPool([(episode.override_llm_config.name, override_provider)])
+            else:
+                pool = await self._build_llm_pool()
             lf_service = LongFormScriptService(
                 provider=pool,
                 visual_consistency_prompt=getattr(series, "visual_consistency_prompt", "") or "",
@@ -1125,14 +1132,18 @@ class PipelineOrchestrator:
 
             scene_assets.sort(key=lambda a: (a.scene_number or 0, a.created_at))
 
-            # Build SceneInput list matching script scene durations
+            # Build SceneInput list. Look up duration by scene_number, not
+            # by positional index — the user may have deleted a scene from
+            # the script (DELETE /scenes/{num}) without the corresponding
+            # media_asset being removed, which shifts the positional match
+            # and zips the wrong duration onto the wrong image.
             scene_inputs: list[SceneInput] = []
-            for idx, asset in enumerate(scene_assets):
+            num_to_duration: dict[int, float] = {
+                s.scene_number: s.duration_seconds for s in script.scenes
+            }
+            for asset in scene_assets:
                 abs_path = self.storage.resolve_path(asset.file_path)
-                if idx < len(script.scenes):
-                    duration = script.scenes[idx].duration_seconds
-                else:
-                    duration = 5.0
+                duration = num_to_duration.get(asset.scene_number or -1, 5.0)
                 scene_inputs.append(SceneInput(image_path=abs_path, duration_seconds=duration))
 
         # Gather voiceover

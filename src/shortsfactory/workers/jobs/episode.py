@@ -162,7 +162,20 @@ async def reassemble_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, 
 
     session_factory = ctx["session_factory"]
     async with session_factory() as session:
+        from shortsfactory.repositories.media_asset import MediaAssetRepository
+
         job_repo = GenerationJobRepository(session)
+
+        # Delete stale downstream media_asset rows before re-running.
+        # Without this, every regeneration piles on duplicate caption/
+        # video/thumbnail rows; caption lookup then picks the oldest
+        # stable-sorted match and can silently use a stale file if
+        # filenames are ever timestamped.
+        asset_repo = MediaAssetRepository(session)
+        removed = await asset_repo.delete_by_episode_and_types(
+            parsed_id, ["caption", "video", "thumbnail"]
+        )
+        log.info("stale_assets_removed", count=removed)
 
         # Mark any previous done jobs for captions/assembly/thumbnail as non-done
         # so the orchestrator will re-execute them.
@@ -225,7 +238,17 @@ async def regenerate_voice(ctx: dict[str, Any], episode_id: str) -> dict[str, An
 
     session_factory = ctx["session_factory"]
     async with session_factory() as session:
+        from shortsfactory.repositories.media_asset import MediaAssetRepository
+
         job_repo = GenerationJobRepository(session)
+
+        # Delete stale voice + downstream assets so we don't accumulate
+        # orphan rows. Scenes stay.
+        asset_repo = MediaAssetRepository(session)
+        removed = await asset_repo.delete_by_episode_and_types(
+            parsed_id, ["voiceover", "caption", "video", "thumbnail"]
+        )
+        log.info("stale_assets_removed", count=removed)
 
         # Mark voice, captions, assembly, thumbnail as queued so the
         # orchestrator will re-execute them.

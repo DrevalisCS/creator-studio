@@ -20,6 +20,7 @@ from shortsfactory.workers.jobs.audiobook import (
     generate_script_async,
     regenerate_audiobook_chapter,
 )
+from shortsfactory.workers.jobs.backup import scheduled_backup
 
 # ---------------------------------------------------------------------------
 # Job function imports
@@ -108,6 +109,7 @@ class WorkerSettings:
         auto_deploy_runpod_pod,
         worker_heartbeat,
         license_heartbeat,
+        scheduled_backup,
     ]
     cron_jobs = [
         # Check for due scheduled posts every 15 minutes
@@ -116,6 +118,10 @@ class WorkerSettings:
         cron(worker_heartbeat, minute=set(range(60))),
         # License heartbeat — once per day at 04:17 UTC (off-peak, arbitrary).
         cron(license_heartbeat, hour={4}, minute={17}),
+        # Nightly full-install backup at 03:00 UTC. The job itself checks
+        # backup_auto_enabled and no-ops when disabled, so it's safe to
+        # register unconditionally.
+        cron(scheduled_backup, hour={3}, minute={0}),
     ]
     on_startup = startup
     on_shutdown = shutdown

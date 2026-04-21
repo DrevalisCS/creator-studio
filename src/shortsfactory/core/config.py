@@ -98,6 +98,15 @@ class Settings(BaseSettings):
     # with this single PEM. Never set in production.
     license_public_key_override: str | None = None
 
+    # ── Backups ───────────────────────────────────────────────────────────
+    # Directory inside the container where backup tarballs are written.
+    # Mount an SMB/NFS path here to send backups off-box automatically.
+    backup_directory: Path = Path("./storage/backups")
+    # How many recent backups to keep. Older ones are deleted after each run.
+    backup_retention: int = 7
+    # Cron job on/off. When True, runs daily at 03:00 UTC.
+    backup_auto_enabled: bool = False
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
