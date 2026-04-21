@@ -248,7 +248,7 @@ This document covers diagnosis and resolution of common failures in Drevalis Cre
    ```bash
    docker compose ps postgres
    # or
-   pg_isready -h localhost -p 5432 -U shortsfactory
+   pg_isready -h localhost -p 5432 -U drevalis
    ```
 
 2. Check PostgreSQL logs:
@@ -466,10 +466,10 @@ This document covers diagnosis and resolution of common failures in Drevalis Cre
    docker compose down
 
    # 2. Move storage
-   mv ./storage /path/to/larger/drive/shortsfactory-storage
+   mv ./storage /path/to/larger/drive/drevalis-storage
 
    # 3. Update .env
-   echo "STORAGE_BASE_PATH=/path/to/larger/drive/shortsfactory-storage" >> .env
+   echo "STORAGE_BASE_PATH=/path/to/larger/drive/drevalis-storage" >> .env
 
    # 4. Restart
    docker compose up -d
@@ -570,7 +570,7 @@ This document covers diagnosis and resolution of common failures in Drevalis Cre
 
 4. **For local development** (without Docker):
    ```bash
-   python -m arq src.shortsfactory.workers.settings.WorkerSettings
+   python -m arq src.drevalis.workers.settings.WorkerSettings
    ```
 
 ---

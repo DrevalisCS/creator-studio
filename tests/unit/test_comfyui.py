@@ -9,8 +9,8 @@ from uuid import uuid4
 
 import pytest
 
-from shortsfactory.schemas.comfyui import NodeInput, WorkflowInputMapping
-from shortsfactory.services.comfyui import ComfyUIPool, ComfyUIService
+from drevalis.schemas.comfyui import NodeInput, WorkflowInputMapping
+from drevalis.services.comfyui import ComfyUIPool, ComfyUIService
 
 # ── Sample workflow for injection tests ───────────────────────────────────────
 
@@ -44,7 +44,7 @@ SAMPLE_WORKFLOW: dict = {
     "9": {
         "class_type": "SaveImage",
         "inputs": {
-            "filename_prefix": "ShortsFactory",
+            "filename_prefix": "Drevalis",
         },
     },
 }
@@ -141,7 +141,7 @@ class TestInjectParams:
 
         # SaveImage node (9) should be untouched
         assert result["9"]["class_type"] == "SaveImage"
-        assert result["9"]["inputs"]["filename_prefix"] == "ShortsFactory"
+        assert result["9"]["inputs"]["filename_prefix"] == "Drevalis"
 
         # KSampler's non-injected fields should be preserved
         assert result["3"]["inputs"]["steps"] == 20

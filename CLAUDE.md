@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Drevalis Creator Studio** is an AI-powered YouTube Shorts and long-form video creation studio and text-to-voice platform. The product is sold by Drevalis. Python package name is `shortsfactory` (internal, pre-rebrand — do not rename). It automates the full pipeline from script generation through final video assembly and YouTube upload. The system handles two primary workflows:
+**Drevalis Creator Studio** is an AI-powered YouTube Shorts and long-form video creation studio and text-to-voice platform. The product is sold by Drevalis. Python package: `drevalis`. It automates the full pipeline from script generation through final video assembly and YouTube upload. The system handles two primary workflows:
 
 1. **YouTube video generation**: An LLM writes episodic scripts from a series bible, TTS voices them, ComfyUI generates scene images/video, faster-whisper produces word-level captions, and FFmpeg composites everything into MP4 files (9:16 Shorts, 16:9 long-form, or 1:1 square) with burned-in animated subtitles. Finished videos can be uploaded directly to YouTube via OAuth. Long-form episodes use a 3-phase chunked LLM generation: outline → chapters → quality review.
 
@@ -19,9 +19,9 @@ The application is designed as a **local-first** tool. All heavy processing (LLM
 ```bash
 docker compose up -d                  # start all services (app, worker, postgres, redis, frontend)
 docker compose up -d postgres redis   # start only infrastructure (for local backend dev)
-uvicorn src.shortsfactory.main:app --reload --port 8000   # run backend locally
+uvicorn src.drevalis.main:app --reload --port 8000   # run backend locally
 cd frontend && npm run dev            # run frontend locally (Vite on port 5173)
-python -m arq src.shortsfactory.workers.settings.WorkerSettings   # run arq worker locally
+python -m arq src.drevalis.workers.settings.WorkerSettings   # run arq worker locally
 alembic upgrade head                  # run database migrations
 alembic revision --autogenerate -m "description"   # create a new migration
 ```
@@ -32,7 +32,7 @@ alembic revision --autogenerate -m "description"   # create a new migration
 pytest tests/ -v                            # run all tests
 pytest tests/unit/ -v                       # unit tests only
 pytest tests/integration/ -v                # integration tests (requires services)
-pytest tests/ --cov=src/shortsfactory       # with coverage report
+pytest tests/ --cov=src/drevalis       # with coverage report
 pytest tests/ -v -m "not slow"              # skip slow tests
 pytest tests/ -v -m "not integration"       # skip integration tests
 ```
@@ -349,7 +349,7 @@ All API routes are under `/api/v1/` with the following sub-routers:
 ## Directory Structure
 
 ```
-src/shortsfactory/
+src/drevalis/
   main.py                    # FastAPI app factory, lifespan, CORS, static files
   core/
     config.py                # Pydantic Settings (env vars / .env)
@@ -475,7 +475,7 @@ All configuration is in `core/config.py` as a Pydantic `Settings` class reading 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENCRYPTION_KEY` | **(required)** | Fernet key for encrypting API keys and OAuth tokens at rest |
-| `DATABASE_URL` | `postgresql+asyncpg://shortsfactory:shortsfactory@localhost:5432/shortsfactory` | PostgreSQL connection string |
+| `DATABASE_URL` | `postgresql+asyncpg://drevalis:drevalis@localhost:5432/drevalis` | PostgreSQL connection string |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection for job queue and pub/sub |
 | `STORAGE_BASE_PATH` | `./storage` | Root directory for all generated media files |
 | `DEBUG` | `false` | Enable debug logging and SQLAlchemy echo |
@@ -606,4 +606,4 @@ The `ENCRYPTION_KEY` is validated at both the Settings model level (Pydantic val
 - All service and route packages use `_monolith.py` + `__init__.py` re-exports. When adding new code, add it to `_monolith.py` (or create new sub-modules and update `__init__.py`). Never import directly from `_monolith` in external code — always import from the package.
 - The `UnsafeURLError` class inherits from `ValueError`. Never catch `ValueError` broadly in code that also calls SSRF validators — use `try/except UnsafeURLError` explicitly.
 - Music generation and SEO generation are now arq background jobs. The HTTP endpoints enqueue and return immediately. Frontend should show a loading state and poll or use WebSocket for results.
-- The Docker `app` service does NOT use `--reload`. For local development with hot reload, run `uvicorn src.shortsfactory.main:app --reload --port 8000` directly outside Docker.
+- The Docker `app` service does NOT use `--reload`. For local development with hot reload, run `uvicorn src.drevalis.main:app --reload --port 8000` directly outside Docker.

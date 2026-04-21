@@ -1547,7 +1547,7 @@ as she reached for the lamp.`}</CodeBlock>
             <div className="space-y-2">
               {[
                 { label: 'Docker (recommended)', cmd: 'docker compose restart worker' },
-                { label: 'Local dev', cmd: 'Ctrl+C to stop, then re-run: python -m arq src.shortsfactory.workers.settings.WorkerSettings' },
+                { label: 'Local dev', cmd: 'Ctrl+C to stop, then re-run: python -m arq src.drevalis.workers.settings.WorkerSettings' },
               ].map(item => (
                 <div key={item.label} className="surface p-3 rounded-lg">
                   <p className="text-xs font-semibold text-txt-primary mb-1">{item.label}</p>

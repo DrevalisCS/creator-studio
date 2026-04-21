@@ -24,14 +24,14 @@ mocks and assertions to match, remove from the `_STALE_TESTS` set.
 ## 2. Mypy (gated in CI)
 
 Mypy **is** a CI gate as of this commit. The whole-package run
-`mypy -p shortsfactory --no-strict-optional` returns 0 errors across
+`mypy -p drevalis --no-strict-optional` returns 0 errors across
 138 source files.
 
 Remaining debt is on the strictness axis:
 
 - [ ] Tighten to `--strict` per package (blocked on each package's own
-      `Any`-leak audit). Start with `shortsfactory.core.license` and
-      `shortsfactory.services.updates` — both are small and entirely
+      `Any`-leak audit). Start with `drevalis.core.license` and
+      `drevalis.services.updates` — both are small and entirely
       authored in-repo.
 - [ ] Remove the `--no-strict-optional` flag once the `None`-handling
       drift in repositories/ORM paths is cleaned up.

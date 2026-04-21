@@ -1,4 +1,4 @@
-# ADR-001: ShortsFactory Core Architecture Decisions
+# ADR-001: Drevalis Core Architecture Decisions
 
 **Date:** 2026-03-23
 **Status:** Accepted
@@ -6,7 +6,7 @@
 
 ## Context
 
-ShortsFactory is an AI-powered YouTube Shorts creation studio designed as a local-first application for daily content creation. The system automates the full pipeline from script generation through final video assembly: an LLM writes episodic scripts, a TTS engine voices them, ComfyUI generates scene images, and FFmpeg composites everything into 9:16 MP4 Shorts with burned-in captions.
+Drevalis is an AI-powered YouTube Shorts creation studio designed as a local-first application for daily content creation. The system automates the full pipeline from script generation through final video assembly: an LLM writes episodic scripts, a TTS engine voices them, ComfyUI generates scene images, and FFmpeg composites everything into 9:16 MP4 Shorts with burned-in captions.
 
 The technology stack is built on FastAPI (async Python 3.11 backend), a React frontend, PostgreSQL (via asyncpg + SQLAlchemy async sessions), and Redis. The entire deployment is orchestrated through Docker Compose. External integrations include LM Studio (local LLM inference), ComfyUI (image generation), Piper TTS (local text-to-speech), and FFmpeg (video assembly).
 
@@ -154,7 +154,7 @@ The assembly module must:
 The module exposes functions like `assemble_episode(episode_dir, scenes, voice_path, output_path)` that construct an FFmpeg argument list from structured Python data (scene image paths, durations, caption file path) and execute it via `asyncio.create_subprocess_exec`. The full command is logged at DEBUG level before execution. Stderr is captured, and non-zero exit codes raise a typed `FFmpegError` with the full stderr output.
 
 This approach was chosen because:
-1. The filtergraph for ShortsFactory is complex enough that wrappers become liabilities rather than aids. A typical assembly involves: concat demuxer for timed image sequences, audio overlay, ASS subtitle burn-in, and scaling/padding to exact 1080x1920.
+1. The filtergraph for Drevalis is complex enough that wrappers become liabilities rather than aids. A typical assembly involves: concat demuxer for timed image sequences, audio overlay, ASS subtitle burn-in, and scaling/padding to exact 1080x1920.
 2. Debugging FFmpeg issues requires seeing and tweaking the exact command. A wrapper hides this.
 3. The standard library `subprocess` module (and its asyncio equivalent) has zero additional dependencies.
 
@@ -282,7 +282,7 @@ This was chosen because every tool in the pipeline (FFmpeg, Piper, ComfyUI) oper
 
 ### Context
 
-Each series in ShortsFactory has a consistent voice identity. The narrator voice is a core part of the brand for a YouTube Shorts series. The TTS system must:
+Each series in Drevalis has a consistent voice identity. The narrator voice is a core part of the brand for a YouTube Shorts series. The TTS system must:
 - Produce natural-sounding speech from episode scripts.
 - Support multiple distinct voices (one per series).
 - Return timing/alignment data so that scene images can be synchronized with narration segments.
@@ -421,7 +421,7 @@ The LLM integration must:
   - Large community and ecosystem.
 - Cons:
   - Extremely heavy dependency tree. Pulls in hundreds of transitive dependencies.
-  - Over-engineered for this use case. ShortsFactory sends a prompt and receives a JSON response. It does not need chains, agents, vector stores, or document loaders.
+  - Over-engineered for this use case. Drevalis sends a prompt and receives a JSON response. It does not need chains, agents, vector stores, or document loaders.
   - Abstraction layers make debugging prompt/response issues difficult.
   - Rapid release cadence with frequent breaking changes.
   - Adds significant complexity for minimal value when the application only needs two providers.

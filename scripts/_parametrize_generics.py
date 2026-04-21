@@ -25,7 +25,7 @@ from pathlib import Path
 
 def main() -> int:
     result = subprocess.run(
-        [sys.executable, "-m", "mypy", "-p", "shortsfactory", "--no-strict-optional"],
+        [sys.executable, "-m", "mypy", "-p", "drevalis", "--no-strict-optional"],
         capture_output=True,
         text=True,
         check=False,

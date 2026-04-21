@@ -7,10 +7,10 @@ import json
 import pytest
 from pydantic import ValidationError
 
-from shortsfactory.schemas.comfyui import NodeInput, WorkflowInputMapping
-from shortsfactory.schemas.progress import ProgressMessage
-from shortsfactory.schemas.script import EpisodeScript, SceneScript
-from shortsfactory.schemas.series import SeriesCreate
+from drevalis.schemas.comfyui import NodeInput, WorkflowInputMapping
+from drevalis.schemas.progress import ProgressMessage
+from drevalis.schemas.script import EpisodeScript, SceneScript
+from drevalis.schemas.series import SeriesCreate
 
 
 class TestEpisodeScript:

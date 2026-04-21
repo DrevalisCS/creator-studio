@@ -28,7 +28,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from shortsfactory.core.auth import OptionalAPIKeyMiddleware
+from drevalis.core.auth import OptionalAPIKeyMiddleware
 
 # ---------------------------------------------------------------------------
 # Helpers

@@ -7,7 +7,7 @@ from uuid import uuid4
 
 import pytest
 
-from shortsfactory.services.episode import (
+from drevalis.services.episode import (
     EpisodeInvalidStatusError,
     EpisodeNoScriptError,
     EpisodeNotFoundError,

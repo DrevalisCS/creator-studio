@@ -136,7 +136,7 @@ services:
     # was pulled fresh but sh couldn't see /app/.venv/bin). '&&' still
     # needs 'sh -c' -- we call the venv's alembic+uvicorn modules via
     # the venv's own python interpreter.
-    command: sh -c "/app/.venv/bin/python -m alembic upgrade head && exec /app/.venv/bin/python -m uvicorn shortsfactory.main:app --host 0.0.0.0 --port 8000 --workers 4"
+    command: sh -c "/app/.venv/bin/python -m alembic upgrade head && exec /app/.venv/bin/python -m uvicorn drevalis.main:app --host 0.0.0.0 --port 8000 --workers 4"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -157,7 +157,7 @@ services:
       PYTHONPATH: /app/src
     volumes:
       - ./storage:/app/storage
-    command: python -m arq shortsfactory.workers.settings.WorkerSettings
+    command: python -m arq drevalis.workers.settings.WorkerSettings
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }

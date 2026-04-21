@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
-from shortsfactory.core.exceptions import (
+from drevalis.core.exceptions import (
     InvalidStatusError,
     NotFoundError,
     ValidationError,

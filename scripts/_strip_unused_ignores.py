@@ -11,14 +11,14 @@ from pathlib import Path
 
 def main() -> int:
     result = subprocess.run(
-        [sys.executable, "-m", "mypy", "-p", "shortsfactory", "--no-strict-optional"],
+        [sys.executable, "-m", "mypy", "-p", "drevalis", "--no-strict-optional"],
         capture_output=True,
         text=True,
         check=False,
     )
 
     # Lines look like:
-    #   src\shortsfactory\foo\bar.py:42: error: Unused "type: ignore" comment  [unused-ignore]
+    #   src\drevalis\foo\bar.py:42: error: Unused "type: ignore" comment  [unused-ignore]
     pattern = re.compile(r"(src[\\/].+?\.py):(\d+):.*\[unused-ignore\]")
 
     to_strip: dict[str, set[int]] = {}

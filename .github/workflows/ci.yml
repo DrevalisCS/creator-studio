@@ -41,7 +41,7 @@ jobs:
           python-version: "3.11"
       - run: pip install -e ".[dev]" && pip install python-multipart
       - name: mypy
-        run: mypy -p shortsfactory --no-strict-optional
+        run: mypy -p drevalis --no-strict-optional
 
   test:
     name: Pytest (unit)

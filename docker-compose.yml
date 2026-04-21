@@ -4,9 +4,9 @@ services:
     image: postgres:16-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: shortsfactory
-      POSTGRES_PASSWORD: shortsfactory
-      POSTGRES_DB: shortsfactory
+      POSTGRES_USER: drevalis
+      POSTGRES_PASSWORD: drevalis
+      POSTGRES_DB: drevalis
     ports:
       - "5432:5432"
     volumes:
@@ -24,7 +24,7 @@ services:
       -c max_connections=200
       -c random_page_cost=1.1
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U shortsfactory"]
+      test: ["CMD-SHELL", "pg_isready -U drevalis"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -63,7 +63,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://shortsfactory:shortsfactory@postgres:5432/shortsfactory
+      DATABASE_URL: postgresql+asyncpg://drevalis:drevalis@postgres:5432/drevalis
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app/src
       UV_THREADPOOL_SIZE: "16"
@@ -89,7 +89,7 @@ services:
           memory: 8G
     command: >
       sh -c "/app/.venv/bin/python -m alembic upgrade head &&
-             exec /app/.venv/bin/python -m uvicorn shortsfactory.main:app --host 0.0.0.0 --port 8000 --workers 4"
+             exec /app/.venv/bin/python -m uvicorn drevalis.main:app --host 0.0.0.0 --port 8000 --workers 4"
 
   # ── arq Worker ──────────────────────────────────────────────────────────────
   worker:
@@ -100,7 +100,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://shortsfactory:shortsfactory@postgres:5432/shortsfactory
+      DATABASE_URL: postgresql+asyncpg://drevalis:drevalis@postgres:5432/drevalis
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app/src
     volumes:
@@ -118,7 +118,7 @@ services:
         limits:
           cpus: "20"
           memory: 32G
-    command: python -m arq shortsfactory.workers.settings.WorkerSettings
+    command: python -m arq drevalis.workers.settings.WorkerSettings
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'arq' || exit 1"]
       interval: 30s

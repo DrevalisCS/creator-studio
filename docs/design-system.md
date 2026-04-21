@@ -1,6 +1,6 @@
-# ShortsFactory Design System — Component Specification
+# Drevalis Design System — Component Specification
 
-> **Audience:** Frontend developers implementing the ShortsFactory UI.
+> **Audience:** Frontend developers implementing the Drevalis UI.
 > **Design tokens:** `frontend/src/styles/design-tokens.ts`
 > **Tailwind config:** `frontend/tailwind.config.ts`
 > **Global CSS:** `frontend/src/styles/globals.css`

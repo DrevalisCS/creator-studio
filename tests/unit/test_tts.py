@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from shortsfactory.services.tts import (
+from drevalis.services.tts import (
     ElevenLabsTTSProvider,
     PiperTTSProvider,
     TTSService,

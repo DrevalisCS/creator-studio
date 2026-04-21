@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from cryptography.fernet import Fernet, InvalidToken
 
-from shortsfactory.core.security import (
+from drevalis.core.security import (
     decrypt_value,
     decrypt_value_multi,
     encrypt_value,

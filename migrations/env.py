@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 # ── Import all models so Base.metadata reflects the full schema ────────
 # Canonical package path (matches PYTHONPATH=/app/src used by the rest of
 # the app). Avoid the ``src.`` prefix so we don't register tables twice.
-from shortsfactory.models import Base  # noqa: F401  (side-effect import)
+from drevalis.models import Base  # noqa: F401  (side-effect import)
 
 # Alembic Config object — provides access to alembic.ini values.
 config = context.config

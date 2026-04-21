@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for the ShortsFactory test suite."""
+"""Shared pytest fixtures for the Drevalis test suite."""
 
 from __future__ import annotations
 
@@ -23,9 +23,9 @@ from sqlalchemy.ext.asyncio import (
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.types import JSON
 
-from shortsfactory.core.config import Settings
-from shortsfactory.core.deps import get_db, get_redis, get_settings
-from shortsfactory.main import create_app
+from drevalis.core.config import Settings
+from drevalis.core.deps import get_db, get_redis, get_settings
+from drevalis.main import create_app
 
 
 @compiles(JSONB, "sqlite")
@@ -80,10 +80,10 @@ def _patched_uuid_bind_processor(self, dialect):
 
 
 UUID.bind_processor = _patched_uuid_bind_processor
-from shortsfactory.schemas.comfyui import NodeInput, WorkflowInputMapping
-from shortsfactory.schemas.script import EpisodeScript, SceneScript
-from shortsfactory.services.ffmpeg import FFmpegService
-from shortsfactory.services.storage import LocalStorage
+from drevalis.schemas.comfyui import NodeInput, WorkflowInputMapping
+from drevalis.schemas.script import EpisodeScript, SceneScript
+from drevalis.services.ffmpeg import FFmpegService
+from drevalis.services.storage import LocalStorage
 
 # ── Test Fernet key (deterministic, never used in production) ─────────────────
 _TEST_FERNET_KEY: str = Fernet.generate_key().decode()
@@ -128,7 +128,7 @@ async def db_session(test_settings: Settings) -> AsyncGenerator[AsyncSession, No
         dbapi_conn.create_function("gen_random_uuid", 0, lambda: str(_uuid.uuid4()))
 
     # Import Base so that ``metadata.create_all`` picks up all models
-    from shortsfactory.models.base import Base
+    from drevalis.models.base import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
@@ -186,7 +186,7 @@ async def client(test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
         )
         dbapi_conn.create_function("gen_random_uuid", 0, lambda: str(_uuid.uuid4()))
 
-    from shortsfactory.models.base import Base
+    from drevalis.models.base import Base
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

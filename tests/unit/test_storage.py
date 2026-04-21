@@ -6,7 +6,7 @@ from uuid import uuid4
 
 import pytest
 
-from shortsfactory.services.storage import LocalStorage, PathTraversalError
+from drevalis.services.storage import LocalStorage, PathTraversalError
 
 
 class TestEnsureEpisodeDirs:
@@ -35,7 +35,7 @@ class TestSaveAndReadFile:
     """Test file persistence and retrieval."""
 
     async def test_save_and_read_file(self, storage: LocalStorage) -> None:
-        content = b"Hello, ShortsFactory!"
+        content = b"Hello, Drevalis!"
         relative_path = "test/hello.txt"
 
         saved_path = await storage.save_file(relative_path, content)

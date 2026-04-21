@@ -26,6 +26,12 @@ node_modules/
 
 # Storage (mounted as volume)
 storage/
+tmp_storage/
+screenshots/
+
+# Stray archives / one-offs
+frontend.zip
+test.db
 
 # Testing / CI artifacts
 .coverage

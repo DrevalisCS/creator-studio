@@ -22,7 +22,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from shortsfactory.services.llm import LLMPool, LLMResult
+from drevalis.services.llm import LLMPool, LLMResult
 
 # ---------------------------------------------------------------------------
 # Helpers

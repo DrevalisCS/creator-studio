@@ -7,7 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from shortsfactory.services.pipeline import (
+from drevalis.services.pipeline import (
     PIPELINE_ORDER,
     PipelineOrchestrator,
     PipelineStep,

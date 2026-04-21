@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from shortsfactory.services.ffmpeg import AssemblyConfig, FFmpegService, SceneInput
+from drevalis.services.ffmpeg import AssemblyConfig, FFmpegService, SceneInput
 
 
 @pytest.fixture

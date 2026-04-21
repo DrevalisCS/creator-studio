@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import pytest
 
-from shortsfactory.core.validators import (
+from drevalis.core.validators import (
     UnsafeURLError,
     sanitize_filename,
     validate_safe_url,

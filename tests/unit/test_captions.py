@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from shortsfactory.services.captions import Caption, CaptionService
-from shortsfactory.services.tts import WordTimestamp
+from drevalis.services.captions import Caption, CaptionService
+from drevalis.services.tts import WordTimestamp
 
 
 @pytest.fixture
@@ -156,7 +156,7 @@ class TestWriteAssFormat:
 
         # Should contain ASS header markers
         assert "[Script Info]" in content
-        assert "ShortsFactory Captions" in content
+        assert "Drevalis Captions" in content
         assert "[V4+ Styles]" in content
         assert "[Events]" in content
 

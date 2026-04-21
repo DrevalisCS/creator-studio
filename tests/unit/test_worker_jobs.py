@@ -10,12 +10,12 @@ class TestGenerateEpisodeMusicJob:
     """Tests for workers/jobs/music.py::generate_episode_music."""
 
     async def test_returns_error_when_episode_not_found(self):
-        from shortsfactory.workers.jobs.music import generate_episode_music
+        from drevalis.workers.jobs.music import generate_episode_music
 
         mock_db = AsyncMock()
         ctx = {"db": mock_db}
 
-        with patch("shortsfactory.workers.jobs.music.EpisodeRepository") as MockRepo:
+        with patch("drevalis.workers.jobs.music.EpisodeRepository") as MockRepo:
             MockRepo.return_value.get_by_id = AsyncMock(return_value=None)
 
             result = await generate_episode_music(ctx, str(uuid4()), "epic", 30.0)
@@ -24,15 +24,15 @@ class TestGenerateEpisodeMusicJob:
         assert "not found" in result["error"]
 
     async def test_returns_error_when_no_comfyui_server(self):
-        from shortsfactory.workers.jobs.music import generate_episode_music
+        from drevalis.workers.jobs.music import generate_episode_music
 
         mock_db = AsyncMock()
         ctx = {"db": mock_db}
         mock_episode = MagicMock()
 
         with (
-            patch("shortsfactory.workers.jobs.music.EpisodeRepository") as MockEpRepo,
-            patch("shortsfactory.workers.jobs.music.ComfyUIServerRepository") as MockServerRepo,
+            patch("drevalis.workers.jobs.music.EpisodeRepository") as MockEpRepo,
+            patch("drevalis.workers.jobs.music.ComfyUIServerRepository") as MockServerRepo,
         ):
             MockEpRepo.return_value.get_by_id = AsyncMock(return_value=mock_episode)
             MockServerRepo.return_value.get_active_servers = AsyncMock(return_value=[])
@@ -47,12 +47,12 @@ class TestGenerateSeoAsyncJob:
     """Tests for workers/jobs/seo.py::generate_seo_async."""
 
     async def test_returns_error_when_episode_not_found(self):
-        from shortsfactory.workers.jobs.seo import generate_seo_async
+        from drevalis.workers.jobs.seo import generate_seo_async
 
         mock_db = AsyncMock()
         ctx = {"db": mock_db}
 
-        with patch("shortsfactory.workers.jobs.seo.EpisodeRepository") as MockRepo:
+        with patch("drevalis.workers.jobs.seo.EpisodeRepository") as MockRepo:
             MockRepo.return_value.get_by_id = AsyncMock(return_value=None)
 
             result = await generate_seo_async(ctx, str(uuid4()))
@@ -61,14 +61,14 @@ class TestGenerateSeoAsyncJob:
         assert "not found" in result["error"]
 
     async def test_returns_error_when_no_script(self):
-        from shortsfactory.workers.jobs.seo import generate_seo_async
+        from drevalis.workers.jobs.seo import generate_seo_async
 
         mock_db = AsyncMock()
         ctx = {"db": mock_db}
         mock_episode = MagicMock()
         mock_episode.script = None
 
-        with patch("shortsfactory.workers.jobs.seo.EpisodeRepository") as MockRepo:
+        with patch("drevalis.workers.jobs.seo.EpisodeRepository") as MockRepo:
             MockRepo.return_value.get_by_id = AsyncMock(return_value=mock_episode)
 
             result = await generate_seo_async(ctx, str(uuid4()))

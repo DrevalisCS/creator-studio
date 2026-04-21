@@ -6,7 +6,7 @@ AI-powered YouTube Shorts and long-form video creation studio and text-to-voice 
 
 ```bash
 git clone <repo>
-cd shortsfactory
+cd drevalis
 cp .env.example .env
 ```
 
@@ -138,7 +138,7 @@ Copy `.env.example` to `.env` and configure as needed. Only `ENCRYPTION_KEY` is 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENCRYPTION_KEY` | **(required)** | Fernet key for encrypting API keys and OAuth tokens. Generate with the command above. |
-| `DATABASE_URL` | `postgresql+asyncpg://shortsfactory:shortsfactory@localhost:5432/shortsfactory` | PostgreSQL connection string (asyncpg driver). |
+| `DATABASE_URL` | `postgresql+asyncpg://drevalis:drevalis@localhost:5432/drevalis` | PostgreSQL connection string (asyncpg driver). |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection for job queue and pub/sub. |
 | `STORAGE_BASE_PATH` | `./storage` | Root directory for all generated media files. Point to an external drive for more space. |
 | `DEBUG` | `false` | Enable debug logging and SQLAlchemy echo. |
@@ -263,10 +263,10 @@ docker compose up -d postgres redis
 alembic upgrade head
 
 # Start the API server with hot reload
-uvicorn src.shortsfactory.main:app --reload --port 8000
+uvicorn src.drevalis.main:app --reload --port 8000
 
 # Start the arq worker (separate terminal)
-python -m arq src.shortsfactory.workers.settings.WorkerSettings
+python -m arq src.drevalis.workers.settings.WorkerSettings
 ```
 
 ### Frontend (local, without Docker)
@@ -284,7 +284,7 @@ npm run dev
 pytest tests/ -v                            # all tests
 pytest tests/unit/ -v                       # unit tests only
 pytest tests/integration/ -v                # integration tests (requires services)
-pytest tests/ --cov=src/shortsfactory       # with coverage report
+pytest tests/ --cov=src/drevalis       # with coverage report
 pytest tests/ -v -m "not slow"              # skip slow tests
 pytest tests/ -v -m "not integration"       # skip integration tests
 ```

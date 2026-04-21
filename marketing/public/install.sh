@@ -122,7 +122,7 @@ services:
     # errors in the same log stream the operator is already watching.
     # Absolute paths -- PATH inheritance is unreliable across compose
     # string-commands vs exec-form. See install.ps1 for the full note.
-    command: sh -c "/app/.venv/bin/python -m alembic upgrade head && exec /app/.venv/bin/python -m uvicorn shortsfactory.main:app --host 0.0.0.0 --port 8000 --workers 4"
+    command: sh -c "/app/.venv/bin/python -m alembic upgrade head && exec /app/.venv/bin/python -m uvicorn drevalis.main:app --host 0.0.0.0 --port 8000 --workers 4"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -144,7 +144,7 @@ services:
       PYTHONPATH: /app/src
     volumes:
       - ./storage:/app/storage
-    command: python -m arq shortsfactory.workers.settings.WorkerSettings
+    command: python -m arq drevalis.workers.settings.WorkerSettings
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }

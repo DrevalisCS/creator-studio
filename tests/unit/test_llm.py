@@ -8,7 +8,7 @@ from uuid import uuid4
 
 import pytest
 
-from shortsfactory.services.llm import (
+from drevalis.services.llm import (
     LLMResult,
     LLMService,
     _extract_json,
@@ -112,7 +112,7 @@ class TestExtractJson:
 class TestProviderSelection:
     """Test LLMService.get_provider heuristic."""
 
-    @patch("shortsfactory.services.llm.OpenAICompatibleProvider")
+    @patch("drevalis.services.llm.OpenAICompatibleProvider")
     def test_provider_selection_openai_compatible(self, mock_openai_cls: MagicMock) -> None:
         storage_mock = AsyncMock()
         service = LLMService(storage=storage_mock)
@@ -131,7 +131,7 @@ class TestProviderSelection:
         )
         assert provider is mock_openai_cls.return_value
 
-    @patch("shortsfactory.services.llm.AnthropicProvider")
+    @patch("drevalis.services.llm.AnthropicProvider")
     def test_provider_selection_anthropic_by_url(self, mock_anthropic_cls: MagicMock) -> None:
         storage_mock = AsyncMock()
         service = LLMService(storage=storage_mock)
@@ -150,7 +150,7 @@ class TestProviderSelection:
         )
         assert provider is mock_anthropic_cls.return_value
 
-    @patch("shortsfactory.services.llm.AnthropicProvider")
+    @patch("drevalis.services.llm.AnthropicProvider")
     def test_provider_selection_anthropic_by_model_name(
         self, mock_anthropic_cls: MagicMock
     ) -> None:
@@ -166,7 +166,7 @@ class TestProviderSelection:
         service.get_provider(config)
         mock_anthropic_cls.assert_called_once()
 
-    @patch("shortsfactory.services.llm.OpenAICompatibleProvider")
+    @patch("drevalis.services.llm.OpenAICompatibleProvider")
     def test_provider_caching(self, mock_openai_cls: MagicMock) -> None:
         """The same config.id should reuse the cached provider."""
         storage_mock = AsyncMock()
