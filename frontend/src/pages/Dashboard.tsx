@@ -23,6 +23,8 @@ import {
   episodes as episodesApi,
   series as seriesApi,
   jobs as jobsApi,
+  ApiError,
+  formatError,
 } from '@/lib/api';
 import { useActiveJobsProgress } from '@/lib/websocket';
 import type {
@@ -166,11 +168,16 @@ function Dashboard() {
       setActiveJobs(jobsRes);
       setAllEpisodes(allEpsRes);
     } catch (err) {
-      toast.error('Failed to load dashboard data', { description: String(err) });
+      // 402 means the license gate rejected us — LicenseGate handles UI
+      // flip to the activation wizard; no need to spam a toast for that.
+      if (err instanceof ApiError && err.status === 402) {
+        return;
+      }
+      toast.error('Failed to load dashboard data', { description: formatError(err) });
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     void fetchData();
@@ -187,9 +194,13 @@ function Dashboard() {
         setActiveJobs(res);
         lastErrShown = false;
       } catch (err) {
+        // Silent on 402 — LicenseGate owns that state.
+        if (err instanceof ApiError && err.status === 402) {
+          return;
+        }
         if (!lastErrShown) {
           toast.error('Failed to refresh active jobs', {
-            description: String(err),
+            description: formatError(err),
           });
           lastErrShown = true;
         }

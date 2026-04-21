@@ -71,6 +71,32 @@ export class ApiError extends Error {
     super(detail ?? `${status} ${statusText}`);
     this.name = 'ApiError';
   }
+
+  /** Safe string representation — never returns `[object Object]`. */
+  override toString(): string {
+    return `${this.name} (${this.status}): ${this.message}`;
+  }
+}
+
+/**
+ * Extract a human-readable message from any caught value.
+ *
+ * Fixes the `[object Object]` bug where `String(err)` on a custom
+ * Error with a non-string payload produces `[object Object]`.
+ */
+export function formatError(err: unknown): string {
+  if (err instanceof ApiError) {
+    return err.toString();
+  }
+  if (err instanceof Error) {
+    return err.message || err.toString();
+  }
+  if (typeof err === 'string') return err;
+  try {
+    return JSON.stringify(err);
+  } catch {
+    return String(err);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -93,7 +119,17 @@ async function request<T>(
     let detail: string | undefined;
     try {
       const body = await response.json();
-      detail = body.detail ?? JSON.stringify(body);
+      // FastAPI `detail` can be a string *or* a structured object
+      // ({error, hint, ...}) — stringify so the Error message never
+      // degrades to "[object Object]" when shown to the user.
+      const rawDetail = body?.detail;
+      if (typeof rawDetail === 'string') {
+        detail = rawDetail;
+      } else if (rawDetail && typeof rawDetail === 'object') {
+        detail = JSON.stringify(rawDetail);
+      } else {
+        detail = JSON.stringify(body);
+      }
     } catch {
       detail = response.statusText;
     }

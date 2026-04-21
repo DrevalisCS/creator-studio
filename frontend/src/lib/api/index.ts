@@ -22,6 +22,8 @@ export {
   schedule,
   license,
   updates,
+  ApiError,
+  formatError,
 } from './_monolith';
 
 export type {

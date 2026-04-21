@@ -46,6 +46,28 @@ services:
       timeout: 5s
       retries: 5
 
+  # ── Alembic migrations (one-shot) ───────────────────────────────────────────
+  # Runs `alembic upgrade head` once, then exits. `app` and `worker` wait on
+  # this via `service_completed_successfully`, so a fresh DB — or a pulled
+  # image whose models expect new columns — is always migrated before the
+  # services try to read those columns and 500.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shortsfactory:shortsfactory@postgres:5432/shortsfactory
+      PYTHONPATH: /app/src
+    volumes:
+      - ./src:/app/src
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: alembic upgrade head
+    restart: "no"
+
   # ── FastAPI Application ─────────────────────────────────────────────────────
   app:
     build:
@@ -70,6 +92,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
@@ -103,6 +127,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     deploy:
       resources:
         limits:
