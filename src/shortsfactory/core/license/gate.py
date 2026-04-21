@@ -26,8 +26,8 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
-from shortsfactory.core.license.state import get_state
-from shortsfactory.core.license.verifier import refresh_if_stale
+from shortsfactory.core.license.state import get_state, is_bootstrapped
+from shortsfactory.core.license.verifier import bootstrap_license_state, refresh_if_stale
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -74,6 +74,22 @@ class LicenseGateMiddleware(BaseHTTPMiddleware):
             from shortsfactory.core.redis import get_redis as _get_redis_gen
 
             settings = get_settings()
+
+            # Startup race guard: if lifespan hasn't yet completed
+            # bootstrap_license_state in this worker process, do it now
+            # before deciding to 402. Without this, a request that
+            # lands in the tiny window between uvicorn's process fork
+            # and the lifespan callback sees the default UNACTIVATED
+            # state and wrongly blocks the caller.
+            if not is_bootstrapped():
+                try:
+                    await bootstrap_license_state(
+                        get_session_factory(),
+                        public_key_override_pem=settings.license_public_key_override,
+                    )
+                except Exception:
+                    logger.debug("license_bootstrap_race_failed", exc_info=True)
+
             async for _r in _get_redis_gen():
                 await refresh_if_stale(
                     get_session_factory(),

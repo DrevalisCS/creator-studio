@@ -599,10 +599,35 @@ class PipelineOrchestrator:
             PipelineStep.VOICE, 10, "running", "Synthesising voiceover..."
         )
 
+        # Extract per-episode TTS overrides written by regenerate-voice
+        # (api/routes/episodes). Shape: ``metadata_["tts_overrides"] =
+        # {"speed": 1.1, "pitch": 0.95}``. Values outside these bounds
+        # are ignored so a malformed metadata row can't break synthesis.
+        tts_overrides: dict[str, Any] = {}
+        if isinstance(episode.metadata_, dict):
+            raw = episode.metadata_.get("tts_overrides")
+            if isinstance(raw, dict):
+                tts_overrides = raw
+        speed_override: float | None = None
+        pitch_override: float | None = None
+        try:
+            if "speed" in tts_overrides:
+                v = float(tts_overrides["speed"])
+                if 0.25 <= v <= 4.0:
+                    speed_override = v
+            if "pitch" in tts_overrides:
+                v = float(tts_overrides["pitch"])
+                if 0.5 <= v <= 2.0:
+                    pitch_override = v
+        except (TypeError, ValueError):
+            self.log.warning("tts_overrides_malformed", overrides=tts_overrides)
+
         tts_result = await self.tts_service.generate_voiceover(
             voice_profile=voice_profile,
             script=script,
             episode_id=self.episode_id,
+            speed_override=speed_override,
+            pitch_override=pitch_override,
         )
 
         await self._broadcast_progress(

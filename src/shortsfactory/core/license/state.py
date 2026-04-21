@@ -57,6 +57,11 @@ _state: LicenseState = LicenseState(status=LicenseStatus.UNACTIVATED)
 # Redis counter is ahead of the local snapshot, this worker's state is
 # stale (another process activated/deactivated) and must be rebootstrapped.
 _local_version: int = 0
+# True once ``bootstrap_license_state`` has completed at least once in
+# this process. Before that, the middleware should NOT return 402
+# (doing so right after uvicorn forks but before ``lifespan`` ran caused
+# every request to be gated as UNACTIVATED until the worker got lucky).
+_bootstrapped: bool = False
 
 
 def get_state() -> LicenseState:
@@ -65,9 +70,21 @@ def get_state() -> LicenseState:
 
 
 def set_state(new: LicenseState) -> None:
-    global _state
+    global _state, _bootstrapped
     with _lock:
         _state = new
+        _bootstrapped = True
+
+
+def is_bootstrapped() -> bool:
+    """Whether ``bootstrap_license_state`` has run at least once.
+
+    The license gate middleware uses this to avoid returning 402 during
+    the startup window where state is still at its default UNACTIVATED
+    value but bootstrap simply hasn't executed yet.
+    """
+    with _lock:
+        return _bootstrapped
 
 
 def get_local_version() -> int:

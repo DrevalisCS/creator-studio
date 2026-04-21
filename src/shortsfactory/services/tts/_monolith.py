@@ -1116,6 +1116,9 @@ class TTSService:
         voice_profile: VoiceProfile,
         script: EpisodeScript,
         episode_id: UUID,
+        *,
+        speed_override: float | None = None,
+        pitch_override: float | None = None,
     ) -> TTSResult:
         """Generate a full voiceover WAV for the given episode script.
 
@@ -1123,14 +1126,26 @@ class TTSService:
         1. Synthesise each scene narration as a separate WAV segment.
         2. Concatenate segments with short silences in between.
         3. Return a single ``TTSResult`` pointing at the final file.
+
+        Per-episode speed/pitch overrides (written by the regenerate-voice
+        endpoint into ``episode.metadata_["tts_overrides"]``) are passed
+        in via the keyword-only ``speed_override`` / ``pitch_override``
+        arguments. When absent, the profile's default values are used.
+        Before this, the overrides were stored on the episode but the TTS
+        service never read them — users tweaking speed/pitch on a regen
+        saw zero change in the output.
         """
         provider = self.get_provider(voice_profile)
 
         # Resolve voice_id from profile.
         voice_id = self._voice_id_for(voice_profile)
 
-        speed = float(voice_profile.speed)
-        pitch = float(voice_profile.pitch)
+        speed = (
+            float(speed_override) if speed_override is not None else float(voice_profile.speed)
+        )
+        pitch = (
+            float(pitch_override) if pitch_override is not None else float(voice_profile.pitch)
+        )
 
         episode_dir = self.storage_base_path / "episodes" / str(episode_id)
         audio_dir = episode_dir / "audio"

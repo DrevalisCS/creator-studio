@@ -190,6 +190,65 @@ const TOC: TocEntry[] = [
     ],
   },
   {
+    id: 'license-tiers',
+    label: 'License & Tiers',
+    icon: Star,
+    subsections: [
+      { id: 'tier-solo', label: 'Solo' },
+      { id: 'tier-pro', label: 'Pro' },
+      { id: 'tier-studio', label: 'Studio' },
+      { id: 'tier-compare', label: 'Feature Matrix' },
+      { id: 'tier-grace', label: 'Grace Period & Renewal' },
+    ],
+  },
+  {
+    id: 'hardware-performance',
+    label: 'Hardware & Performance',
+    icon: HardDrive,
+    subsections: [
+      { id: 'hw-matrix', label: 'Hardware Matrix' },
+      { id: 'hw-gpu', label: 'GPU Recommendations' },
+      { id: 'hw-scaling', label: 'Scaling: Multiple Servers' },
+      { id: 'hw-cloud', label: 'RunPod Cloud GPU' },
+      { id: 'hw-network', label: 'Network & Storage' },
+    ],
+  },
+  {
+    id: 'backup-restore',
+    label: 'Backup & Restore',
+    icon: HardDrive,
+    subsections: [
+      { id: 'br-manual', label: 'Manual Backup' },
+      { id: 'br-auto', label: 'Auto-Backup Schedule' },
+      { id: 'br-restore', label: 'Restoring an Archive' },
+      { id: 'br-smb', label: 'Off-Box: SMB / NFS Mount' },
+      { id: 'br-encryption', label: 'Encryption Keys & Migration' },
+    ],
+  },
+  {
+    id: 'updates',
+    label: 'Updates',
+    icon: Zap,
+    subsections: [
+      { id: 'updates-how', label: 'How Updates Work' },
+      { id: 'updates-auto', label: 'In-App Update' },
+      { id: 'updates-manual', label: 'Manual Update' },
+      { id: 'updates-rollback', label: 'Rolling Back' },
+    ],
+  },
+  {
+    id: 'pro-tips',
+    label: 'Pro Tips',
+    icon: Lightbulb,
+    subsections: [
+      { id: 'tips-quality', label: 'Output Quality' },
+      { id: 'tips-speed', label: 'Generation Speed' },
+      { id: 'tips-workflow', label: 'Workflow' },
+      { id: 'tips-youtube', label: 'YouTube Growth' },
+      { id: 'tips-safety', label: 'Safety & Compliance' },
+    ],
+  },
+  {
     id: 'troubleshooting',
     label: 'Troubleshooting',
     icon: AlertTriangle,
@@ -199,6 +258,10 @@ const TOC: TocEntry[] = [
       { id: 'comfyui-connection', label: 'No ComfyUI Connection' },
       { id: 'captions-missing', label: 'Captions Not Showing' },
       { id: 'music-missing', label: 'Music Not Generated' },
+      { id: 'ts-uploads', label: 'YouTube Upload Fails' },
+      { id: 'ts-license', label: 'License Gate / 402 Errors' },
+      { id: 'ts-worker', label: 'Worker Stuck / Unhealthy' },
+      { id: 'ts-logs', label: 'Reading Logs' },
     ],
   },
 ];
@@ -1688,6 +1751,288 @@ as she reached for the lamp.`}</CodeBlock>
           </section>
 
           {/* ================================================================
+              LICENSE & TIERS
+          ================================================================ */}
+          <section id="license-tiers" className="mb-16 scroll-mt-4">
+            <SectionHeading id="license-tiers-heading" icon={Star} title="License & Tiers" />
+
+            <p className="text-sm text-txt-secondary leading-relaxed mb-4">
+              Every tier includes the full feature set. Tier caps only concurrency, channel count, and cloud-GPU access. Annual billing saves ~2 months.
+            </p>
+
+            <SubHeading id="tier-solo" title="Solo - $19/mo (or $190/yr)" />
+            <ul className="space-y-1.5 text-sm text-txt-secondary ml-4 mb-5">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> 1 activated machine</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> 5 episodes per day</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> 1 connected YouTube channel</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Edge, Piper, Kokoro TTS (local + free cloud)</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Automatic updates</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Email support, best-effort</li>
+            </ul>
+            <Tip>Best for a single creator on one channel with a local GPU. If you need to test multi-channel or RunPod offload, upgrade to Pro.</Tip>
+
+            <SubHeading id="tier-pro" title="Pro - $39/mo (or $390/yr)" />
+            <ul className="space-y-1.5 text-sm text-txt-secondary ml-4 mb-5">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> 3 machines</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Unlimited episodes per day</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> 3 connected YouTube channels</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Audiobook Studio</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> ElevenLabs TTS support</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> RunPod cloud-GPU offload</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Long-form video generation</li>
+            </ul>
+
+            <SubHeading id="tier-studio" title="Studio - $99/mo (or $990/yr)" />
+            <ul className="space-y-1.5 text-sm text-txt-secondary ml-4 mb-5">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> 5 machines</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Unlimited everything</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Unlimited YouTube channels</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> TikTok + Instagram publishing</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Public API access</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /> Priority email support</li>
+            </ul>
+
+            <SubHeading id="tier-compare" title="Feature Matrix" />
+            <div className="overflow-x-auto mb-5">
+              <table className="w-full text-sm border-collapse">
+                <thead>
+                  <tr className="border-b border-border text-txt-secondary text-xs uppercase tracking-wider">
+                    <th className="text-left py-2 pr-4">Capability</th>
+                    <th className="text-center py-2 px-3">Solo</th>
+                    <th className="text-center py-2 px-3">Pro</th>
+                    <th className="text-center py-2 px-3">Studio</th>
+                  </tr>
+                </thead>
+                <tbody className="text-txt-secondary">
+                  <tr className="border-b border-border/50"><td className="py-2 pr-4">Machines</td><td className="text-center">1</td><td className="text-center">3</td><td className="text-center">5</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-4">Episodes per day</td><td className="text-center">5</td><td className="text-center">Unlimited</td><td className="text-center">Unlimited</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-4">YouTube channels</td><td className="text-center">1</td><td className="text-center">3</td><td className="text-center">Unlimited</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-4">Audiobook Studio</td><td className="text-center">-</td><td className="text-center">Yes</td><td className="text-center">Yes</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-4">ElevenLabs TTS</td><td className="text-center">-</td><td className="text-center">Yes</td><td className="text-center">Yes</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-4">RunPod offload</td><td className="text-center">-</td><td className="text-center">Yes</td><td className="text-center">Yes</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-4">Long-form video</td><td className="text-center">-</td><td className="text-center">Yes</td><td className="text-center">Yes</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-4">TikTok + Instagram</td><td className="text-center">-</td><td className="text-center">-</td><td className="text-center">Yes</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-4">Public API</td><td className="text-center">-</td><td className="text-center">-</td><td className="text-center">Yes</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <SubHeading id="tier-grace" title="Grace Period & Renewal" />
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">24h online check</strong> - every 24 hours your install heartbeats the license server for a fresh JWT.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">7-day offline grace</strong> - if the heartbeat fails (network out, server down), your install keeps working for a full week without any connection.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Past the grace window</strong> - generation and upload lock until you renew. Existing files on disk stay - nothing is deleted.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Renewal</strong> - visit Settings -&gt; License -&gt; Manage Subscription (opens Stripe's billing portal).</li>
+            </ul>
+          </section>
+
+          {/* ================================================================
+              HARDWARE & PERFORMANCE
+          ================================================================ */}
+          <section id="hardware-performance" className="mb-16 scroll-mt-4">
+            <SectionHeading id="hardware-performance-heading" icon={HardDrive} title="Hardware & Performance" />
+
+            <SubHeading id="hw-matrix" title="Hardware Matrix & Expected Times" />
+            <p className="text-sm text-txt-secondary leading-relaxed mb-3">
+              Realistic wall-clock times on typical builds. Scene generation dominates - GPU tier moves these numbers most. LLM and TTS steps are fast even on modest CPUs.
+            </p>
+            <div className="overflow-x-auto mb-4">
+              <table className="w-full text-xs border-collapse">
+                <thead>
+                  <tr className="border-b border-border text-txt-secondary uppercase tracking-wider">
+                    <th className="text-left py-2 pr-3">Build</th>
+                    <th className="text-left py-2 pr-3">CPU / RAM</th>
+                    <th className="text-left py-2 pr-3">GPU</th>
+                    <th className="text-left py-2 pr-3">60s Short</th>
+                    <th className="text-left py-2 pr-3">10m long-form</th>
+                    <th className="text-left py-2 pr-3">30m audiobook</th>
+                  </tr>
+                </thead>
+                <tbody className="text-txt-secondary">
+                  <tr className="border-b border-border/50"><td className="py-2 pr-3"><strong className="text-txt-primary">Entry</strong></td><td className="py-2 pr-3">i5/Ryzen 5 6c, 16 GB</td><td className="py-2 pr-3">RTX 3060 8 GB</td><td className="py-2 pr-3">20-40 min</td><td className="py-2 pr-3">2.5-5 h</td><td className="py-2 pr-3">4-10 min</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-3"><strong className="text-txt-primary">Mid</strong></td><td className="py-2 pr-3">i7/Ryzen 7 8c, 32 GB</td><td className="py-2 pr-3">RTX 4070 12 GB</td><td className="py-2 pr-3">8-15 min</td><td className="py-2 pr-3">45-90 min</td><td className="py-2 pr-3">2-5 min</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-3"><strong className="text-txt-primary">High</strong></td><td className="py-2 pr-3">i9/Ryzen 9 12c+, 64 GB</td><td className="py-2 pr-3">RTX 4090 24 GB</td><td className="py-2 pr-3">3-7 min</td><td className="py-2 pr-3">20-40 min</td><td className="py-2 pr-3">1-3 min</td></tr>
+                  <tr className="border-b border-border/50"><td className="py-2 pr-3"><strong className="text-txt-primary">Cloud</strong></td><td className="py-2 pr-3">any quad, 16 GB</td><td className="py-2 pr-3">RunPod A100/H100</td><td className="py-2 pr-3">3-8 min</td><td className="py-2 pr-3">30-60 min</td><td className="py-2 pr-3">2-5 min</td></tr>
+                </tbody>
+              </table>
+            </div>
+
+            <SubHeading id="hw-gpu" title="GPU Recommendations" />
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">8 GB VRAM minimum</strong> for image-only (Qwen Image) scene workflows at 720p. Below this you will OOM on the first scene.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">16 GB VRAM</strong> is the sweet spot - every workflow runs, long-form video (Wan 2.2) fits, caption generation via faster-whisper has headroom.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">24 GB VRAM (RTX 4090 / 3090)</strong> - runs multiple workflows concurrently; you can have ComfyUI + LM Studio both loaded without swapping.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">AMD ROCm</strong> works for ComfyUI but is slower; budget 2x the quoted times.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">No GPU</strong> - use RunPod on Pro/Studio. Episodes cost $0.10-0.50 each in compute depending on tier.</li>
+            </ul>
+
+            <SubHeading id="hw-scaling" title="Scaling: Multiple ComfyUI Servers" />
+            <p className="text-sm text-txt-secondary mb-3">
+              Drevalis parallelizes scene generation across every registered ComfyUI server. With 2 servers you get ~1.8x throughput; with 4 servers ~3.5x. Each server needs its own GPU.
+            </p>
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Add a server:</strong> Settings -&gt; ComfyUI Servers -&gt; Add. Specify URL, optional API key, and max_concurrent_video_jobs.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Round-robin:</strong> scenes are distributed round-robin. Each server has its own semaphore; a slow server doesn't block a fast one.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Concurrency scales:</strong> base is 4; each extra server adds +2 slots up to max_concurrent_generations.</li>
+            </ul>
+            <Tip>For long-form video, a second GPU dedicated to Wan 2.2 workflows is the single biggest speed-up. Run it on a secondary machine on your LAN.</Tip>
+
+            <SubHeading id="hw-cloud" title="RunPod Cloud GPU (Pro / Studio)" />
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">A100 40 GB</strong> - ~$1.50/hr, runs all workflows smoothly. Good for bursty workloads.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">H100 80 GB</strong> - ~$3/hr, fastest option. Use for long-form video bursts only.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Stop when done</strong> - Settings -&gt; Cloud GPU -&gt; Stop. Stopped pods don't charge for compute but do for the persistent volume (~$0.05/GB/month).</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Delete when finished</strong> - stopping preserves state; deleting wipes the volume. Delete when you're done with the project to stop all charges.</li>
+            </ul>
+
+            <SubHeading id="hw-network" title="Network & Storage" />
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Disk:</strong> each 60s Short is ~30-50 MB final output + ~500 MB intermediate assets (cleaned up after success). Long-form 10 min can peak at 5 GB intermediate. Reserve 100+ GB for active use; backups can go off-box.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Upload bandwidth:</strong> YouTube/TikTok uploads hit ~50 Mbps each. Scheduling 5 uploads at once will saturate a 200 Mbps link.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">SSD strongly recommended:</strong> HDDs bottleneck the captions step (faster-whisper opens dozens of model weights).</li>
+            </ul>
+          </section>
+
+          {/* ================================================================
+              BACKUP & RESTORE
+          ================================================================ */}
+          <section id="backup-restore" className="mb-16 scroll-mt-4">
+            <SectionHeading id="backup-restore-heading" icon={HardDrive} title="Backup & Restore" />
+
+            <p className="text-sm text-txt-secondary leading-relaxed mb-4">
+              Full-install backups bundle every database row (series, episodes, voice profiles, OAuth tokens, etc.) and your generated media (episodes/, audiobooks/, voice_previews/) into a single <code className="font-mono text-xs text-accent">.tar.gz</code>. Model files are NOT included - they re-download on first use.
+            </p>
+
+            <SubHeading id="br-manual" title="Manual Backup" />
+            <ol className="space-y-2 text-sm text-txt-secondary ml-4 mb-4 list-decimal list-inside">
+              <li>Settings -&gt; Backup.</li>
+              <li>Click <strong className="text-txt-primary">Backup now</strong>.</li>
+              <li>When done, click the download icon to save the archive to your desktop.</li>
+            </ol>
+
+            <SubHeading id="br-auto" title="Auto-Backup Schedule" />
+            <p className="text-sm text-txt-secondary mb-3">
+              Set <code className="font-mono text-xs">BACKUP_AUTO_ENABLED=true</code> in <code className="font-mono text-xs">.env</code> (via Docker Compose). The worker creates a backup every night at 03:00 UTC, pruning to the most recent <code className="font-mono text-xs">BACKUP_RETENTION</code> (default 7).
+            </p>
+            <CodeBlock>{`# .env\nBACKUP_AUTO_ENABLED=true\nBACKUP_RETENTION=14\nBACKUP_DIRECTORY=/app/storage/backups`}</CodeBlock>
+
+            <SubHeading id="br-restore" title="Restoring an Archive" />
+            <Warning>Restore is destructive. It truncates every user table (series, episodes, audiobooks, tokens) and overwrites storage files.</Warning>
+            <ol className="space-y-2 text-sm text-txt-secondary ml-4 mb-4 list-decimal list-inside">
+              <li>Settings -&gt; Backup -&gt; Restore from archive.</li>
+              <li>Select the <code className="font-mono text-xs">.tar.gz</code> (from another install or a previous backup).</li>
+              <li>Type <code className="font-mono text-xs">RESTORE</code> in the confirmation field.</li>
+              <li>Click Restore. The app will refresh once the server-side restore completes.</li>
+            </ol>
+
+            <SubHeading id="br-smb" title="Off-Box: SMB / NFS Mount" />
+            <p className="text-sm text-txt-secondary mb-3">
+              To send backups to a NAS or network share, mount the share into the app container at <code className="font-mono text-xs">/app/storage/backups</code>:
+            </p>
+            <CodeBlock>{`# docker-compose.override.yml\nservices:\n  app:\n    volumes:\n      - type: bind\n        source: /mnt/nas/drevalis-backups\n        target: /app/storage/backups`}</CodeBlock>
+
+            <SubHeading id="br-encryption" title="Encryption Keys & Cross-Install Migration" />
+            <p className="text-sm text-txt-secondary mb-3">
+              Archive manifests include a hash of the install's ENCRYPTION_KEY. Restoring into a machine with a different key is refused by default (OAuth tokens + API keys would be un-decryptable).
+            </p>
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Migrating a full install</strong> - copy the source install's <code className="font-mono text-xs">.env</code> (or at least <code className="font-mono text-xs">ENCRYPTION_KEY</code>) to the target before running restore.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Partial restore (new install, keep only content)</strong> - tick <strong className="text-txt-primary">Allow different ENCRYPTION_KEY</strong>; you will need to re-enter YouTube OAuth, ElevenLabs API key, etc.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Never lose your ENCRYPTION_KEY</strong> - without it, backups are effectively encrypted-at-rest data you can't read.</li>
+            </ul>
+          </section>
+
+          {/* ================================================================
+              UPDATES
+          ================================================================ */}
+          <section id="updates" className="mb-16 scroll-mt-4">
+            <SectionHeading id="updates-heading" icon={Zap} title="Updates" />
+
+            <SubHeading id="updates-how" title="How Updates Work" />
+            <p className="text-sm text-txt-secondary mb-3">
+              The license server maintains a manifest of the latest stable version. Your install checks this endpoint on demand (Settings -&gt; Updates) and daily via the license heartbeat.
+            </p>
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Requires active license</strong> - the manifest endpoint returns 402 if your subscription has lapsed.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Docker images only</strong> - updates pull pre-built images from GHCR. No source-code compilation on your end.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Zero data loss</strong> - database volume + storage directory are preserved across updates. Alembic migrations run on boot of the new image.</li>
+            </ul>
+
+            <SubHeading id="updates-auto" title="In-App Update (Recommended)" />
+            <ol className="space-y-2 text-sm text-txt-secondary ml-4 mb-4 list-decimal list-inside">
+              <li>Settings -&gt; Updates.</li>
+              <li>If a new version is listed, click <strong className="text-txt-primary">Update now</strong>.</li>
+              <li>The updater sidecar pulls new images and restarts the stack (~60 seconds).</li>
+              <li>The browser reconnects automatically once the health check passes.</li>
+            </ol>
+
+            <SubHeading id="updates-manual" title="Manual Update" />
+            <CodeBlock>{`cd ~/Drevalis\ndocker compose pull\ndocker compose up -d`}</CodeBlock>
+
+            <SubHeading id="updates-rollback" title="Rolling Back" />
+            <p className="text-sm text-txt-secondary mb-3">
+              If a new release breaks something, pin the previous version by editing <code className="font-mono text-xs">docker-compose.yml</code>:
+            </p>
+            <CodeBlock>{`# Change image lines from :stable to a specific tag, e.g. :0.1.7\nimage: ghcr.io/drevaliscs/creator-studio-app:0.1.7`}</CodeBlock>
+            <p className="text-sm text-txt-secondary mb-4">
+              Then <code className="font-mono text-xs">docker compose pull && docker compose up -d</code>. Report the issue to <a href="mailto:support@drevalis.com" className="text-accent underline">support@drevalis.com</a> with the version + a log snippet so we can fix it.
+            </p>
+          </section>
+
+          {/* ================================================================
+              PRO TIPS
+          ================================================================ */}
+          <section id="pro-tips" className="mb-16 scroll-mt-4">
+            <SectionHeading id="pro-tips-heading" icon={Lightbulb} title="Pro Tips" />
+
+            <SubHeading id="tips-quality" title="Getting Better Output Quality" />
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Series bible over per-episode tuning</strong> - invest 15 minutes writing a detailed series description + character description once. Every episode inherits it for free. A vague bible produces vague episodes.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Use a base seed</strong> for visual consistency across episodes in the same series. Settings -&gt; Series -&gt; base_seed. Keeps character faces + palettes stable.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Test voices before committing</strong> - Settings -&gt; Voice Profiles -&gt; Test. A voice that sounds fine on a single sentence can be grating over 10 minutes.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Review the script before scenes run</strong> - scene generation is 80% of wall time. Catching a bad script at the script-tab stage saves 20 minutes per episode.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Regenerate individual scenes</strong> instead of the whole episode when one frame looks wrong. The regenerate-scene flow reuses everything else.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Negative prompts are cheap insurance</strong> - add <code className="font-mono text-xs">blurry, extra fingers, text overlay, watermark</code> to the series negative_prompt.</li>
+            </ul>
+
+            <SubHeading id="tips-speed" title="Generating Faster" />
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Parallel episodes, not parallel scenes</strong> - running 3 episodes in parallel on a single GPU is slower than one episode at a time (GPU contention). Running 3 episodes across 3 ComfyUI servers is ~2.8x faster.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Use Edge TTS for drafts</strong> - it's free and runs in 2-5 seconds per minute of audio. Switch to Kokoro/ElevenLabs once the script is locked.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Keep LM Studio + ComfyUI warm</strong> - the first generation after boot is slow because models load into VRAM. Subsequent generations skip that.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Shorts_first priority</strong> - Activity Monitor -&gt; Priority. Queues long-form behind shorts so your daily uploads don't wait on a 2-hour long-form run.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Bulk-generate during off-hours</strong> - queue 10 episodes before bed. The worker processes them sequentially, using the GPU 100% through the night.</li>
+            </ul>
+
+            <SubHeading id="tips-workflow" title="Workflow" />
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">One series per channel</strong> - don't try to reuse a series across channels with different audiences. The tone drifts.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Topic lists in spreadsheets</strong> - paste 50 topics into bulk-generate. The LLM will write 50 scripts in ~20 minutes; you review and kill the duds.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Schedule, don't publish manually</strong> - Calendar -&gt; drag to a date/time. Consistent upload cadence matters more than upload count.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Back up after major milestones</strong> - finished a 10-episode season? Click Backup now. Cheap insurance.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Separate series for experiments</strong> - clone a working series into "<em>series-name</em> experiments" before testing a new voice / visual style. Keeps the prod series unpolluted.</li>
+            </ul>
+
+            <SubHeading id="tips-youtube" title="YouTube Growth" />
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">First 3 seconds decide everything</strong> - write the hook yourself. The LLM is good at filler, mediocre at openers. Edit the hook in the script tab before approving.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Thumbnails matter more than titles</strong> - the SEO endpoint writes a title, but you should manually upload a thumbnail for every video until you have a proven auto-generated style.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Disclose AI-generated content</strong> - YouTube requires it for synthetic media that could be mistaken for real. The checkbox is during the upload dialog on youtube.com. Do it on every upload.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Upload cadence beats variety</strong> - 1 video/day for 30 days beats 3 videos/day for 10 days, every time. Schedule accordingly.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Community tab posts</strong> - not in Drevalis yet. Check the roadmap; in the meantime post polls manually the day before a video drops.</li>
+            </ul>
+
+            <SubHeading id="tips-safety" title="Safety & Compliance" />
+            <ul className="space-y-2 text-sm text-txt-secondary ml-4 mb-4">
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Don't impersonate real people.</strong> Voice cloning of a public figure without consent invites takedowns and lawsuits. Use fictional characters or voice actors with clearance.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Stock music licenses.</strong> If you upload your own tracks to <code className="font-mono text-xs">storage/music/library/</code>, make sure you have commercial-use rights. YouTube's Content ID is aggressive.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Claim fair use carefully.</strong> Commentary on copyrighted material has a legal basis in the US but not universally. Know your audience's jurisdiction.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Age-gating and sensitive topics.</strong> If you produce content that discusses self-harm, eating disorders, or political topics, tag videos appropriately on YouTube. Algorithmic deprioritization of un-tagged sensitive content is worse than outright removal.</li>
+              <li className="flex gap-2"><ChevronRight size={13} className="text-accent shrink-0 mt-0.5" /><strong className="text-txt-primary">Acceptable Use Policy.</strong> Read <a href="https://drevalis.com/acceptable-use" className="text-accent underline" target="_blank" rel="noreferrer">drevalis.com/acceptable-use</a>. Violation can revoke your license without refund.</li>
+            </ul>
+          </section>
+
+          {/* ================================================================
               14. TROUBLESHOOTING
           ================================================================ */}
           <section id="troubleshooting" className="mb-16 scroll-mt-4">
@@ -1763,6 +2108,39 @@ as she reached for the lamp.`}</CodeBlock>
                 <li><strong className="text-txt-primary">Curated library fallback.</strong> If AceStep is unavailable, Drevalis Creator Studio falls back to the curated music library. Ensure the library has tracks for your chosen mood in <code className="font-mono text-xs text-accent">storage/music/library/{'{mood}'}/</code>.</li>
               </ol>
             </div>
+
+            <SubHeading id="ts-uploads" title="YouTube Upload Fails" />
+            <ol className="space-y-2 text-sm text-txt-secondary ml-4 mb-4 list-decimal list-inside">
+              <li><strong className="text-txt-primary">401 / token expired</strong> - click Reconnect in Settings -&gt; YouTube. Happens every ~6 months as Google rotates refresh tokens.</li>
+              <li><strong className="text-txt-primary">quotaExceeded</strong> - YouTube Data API has a daily quota (10 000 units default). One upload costs 1600. Wait 24 hours or request a quota increase in Google Cloud Console.</li>
+              <li><strong className="text-txt-primary">no_channel_selected / 400</strong> - assign a channel to the series (Series detail -&gt; YouTube Channel) or, for scheduled posts, to the post itself.</li>
+              <li><strong className="text-txt-primary">Retry mid-upload</strong> - uploads retry 3 times automatically with fresh tokens each time. If all 3 fail, the Jobs tab shows the last error.</li>
+            </ol>
+
+            <SubHeading id="ts-license" title="License Gate / 402 Errors" />
+            <ol className="space-y-2 text-sm text-txt-secondary ml-4 mb-4 list-decimal list-inside">
+              <li><strong className="text-txt-primary">On every request right after install</strong> - wait 5 seconds; the license-state bootstrap runs in lifespan and the first request might race it. Fixed as of v0.2.0.</li>
+              <li><strong className="text-txt-primary">After a renewal</strong> - the 24h heartbeat may not have fired yet. Settings -&gt; License -&gt; click <strong className="text-txt-primary">Refresh</strong> to force a heartbeat.</li>
+              <li><strong className="text-txt-primary">License server 5xx</strong> - transient server outages are tolerated; your install keeps working with the stored JWT for 7 days offline.</li>
+              <li><strong className="text-txt-primary">Still locked after renewal</strong> - email <a href="mailto:support@drevalis.com" className="text-accent underline">support@drevalis.com</a> with your license key (last 8 characters is enough).</li>
+            </ol>
+
+            <SubHeading id="ts-worker" title="Worker Stuck / Unhealthy" />
+            <ol className="space-y-2 text-sm text-txt-secondary ml-4 mb-4 list-decimal list-inside">
+              <li>Activity Monitor -&gt; Worker health should show a green dot.</li>
+              <li>If red: click <strong className="text-txt-primary">Restart worker</strong>. Orphaned "generating" episodes are reset to "failed" so you can re-queue them.</li>
+              <li>If the button doesn't help: <code className="font-mono text-xs">docker compose restart worker</code>.</li>
+              <li>Worker OOM on long-form - check <code className="font-mono text-xs">docker compose logs worker</code> for the killed signal. Reduce <code className="font-mono text-xs">MAX_CONCURRENT_GENERATIONS</code> or add RAM.</li>
+            </ol>
+
+            <SubHeading id="ts-logs" title="Reading Logs" />
+            <p className="text-sm text-txt-secondary mb-3">
+              Logs are structured JSON. Useful fields: <code className="font-mono text-xs">event</code> (what), <code className="font-mono text-xs">episode_id</code>, <code className="font-mono text-xs">error</code>, <code className="font-mono text-xs">level</code>.
+            </p>
+            <CodeBlock>{`# Tail live logs\ndocker compose logs -f app worker\n\n# Last 100 errors from the worker\ndocker compose logs worker 2>&1 | grep '"level": "error"' | tail -100\n\n# Follow one specific episode across both services\ndocker compose logs -f app worker 2>&1 | grep "<episode-uuid>"`}</CodeBlock>
+            <InfoBox>
+              Tip: the in-app Logs page streams the same JSON into a searchable table. Use it instead of command-line grep when you can - filters by level, episode, and time range make pattern-spotting much faster.
+            </InfoBox>
 
             <InfoBox>
               Check the backend logs for detailed error messages. When running via Docker, use <code className="font-mono text-xs">docker compose logs -f app</code> and <code className="font-mono text-xs">docker compose logs -f worker</code> to follow real-time output from the API and the arq job worker respectively.
