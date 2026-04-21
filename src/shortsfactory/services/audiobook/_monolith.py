@@ -123,6 +123,7 @@ class AudiobookService:
         text: str,
         voice_profile: VoiceProfile,
         *,
+        title: str = "Audiobook",
         generate_video: bool = False,
         background_image_path: str | None = None,
         output_format: str = "audio_only",
@@ -438,7 +439,7 @@ class AudiobookService:
         video_rel_path: str | None = None
         mp3_rel_path: str | None = None
 
-        # 7. Convert to MP3
+        # 7. Convert to MP3 + write ID3 tags / chapter markers.
         try:
             await self._convert_to_mp3(final_audio)
             mp3_rel_path = f"audiobooks/{audiobook_id}/audiobook.mp3"
@@ -446,6 +447,36 @@ class AudiobookService:
                 "audiobook.generate.mp3_done",
                 audiobook_id=str(audiobook_id),
             )
+
+            # Best-effort ID3 + chapters. Failing here should not fail
+            # the whole generation - the MP3 itself is already on disk
+            # and playable. Distribution platforms (Audible, Apple Books,
+            # Google Play Books) use these tags to show titles, cover
+            # art, and chapter navigation.
+            try:
+                from shortsfactory.services.audiobook.id3 import write_audiobook_id3
+
+                mp3_abs = final_audio.with_suffix(".mp3")
+                cover_abs: Path | None = None
+                if cover_image_path:
+                    maybe_cover = self.storage.resolve_path(cover_image_path)
+                    if maybe_cover.exists():
+                        cover_abs = maybe_cover
+
+                await write_audiobook_id3(
+                    mp3_abs,
+                    title=title,
+                    album=title,
+                    chapters=chapters if isinstance(chapters, list) else None,
+                    cover_path=cover_abs,
+                )
+                log.info("audiobook.generate.id3_tagged", audiobook_id=str(audiobook_id))
+            except Exception as id3_exc:
+                log.warning(
+                    "audiobook.generate.id3_failed",
+                    audiobook_id=str(audiobook_id),
+                    error=str(id3_exc),
+                )
         except Exception as exc:
             log.warning(
                 "audiobook.generate.mp3_failed",

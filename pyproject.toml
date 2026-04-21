@@ -28,6 +28,8 @@ dependencies = [
     "pyjwt[crypto]>=2.10.0",
     # Image magic-byte verification on cover uploads.
     "Pillow>=10.0.0",
+    # ID3 metadata + chapter markers for audiobook MP3 output.
+    "mutagen>=1.47.0",
 ]
 
 [project.optional-dependencies]
@@ -122,6 +124,7 @@ module = [
     "edge_tts.*",
     "google.*",
     "googleapiclient.*",
+    "mutagen.*",
 ]
 ignore_missing_imports = true
 
@@ -133,6 +136,15 @@ ignore_missing_imports = true
 [[tool.mypy.overrides]]
 module = ["shortsfactory.services.youtube"]
 disable_error_code = ["no-untyped-call"]
+
+# mutagen's ID3 frame constructors (APIC, CHAP, CTOC, etc.) are callable
+# but untyped in the installed package. Same rationale as the google
+# override - silence only no-untyped-call (plus attr-defined for the
+# frame-class re-exports it ships without __all__) in the one module
+# that uses them instead of littering ``# type: ignore`` comments.
+[[tool.mypy.overrides]]
+module = ["shortsfactory.services.audiobook.id3"]
+disable_error_code = ["no-untyped-call", "attr-defined"]
 
 # ── pytest ────────────────────────────────────────────────────────────────────
 
