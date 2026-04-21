@@ -67,6 +67,7 @@ export class ApiError extends Error {
     public status: number,
     public statusText: string,
     public detail?: string,
+    public detailRaw?: unknown,
   ) {
     super(detail ?? `${status} ${statusText}`);
     this.name = 'ApiError';
@@ -117,12 +118,11 @@ async function request<T>(
 
   if (!response.ok) {
     let detail: string | undefined;
+    let detailRaw: unknown;
     try {
       const body = await response.json();
-      // FastAPI `detail` can be a string *or* a structured object
-      // ({error, hint, ...}) — stringify so the Error message never
-      // degrades to "[object Object]" when shown to the user.
       const rawDetail = body?.detail;
+      detailRaw = rawDetail ?? body;
       if (typeof rawDetail === 'string') {
         detail = rawDetail;
       } else if (rawDetail && typeof rawDetail === 'object') {
@@ -133,14 +133,10 @@ async function request<T>(
     } catch {
       detail = response.statusText;
     }
-    // 402 Payment Required → license gate has blocked this request. Let
-    // the top-level <LicenseGate> re-check status so it flips to the
-    // activation wizard. Dispatch on window so the gate hook (mounted
-    // far up the tree) can listen without prop plumbing.
     if (response.status === 402 && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('license-gate-triggered', { detail }));
     }
-    throw new ApiError(response.status, response.statusText, detail);
+    throw new ApiError(response.status, response.statusText, detail, detailRaw);
   }
 
   // 204 No Content

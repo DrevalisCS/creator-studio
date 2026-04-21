@@ -32,11 +32,7 @@ export function ActivationWizard({ status, stateError, machineId, onActivated }:
       const res = await license.listActivationsByKey(pastedKey);
       setSeats(res);
     } catch (err: any) {
-      setError(
-        `Could not load seat list: ${
-          typeof err?.detail === 'string' ? err.detail : err?.message ?? 'unknown'
-        }`,
-      );
+      setError(`Could not load seat list: ${err?.detail ?? err?.message ?? 'unknown'}`);
     } finally {
       setSeatsLoading(false);
     }
@@ -50,20 +46,20 @@ export function ActivationWizard({ status, stateError, machineId, onActivated }:
       await license.activate(key.trim());
       onActivated();
     } catch (err: any) {
-      // Friendly message for the seat-cap error - the generic JSON
-      // dump "{"error":"seat_cap_exceeded",...}" wasn't actionable.
-      const detail = err?.detail ?? err?.message ?? 'activation failed';
-      if (typeof detail === 'object' && detail?.error === 'seat_cap_exceeded') {
-        setSeatCap({ cap: detail.cap, tier: detail.tier });
+      const raw = err?.detailRaw;
+      if (raw && typeof raw === 'object' && raw.error === 'seat_cap_exceeded') {
+        setSeatCap({ cap: Number(raw.cap) || 0, tier: String(raw.tier ?? '') });
         setError(
-          `All ${detail.cap} machine seats on your ${detail.tier} tier are already in use. ` +
+          `All ${raw.cap} machine seats on your ${raw.tier} tier are already in use. ` +
             'Deactivate one of the machines below, then click Activate again.',
         );
         await loadSeats(key.trim());
-      } else if (typeof detail === 'string') {
-        setError(detail);
+      } else if (typeof err?.detail === 'string') {
+        setError(err.detail);
+      } else if (err?.message) {
+        setError(err.message);
       } else {
-        setError(JSON.stringify(detail));
+        setError('Activation failed.');
       }
     } finally {
       setSubmitting(false);
@@ -83,13 +79,13 @@ export function ActivationWizard({ status, stateError, machineId, onActivated }:
       const res = await license.freeSeatByKey(key.trim(), targetMachineId);
       setSeats(res);
     } catch (err: any) {
-      setError(
-        `Could not deactivate: ${
-          typeof err?.detail === 'string'
-            ? err.detail
-            : err?.detail?.reason ?? err?.message ?? 'unknown'
-        }`,
-      );
+      const raw = err?.detailRaw;
+      const reason =
+        (raw && typeof raw === 'object' && (raw.reason || raw.error)) ||
+        err?.detail ||
+        err?.message ||
+        'unknown';
+      setError(`Could not deactivate: ${reason}`);
     } finally {
       setFreeingMachine(null);
     }
