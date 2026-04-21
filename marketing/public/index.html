@@ -136,10 +136,10 @@
           <div>
             <span class="pill pill-blue mb-4">Step 2 · Voice</span>
             <h3>Four TTS engines. Per-character casting. Zero re-uploads.</h3>
-            <p class="mb-4">Mix 17 Microsoft Edge neural voices (free), Kokoro 24 kHz, Piper local ONNX, or ElevenLabs. Bracket speakers in your script and the engine casts them separately — perfect for dialogue-heavy audiobooks.</p>
+            <p class="mb-4">Mix Microsoft Edge neural voices (free, 300+ available), Kokoro 24 kHz, Piper local ONNX, or ElevenLabs. Bracket speakers in your script and the engine casts them separately — perfect for dialogue-heavy audiobooks.</p>
             <ul class="text-sm text-[var(--txt-secondary)] space-y-2 leading-relaxed">
               <li><strong class="text-[var(--txt-primary)]">Parallel synthesis.</strong> Segments split across multiple ComfyUI servers for long runs.</li>
-              <li><strong class="text-[var(--txt-primary)]">Per-speaker pauses.</strong> Context-aware 150 ms / 400 ms / 1.2 s gaps read naturally.</li>
+              <li><strong class="text-[var(--txt-primary)]">Per-speaker pauses.</strong> Context-aware 150 ms / 400 ms gaps between speakers read naturally.</li>
               <li><strong class="text-[var(--txt-primary)]">Speed + pitch overrides.</strong> Tweak without re-rendering the video.</li>
             </ul>
           </div>
@@ -172,9 +172,9 @@
             <h3>From render complete to YouTube live in one click.</h3>
             <p class="mb-4">Multi-channel OAuth, per-channel upload schedules, automatic retries with backoff. Studio tier adds TikTok and Instagram. Or export the raw MP4 plus thumbnail plus description as a bundle.</p>
             <ul class="text-sm text-[var(--txt-secondary)] space-y-2 leading-relaxed">
-              <li><strong class="text-[var(--txt-primary)]">Schedule ahead.</strong> Calendar view, drag-drop post planning, time-zone aware.</li>
+              <li><strong class="text-[var(--txt-primary)]">Schedule ahead.</strong> Calendar view + per-channel upload days and times, time-zone aware.</li>
               <li><strong class="text-[var(--txt-primary)]">SEO metadata.</strong> Title, description, tags, and chapter markers generated alongside the video.</li>
-              <li><strong class="text-[var(--txt-primary)]">Thumbnail picker.</strong> Auto-generated candidates, or upload your own.</li>
+              <li><strong class="text-[var(--txt-primary)]">Thumbnail.</strong> Auto-generated from a frame of your choice, or upload your own.</li>
             </ul>
           </div>
           <div class="img-slot" data-aspect="4/3" data-hint="feature-youtube-publish.png&#10;1600 × 1200 · YouTube publishing panel with multi-channel picker">
@@ -227,7 +227,7 @@
         </div>
         <div class="card card-hover p-6">
           <h4 class="mb-2">API access (Studio)</h4>
-          <p class="text-sm">Drive the whole pipeline from your own code. Full REST API with the same endpoints the UI uses.</p>
+          <p class="text-sm">The same REST endpoints the UI uses are available for your own scripts. Bring-your-own API token via the <code class="inline">API_AUTH_TOKEN</code> env var.</p>
         </div>
       </div>
     </div>
