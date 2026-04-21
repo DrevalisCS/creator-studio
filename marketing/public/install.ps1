@@ -131,7 +131,12 @@ services:
     # that deadlocked the stack (502 on every endpoint) when the one-shot
     # failed for any reason. Inline is more robust and surfaces alembic
     # errors in the same log stream the operator is already watching.
-    command: sh -c "alembic upgrade head && exec python -m uvicorn shortsfactory.main:app --host 0.0.0.0 --port 8000 --workers 4"
+    # Use absolute paths to the venv python so PATH inheritance quirks
+    # don't trip us up (observed: `alembic: not found` when the image
+    # was pulled fresh but sh couldn't see /app/.venv/bin). `&&` still
+    # needs `sh -c` — we call the venv's alembic+uvicorn modules via
+    # the venv's own python interpreter.
+    command: sh -c "/app/.venv/bin/python -m alembic upgrade head && exec /app/.venv/bin/python -m uvicorn shortsfactory.main:app --host 0.0.0.0 --port 8000 --workers 4"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s

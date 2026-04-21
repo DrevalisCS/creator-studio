@@ -120,7 +120,9 @@ services:
     # that deadlocked the stack (502 on every endpoint) when the one-shot
     # failed for any reason. Inline is more robust and surfaces alembic
     # errors in the same log stream the operator is already watching.
-    command: sh -c "alembic upgrade head && exec python -m uvicorn shortsfactory.main:app --host 0.0.0.0 --port 8000 --workers 4"
+    # Absolute paths — PATH inheritance is unreliable across compose
+    # string-commands vs exec-form. See install.ps1 for the full note.
+    command: sh -c "/app/.venv/bin/python -m alembic upgrade head && exec /app/.venv/bin/python -m uvicorn shortsfactory.main:app --host 0.0.0.0 --port 8000 --workers 4"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
