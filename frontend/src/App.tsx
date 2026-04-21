@@ -23,7 +23,6 @@ const Logs = lazy(() => import('@/pages/Logs'));
 const Jobs = lazy(() => import('@/pages/Jobs'));
 const Settings = lazy(() => import('@/pages/Settings'));
 const Help = lazy(() => import('@/pages/Help'));
-const About = lazy(() => import('@/pages/About'));
 const YouTube = lazy(() => import('@/pages/YouTube'));
 
 // ---------------------------------------------------------------------------
@@ -84,7 +83,6 @@ function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/help" element={<Help />} />
         <Route path="/youtube" element={<YouTube />} />
-        <Route path="/about" element={<About />} />
         <Route path="/youtube/callback" element={<YouTubeCallback />} />
       </Route>
     </Routes>

@@ -34,6 +34,8 @@ export function BackupSection() {
   const [restoring, setRestoring] = useState(false);
   const [restoreConfirm, setRestoreConfirm] = useState('');
   const [allowKeyMismatch, setAllowKeyMismatch] = useState(false);
+  const [restoreDb, setRestoreDb] = useState(true);
+  const [restoreMedia, setRestoreMedia] = useState(true);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const refresh = useCallback(async () => {
@@ -99,11 +101,19 @@ export function BackupSection() {
       toast.error('Type RESTORE in the confirmation field to proceed');
       return;
     }
+    if (!restoreDb && !restoreMedia) {
+      toast.error('Select at least one of database or media to restore');
+      return;
+    }
     setRestoring(true);
     try {
       const fd = new FormData();
       fd.append('file', file);
-      const qs = allowKeyMismatch ? '?allow_key_mismatch=true' : '';
+      const params = new URLSearchParams();
+      if (allowKeyMismatch) params.set('allow_key_mismatch', 'true');
+      if (!restoreDb) params.set('restore_db', 'false');
+      if (!restoreMedia) params.set('restore_media', 'false');
+      const qs = params.toString() ? `?${params.toString()}` : '';
       const res = await fetch(`/api/v1/backup/restore${qs}`, {
         method: 'POST',
         headers: { 'X-Confirm-Restore': 'i-understand' },
@@ -114,12 +124,12 @@ export function BackupSection() {
         throw new ApiError(res.status, res.statusText, detail.detail ?? res.statusText);
       }
       const data = await res.json();
-      const totalRows = Object.values(data.rows_inserted as Record<string, number>).reduce(
-        (a, b) => a + b,
-        0,
-      );
+      const totalRows = Object.values(
+        (data.rows_inserted ?? {}) as Record<string, number>,
+      ).reduce((a, b) => a + b, 0);
+      const storageCount = (data.storage_paths_restored ?? []).length;
       toast.success('Restore complete', {
-        description: `${totalRows} rows + ${data.storage_paths_restored.length} storage dirs. Reload the page to pick up the new state.`,
+        description: `${totalRows} rows + ${storageCount} storage dirs. Reload the page to pick up the new state.`,
       });
       setRestoreConfirm('');
       if (fileInputRef.current) fileInputRef.current.value = '';
@@ -247,6 +257,33 @@ export function BackupSection() {
               className="block w-full text-sm text-txt-primary file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-bg-elevated file:text-txt-primary hover:file:bg-bg-hover"
             />
           </div>
+          <div className="space-y-2">
+            <div className="text-xs font-medium text-txt-secondary">What to restore</div>
+            <label className="flex items-center gap-2 text-xs text-txt-secondary">
+              <input
+                type="checkbox"
+                checked={restoreDb}
+                onChange={(e) => setRestoreDb(e.target.checked)}
+                className="rounded"
+              />
+              <span>
+                <strong className="text-txt-primary">Database rows</strong> — series, episodes,
+                audiobooks, configs, OAuth tokens
+              </span>
+            </label>
+            <label className="flex items-center gap-2 text-xs text-txt-secondary">
+              <input
+                type="checkbox"
+                checked={restoreMedia}
+                onChange={(e) => setRestoreMedia(e.target.checked)}
+                className="rounded"
+              />
+              <span>
+                <strong className="text-txt-primary">Media files</strong> — generated videos,
+                audiobook audio, voice previews (can be very large)
+              </span>
+            </label>
+          </div>
           <div className="flex items-center gap-2 text-xs">
             <input
               id="allow-key-mismatch"
@@ -271,7 +308,9 @@ export function BackupSection() {
           </div>
           <Button
             onClick={onRestore}
-            disabled={restoring || restoreConfirm !== 'RESTORE'}
+            disabled={
+              restoring || restoreConfirm !== 'RESTORE' || (!restoreDb && !restoreMedia)
+            }
             variant="primary"
             className="bg-amber-500 hover:bg-amber-400 text-bg-base"
           >

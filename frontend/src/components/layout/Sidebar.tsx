@@ -14,7 +14,6 @@ import {
   ListChecks,
   Settings,
   HelpCircle,
-  Info,
   ChevronLeft,
   ChevronRight,
   Youtube,
@@ -54,7 +53,6 @@ const NAV_SYSTEM = [
 
 const NAV_BOTTOM = [
   { to: '/help', icon: HelpCircle, label: 'Help' },
-  { to: '/about', icon: Info, label: 'About' },
 ] as const;
 
 // ---------------------------------------------------------------------------

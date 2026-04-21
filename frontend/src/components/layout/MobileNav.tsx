@@ -11,7 +11,6 @@ import {
   ScrollText,
   Settings,
   HelpCircle,
-  Info,
   Youtube,
 } from 'lucide-react';
 import { jobs as jobsApi } from '@/lib/api';
@@ -34,7 +33,6 @@ const MORE_ITEMS = [
   { to: '/logs', icon: ScrollText, label: 'Logs' },
   { to: '/settings', icon: Settings, label: 'Settings' },
   { to: '/help', icon: HelpCircle, label: 'Help' },
-  { to: '/about', icon: Info, label: 'About' },
 ] as const;
 
 // ---------------------------------------------------------------------------

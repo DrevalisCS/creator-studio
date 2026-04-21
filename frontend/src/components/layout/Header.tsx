@@ -19,7 +19,6 @@ function getPageTitle(pathname: string): string {
   if (pathname === '/logs') return 'Event Log';
   if (pathname === '/settings') return 'Settings';
   if (pathname === '/help') return 'Help';
-  if (pathname === '/about') return 'About';
   return 'Drevalis Creator Studio';
 }
 

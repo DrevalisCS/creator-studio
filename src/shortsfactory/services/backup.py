@@ -28,12 +28,13 @@ import shutil
 import tarfile
 import tempfile
 import uuid
-from datetime import UTC, datetime
+from collections.abc import Callable
+from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import structlog
-from sqlalchemy import delete, select
+from sqlalchemy import Date, DateTime, Time, delete, select
 
 from shortsfactory.models.api_key_store import ApiKeyStore
 from shortsfactory.models.audiobook import Audiobook
@@ -130,6 +131,50 @@ def _row_to_dict(row: Any) -> dict[str, Any]:
                 break
         out[col.name] = getattr(row, attr_name)
     return out
+
+
+def _coerce_datetime(v: Any) -> Any:
+    if v is None or isinstance(v, datetime):
+        return v
+    if isinstance(v, str):
+        return datetime.fromisoformat(v)
+    return v
+
+
+def _coerce_date(v: Any) -> Any:
+    if v is None or (isinstance(v, date) and not isinstance(v, datetime)):
+        return v
+    if isinstance(v, str):
+        return date.fromisoformat(v)
+    return v
+
+
+def _coerce_time(v: Any) -> Any:
+    if v is None or isinstance(v, time):
+        return v
+    if isinstance(v, str):
+        return time.fromisoformat(v)
+    return v
+
+
+def _build_type_coercers(model: type[Any]) -> dict[str, Callable[[Any], Any]]:
+    """Column-name → coercer for types JSON round-tripping mangled.
+
+    ``json.dumps`` writes datetimes/dates/times as ISO strings; asyncpg
+    rejects those for TIMESTAMP / DATE / TIME columns. We inspect each
+    model's columns and hand back a plain callable per affected field so
+    the restore loop can fix up rows without per-row type checks.
+    """
+    coercers: dict[str, Callable[[Any], Any]] = {}
+    for col in model.__table__.columns:
+        t = col.type
+        if isinstance(t, DateTime):
+            coercers[col.name] = _coerce_datetime
+        elif isinstance(t, Date):
+            coercers[col.name] = _coerce_date
+        elif isinstance(t, Time):
+            coercers[col.name] = _coerce_time
+    return coercers
 
 
 def _encryption_key_hash(key: str) -> str:
@@ -238,18 +283,25 @@ class BackupService:
         archive_path: Path,
         *,
         allow_key_mismatch: bool = False,
+        restore_db: bool = True,
+        restore_media: bool = True,
     ) -> dict[str, Any]:
         """Restore a backup archive into the current install.
 
-        Truncates every user table then re-inserts from the archive. Extracts
-        the ``storage/`` tree, overwriting any existing files. Does NOT
-        touch ``license_state`` — a restored backup does not carry over the
-        license; the target install stays on its own license.
+        When ``restore_db`` is true (default) every user table is truncated
+        and re-inserted from the archive. When ``restore_media`` is true
+        (default) the ``storage/`` tree is extracted, overwriting existing
+        files. At least one of the two must be true.
+
+        Does NOT touch ``license_state`` — a restored backup does not carry
+        over the license; the target install stays on its own license.
 
         Raises :class:`BackupError` if the archive is malformed, was created
         with a different Fernet key (unless ``allow_key_mismatch=True``), or
         refers to a schema version this code cannot read.
         """
+        if not (restore_db or restore_media):
+            raise BackupError("nothing to restore: both restore_db and restore_media are false")
         if not archive_path.exists():
             raise BackupError(f"archive not found: {archive_path}")
 
@@ -283,30 +335,39 @@ class BackupService:
                     "restore anyway (you will need to re-enter all secrets)."
                 )
 
-            # 1. Drop all user rows (reverse dependency order).
-            for table_name, model in reversed(_TABLE_ORDER):
-                await session.execute(delete(model))
-            await session.flush()
-
-            # 2. Insert rows in forward order.
             inserted: dict[str, int] = {}
-            data_dir = tmp / "data"
-            for table_name, model in _TABLE_ORDER:
-                path = data_dir / f"{table_name}.json"
-                if not path.exists():
-                    inserted[table_name] = 0
-                    continue
-                rows = json.loads(path.read_text(encoding="utf-8"))
-                if rows:
-                    await session.execute(model.__table__.insert(), rows)
-                inserted[table_name] = len(rows)
+            if restore_db:
+                # 1. Drop all user rows (reverse dependency order).
+                for table_name, model in reversed(_TABLE_ORDER):
+                    await session.execute(delete(model))
+                await session.flush()
 
-            await session.commit()
+                # 2. Insert rows in forward order. JSON round-trips mangle
+                #    datetime/date/time into strings; coerce back before
+                #    handing rows to asyncpg.
+                data_dir = tmp / "data"
+                for table_name, model in _TABLE_ORDER:
+                    path = data_dir / f"{table_name}.json"
+                    if not path.exists():
+                        inserted[table_name] = 0
+                        continue
+                    rows = json.loads(path.read_text(encoding="utf-8"))
+                    coercers = _build_type_coercers(model)
+                    if coercers:
+                        for r in rows:
+                            for col_name, coerce in coercers.items():
+                                if col_name in r:
+                                    r[col_name] = coerce(r[col_name])
+                    if rows:
+                        await session.execute(model.__table__.insert(), rows)
+                    inserted[table_name] = len(rows)
+
+                await session.commit()
 
             # 3. Extract storage/.
             src_storage = tmp / "storage"
             restored_paths: list[str] = []
-            if src_storage.exists():
+            if restore_media and src_storage.exists():
                 for subdir in _STORAGE_SUBDIRS_TO_BACKUP:
                     src = src_storage / subdir
                     if src.exists():
