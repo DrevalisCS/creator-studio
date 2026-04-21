@@ -11,6 +11,13 @@ set -euo pipefail
 
 FLAG=/shared/do_update
 POLL_SECONDS=${POLL_SECONDS:-15}
+# COMPOSE_PROJECT_NAME must match the host's project name so the sidecar
+# operates on the *real* running stack. Otherwise `docker compose up -d`
+# creates a parallel "project" stack under a different name and the user's
+# original containers keep running the old image. Set by the installer
+# compose file via `environment.COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}`
+# (Docker Compose itself exports the variable into the sidecar env).
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-}"
 
 log() {
   printf '[updater] %s\n' "$*"
@@ -27,14 +34,22 @@ mkdir -p /shared
 chmod 0777 /shared
 log "shared volume readied (0777 /shared)"
 
+compose_args=(--project-directory /project)
+if [[ -n "${PROJECT_NAME}" ]]; then
+  compose_args+=(--project-name "${PROJECT_NAME}")
+  log "using compose project name: ${PROJECT_NAME}"
+else
+  log "WARNING: COMPOSE_PROJECT_NAME not set — sidecar will default to 'project' and may create a parallel stack instead of restarting the real one"
+fi
+
 log "watching ${FLAG} (poll ${POLL_SECONDS}s)"
 
 while true; do
   if [[ -f "${FLAG}" ]]; then
     log "flag detected — pulling new images"
-    if docker compose --project-directory /project pull; then
+    if docker compose "${compose_args[@]}" pull; then
       log "pull ok — restarting stack"
-      if docker compose --project-directory /project up -d --remove-orphans; then
+      if docker compose "${compose_args[@]}" up -d --remove-orphans; then
         log "restart ok"
       else
         log "restart FAILED"

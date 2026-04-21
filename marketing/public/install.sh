@@ -72,6 +72,12 @@ cat > "$COMPOSE_FILE" <<COMPOSE_EOF
 # Image tag: $IMAGE_TAG
 # Regenerate: rerun curl -fsSL https://drevalis.com/install.sh | bash
 
+# Pin the project name so docker compose on the host and the updater
+# sidecar (which runs compose from /project inside the container) both
+# target the same stack. Without this, in-app updates silently create a
+# parallel "project" stack instead of restarting the real one.
+name: drevalis
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -159,6 +165,9 @@ services:
       - updater_shared:/shared
     environment:
       POLL_SECONDS: "15"
+      # Force the sidecar's docker compose invocations onto the real
+      # stack (see top-level \`name:\` — kept in sync here for safety).
+      COMPOSE_PROJECT_NAME: "drevalis"
 
 volumes:
   postgres_data:
