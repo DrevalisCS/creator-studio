@@ -1140,12 +1140,8 @@ class TTSService:
         # Resolve voice_id from profile.
         voice_id = self._voice_id_for(voice_profile)
 
-        speed = (
-            float(speed_override) if speed_override is not None else float(voice_profile.speed)
-        )
-        pitch = (
-            float(pitch_override) if pitch_override is not None else float(voice_profile.pitch)
-        )
+        speed = float(speed_override) if speed_override is not None else float(voice_profile.speed)
+        pitch = float(pitch_override) if pitch_override is not None else float(voice_profile.pitch)
 
         episode_dir = self.storage_base_path / "episodes" / str(episode_id)
         audio_dir = episode_dir / "audio"
