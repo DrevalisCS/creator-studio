@@ -754,7 +754,9 @@ async def _resolve_channel(
       1. If ``channel_id`` is supplied, look it up; 404 on miss.
       2. Otherwise, if exactly one channel is connected, use it
          implicitly - single-channel installs don't need to specify.
-      3. Otherwise, 400 with instructions to pass ``channel_id``.
+      3. In demo mode, default to the first channel rather than 400
+         so casual clicks through the UI don't trip errors.
+      4. Otherwise, 400 with instructions to pass ``channel_id``.
 
     Prevents the multi-channel foot-gun where a legacy call to
     ``get_active()`` picked an arbitrary row and silently sent
@@ -776,6 +778,15 @@ async def _resolve_channel(
         )
     if len(all_channels) == 1:
         return all_channels[0]
+    # Demo mode: casual clicks to /youtube/playlists etc. without a
+    # channel_id shouldn't 400. Fall back to the first channel.
+    try:
+        from drevalis.core.deps import get_settings
+
+        if get_settings().demo_mode:
+            return all_channels[0]
+    except Exception:
+        pass
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail={
