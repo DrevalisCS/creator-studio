@@ -23,6 +23,7 @@ import {
   Send,
   Sun,
   Moon,
+  FolderOpen,
 } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -38,6 +39,7 @@ const NAV_CONTENT_STUDIO = [
   { to: '/episodes', icon: Film, label: 'Episodes' },
   { to: '/series', icon: Layers, label: 'Series' },
   { to: '/audiobooks', icon: Mic, label: 'Text to Voice' },
+  { to: '/assets', icon: FolderOpen, label: 'Assets' },
 ] as const;
 
 // Publish — always visible (YouTube not conditional on connection)

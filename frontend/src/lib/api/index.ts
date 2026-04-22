@@ -26,6 +26,8 @@ export {
   abTests,
   auth,
   users,
+  assets,
+  videoIngest,
   ApiError,
   formatError,
 } from './_monolith';
@@ -50,4 +52,8 @@ export type {
   LoginResponse,
   UserCreate,
   UserUpdate,
+  Asset,
+  AssetKind,
+  CandidateClip,
+  VideoIngestJob,
 } from './_monolith';

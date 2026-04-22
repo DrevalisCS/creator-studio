@@ -16,6 +16,7 @@ function getPageTitle(pathname: string): string {
   if (pathname.startsWith('/episodes/')) return 'Episode Detail';
   if (pathname === '/audiobooks') return 'Text to Voice';
   if (pathname.startsWith('/audiobooks/')) return 'Audiobook Detail';
+  if (pathname === '/assets') return 'Assets';
   if (pathname === '/youtube') return 'YouTube';
   if (pathname === '/calendar') return 'Calendar';
   if (pathname === '/jobs') return 'Jobs';

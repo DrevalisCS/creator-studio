@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import (  # noqa: F401
     BOOLEAN,
     INTEGER,
+    JSON,
     NUMERIC,
     TEXT,
     CheckConstraint,
@@ -156,6 +157,11 @@ class Series(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ForeignKey("youtube_channels.id", ondelete="SET NULL"),
         nullable=True,
     )
+
+    # ── Reference assets (IPAdapter / style conditioning) ────────────
+    # List of asset UUIDs applied at the scenes step across every
+    # episode in this series. Leave empty for pure prompt-driven gen.
+    reference_asset_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     voice_profile: Mapped[VoiceProfile | None] = relationship(

@@ -1230,3 +1230,107 @@ export const users = {
     put<AuthUser>(`/api/v1/users/${id}`, data),
   delete: (id: string) => del(`/api/v1/users/${id}`),
 };
+
+// ---------------------------------------------------------------------------
+// Assets (central media library) + video ingest
+// ---------------------------------------------------------------------------
+
+export type AssetKind = 'image' | 'video' | 'audio' | 'other';
+
+export interface Asset {
+  id: string;
+  kind: AssetKind;
+  filename: string;
+  file_path: string;
+  file_size_bytes: number;
+  mime_type: string | null;
+  hash_sha256: string;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  tags: string[];
+  description: string | null;
+  created_at: string;
+}
+
+export interface CandidateClip {
+  start_s: number;
+  end_s: number;
+  title: string;
+  reason: string;
+  score: number;
+}
+
+export interface VideoIngestJob {
+  id: string;
+  asset_id: string;
+  status: 'queued' | 'running' | 'done' | 'failed';
+  stage: string | null;
+  progress_pct: number;
+  candidate_clips: CandidateClip[] | null;
+  selected_clip_index: number | null;
+  resulting_episode_id: string | null;
+  error_message: string | null;
+}
+
+async function uploadMultipart<T>(path: string, form: FormData): Promise<T> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: 'POST',
+    body: form,
+    credentials: 'same-origin',
+  });
+  if (!res.ok) {
+    let detail: string | undefined;
+    let detailRaw: unknown;
+    try {
+      const body = await res.json();
+      detailRaw = body?.detail ?? body;
+      detail = typeof body?.detail === 'string' ? body.detail : JSON.stringify(body);
+    } catch {
+      detail = res.statusText;
+    }
+    throw new ApiError(res.status, res.statusText, detail, detailRaw);
+  }
+  return res.json() as Promise<T>;
+}
+
+export const assets = {
+  list: (params?: { kind?: AssetKind; search?: string; tag?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.kind) q.set('kind', params.kind);
+    if (params?.search) q.set('search', params.search);
+    if (params?.tag) q.set('tag', params.tag);
+    q.set('limit', String(params?.limit ?? 200));
+    return get<Asset[]>(`/api/v1/assets?${q.toString()}`);
+  },
+  get: (id: string) => get<Asset>(`/api/v1/assets/${id}`),
+  upload: (file: File, opts?: { tags?: string[]; description?: string }) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (opts?.tags?.length) form.append('tags', opts.tags.join(','));
+    if (opts?.description) form.append('description', opts.description);
+    return uploadMultipart<Asset>('/api/v1/assets', form);
+  },
+  update: (id: string, data: { tags?: string[]; description?: string }) =>
+    request<Asset>(`/api/v1/assets/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  delete: (id: string) => del(`/api/v1/assets/${id}`),
+  fileUrl: (id: string) => `${BASE_URL}/api/v1/assets/${id}/file`,
+};
+
+export const videoIngest = {
+  start: (file: File, description?: string) => {
+    const form = new FormData();
+    form.append('file', file);
+    if (description) form.append('description', description);
+    return uploadMultipart<VideoIngestJob>('/api/v1/video-ingest', form);
+  },
+  get: (jobId: string) => get<VideoIngestJob>(`/api/v1/video-ingest/${jobId}`),
+  pick: (jobId: string, clipIndex: number, seriesId: string) =>
+    post<{ status: string }>(`/api/v1/video-ingest/${jobId}/pick`, {
+      clip_index: clipIndex,
+      series_id: seriesId,
+    }),
+};

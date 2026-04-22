@@ -33,7 +33,7 @@ from drevalis.repositories.generation_job import GenerationJobRepository
 from drevalis.repositories.media_asset import MediaAssetRepository
 from drevalis.schemas.comfyui import WorkflowInputMapping
 from drevalis.schemas.progress import ProgressMessage
-from drevalis.schemas.script import EpisodeScript
+from drevalis.schemas.script import EpisodeScript, SceneScript
 from drevalis.services.ffmpeg import AssemblyConfig, AudioMixConfig, SceneInput
 
 if TYPE_CHECKING:
@@ -805,9 +805,42 @@ class PipelineOrchestrator:
             a.scene_number for a in existing_scene_assets if a.scene_number is not None
         }
 
+        # ── Phase B: per-scene source-asset override ────────────────────
+        # Copy the user-provided asset straight into the episode scenes
+        # dir and record a media_asset for it, then exclude that scene
+        # from ComfyUI generation. This is the "I already have the image
+        # / video clip for this scene" path.
+        await self._apply_scene_asset_overrides(
+            episode_id=self.episode_id,
+            scenes=script.scenes,
+            existing_scene_numbers=existing_scene_numbers,
+            is_video_mode=is_video_mode,
+            job_id=job.id,
+        )
+
         scenes_to_generate = [
-            s for s in script.scenes if s.scene_number not in existing_scene_numbers
+            s
+            for s in script.scenes
+            if s.scene_number not in existing_scene_numbers
+            and not getattr(s, "source_asset_id", None)
         ]
+
+        # ── Phase B: reference asset resolution (IPAdapter conditioning)
+        # Episode-level wins over series-level. The list is passed down
+        # to the ComfyUI service; workflows that don't declare an
+        # ``ipadapter_reference`` input slot simply ignore it.
+        reference_asset_ids = (
+            getattr(episode, "reference_asset_ids", None)
+            or getattr(series, "reference_asset_ids", None)
+            or []
+        )
+        reference_asset_paths = await self._resolve_reference_asset_paths(reference_asset_ids)
+        if reference_asset_paths:
+            self.log.info(
+                "scenes_reference_assets",
+                count=len(reference_asset_paths),
+                source="episode" if getattr(episode, "reference_asset_ids", None) else "series",
+            )
 
         if existing_scene_numbers:
             self.log.info(
@@ -998,6 +1031,110 @@ class PipelineOrchestrator:
                 images_generated=len(generated_images),
                 scene_mode="image",
             )
+
+    # ── Phase B helpers ──────────────────────────────────────────────
+
+    async def _apply_scene_asset_overrides(
+        self,
+        *,
+        episode_id: UUID,
+        scenes: list[SceneScript],
+        existing_scene_numbers: set[int],
+        is_video_mode: bool,
+        job_id: UUID,
+    ) -> None:
+        """For any scene whose script carries a ``source_asset_id``,
+        copy that asset's file into the episode's scenes dir and
+        register a media_asset row. Mutates ``existing_scene_numbers``
+        so the ComfyUI batch below treats these scenes as done.
+        """
+        import shutil as _shutil
+        from pathlib import Path as _Path
+        from uuid import UUID as _UUID
+
+        from drevalis.repositories.asset import AssetRepository as _AssetRepo
+
+        asset_repo = _AssetRepo(self.db)
+        episode_path = await self.storage.get_episode_path(episode_id)
+        scenes_dir = episode_path / "scenes"
+        scenes_dir.mkdir(parents=True, exist_ok=True)
+
+        for scene in scenes:
+            src_id = getattr(scene, "source_asset_id", None)
+            if not src_id or scene.scene_number in existing_scene_numbers:
+                continue
+            try:
+                asset_uuid = _UUID(str(src_id))
+            except ValueError:
+                self.log.warning("scene_source_asset_invalid_uuid", value=src_id)
+                continue
+            asset = await asset_repo.get_by_id(asset_uuid)
+            if asset is None:
+                self.log.warning("scene_source_asset_missing", asset_id=src_id)
+                continue
+            src_abs = _Path(self.storage.base_path) / asset.file_path
+            if not src_abs.exists():
+                self.log.warning("scene_source_asset_file_missing", asset_id=src_id)
+                continue
+
+            # Preserve the asset's extension so downstream FFmpeg routing
+            # (image vs video) picks the right demux.
+            ext = src_abs.suffix.lower() or (".mp4" if asset.kind == "video" else ".jpg")
+            # Keep naming scheme aligned with ComfyUI-generated scenes.
+            dest_name = f"scene_{scene.scene_number:02d}{ext}"
+            dest_abs = scenes_dir / dest_name
+            _shutil.copyfile(src_abs, dest_abs)
+
+            rel = dest_abs.relative_to(_Path(self.storage.base_path)).as_posix()
+            asset_type = "scene_video" if (is_video_mode or asset.kind == "video") else "scene"
+            await self.asset_repo.create(
+                episode_id=episode_id,
+                asset_type=asset_type,
+                file_path=rel,
+                file_size_bytes=dest_abs.stat().st_size,
+                duration_seconds=asset.duration_seconds,
+                scene_number=scene.scene_number,
+                generation_job_id=job_id,
+            )
+            existing_scene_numbers.add(scene.scene_number)
+            self.log.info(
+                "scene_source_asset_applied",
+                scene_number=scene.scene_number,
+                asset_id=src_id,
+                asset_type=asset_type,
+            )
+        await self.db.commit()
+
+    async def _resolve_reference_asset_paths(
+        self, reference_asset_ids: list[str] | None
+    ) -> list[str]:
+        """Resolve asset UUIDs → absolute filesystem paths (image files only).
+
+        Workflows that declare an ``ipadapter_reference`` input slot read
+        from this list; workflows without the slot simply ignore it.
+        Returns absolute paths so ComfyUI can load them directly.
+        """
+        from pathlib import Path as _Path
+        from uuid import UUID as _UUID
+
+        from drevalis.repositories.asset import AssetRepository as _AssetRepo
+
+        out: list[str] = []
+        if not reference_asset_ids:
+            return out
+        asset_repo = _AssetRepo(self.db)
+        for raw_id in reference_asset_ids:
+            try:
+                asset_uuid = _UUID(str(raw_id))
+            except ValueError:
+                continue
+            asset = await asset_repo.get_by_id(asset_uuid)
+            if asset is None or asset.kind != "image":
+                continue
+            abs_path = _Path(self.storage.base_path) / asset.file_path
+            if abs_path.exists():
+                out.append(str(abs_path))
+        return out
 
     async def _step_captions(
         self,

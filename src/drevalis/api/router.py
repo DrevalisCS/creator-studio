@@ -7,6 +7,7 @@ from pydantic import BaseModel
 
 from drevalis.api.routes.ab_tests import router as ab_tests_router
 from drevalis.api.routes.api_keys import router as api_keys_router
+from drevalis.api.routes.assets import router as assets_router
 from drevalis.api.routes.audiobooks import router as audiobooks_router
 from drevalis.api.routes.auth import router as auth_router
 from drevalis.api.routes.backup import router as backup_router
@@ -26,6 +27,7 @@ from drevalis.api.routes.series import router as series_router
 from drevalis.api.routes.settings import router as settings_router
 from drevalis.api.routes.social import router as social_router
 from drevalis.api.routes.updates import router as updates_router
+from drevalis.api.routes.video_ingest import router as video_ingest_router
 from drevalis.api.routes.video_templates import router as video_templates_router
 from drevalis.api.routes.voice_profiles import router as voice_profiles_router
 from drevalis.api.routes.youtube import router as youtube_router
@@ -77,3 +79,5 @@ router.include_router(music_router)
 router.include_router(ab_tests_router)
 router.include_router(cloud_gpu_router)
 router.include_router(auth_router)
+router.include_router(assets_router)
+router.include_router(video_ingest_router)

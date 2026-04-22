@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import TEXT, CheckConstraint, Float, ForeignKey, Index, String
+from sqlalchemy import JSON, TEXT, CheckConstraint, Float, ForeignKey, Index, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -90,6 +90,17 @@ class Episode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     chapters: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
     total_duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # ── Asset-driven generation ──────────────────────────────────────
+    # Per-episode reference assets override series-level ones when set.
+    reference_asset_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
+    # Raw video clip this episode was produced from (video-in pipeline).
+    # Nullable — episodes generated from topic prompts have no source.
+    video_ingest_source_asset_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("assets.id", ondelete="SET NULL"),
+        nullable=True,
+    )
 
     # ── Relationships ──────────────────────────────────────────────────
     series: Mapped[Series] = relationship(back_populates="episodes")

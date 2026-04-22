@@ -27,6 +27,7 @@ const Help = lazy(() => import('@/pages/Help'));
 const YouTube = lazy(() => import('@/pages/YouTube'));
 const Usage = lazy(() => import('@/pages/Usage'));
 const CloudGPU = lazy(() => import('@/pages/CloudGPU'));
+const Assets = lazy(() => import('@/pages/Assets'));
 const Login = lazy(() => import('@/pages/Login'));
 
 // ---------------------------------------------------------------------------
@@ -96,6 +97,7 @@ function App() {
         <Route path="/youtube" element={<YouTube />} />
         <Route path="/usage" element={<Usage />} />
         <Route path="/cloud-gpu" element={<CloudGPU />} />
+        <Route path="/assets" element={<Assets />} />
         <Route path="/youtube/callback" element={<YouTubeCallback />} />
       </Route>
     </Routes>

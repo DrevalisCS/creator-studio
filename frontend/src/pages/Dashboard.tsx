@@ -10,7 +10,7 @@ import {
   Plus,
   TrendingUp,
   CalendarDays,
-  Settings,
+  Clapperboard,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { SetupChecklist } from '@/components/SetupChecklist';
@@ -309,15 +309,15 @@ function Dashboard() {
             <span className="text-xs text-txt-tertiary">Schedule content</span>
           </button>
           <button
-            onClick={() => navigate('/settings?tab=templates')}
+            onClick={() => navigate('/assets?ingest=1')}
             className="flex flex-col items-center gap-2 p-4 bg-bg-surface/60 backdrop-blur-sm border border-white/[0.04] rounded-xl text-center transition-all duration-normal hover:bg-bg-surface/80 hover:border-white/[0.08] hover:shadow-card-hover group"
-            aria-label="Manage Prompt Templates"
+            aria-label="Create Short from uploaded video"
           >
             <div className="w-10 h-10 rounded-xl bg-warning/[0.08] flex items-center justify-center icon-hover">
-              <Settings size={18} className="text-warning" />
+              <Clapperboard size={18} className="text-warning" />
             </div>
-            <span className="text-sm font-display font-medium text-txt-primary">Templates</span>
-            <span className="text-xs text-txt-tertiary">Manage prompts</span>
+            <span className="text-sm font-display font-medium text-txt-primary">New from video</span>
+            <span className="text-xs text-txt-tertiary">Upload → pick clip → edit</span>
           </button>
         </div>
       </div>

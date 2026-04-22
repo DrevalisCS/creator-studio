@@ -7,6 +7,7 @@ Import from here for convenience::
 
 from .ab_test import ABTest
 from .api_key_store import ApiKeyStore
+from .asset import Asset, VideoIngestJob
 from .audiobook import Audiobook
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 from .comfyui import ComfyUIServer, ComfyUIWorkflow
@@ -32,6 +33,7 @@ from .youtube_channel import (
 __all__ = [
     "ABTest",
     "ApiKeyStore",
+    "Asset",
     "Audiobook",
     "Base",
     "ComfyUIServer",
@@ -49,6 +51,7 @@ __all__ = [
     "TimestampMixin",
     "User",
     "UUIDPrimaryKeyMixin",
+    "VideoIngestJob",
     "VideoTemplate",
     "VoiceProfile",
     "YouTubeAudiobookUpload",

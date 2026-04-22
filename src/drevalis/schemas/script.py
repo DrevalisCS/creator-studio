@@ -31,6 +31,13 @@ class SceneScript(BaseModel):
         default_factory=list,
         description="3-5 key words for animated overlay",
     )
+    # Phase B: user-provided asset to use in place of the generated visual.
+    # When set, the scenes step copies the asset's file into this scene's
+    # slot and skips the ComfyUI generation for this scene entirely.
+    source_asset_id: str | None = Field(
+        default=None,
+        description="UUID of an Asset to use directly as this scene's visual.",
+    )
 
     @model_validator(mode="before")
     @classmethod

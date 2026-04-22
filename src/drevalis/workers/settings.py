@@ -41,6 +41,10 @@ from drevalis.workers.jobs.scheduled import publish_scheduled_posts
 from drevalis.workers.jobs.seo import generate_seo_async
 from drevalis.workers.jobs.series import generate_series_async
 from drevalis.workers.jobs.social import publish_pending_social_uploads
+from drevalis.workers.jobs.video_ingest import (
+    analyze_video_ingest,
+    commit_video_ingest_clip,
+)
 
 # ---------------------------------------------------------------------------
 # Lifecycle hook imports
@@ -114,6 +118,8 @@ class WorkerSettings:
         worker_heartbeat,
         license_heartbeat,
         scheduled_backup,
+        analyze_video_ingest,
+        commit_video_ingest_clip,
     ]
     cron_jobs = [
         # Check for due scheduled posts every 15 minutes
