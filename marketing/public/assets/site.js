@@ -130,10 +130,78 @@ function wireImageFallback() {
   });
 }
 
+// ── Lightbox — click any .img-slot img to view full-resolution ────────
+
+function wireLightbox() {
+  // Build the lightbox shell lazily on first open so the DOM stays clean
+  // when the feature isn't used. One shell is reused for every image.
+  let shell = null;
+  let imgEl = null;
+  let captionEl = null;
+
+  const ensureShell = () => {
+    if (shell) return;
+    shell = document.createElement('div');
+    shell.className = 'lightbox';
+    shell.setAttribute('role', 'dialog');
+    shell.setAttribute('aria-modal', 'true');
+    shell.setAttribute('aria-label', 'Screenshot preview');
+    shell.innerHTML = `
+      <button type="button" class="lightbox-close" aria-label="Close preview">×</button>
+      <img class="lightbox-img" alt="" />
+      <div class="lightbox-caption"></div>
+    `;
+    imgEl = shell.querySelector('.lightbox-img');
+    captionEl = shell.querySelector('.lightbox-caption');
+    const closeBtn = shell.querySelector('.lightbox-close');
+    // Close on backdrop click, close button, Escape, or any click outside the img.
+    shell.addEventListener('click', (e) => {
+      if (e.target === shell || e.target === closeBtn) close();
+    });
+    // Prevent propagation from the img itself so clicking the image doesn't close.
+    imgEl.addEventListener('click', (e) => e.stopPropagation());
+    document.body.appendChild(shell);
+  };
+
+  const open = (src, alt) => {
+    ensureShell();
+    imgEl.src = src;
+    imgEl.alt = alt || '';
+    captionEl.textContent = alt || '';
+    captionEl.style.display = alt ? '' : 'none';
+    shell.classList.add('open');
+    document.body.classList.add('lightbox-open');
+  };
+  const close = () => {
+    if (!shell) return;
+    shell.classList.remove('open');
+    document.body.classList.remove('lightbox-open');
+    // Blank src so the next open doesn't flash the previous image.
+    if (imgEl) imgEl.removeAttribute('src');
+  };
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && shell?.classList.contains('open')) close();
+  });
+
+  document.querySelectorAll('.img-slot').forEach((slot) => {
+    slot.addEventListener('click', (e) => {
+      const img = slot.querySelector('img');
+      // Only open if the img actually loaded — ignore empty placeholder slots.
+      if (!img || !img.currentSrc || img.naturalWidth === 0) return;
+      // Don't swallow clicks on internal interactive elements (none today,
+      // but keeps the behaviour friendly if the slot grows one later).
+      if (e.target.closest('a, button')) return;
+      open(img.currentSrc, img.alt);
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   wireCheckoutButtons();
   wireIntervalToggle();
   wireBillingPortalForm();
   wireReveal();
   wireImageFallback();
+  wireLightbox();
 });

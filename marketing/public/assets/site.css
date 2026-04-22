@@ -314,6 +314,88 @@ code.inline {
 }
 .img-slot img[alt]:not([src]), .img-slot img:not([src]) { display: none; }
 
+/* Click-to-zoom affordance on product shots. */
+.img-slot img {
+  cursor: zoom-in;
+  transition: transform 0.2s ease;
+}
+.img-slot:hover img {
+  transform: scale(1.01);
+}
+
+/* ── Lightbox ─────────────────────────────────────────────────── */
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 6, 10, 0.92);
+  backdrop-filter: blur(6px);
+  z-index: 100;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1rem, 3vw, 3rem);
+  cursor: zoom-out;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+.lightbox.open {
+  display: flex;
+  opacity: 1;
+}
+.lightbox-img {
+  max-width: 100%;
+  max-height: 100%;
+  width: auto;
+  height: auto;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.6);
+  cursor: default;
+}
+.lightbox-close {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--txt-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 1rem;
+  line-height: 1;
+  transition: background 0.15s, border-color 0.15s;
+}
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.lightbox-caption {
+  position: absolute;
+  bottom: 1.25rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  color: var(--txt-secondary);
+  background: rgba(10, 11, 14, 0.8);
+  border: 1px solid var(--border);
+  padding: 6px 14px;
+  border-radius: 999px;
+  max-width: 80%;
+  text-align: center;
+}
+body.lightbox-open { overflow: hidden; }
+
+@media (prefers-reduced-motion: reduce) {
+  .img-slot:hover img { transform: none; }
+  .lightbox { transition: none; }
+}
+
 /* ── Navigation ──────────────────────────────────────────────── */
 
 .site-nav {

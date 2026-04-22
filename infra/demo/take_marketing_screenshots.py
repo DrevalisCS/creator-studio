@@ -76,7 +76,11 @@ SHOTS: list[dict[str, object]] = [
     },
     {
         "name": "feature-youtube-publish.png",
-        "path": "/youtube",
+        # Land on the Uploads tab — doesn't fetch Google APIs (which would
+        # 502 against our seeded fake OAuth tokens). Shows the per-channel
+        # upload status table, which is what the homepage copy is talking
+        # about anyway.
+        "path": "/youtube?tab=uploads",
         "viewport": {"width": 1600, "height": 1200},
         "settle_ms": 1500,
     },
