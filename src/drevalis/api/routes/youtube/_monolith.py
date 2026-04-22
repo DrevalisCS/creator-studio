@@ -1068,6 +1068,24 @@ async def get_video_analytics(
     specify which connected channel's credentials to use (optional with
     a single channel connected).
     """
+    # Demo mode: return plausible fake stats; no external API call.
+    if settings.demo_mode:
+        import random as _r
+
+        ids = [v.strip() for v in video_ids.split(",") if v.strip()]
+        rng = _r.Random(sum(ord(c) for c in (ids[0] if ids else "demo")))
+        return [
+            VideoStatsResponse(
+                video_id=vid,
+                title=f"Demo video {vid[:8]}",
+                views=rng.randint(1_200, 58_000),
+                likes=rng.randint(40, 2_200),
+                comments=rng.randint(0, 180),
+                published_at=None,
+            )
+            for vid in ids[:50]
+        ]
+
     svc = _get_youtube_service(settings)
 
     channel_repo = YouTubeChannelRepository(db)
@@ -1141,6 +1159,46 @@ async def get_channel_analytics(
     ``{"error": "analytics_scope_missing"}`` so the frontend can prompt
     the user to reconnect the channel.
     """
+    # Demo mode: synthesise a plausible time series so the analytics UI
+    # lights up without touching Google.
+    if settings.demo_mode:
+        import random as _r
+        from datetime import UTC as _UTC
+        from datetime import date as _date
+        from datetime import datetime as _dt
+        from datetime import timedelta as _td
+
+        rng = _r.Random(days)
+        end = _date.today()
+        start = end - _td(days=days - 1)
+        daily = []
+        for i in range(days):
+            d = start + _td(days=i)
+            base = 800 + rng.randint(-120, 200) + (i * 18)
+            daily.append(
+                {
+                    "day": d.isoformat(),
+                    "views": max(100, base),
+                    "minutes_watched": max(80, int(base * rng.uniform(0.8, 1.6))),
+                }
+            )
+        totals = {
+            "views": sum(d["views"] for d in daily),
+            "minutes_watched": sum(d["minutes_watched"] for d in daily),
+            "subscribers_gained": rng.randint(40, 220),
+            "likes": rng.randint(600, 2400),
+            "comments": rng.randint(30, 180),
+            "shares": rng.randint(20, 160),
+        }
+        return {
+            "window_days": days,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "totals": totals,
+            "daily": daily,
+            "fetched_at": _dt.now(tz=_UTC).isoformat(),
+        }
+
     svc = _get_youtube_service(settings)
     channel_repo = YouTubeChannelRepository(db)
     channel = await _resolve_channel(channel_repo, channel_id)
