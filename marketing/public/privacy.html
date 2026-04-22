@@ -11,14 +11,22 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/site.css" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Google tag (gtag.js) -->
+  <!-- Google tag (gtag.js) with Consent Mode v2 defaults -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-FJ3ZBMTLCF"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
+    gtag("consent", "default", {
+      ad_storage: "denied",
+      analytics_storage: "denied",
+      ad_user_data: "denied",
+      ad_personalization: "denied",
+      wait_for_update: 500
+    });
     gtag("js", new Date());
-    gtag("config", "G-FJ3ZBMTLCF");
+    gtag("config", "G-FJ3ZBMTLCF", { anonymize_ip: true });
   </script>
+  <script src="/assets/consent.js" defer></script>
 </head>
 
 <body class="antialiased">
@@ -48,7 +56,7 @@
       <ul>
         <li><strong>Your content stays on your machine.</strong> Scripts, voices, videos, models, OAuth tokens for YouTube / TikTok / Instagram — all on your disk. We have no access.</li>
         <li>We hold the minimum data needed to sell and license the Software: your email, payment metadata (held by Stripe), license state, and the list of machines that have activated.</li>
-        <li>We do not sell, rent, or share personal data for marketing. We use three subprocessors: Stripe (billing), Resend (transactional email), and Hetzner (hosting of our license server).</li>
+        <li>We do not sell, rent, or share personal data for marketing. We use four subprocessors: Stripe (billing), Resend (transactional email), Hetzner (hosting), and — only if you accept our consent banner — Google Analytics for website statistics.</li>
         <li>You may contact the FDPIC (EDÖB) or your national data-protection authority at any time.</li>
       </ul>
 
@@ -72,7 +80,12 @@
       <p>Legal basis (FADP Art. 31(2)(a), (d) / GDPR Art. 6(1)(b) and 6(1)(f)): performance of contract and legitimate interest in informing paying users of security fixes.</p>
 
       <h3>d) Website analytics</h3>
-      <p>drevalis.com does not use cookies, Google Analytics, Facebook Pixel, or any third-party tracker. The webserver logs IP address, User-Agent, and request path per visit for 14 days for security and debugging purposes; these logs are not cross-referenced against user accounts.</p>
+      <p>drevalis.com uses <strong>Google Analytics 4</strong> (measurement ID <code>G-FJ3ZBMTLCF</code>) to count visits and understand which pages are useful. Analytics are loaded with <strong>Google Consent Mode v2 defaulting to "denied"</strong>, which means no GA cookies are set and no hits are sent until you click <em>Accept analytics</em> on our consent banner. IP-anonymisation is enabled (<code>anonymize_ip: true</code>).</p>
+      <p>If you accept: GA4 sets the <code>_ga</code> and <code>_ga_FJ3ZBMTLCF</code> cookies (first-party, 2-year lifetime) and records pseudonymised pageview and event data. Google processes this in the EU / USA under the EU–U.S. Data Privacy Framework and Standard Contractual Clauses. Data is retained at Google for up to 14 months.</p>
+      <p>If you decline: no analytics cookies are set, no hits are sent. The consent state is stored in your browser's <code>localStorage</code> under the key <code>drevalis_consent</code>; it is not transmitted to us.</p>
+      <p>The webserver additionally logs IP address, User-Agent, and request path per visit for 14 days for security and debugging purposes; these logs are not cross-referenced against user accounts.</p>
+      <p><strong>Change your choice:</strong> <a href="#" onclick="if(window.drevalisConsent){window.drevalisConsent.revoke();}return false;">Revoke consent &amp; show the banner again</a>. Or clear <code>localStorage</code> for drevalis.com.</p>
+      <p>Legal basis: your consent under FADP Art. 31(1) / GDPR Art. 6(1)(a). You can withdraw consent at any time without prejudice to prior processing.</p>
 
       <h2>3. What we do NOT collect</h2>
       <ul>
@@ -98,6 +111,7 @@
           <tr><td>Stripe Payments Europe Ltd.</td><td>Billing, tax, invoicing</td><td>Name, email, card data, billing address</td><td>Ireland / USA</td></tr>
           <tr><td>Resend, Inc.</td><td>Transactional email</td><td>Email, message content</td><td>USA</td></tr>
           <tr><td>Hetzner Online GmbH</td><td>Hosting of license server</td><td>License &amp; activation records</td><td>Germany (EU)</td></tr>
+          <tr><td>Google Ireland Ltd. (Analytics)</td><td>Website analytics (consent-gated)</td><td>Pseudonymised pageviews, IP-anonymised</td><td>Ireland / USA</td></tr>
         </tbody>
       </table>
       <p>All three are bound by data-processing agreements under FADP Art. 9 / GDPR Art. 28. For transfers to the United States (Stripe, Resend) we rely on the Swiss–U.S. Data Privacy Framework and the EU–U.S. Data Privacy Framework respectively, or on Standard Contractual Clauses where those frameworks do not apply.</p>

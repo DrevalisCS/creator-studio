@@ -11,14 +11,22 @@
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/site.css" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Google tag (gtag.js) -->
+  <!-- Google tag (gtag.js) with Consent Mode v2 defaults -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-FJ3ZBMTLCF"></script>
   <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
+    gtag("consent", "default", {
+      ad_storage: "denied",
+      analytics_storage: "denied",
+      ad_user_data: "denied",
+      ad_personalization: "denied",
+      wait_for_update: 500
+    });
     gtag("js", new Date());
-    gtag("config", "G-FJ3ZBMTLCF");
+    gtag("config", "G-FJ3ZBMTLCF", { anonymize_ip: true });
   </script>
+  <script src="/assets/consent.js" defer></script>
 </head>
 
 <body class="antialiased">
