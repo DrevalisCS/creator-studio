@@ -247,6 +247,27 @@ class MusicService:
             episode_id=str(episode_id),
         )
 
+        # 0. User-uploaded custom track — e.g. ``custom:mytrack.mp3``.
+        # Bypass all discovery / generation when the creator has picked
+        # their own bed; loop/trim to target duration like the library path.
+        if mood and mood.startswith("custom:"):
+            filename = mood.split(":", 1)[1].strip()
+            if filename:
+                source = self.storage_base_path / "music" / "custom" / filename
+                if source.exists():
+                    output_dir = self.storage_base_path / "episodes" / str(episode_id) / "audio"
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    output = output_dir / "background_music.wav"
+                    await self._loop_trim(source, output, target_duration)
+                    log.info("music.source", source="custom_upload", path=str(output))
+                    return output
+                log.warning(
+                    "music.custom.not_found",
+                    filename=filename,
+                    path=str(source),
+                )
+                return None  # don't silently fall through to a random library track
+
         # 1. Try ComfyUI / AceStep 1.5 (highest quality)
         if self.comfyui_base_url:
             track = await self._generate_via_comfyui(mood, target_duration, episode_id)
