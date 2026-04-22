@@ -33,6 +33,7 @@ from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import sqlalchemy as sa
 import structlog
 from sqlalchemy import Date, DateTime, Time, delete, select
 
@@ -343,32 +344,46 @@ class BackupService:
 
             inserted: dict[str, int] = {}
             if restore_db:
-                # 1. Drop all user rows (reverse dependency order).
-                for table_name, model in reversed(_TABLE_ORDER):
-                    await session.execute(delete(model))
-                await session.flush()
+                # Disable user-defined + foreign-key triggers for this
+                # session so backups taken against slightly older schemas
+                # (enum value not yet migrated, tightened CHECK constraint,
+                # missing FK target that we're about to insert anyway)
+                # don't abort the restore mid-flight. Requires superuser or
+                # table ownership — our migrations run the app's DB user as
+                # table owner so this works in normal installs.
+                await session.execute(sa.text("SET session_replication_role = replica"))
+                try:
+                    # 1. Drop all user rows (reverse dependency order).
+                    for table_name, model in reversed(_TABLE_ORDER):
+                        await session.execute(delete(model))
+                    await session.flush()
 
-                # 2. Insert rows in forward order. JSON round-trips mangle
-                #    datetime/date/time into strings; coerce back before
-                #    handing rows to asyncpg.
-                data_dir = tmp / "data"
-                for table_name, model in _TABLE_ORDER:
-                    path = data_dir / f"{table_name}.json"
-                    if not path.exists():
-                        inserted[table_name] = 0
-                        continue
-                    rows = json.loads(path.read_text(encoding="utf-8"))
-                    coercers = _build_type_coercers(model)
-                    if coercers:
-                        for r in rows:
-                            for col_name, coerce in coercers.items():
-                                if col_name in r:
-                                    r[col_name] = coerce(r[col_name])
-                    if rows:
-                        await session.execute(model.__table__.insert(), rows)
-                    inserted[table_name] = len(rows)
+                    # 2. Insert rows in forward order. JSON round-trips mangle
+                    #    datetime/date/time into strings; coerce back before
+                    #    handing rows to asyncpg.
+                    data_dir = tmp / "data"
+                    for table_name, model in _TABLE_ORDER:
+                        path = data_dir / f"{table_name}.json"
+                        if not path.exists():
+                            inserted[table_name] = 0
+                            continue
+                        rows = json.loads(path.read_text(encoding="utf-8"))
+                        coercers = _build_type_coercers(model)
+                        if coercers:
+                            for r in rows:
+                                for col_name, coerce in coercers.items():
+                                    if col_name in r:
+                                        r[col_name] = coerce(r[col_name])
+                        if rows:
+                            await session.execute(model.__table__.insert(), rows)
+                        inserted[table_name] = len(rows)
 
-                await session.commit()
+                    await session.commit()
+                finally:
+                    # Even on failure, flip the session back so the next
+                    # request (same pool connection) doesn't inherit the
+                    # bypass flag.
+                    await session.execute(sa.text("SET session_replication_role = origin"))
 
             # 3. Extract storage/.
             src_storage = tmp / "storage"
