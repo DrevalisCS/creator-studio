@@ -95,16 +95,21 @@ async def analyze_video_ingest(ctx: dict[str, Any], job_id: str) -> dict[str, An
         await session.commit()
 
         # ── 1. Extract 16 kHz mono WAV for whisper ──────────────────
+        await job_repo.update(job.id, stage="extracting_audio", progress_pct=10)
+        await session.commit()
         audio_out = source_path.with_suffix(".whisper.wav")
         rc = await _ffmpeg_extract_audio(source_path, audio_out)
         if rc != 0 or not audio_out.exists():
             await _fail(session, job_repo, job.id, "ffmpeg audio extraction failed")
             return {"status": "failed", "error": "ffmpeg_failed"}
 
-        await job_repo.update(job.id, progress_pct=25)
+        await job_repo.update(job.id, stage="audio_extracted", progress_pct=25)
         await session.commit()
 
         # ── 2. Whisper transcribe ──────────────────────────────────
+        await job_repo.update(job.id, stage="transcribing", progress_pct=30)
+        await session.commit()
+
         caption_svc: CaptionService = ctx["caption_service"]
         word_ts = await asyncio.to_thread(caption_svc._transcribe, audio_out, "en")
         transcript_payload = [
@@ -120,6 +125,9 @@ async def analyze_video_ingest(ctx: dict[str, Any], job_id: str) -> dict[str, An
         await session.commit()
 
         # ── 3. LLM picks candidate clips ───────────────────────────
+        await job_repo.update(job.id, stage="picking_clips", progress_pct=75)
+        await session.commit()
+
         llm_configs = await llm_repo.get_all(limit=10)
         llm_config = llm_configs[0] if llm_configs else None
         if llm_config is None:
