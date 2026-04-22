@@ -919,8 +919,10 @@ export const social = {
   connectPlatform: (data: {
     platform: string;
     account_name: string;
+    account_id?: string;
     access_token: string;
     refresh_token?: string;
+    account_metadata?: Record<string, string>;
   }) => post<SocialPlatform>('/api/v1/social/platforms', data),
 
   disconnectPlatform: (platformId: string) =>

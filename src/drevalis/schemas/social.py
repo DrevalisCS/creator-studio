@@ -12,12 +12,22 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class PlatformConnect(BaseModel):
-    """Payload for connecting a new social platform account."""
+    """Payload for connecting a new social platform account.
+
+    * ``account_id`` is the platform-specific identifier uploads need.
+      Facebook expects the Page ID here; Instagram expects the
+      Business/Creator account ID; TikTok/X populate it from OAuth.
+    * ``account_metadata`` carries platform-specific knobs — e.g.
+      Instagram uses ``{"public_video_base_url": "https://..."}`` because
+      Reels require an HTTPS URL to reach the file.
+    """
 
     platform: Literal["tiktok", "instagram", "x", "facebook"]
     account_name: str = Field(..., min_length=1, max_length=255)
+    account_id: str | None = Field(default=None, max_length=255)
     access_token: str = Field(..., min_length=1)
     refresh_token: str | None = None
+    account_metadata: dict[str, str] | None = None
 
 
 class PlatformResponse(BaseModel):

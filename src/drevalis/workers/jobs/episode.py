@@ -69,7 +69,13 @@ async def generate_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, An
     except Exception:
         priority_mode = None
 
-    if priority_mode == "shorts_first":
+    if priority_mode in ("shorts_first", "longform_first"):
+        # Symmetric behaviour: the "preferred" content_format blocks
+        # the other from running when the preferred queue is busy.
+        # Without this branch, ``longform_first`` was silently FIFO.
+        preferred_fmt = "shorts" if priority_mode == "shorts_first" else "longform"
+        other_fmt = "longform" if preferred_fmt == "shorts" else "shorts"
+
         async with session_factory() as _ps:
             from drevalis.repositories.episode import EpisodeRepository as _ER
             from drevalis.repositories.series import SeriesRepository as _SR
@@ -77,38 +83,37 @@ async def generate_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, An
             _ep = await _ER(_ps).get_by_id(parsed_id)
             if _ep:
                 _series = await _SR(_ps).get_by_id(_ep.series_id)
-                is_longform = _series and getattr(_series, "content_format", "shorts") == "longform"
-                if is_longform:
-                    # Check if any shorts episodes are generating or queued
+                this_fmt = getattr(_series, "content_format", "shorts") if _series else "shorts"
+                if this_fmt == other_fmt:
                     from sqlalchemy import text as _text
 
                     _result = await _ps.execute(
                         _text(
                             "SELECT COUNT(*) FROM episodes e JOIN series s ON e.series_id = s.id "
-                            "WHERE e.status = 'generating' AND s.content_format = 'shorts'"
-                        )
+                            "WHERE e.status = 'generating' AND s.content_format = :fmt"
+                        ),
+                        {"fmt": preferred_fmt},
                     )
-                    shorts_generating = _result.scalar() or 0
+                    preferred_generating = _result.scalar() or 0
                     _result2 = await _ps.execute(
                         _text(
                             "SELECT COUNT(*) FROM episodes e JOIN series s ON e.series_id = s.id "
-                            "WHERE e.status IN ('draft', 'failed') AND s.content_format = 'shorts'"
-                        )
+                            "WHERE e.status IN ('draft', 'failed') AND s.content_format = :fmt"
+                        ),
+                        {"fmt": preferred_fmt},
                     )
-                    shorts_waiting = _result2.scalar() or 0
-                    if shorts_generating > 0 or shorts_waiting > 2:
-                        # Defer longform — re-enqueue with 60s delay.
-                        # Must use ctx["arq_redis"] (ArqRedis): the plain
-                        # decode_responses client at ctx["redis"] lacks
-                        # enqueue_job and would AttributeError here.
+                    preferred_waiting = _result2.scalar() or 0
+                    if preferred_generating > 0 or preferred_waiting > 2:
                         log.info(
-                            "longform_deferred",
-                            shorts_generating=shorts_generating,
-                            shorts_waiting=shorts_waiting,
+                            "priority_deferred",
+                            mode=priority_mode,
+                            this_format=this_fmt,
+                            preferred_generating=preferred_generating,
+                            preferred_waiting=preferred_waiting,
                         )
                         arq_redis = ctx.get("arq_redis")
                         if arq_redis is None:
-                            log.warning("longform_deferral_skipped_no_arq_redis")
+                            log.warning("priority_deferral_skipped_no_arq_redis")
                         else:
                             await arq_redis.enqueue_job(
                                 "generate_episode", episode_id, _defer_by=60
@@ -116,7 +121,7 @@ async def generate_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, An
                             return {
                                 "episode_id": episode_id,
                                 "status": "deferred",
-                                "reason": "shorts_first",
+                                "reason": priority_mode,
                             }
 
     # Acquire a fresh DB session for this job
@@ -138,13 +143,13 @@ async def generate_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, An
             await orchestrator.run()
             log.info("job_complete", status="success")
             return {"episode_id": episode_id, "status": "success"}
-        except (OSError, TimeoutError, ConnectionError) as exc:
-            # Transient errors: let arq retry (max_tries=3)
-            log.error("job_transient_error", error=str(exc), exc_info=True)
-            raise
         except Exception as exc:
+            # Re-raise so arq honours max_tries and backoff. The
+            # orchestrator is already responsible for persisting
+            # status="failed" on the Episode row, so logging here is
+            # enough for observability.
             log.error("job_failed", error=str(exc), exc_info=True)
-            return {"episode_id": episode_id, "status": "failed", "error": str(exc)}
+            raise
 
 
 async def reassemble_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, Any]:

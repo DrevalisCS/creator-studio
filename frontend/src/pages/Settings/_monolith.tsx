@@ -1857,8 +1857,10 @@ const SOCIAL_PLATFORMS: SocialPlatformDef[] = [
 
 interface ConnectFormState {
   accountName: string;
+  accountId: string;
   accessToken: string;
   refreshToken: string;
+  publicVideoBaseUrl: string;
 }
 
 interface PlatformCardProps {
@@ -1876,9 +1878,14 @@ function PlatformCard({
 }: PlatformCardProps) {
   const [formOpen, setFormOpen] = useState(false);
   const [accountName, setAccountName] = useState('');
+  const [accountId, setAccountId] = useState('');
   const [accessToken, setAccessToken] = useState('');
   const [refreshToken, setRefreshToken] = useState('');
+  const [publicVideoBaseUrl, setPublicVideoBaseUrl] = useState('');
   const [connecting, setConnecting] = useState(false);
+
+  const needsAccountId = platform.id === 'facebook' || platform.id === 'instagram';
+  const needsPublicUrl = platform.id === 'instagram';
   const [disconnecting, setDisconnecting] = useState(false);
   const [connectError, setConnectError] = useState<string | null>(null);
 
@@ -1901,14 +1908,36 @@ function PlatformCard({
 
     // Manual token entry for other platforms
     if (!accountName.trim() || !accessToken.trim()) return;
+    if (needsAccountId && !accountId.trim()) {
+      setConnectError(
+        platform.id === 'facebook'
+          ? 'Facebook needs the numeric Page ID.'
+          : 'Instagram needs the Business/Creator account ID.',
+      );
+      return;
+    }
+    if (needsPublicUrl && !publicVideoBaseUrl.trim()) {
+      setConnectError(
+        'Instagram Reels need a public HTTPS URL that maps to your storage folder.',
+      );
+      return;
+    }
     setConnecting(true);
     setConnectError(null);
     try {
-      await onConnect(platform.id, { accountName, accessToken, refreshToken });
+      await onConnect(platform.id, {
+        accountName,
+        accountId,
+        accessToken,
+        refreshToken,
+        publicVideoBaseUrl,
+      });
       setFormOpen(false);
       setAccountName('');
+      setAccountId('');
       setAccessToken('');
       setRefreshToken('');
+      setPublicVideoBaseUrl('');
     } catch (err) {
       setConnectError(err instanceof Error ? err.message : 'Failed to connect.');
     } finally {
@@ -2027,22 +2056,84 @@ function PlatformCard({
             />
           </div>
 
+          {needsAccountId && (
+            <div>
+              <label
+                htmlFor={`${platform.id}-account-id`}
+                className="block text-xs font-medium text-txt-secondary mb-1"
+              >
+                {platform.id === 'facebook' ? 'Facebook Page ID' : 'Instagram Account ID'}
+                <span className="text-error ml-1">*</span>
+              </label>
+              <Input
+                id={`${platform.id}-account-id`}
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value)}
+                placeholder={
+                  platform.id === 'facebook'
+                    ? 'e.g. 102034567890123'
+                    : 'e.g. 17841400000000000'
+                }
+                aria-required="true"
+              />
+              <p className="text-[11px] text-txt-tertiary mt-1">
+                {platform.id === 'facebook'
+                  ? 'Numeric ID of the Page you want uploads to land on. Get it from facebook.com/{your-page}/about.'
+                  : 'Business/Creator account ID from Meta Graph — required to create Reels containers.'}
+              </p>
+            </div>
+          )}
+
           <div>
             <label
               htmlFor={`${platform.id}-access-token`}
               className="block text-xs font-medium text-txt-secondary mb-1"
             >
-              API Access Token
+              {platform.id === 'facebook' ? 'Page Access Token' : 'API Access Token'}
+              <span className="text-error ml-1">*</span>
             </label>
             <Input
               id={`${platform.id}-access-token`}
               type="password"
               value={accessToken}
               onChange={(e) => setAccessToken(e.target.value)}
-              placeholder="Paste your access token..."
+              placeholder={
+                platform.id === 'facebook'
+                  ? 'Page Access Token (not a user token)'
+                  : 'Paste your access token...'
+              }
               aria-required="true"
             />
+            {platform.id === 'facebook' && (
+              <p className="text-[11px] text-txt-tertiary mt-1">
+                Exchange a user token for a long-lived Page Access Token via Graph
+                API’s <code>/me/accounts</code>. User tokens will fail on upload.
+              </p>
+            )}
           </div>
+
+          {needsPublicUrl && (
+            <div>
+              <label
+                htmlFor={`${platform.id}-public-url`}
+                className="block text-xs font-medium text-txt-secondary mb-1"
+              >
+                Public video base URL
+                <span className="text-error ml-1">*</span>
+              </label>
+              <Input
+                id={`${platform.id}-public-url`}
+                value={publicVideoBaseUrl}
+                onChange={(e) => setPublicVideoBaseUrl(e.target.value)}
+                placeholder="https://cdn.yoursite.com/storage"
+                aria-required="true"
+              />
+              <p className="text-[11px] text-txt-tertiary mt-1">
+                Instagram Reels need a public HTTPS URL that maps to the storage folder
+                Drevalis writes videos into. Without this, upload will fail.
+              </p>
+            </div>
+          )}
 
           <div>
             <label
@@ -2122,11 +2213,17 @@ function SocialSection() {
 
   const handleConnect = useCallback(
     async (platformId: string, form: ConnectFormState) => {
+      const meta: Record<string, string> = {};
+      if (form.publicVideoBaseUrl?.trim()) {
+        meta.public_video_base_url = form.publicVideoBaseUrl.trim();
+      }
       await socialApi.connectPlatform({
         platform: platformId,
         account_name: form.accountName.trim(),
+        account_id: form.accountId?.trim() || undefined,
         access_token: form.accessToken.trim(),
         refresh_token: form.refreshToken.trim() || undefined,
+        account_metadata: Object.keys(meta).length ? meta : undefined,
       });
       toast.success('Account connected', { description: `${platformId} account linked` });
       void fetchPlatforms();

@@ -655,9 +655,21 @@ class PipelineOrchestrator:
                 if 0.25 <= v <= 4.0:
                     speed_override = v
             if "pitch" in tts_overrides:
+                # The UI / API accept semitones in [-12.0, +12.0]; translate
+                # to the internal multiplier [0.5, 2.0] (±1 octave) so the
+                # two don't drift. Only Edge TTS honours this today; Piper /
+                # Kokoro / ElevenLabs ignore ``pitch_override`` — logged once
+                # so users aren't surprised by a silent no-op.
                 v = float(tts_overrides["pitch"])
-                if 0.5 <= v <= 2.0:
-                    pitch_override = v
+                if -12.0 <= v <= 12.0 and abs(v) > 0.01:
+                    # 2^(semitones/12) → multiplier; clamp to the internal
+                    # range just in case a caller sends the multiplier form.
+                    import math as _math
+
+                    if 0.5 <= v <= 2.0 and abs(v - 1.0) > 0.01:
+                        pitch_override = v  # already in multiplier form
+                    else:
+                        pitch_override = max(0.5, min(2.0, _math.pow(2.0, v / 12.0)))
         except (TypeError, ValueError):
             self.log.warning("tts_overrides_malformed", overrides=tts_overrides)
 
@@ -2028,7 +2040,10 @@ class PipelineOrchestrator:
 
     # ── Internal helpers ──────────────────────────────────────────────────
 
-    _llm_round_robin: int = 0
+    # Atomic round-robin counter. ``itertools.count`` is thread- and
+    # asyncio-safe: each ``next()`` hands back a fresh integer with no
+    # read-modify-write window across ``await``s.
+    _llm_rr_counter: Any = __import__("itertools").count()
 
     async def _auto_select_llm_config(self) -> Any:
         """Select an LLM config using round-robin across all available configs.
@@ -2043,9 +2058,7 @@ class PipelineOrchestrator:
         if not configs:
             return None
 
-        # Round-robin across available configs
-        idx = PipelineOrchestrator._llm_round_robin % len(configs)
-        PipelineOrchestrator._llm_round_robin += 1
+        idx = next(PipelineOrchestrator._llm_rr_counter) % len(configs)
         selected = configs[idx]
         self.log.info("auto_selected_llm_config", name=selected.name, index=idx, total=len(configs))
         return selected

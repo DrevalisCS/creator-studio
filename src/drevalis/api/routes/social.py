@@ -381,6 +381,39 @@ async def connect_platform(
     """
     repo = SocialPlatformRepository(db)
 
+    # Guard against the known "connector not working" surprises:
+    # Facebook needs the Page ID on account_id; Instagram needs both
+    # the Business/Creator account ID AND a public HTTPS base URL on
+    # account_metadata.public_video_base_url before Reels uploads can
+    # succeed. Fail loudly here instead of silently at upload time.
+    if body.platform == "facebook" and not (body.account_id or "").strip():
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "Facebook needs the Page ID. Paste the numeric Page ID "
+                "into the 'Page / Account ID' field."
+            ),
+        )
+    if body.platform == "instagram":
+        if not (body.account_id or "").strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Instagram needs the Business/Creator account ID. "
+                    "Paste it into the 'Page / Account ID' field."
+                ),
+            )
+        meta = body.account_metadata or {}
+        if not (meta.get("public_video_base_url") or "").strip():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    "Instagram Reels need a public HTTPS URL that maps "
+                    "to your storage folder. Set the 'Public video base "
+                    "URL' field before connecting."
+                ),
+            )
+
     # Deactivate existing accounts for this platform
     await repo.deactivate_platform(body.platform)
 
@@ -393,9 +426,11 @@ async def connect_platform(
     platform = await repo.create(
         platform=body.platform,
         account_name=body.account_name,
+        account_id=(body.account_id or "").strip() or None,
         access_token_encrypted=access_encrypted,
         refresh_token_encrypted=refresh_encrypted,
         token_key_version=key_version,
+        account_metadata=body.account_metadata,
         is_active=True,
     )
     await db.commit()

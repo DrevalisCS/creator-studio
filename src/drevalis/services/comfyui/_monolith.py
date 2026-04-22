@@ -368,11 +368,15 @@ class ComfyUIPool:
             candidates = [server_id]
         else:
             # Round-robin starting point, then try all remaining servers.
+            # ``itertools.count`` is atomic across concurrent awaits —
+            # the previous read-modify-write on ``self._rr_index`` could
+            # race under asyncio.gather.
+            import itertools as _itertools
+
             server_ids = list(self._servers.keys())
-            if not hasattr(self, "_rr_index"):
-                self._rr_index = 0
-            start = self._rr_index % len(server_ids) if server_ids else 0
-            self._rr_index += 1
+            if not hasattr(self, "_rr_counter"):
+                self._rr_counter = _itertools.count()
+            start = (next(self._rr_counter) % len(server_ids)) if server_ids else 0
             candidates = server_ids[start:] + server_ids[:start]
 
         last_error: Exception | None = None
