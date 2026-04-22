@@ -56,6 +56,7 @@ htmlcov/
 # ── Node (frontend, if any) ─────────────────────────────────────────────────
 node_modules/
 package-lock.json
+*.tsbuildinfo
 
 # ── OS ────────────────────────────────────────────────────────────────────────
 .DS_Store

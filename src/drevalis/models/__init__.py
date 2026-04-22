@@ -19,6 +19,7 @@ from .prompt_template import PromptTemplate
 from .scheduled_post import ScheduledPost
 from .series import Series
 from .social_platform import SocialPlatform, SocialUpload
+from .user import User
 from .video_template import VideoTemplate
 from .voice_profile import VoiceProfile
 from .youtube_channel import (
@@ -46,6 +47,7 @@ __all__ = [
     "SocialPlatform",
     "SocialUpload",
     "TimestampMixin",
+    "User",
     "UUIDPrimaryKeyMixin",
     "VideoTemplate",
     "VoiceProfile",

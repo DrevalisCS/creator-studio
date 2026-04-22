@@ -114,7 +114,11 @@ async function request<T>(
     ...((options.headers as Record<string, string>) ?? {}),
   };
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, {
+    credentials: 'same-origin',
+    ...options,
+    headers,
+  });
 
   if (!response.ok) {
     let detail: string | undefined;
@@ -1176,4 +1180,53 @@ export const onboarding = {
   status: () => get<OnboardingStatus>('/api/v1/onboarding/status'),
   dismiss: () => post<void>('/api/v1/onboarding/dismiss'),
   reset: () => post<void>('/api/v1/onboarding/reset'),
+};
+
+// ---------------------------------------------------------------------------
+// Auth / users
+// ---------------------------------------------------------------------------
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  role: 'owner' | 'editor' | 'viewer';
+  display_name: string | null;
+  is_active: boolean;
+  last_login_at: string | null;
+}
+
+export interface LoginResponse {
+  message: string;
+  role: string;
+  display_name: string;
+}
+
+export interface UserCreate {
+  email: string;
+  password: string;
+  role?: 'owner' | 'editor' | 'viewer';
+  display_name?: string | null;
+}
+
+export interface UserUpdate {
+  role?: 'owner' | 'editor' | 'viewer';
+  display_name?: string | null;
+  is_active?: boolean;
+  password?: string;
+}
+
+export const auth = {
+  login: (email: string, password: string) =>
+    post<LoginResponse>('/api/v1/auth/login', { email, password }),
+  logout: () => post<{ message: string }>('/api/v1/auth/logout'),
+  me: () => get<AuthUser | null>('/api/v1/auth/me'),
+  mode: () => get<{ team_mode: boolean }>('/api/v1/auth/mode'),
+};
+
+export const users = {
+  list: () => get<AuthUser[]>('/api/v1/users'),
+  create: (data: UserCreate) => post<AuthUser>('/api/v1/users', data),
+  update: (id: string, data: UserUpdate) =>
+    put<AuthUser>(`/api/v1/users/${id}`, data),
+  delete: (id: string) => del(`/api/v1/users/${id}`),
 };

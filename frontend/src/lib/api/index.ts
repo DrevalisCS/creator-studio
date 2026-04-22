@@ -24,6 +24,8 @@ export {
   updates,
   onboarding,
   abTests,
+  auth,
+  users,
   ApiError,
   formatError,
 } from './_monolith';
@@ -44,4 +46,8 @@ export type {
   ABTest,
   ABTestStats,
   ABTestDetail,
+  AuthUser,
+  LoginResponse,
+  UserCreate,
+  UserUpdate,
 } from './_monolith';

@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { LicenseGate } from '@/components/LicenseGate';
+import { LoginGate } from '@/components/LoginGate';
 import { ToastProvider } from '@/components/ui/Toast';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { ThemeProvider } from '@/lib/theme';
@@ -26,6 +27,7 @@ const Help = lazy(() => import('@/pages/Help'));
 const YouTube = lazy(() => import('@/pages/YouTube'));
 const Usage = lazy(() => import('@/pages/Usage'));
 const CloudGPU = lazy(() => import('@/pages/CloudGPU'));
+const Login = lazy(() => import('@/pages/Login'));
 
 // ---------------------------------------------------------------------------
 // Loading fallback
@@ -71,7 +73,14 @@ function App() {
     <LicenseGate>
     <Suspense fallback={<PageLoadingFallback />}>
     <Routes>
-      <Route element={<Layout />}>
+      <Route path="/login" element={<Login />} />
+      <Route
+        element={
+          <LoginGate>
+            <Layout />
+          </LoginGate>
+        }
+      >
         <Route path="/" element={<Dashboard />} />
         <Route path="/series" element={<SeriesList />} />
         <Route path="/series/:seriesId" element={<SeriesDetail />} />

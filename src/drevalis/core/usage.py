@@ -50,9 +50,7 @@ class TokenAccumulator:
     def add(self, *, provider: str, prompt: int, completion: int) -> None:
         self.prompt_tokens += max(0, int(prompt))
         self.completion_tokens += max(0, int(completion))
-        bucket = self.by_provider.setdefault(
-            provider, {"prompt": 0, "completion": 0}
-        )
+        bucket = self.by_provider.setdefault(provider, {"prompt": 0, "completion": 0})
         bucket["prompt"] += max(0, int(prompt))
         bucket["completion"] += max(0, int(completion))
 
@@ -62,7 +60,9 @@ _current_accumulator: ContextVar[TokenAccumulator | None] = ContextVar(
 )
 
 
-def record_llm_usage(*, prompt_tokens: int, completion_tokens: int, provider: str = "unknown") -> None:
+def record_llm_usage(
+    *, prompt_tokens: int, completion_tokens: int, provider: str = "unknown"
+) -> None:
     """Called by LLM providers after every successful generate(). No-op
     when no accumulator is active (e.g. unit tests, ad-hoc REPL use)."""
     acc = _current_accumulator.get()
