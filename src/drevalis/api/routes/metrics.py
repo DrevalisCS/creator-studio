@@ -223,6 +223,18 @@ async def usage_summary(
             .group_by(GenerationJob.step)
         )
     ).all()
+
+    # LLM token totals over the window.
+    token_row = (
+        await db.execute(
+            select(
+                func.coalesce(func.sum(GenerationJob.tokens_prompt), 0).label("prompt"),
+                func.coalesce(func.sum(GenerationJob.tokens_completion), 0).label("completion"),
+            ).where(GenerationJob.started_at >= start)
+        )
+    ).one()
+    tokens_prompt = int(token_row.prompt or 0)
+    tokens_completion = int(token_row.completion or 0)
     per_step_seconds = {str(r.step): round(float(r.seconds or 0), 1) for r in step_rows}
 
     # Totals.
@@ -253,11 +265,15 @@ async def usage_summary(
             "failures": total_failures,
             "failure_rate": round(failure_rate, 4),
             "per_step_seconds": per_step_seconds,
+            "tokens_prompt": tokens_prompt,
+            "tokens_completion": tokens_completion,
+            "tokens_total": tokens_prompt + tokens_completion,
         },
         "daily": daily,
         "instrumentation_notes": [
-            "LLM token counts are not yet persisted per-run — coming in a future release.",
             "ComfyUI + TTS compute is captured as wall-clock pipeline time, not GPU seconds.",
             "RunPod minutes are tracked on runpod.io directly; we don't proxy their billing.",
+            "Token counts cover LLM calls that completed through drevalis' LLMService — "
+            "models queried directly outside the pipeline won't appear here.",
         ],
     }

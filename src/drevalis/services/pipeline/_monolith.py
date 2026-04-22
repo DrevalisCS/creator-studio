@@ -249,9 +249,26 @@ class PipelineOrchestrator:
 
             step_start = time.perf_counter()
 
+            # Install a per-step LLM token accumulator. Every
+            # provider.generate() call during this step bumps the
+            # counters via contextvar; we persist them on the job row
+            # when the step finishes successfully.
+            from drevalis.core.usage import end_accumulator, start_accumulator
+
+            token_acc, token_reset = start_accumulator()
+
             try:
                 await self._broadcast_progress(step, 0, "running", f"Starting {step.value}...")
                 await self._execute_step(step, episode, series, job)
+                # Persist accumulated token spend before marking done —
+                # _mark_step_done commits, so the UPDATE goes in the
+                # same transaction.
+                if token_acc.prompt_tokens or token_acc.completion_tokens:
+                    await self.job_repo.update(
+                        job.id,
+                        tokens_prompt=token_acc.prompt_tokens,
+                        tokens_completion=token_acc.completion_tokens,
+                    )
                 await self._mark_step_done(job)
                 await self._broadcast_progress(step, 100, "done", f"{step.value} complete")
 
@@ -304,6 +321,18 @@ class PipelineOrchestrator:
                     episode_id=str(self.episode_id),
                 )
 
+                # Even on failure, persist any tokens the step did
+                # consume — the user still paid for them.
+                if token_acc.prompt_tokens or token_acc.completion_tokens:
+                    try:
+                        await self.job_repo.update(
+                            job.id,
+                            tokens_prompt=token_acc.prompt_tokens,
+                            tokens_completion=token_acc.completion_tokens,
+                        )
+                    except Exception:  # noqa: BLE001 — don't mask original exc
+                        pass
+
                 suggestion = self._get_error_suggestion(step, exc)
                 self.log.error(
                     "step_failed_with_duration",
@@ -319,7 +348,16 @@ class PipelineOrchestrator:
                 # Record failed generation
                 await metrics.record_generation(success=False)
                 clear_pipeline_context()
+                end_accumulator(token_reset)
                 raise  # Let arq handle retry
+            finally:
+                # Always tear down the contextvar so the next step
+                # gets a clean accumulator — except on the already-handled
+                # raise-path above which already called it.
+                try:
+                    end_accumulator(token_reset)
+                except Exception:  # noqa: BLE001
+                    pass
 
         # All steps done
         await self.episode_repo.update_status(self.episode_id, "review")

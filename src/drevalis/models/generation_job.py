@@ -58,6 +58,15 @@ class GenerationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     total_items: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
     completed_items: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
 
+    # ── LLM token accounting ─────────────────────────────────────────
+    # Accumulated input/output tokens across every LLM call this step
+    # made. Zero for steps that don't touch an LLM (voice, scenes,
+    # captions, assembly, thumbnail). Populated via the
+    # drevalis.core.usage context-var tracker — see that module for
+    # the contract.
+    tokens_prompt: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="0")
+    tokens_completion: Mapped[int] = mapped_column(INTEGER, nullable=False, server_default="0")
+
     # ── Relationships ──────────────────────────────────────────────────
     episode: Mapped[Episode] = relationship(back_populates="generation_jobs")
     media_assets: Mapped[list[MediaAsset]] = relationship(

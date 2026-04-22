@@ -156,6 +156,14 @@ class OpenAICompatibleProvider:
             completion_tokens=usage.completion_tokens if usage else 0,
             total_tokens=usage.total_tokens if usage else 0,
         )
+        # Feed the pipeline-step's token accumulator if one is active.
+        from drevalis.core.usage import record_llm_usage
+
+        record_llm_usage(
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
+            provider="openai_compatible",
+        )
         logger.info(
             "openai_generate_complete",
             model=result.model,
@@ -221,6 +229,13 @@ class AnthropicProvider:
             prompt_tokens=response.usage.input_tokens,
             completion_tokens=response.usage.output_tokens,
             total_tokens=response.usage.input_tokens + response.usage.output_tokens,
+        )
+        from drevalis.core.usage import record_llm_usage
+
+        record_llm_usage(
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
+            provider="anthropic",
         )
         logger.info(
             "anthropic_generate_complete",

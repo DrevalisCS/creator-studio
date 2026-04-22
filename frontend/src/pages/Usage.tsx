@@ -20,6 +20,9 @@ interface UsagePayload {
     failures: number;
     failure_rate: number;
     per_step_seconds: Record<string, number>;
+    tokens_prompt: number;
+    tokens_completion: number;
+    tokens_total: number;
   };
   daily: UsageDaily[];
   instrumentation_notes: string[];
@@ -121,10 +124,15 @@ export default function UsagePage() {
           </p>
 
           {/* Totals */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
             <KPI label="Episodes generated" value={fmtNumber(data.totals.episodes_generated)} />
             <KPI label="Pipeline runs" value={fmtNumber(data.totals.pipeline_runs)} />
             <KPI label="Compute time" value={fmtSeconds(data.totals.pipeline_seconds)} />
+            <KPI
+              label="LLM tokens"
+              value={fmtNumber(data.totals.tokens_total)}
+              sub={`${fmtNumber(data.totals.tokens_prompt)} in · ${fmtNumber(data.totals.tokens_completion)} out`}
+            />
             <KPI
               label="Failure rate"
               value={`${(data.totals.failure_rate * 100).toFixed(1)}%`}
