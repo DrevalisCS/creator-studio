@@ -40,6 +40,7 @@ import type {
   YouTubePlaylist,
   YouTubeVideoStats,
 } from '@/types';
+import type { YouTubeChannelAnalytics } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Tabs
@@ -1032,6 +1033,10 @@ function AnalyticsTab({ uploads, loading, channelMap }: AnalyticsTabProps) {
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState<string | null>(null);
 
+  const [channelAnalytics, setChannelAnalytics] = useState<YouTubeChannelAnalytics | null>(null);
+  const [channelAnalyticsErr, setChannelAnalyticsErr] = useState<null | { kind: 'scope' | 'other'; msg: string }>(null);
+  const [windowDays, setWindowDays] = useState<28 | 90>(28);
+
   const completedUploads = uploads.filter(
     (u) => u.upload_status === 'done' && u.youtube_video_id,
   );
@@ -1056,9 +1061,31 @@ function AnalyticsTab({ uploads, loading, channelMap }: AnalyticsTabProps) {
     }
   }, [completedUploads.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const fetchChannelAnalytics = useCallback(async () => {
+    setChannelAnalyticsErr(null);
+    try {
+      const data = await youtubeApi.getChannelAnalytics({ days: windowDays });
+      setChannelAnalytics(data);
+    } catch (err: any) {
+      const raw = err?.detailRaw;
+      if (raw && typeof raw === 'object' && raw.error === 'analytics_scope_missing') {
+        setChannelAnalyticsErr({ kind: 'scope', msg: raw.hint || 'Reconnect required.' });
+      } else {
+        setChannelAnalyticsErr({
+          kind: 'other',
+          msg: err?.detail || err?.message || 'Failed to load channel analytics.',
+        });
+      }
+    }
+  }, [windowDays]);
+
   useEffect(() => {
     void fetchStats();
   }, [fetchStats]);
+
+  useEffect(() => {
+    void fetchChannelAnalytics();
+  }, [fetchChannelAnalytics]);
 
   if (loading || statsLoading) {
     return (
@@ -1124,6 +1151,97 @@ function AnalyticsTab({ uploads, loading, channelMap }: AnalyticsTabProps) {
 
   return (
     <div className="space-y-4">
+      {/* Channel analytics (YouTube Analytics API — CTR, retention, subs) */}
+      <Card padding="md">
+        <div className="flex items-center justify-between mb-3">
+          <div>
+            <h3 className="text-sm font-semibold text-txt-primary">
+              Channel performance · last {windowDays} days
+            </h3>
+            {channelAnalytics && (
+              <p className="text-xs text-txt-tertiary mt-0.5">
+                {channelAnalytics.start_date} → {channelAnalytics.end_date}
+              </p>
+            )}
+          </div>
+          <div className="flex gap-1">
+            {[28, 90].map((d) => (
+              <button
+                key={d}
+                onClick={() => setWindowDays(d as 28 | 90)}
+                className={`text-xs px-2.5 py-1 rounded border ${
+                  windowDays === d
+                    ? 'border-accent/40 text-accent bg-accent/10'
+                    : 'border-border text-txt-secondary hover:text-txt-primary'
+                }`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {channelAnalyticsErr?.kind === 'scope' && (
+          <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-200">
+            <strong className="text-amber-100">Reconnect required.</strong>{' '}
+            This channel's OAuth token was created before analytics support was added. Disconnect
+            and reconnect it from Settings → YouTube to grant access; existing uploads are unaffected.
+          </div>
+        )}
+        {channelAnalyticsErr?.kind === 'other' && (
+          <p className="text-xs text-error">{channelAnalyticsErr.msg}</p>
+        )}
+        {channelAnalytics && !channelAnalyticsErr && (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div>
+              <p className="text-[11px] text-txt-tertiary">Views</p>
+              <p className="text-lg font-semibold text-txt-primary">
+                {formatNumber(channelAnalytics.totals.views)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-txt-tertiary">Watch time (min)</p>
+              <p className="text-lg font-semibold text-txt-primary">
+                {formatNumber(channelAnalytics.totals.estimated_minutes_watched)}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-txt-tertiary">Avg view duration</p>
+              <p className="text-lg font-semibold text-txt-primary">
+                {Math.floor(channelAnalytics.totals.average_view_duration_seconds / 60)}m{' '}
+                {channelAnalytics.totals.average_view_duration_seconds % 60}s
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-txt-tertiary">Subscribers</p>
+              <p className="text-lg font-semibold text-txt-primary">
+                {(
+                  channelAnalytics.totals.subscribers_gained -
+                  channelAnalytics.totals.subscribers_lost
+                ) >= 0
+                  ? '+'
+                  : ''}
+                {channelAnalytics.totals.subscribers_gained -
+                  channelAnalytics.totals.subscribers_lost}
+              </p>
+              <p className="text-[10px] text-txt-tertiary">
+                +{channelAnalytics.totals.subscribers_gained} / -
+                {channelAnalytics.totals.subscribers_lost}
+              </p>
+            </div>
+            <div>
+              <p className="text-[11px] text-txt-tertiary">Card CTR</p>
+              <p className="text-lg font-semibold text-txt-primary">
+                {(channelAnalytics.totals.card_click_rate * 100).toFixed(2)}%
+              </p>
+              <p className="text-[10px] text-txt-tertiary">
+                {formatNumber(channelAnalytics.totals.card_impressions)} impressions
+              </p>
+            </div>
+          </div>
+        )}
+      </Card>
+
       {/* Summary cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card padding="md">

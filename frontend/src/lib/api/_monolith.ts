@@ -916,7 +916,37 @@ export const youtube = {
   // Analytics
   getVideoStats: (videoIds: string[]) =>
     get<YouTubeVideoStats[]>(`/api/v1/youtube/analytics?video_ids=${videoIds.join(',')}`),
+
+  getChannelAnalytics: (params?: { channelId?: string; days?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.channelId) qs.set('channel_id', params.channelId);
+    if (params?.days) qs.set('days', String(params.days));
+    const q = qs.toString();
+    return get<YouTubeChannelAnalytics>(
+      `/api/v1/youtube/analytics/channel${q ? `?${q}` : ''}`,
+    );
+  },
 };
+
+export interface YouTubeChannelAnalytics {
+  channel_id: string;
+  window_days: number;
+  start_date: string;
+  end_date: string;
+  totals: {
+    views: number;
+    estimated_minutes_watched: number;
+    average_view_duration_seconds: number;
+    subscribers_gained: number;
+    subscribers_lost: number;
+    likes: number;
+    comments: number;
+    shares: number;
+    card_click_rate: number;
+    card_impressions: number;
+  };
+  daily: { day: string; views: number; minutes_watched: number }[];
+}
 
 // ---------------------------------------------------------------------------
 // Video Templates

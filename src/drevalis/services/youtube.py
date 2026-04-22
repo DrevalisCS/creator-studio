@@ -34,6 +34,12 @@ class YouTubeService:
     SCOPES = [
         "https://www.googleapis.com/auth/youtube.upload",
         "https://www.googleapis.com/auth/youtube",
+        # yt-analytics.readonly unlocks the YouTube Analytics API v2
+        # (CTR, average view duration, retention, subscribers gained/lost).
+        # Existing users whose tokens were minted before this was added
+        # will see 403 on the analytics endpoint until they reconnect —
+        # the frontend catches that and prompts a re-auth.
+        "https://www.googleapis.com/auth/yt-analytics.readonly",
     ]
 
     def __init__(
@@ -570,3 +576,133 @@ class YouTubeService:
             return stats
 
         return await asyncio.to_thread(_fetch)
+
+    async def get_channel_analytics(
+        self,
+        access_token_encrypted: str,
+        refresh_token_encrypted: str | None,
+        token_expiry: datetime | None,
+        days: int = 28,
+    ) -> dict[str, Any]:
+        """Pull channel-level YouTube Analytics for the last ``days`` days.
+
+        Uses the YouTube Analytics API v2 (``youtubeAnalytics.v2``), which
+        requires the ``yt-analytics.readonly`` scope in addition to the
+        Data API scopes. Returns:
+
+        - ``totals``: aggregated KPIs over the window (views, watch time,
+          avg view duration, subscribers gained/lost, impressions, CTR,
+          likes, comments, shares).
+        - ``daily``: time-series of views + watchMinutes per day for
+          drawing a simple sparkline.
+
+        Raises ``AnalyticsNotAuthorized`` if the token doesn't carry the
+        analytics scope (403 from Google) — callers surface that as a
+        "reconnect to enable analytics" prompt rather than a hard error.
+        """
+        from datetime import date, timedelta
+
+        credentials = self._build_credentials(
+            access_token_encrypted, refresh_token_encrypted, token_expiry
+        )
+
+        end = date.today()
+        start = end - timedelta(days=max(1, int(days)))
+
+        def _fetch() -> dict[str, Any]:
+            from googleapiclient.discovery import build
+            from googleapiclient.errors import HttpError
+
+            ya = build("youtubeAnalytics", "v2", credentials=credentials)
+
+            try:
+                totals_resp = (
+                    ya.reports()
+                    .query(
+                        ids="channel==MINE",
+                        startDate=start.isoformat(),
+                        endDate=end.isoformat(),
+                        metrics=(
+                            "views,estimatedMinutesWatched,averageViewDuration,"
+                            "subscribersGained,subscribersLost,likes,comments,shares,"
+                            "cardClickRate,cardImpressions"
+                        ),
+                    )
+                    .execute()
+                )
+                daily_resp = (
+                    ya.reports()
+                    .query(
+                        ids="channel==MINE",
+                        startDate=start.isoformat(),
+                        endDate=end.isoformat(),
+                        metrics="views,estimatedMinutesWatched",
+                        dimensions="day",
+                        sort="day",
+                    )
+                    .execute()
+                )
+            except HttpError as exc:
+                msg = str(exc)
+                if "403" in msg or "insufficient" in msg.lower():
+                    raise AnalyticsNotAuthorized(
+                        "YouTube analytics scope missing — reconnect this "
+                        "channel from Settings → YouTube to grant access."
+                    ) from exc
+                raise
+
+            # ``rows`` is a list-of-lists keyed by column order.
+            tcols = [c["name"] for c in totals_resp.get("columnHeaders", [])]
+            trow = (totals_resp.get("rows") or [[0] * len(tcols)])[0]
+            totals = dict(zip(tcols, trow, strict=False))
+
+            dcols = [c["name"] for c in daily_resp.get("columnHeaders", [])]
+            daily = [dict(zip(dcols, r, strict=False)) for r in (daily_resp.get("rows") or [])]
+
+            def _num(v: Any) -> int | float:
+                if isinstance(v, (int, float)):
+                    return v
+                try:
+                    return float(v)
+                except (TypeError, ValueError):
+                    return 0
+
+            return {
+                "window_days": days,
+                "start_date": start.isoformat(),
+                "end_date": end.isoformat(),
+                "totals": {
+                    "views": int(_num(totals.get("views", 0))),
+                    "estimated_minutes_watched": int(
+                        _num(totals.get("estimatedMinutesWatched", 0))
+                    ),
+                    "average_view_duration_seconds": int(
+                        _num(totals.get("averageViewDuration", 0))
+                    ),
+                    "subscribers_gained": int(_num(totals.get("subscribersGained", 0))),
+                    "subscribers_lost": int(_num(totals.get("subscribersLost", 0))),
+                    "likes": int(_num(totals.get("likes", 0))),
+                    "comments": int(_num(totals.get("comments", 0))),
+                    "shares": int(_num(totals.get("shares", 0))),
+                    "card_click_rate": float(_num(totals.get("cardClickRate", 0))),
+                    "card_impressions": int(_num(totals.get("cardImpressions", 0))),
+                },
+                "daily": [
+                    {
+                        "day": d.get("day"),
+                        "views": int(_num(d.get("views", 0))),
+                        "minutes_watched": int(_num(d.get("estimatedMinutesWatched", 0))),
+                    }
+                    for d in daily
+                ],
+            }
+
+        return await asyncio.to_thread(_fetch)
+
+
+class AnalyticsNotAuthorized(Exception):
+    """Raised when the channel's OAuth token lacks yt-analytics.readonly.
+
+    Callers should translate this into a 403 with a hint to reconnect
+    the channel from Settings → YouTube.
+    """

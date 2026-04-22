@@ -33,7 +33,7 @@ from drevalis.schemas.youtube import (
     YouTubeUploadRequest,
     YouTubeUploadResponse,
 )
-from drevalis.services.youtube import YouTubeService
+from drevalis.services.youtube import AnalyticsNotAuthorized, YouTubeService
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -1091,3 +1091,72 @@ async def get_video_analytics(
         ) from exc
 
     return [VideoStatsResponse(**s) for s in stats]
+
+
+# ── Channel analytics (Analytics API v2) ──────────────────────────────────
+
+
+@router.get(
+    "/analytics/channel",
+    status_code=status.HTTP_200_OK,
+    summary="Pull channel-level analytics (views, watch time, retention, CTR)",
+)
+async def get_channel_analytics(
+    channel_id: UUID | None = Query(
+        None,
+        description="Channel whose OAuth token is used. Required when multiple channels are connected.",
+    ),
+    days: int = Query(28, ge=1, le=365, description="Window length in days (1-365)."),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Fetch aggregate + daily KPIs for the window.
+
+    Returns ``{window_days, start_date, end_date, totals, daily}`` where
+    ``totals`` is a dict of integer KPIs (views / watch time / subs gained
+    / etc.) and ``daily`` is a list of ``{day, views, minutes_watched}``.
+
+    If the channel's OAuth token was minted before v0.3.7 it won't carry
+    the ``yt-analytics.readonly`` scope; this endpoint returns 403 with
+    ``{"error": "analytics_scope_missing"}`` so the frontend can prompt
+    the user to reconnect the channel.
+    """
+    svc = _get_youtube_service(settings)
+    channel_repo = YouTubeChannelRepository(db)
+    channel = await _resolve_channel(channel_repo, channel_id)
+
+    updated_tokens = await svc.refresh_tokens_if_needed(
+        channel.access_token_encrypted or "",
+        channel.refresh_token_encrypted,
+        channel.token_expiry,
+    )
+    if updated_tokens:
+        for key, value in updated_tokens.items():
+            setattr(channel, key, value)
+        await db.flush()
+        await db.commit()
+
+    try:
+        result = await svc.get_channel_analytics(
+            access_token_encrypted=channel.access_token_encrypted or "",
+            refresh_token_encrypted=channel.refresh_token_encrypted,
+            token_expiry=channel.token_expiry,
+            days=days,
+        )
+    except AnalyticsNotAuthorized as exc:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "error": "analytics_scope_missing",
+                "hint": str(exc),
+                "channel_id": str(channel.id),
+            },
+        ) from exc
+    except Exception as exc:
+        logger.error("youtube_channel_analytics_failed", error=str(exc), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to fetch channel analytics: {exc}",
+        ) from exc
+
+    return {"channel_id": str(channel.id), **result}

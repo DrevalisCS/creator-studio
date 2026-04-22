@@ -39,4 +39,5 @@ export type {
   OnboardingStatus,
   SEOCheck,
   SEOScore,
+  YouTubeChannelAnalytics,
 } from './_monolith';
