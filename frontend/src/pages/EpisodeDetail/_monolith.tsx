@@ -36,6 +36,7 @@ import { Input, Textarea } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
 import { SEOScorePanel } from '@/components/episode/SEOScorePanel';
+import { ThumbnailEditor } from '@/components/episode/ThumbnailEditor';
 import { Spinner } from '@/components/ui/Spinner';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import VideoEditor from '@/components/video/VideoEditor';
@@ -93,6 +94,7 @@ function EpisodeDetail() {
   // YouTube upload state
   const [youtubeConnected, setYoutubeConnected] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+  const [thumbEditorOpen, setThumbEditorOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [ytTitle, setYtTitle] = useState('');
   const [ytDescription, setYtDescription] = useState('');
@@ -670,6 +672,14 @@ function EpisodeDetail() {
                   >
                     <ImageIcon size={14} /> Thumbnail (.jpg)
                   </a>
+                  <Popover.Close asChild>
+                    <button
+                      onClick={() => setThumbEditorOpen(true)}
+                      className="flex items-center gap-2 w-full text-left px-3 py-2.5 text-sm text-txt-primary hover:bg-bg-hover"
+                    >
+                      <ImageIcon size={14} /> Edit thumbnail…
+                    </button>
+                  </Popover.Close>
                   <a
                     href={`/api/v1/episodes/${episodeId}/export/description`}
                     className="flex items-center gap-2 px-3 py-2.5 text-sm text-txt-primary hover:bg-bg-hover"
@@ -1081,6 +1091,19 @@ function EpisodeDetail() {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      {/* Thumbnail editor */}
+      <ThumbnailEditor
+        open={thumbEditorOpen}
+        onClose={() => setThumbEditorOpen(false)}
+        episodeId={episodeId ?? ''}
+        currentThumbnailUrl={
+          episode?.metadata_?.thumbnail_path
+            ? `/storage/${episode.metadata_.thumbnail_path}`
+            : null
+        }
+        onSaved={() => void fetchEpisode()}
+      />
 
       {/* SEO Optimization Dialog */}
       <Dialog

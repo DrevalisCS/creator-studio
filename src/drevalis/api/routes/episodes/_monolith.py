@@ -12,7 +12,7 @@ from uuid import UUID
 
 import structlog
 from arq.connections import ArqRedis
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -2020,6 +2020,131 @@ async def export_thumbnail(
         filename=f"{safe_name}_thumbnail.jpg",
         media_type="image/jpeg",
     )
+
+
+# ── Upload custom thumbnail ──────────────────────────────────────────────
+
+
+@router.post(
+    "/{episode_id}/thumbnail",
+    status_code=status.HTTP_200_OK,
+    summary="Replace the episode's thumbnail with a user-uploaded image",
+    tags=["thumbnail"],
+)
+async def upload_thumbnail(
+    episode_id: UUID,
+    file: UploadFile = File(
+        ...,
+        description="PNG or JPEG. Max 4 MB. Saved as storage/episodes/{id}/output/thumbnail.jpg.",
+    ),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Accept a user-edited thumbnail image and replace the episode's
+    thumbnail asset.
+
+    Used by the in-app thumbnail editor — the frontend renders the
+    composited image (base + text overlay) on a Canvas, exports to PNG,
+    and POSTs the blob here. Any previous thumbnail MediaAsset rows are
+    deleted so the freshly-uploaded file is the single source of truth.
+    """
+    # 1. Validate input.
+    content_type = (file.content_type or "").lower()
+    if content_type not in ("image/png", "image/jpeg", "image/jpg"):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail={
+                "error": "unsupported_image_type",
+                "hint": "Upload a PNG or JPEG.",
+                "received": content_type or "(missing)",
+            },
+        )
+
+    # Stream into memory up to 4 MiB; abort larger files so a malformed
+    # client can't flood the disk.
+    MAX_BYTES = 4 * 1024 * 1024
+    data = bytearray()
+    while chunk := await file.read(64 * 1024):
+        data.extend(chunk)
+        if len(data) > MAX_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail={
+                    "error": "thumbnail_too_large",
+                    "hint": f"Max {MAX_BYTES // 1024 // 1024} MB.",
+                },
+            )
+
+    # 2. Load episode, ensure the output directory exists.
+    episode_repo = EpisodeRepository(db)
+    episode = await episode_repo.get(episode_id)
+    if not episode:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="episode_not_found",
+        )
+
+    base = Path(settings.storage_base_path)
+    rel_path = f"episodes/{episode_id}/output/thumbnail.jpg"
+    abs_path = base / rel_path
+    abs_path.parent.mkdir(parents=True, exist_ok=True)
+
+    # 3. Re-encode to JPEG so YouTube (which caps thumbs at 2MB JPEG)
+    #    always accepts it regardless of what the browser sent.
+    from io import BytesIO
+
+    try:
+        from PIL import Image
+    except ImportError as exc:  # pragma: no cover - Pillow ships with the image deps
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Pillow not installed; thumbnail editor requires it",
+        ) from exc
+
+    try:
+        img = Image.open(BytesIO(bytes(data)))
+        if img.mode in ("RGBA", "LA", "P"):
+            img = img.convert("RGB")
+        img.save(abs_path, format="JPEG", quality=92, optimize=True)
+    except Exception as exc:
+        logger.error("thumbnail_upload_decode_failed", error=str(exc), exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not decode uploaded image.",
+        ) from exc
+
+    file_size = abs_path.stat().st_size
+
+    # 4. Point the MediaAsset + episode metadata at the new file.
+    asset_repo = MediaAssetRepository(db)
+    existing = await asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
+    for a in existing:
+        await asset_repo.delete(a.id)
+
+    new_asset = await asset_repo.create(
+        episode_id=episode_id,
+        asset_type="thumbnail",
+        file_path=rel_path,
+        file_size_bytes=file_size,
+    )
+
+    current_metadata = dict(episode.metadata_ or {}) if episode.metadata_ else {}
+    current_metadata["thumbnail_path"] = rel_path
+    await episode_repo.update(episode_id, metadata_=current_metadata)
+    await db.commit()
+
+    logger.info(
+        "thumbnail_uploaded",
+        episode_id=str(episode_id),
+        size_bytes=file_size,
+        asset_id=str(new_asset.id),
+    )
+    return {
+        "message": "Thumbnail replaced.",
+        "asset_id": str(new_asset.id),
+        "file_path": rel_path,
+        "size_bytes": file_size,
+    }
 
 
 # ── Export description ───────────────────────────────────────────────────
