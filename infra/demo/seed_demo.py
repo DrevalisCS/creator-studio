@@ -309,7 +309,7 @@ async def seed() -> None:
         for ep_idx, source_dir in enumerate(real_pool):
             series = series_rows[ep_idx % len(series_rows)]
             title = TITLE_POOL[ep_idx % len(TITLE_POOL)]
-            scene_files = sorted((source_dir / "scenes").glob("scene_*.png"))
+            scene_files = _resolve_scene_files(source_dir)
             scene_count = len(scene_files)
 
             ep = Episode(
@@ -368,16 +368,17 @@ async def seed() -> None:
                 )
 
             # Voice.
-            voice_rel = f"episodes/{source_id}/voice/full.wav"
-            voice_abs = STORAGE_ROOT / voice_rel
-            session.add(
-                MediaAsset(
-                    episode_id=ep.id,
-                    asset_type="voiceover",
-                    file_path=voice_rel,
-                    file_size_bytes=voice_abs.stat().st_size,
+            voice_abs = _resolve_voice_file(source_dir)
+            if voice_abs is not None:
+                voice_rel = voice_abs.relative_to(STORAGE_ROOT).as_posix()
+                session.add(
+                    MediaAsset(
+                        episode_id=ep.id,
+                        asset_type="voiceover",
+                        file_path=voice_rel,
+                        file_size_bytes=voice_abs.stat().st_size,
+                    )
                 )
-            )
 
             # Final video.
             vid_rel = f"episodes/{source_id}/output/final.mp4"
@@ -436,28 +437,52 @@ def _fake_script(title: str, n_scenes: int) -> dict[str, Any]:
     }
 
 
+def _resolve_voice_file(episode_dir: Path) -> Path | None:
+    """Real episodes land with ``audio/voiceover.wav`` from the normal
+    pipeline; the older hand-authored demo content used ``voice/full.wav``.
+    Accept either.
+    """
+    candidates = [
+        episode_dir / "audio" / "voiceover.wav",
+        episode_dir / "voice" / "full.wav",
+    ]
+    for c in candidates:
+        if c.exists() and c.stat().st_size >= 1024:
+            return c
+    return None
+
+
+def _resolve_scene_files(episode_dir: Path) -> list[Path]:
+    """Scenes can be either ``scene_NN.png`` (authored) or
+    ``<hash>.png`` (from the real pipeline). Sort stably so the demo
+    UI renders a consistent order.
+    """
+    scenes_dir = episode_dir / "scenes"
+    if not scenes_dir.exists():
+        return []
+    files = sorted(scenes_dir.glob("*.png"))
+    return files
+
+
 def _discover_real_content() -> list[Path]:
-    """Return directories under ``storage/episodes/`` that contain a
-    **complete** set of demo-worthy media: scenes + voice + thumbnail
-    + **real** final video. 1-KB stub videos left over from older seed
-    runs are rejected via a minimum file-size threshold.
+    """Return directories under ``storage/episodes/`` with a complete
+    set of demo-worthy media: scenes (>=1) + voice + thumbnail +
+    **real** final video (>= 64 KB — stub placeholders rejected).
     """
     out: list[Path] = []
     base = STORAGE_ROOT / "episodes"
     if not base.exists():
         return out
-    MIN_VIDEO_BYTES = 64 * 1024  # 64 KB — anything smaller is a stub
+    MIN_VIDEO_BYTES = 64 * 1024
     for child in sorted(base.iterdir()):
         if not child.is_dir():
             continue
         final = child / "output" / "final.mp4"
         thumb = child / "output" / "thumbnail.jpg"
-        voice = child / "voice" / "full.wav"
-        scenes_dir = child / "scenes"
         has_final = final.exists() and final.stat().st_size >= MIN_VIDEO_BYTES
         has_thumb = thumb.exists() and thumb.stat().st_size >= 1024
-        has_voice = voice.exists() and voice.stat().st_size >= 1024
-        has_scenes = scenes_dir.exists() and any(scenes_dir.glob("scene_*.png"))
+        has_voice = _resolve_voice_file(child) is not None
+        has_scenes = bool(_resolve_scene_files(child))
         if has_final and has_scenes and has_voice and has_thumb:
             out.append(child)
     return out
