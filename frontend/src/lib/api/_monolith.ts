@@ -317,6 +317,9 @@ export const episodes = {
       `/api/v1/episodes/${episodeId}/reassemble`,
     ),
 
+  seoScore: (episodeId: string) =>
+    get<SEOScore>(`/api/v1/episodes/${episodeId}/seo-score`),
+
   regenerateCaptions: (episodeId: string, captionStyle: string) =>
     post<{ message: string; episode_id: string; job_ids: string[] }>(
       `/api/v1/episodes/${episodeId}/regenerate-captions?caption_style=${encodeURIComponent(captionStyle)}`,
@@ -1039,6 +1042,26 @@ export const updates = {
   apply: () => post<{ queued: boolean; hint: string }>('/api/v1/updates/apply'),
   progress: () => get<UpdateProgress>('/api/v1/updates/progress'),
 };
+
+// ---------------------------------------------------------------------------
+// SEO score
+// ---------------------------------------------------------------------------
+
+export interface SEOCheck {
+  id: string;
+  label: string;
+  pass: boolean;
+  severity: 'ok' | 'warn' | 'error' | 'info';
+  hint: string;
+}
+
+export interface SEOScore {
+  overall_score: number;
+  grade: 'A' | 'B' | 'C' | 'D';
+  summary: string;
+  has_seo_metadata: boolean;
+  checks: SEOCheck[];
+}
 
 // ---------------------------------------------------------------------------
 // Onboarding

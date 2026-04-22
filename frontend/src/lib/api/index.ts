@@ -37,4 +37,6 @@ export type {
   ActivationEntry,
   ActivationsResponse,
   OnboardingStatus,
+  SEOCheck,
+  SEOScore,
 } from './_monolith';

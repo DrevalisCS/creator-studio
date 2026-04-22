@@ -35,6 +35,7 @@ import { Card } from '@/components/ui/Card';
 import { Input, Textarea } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
+import { SEOScorePanel } from '@/components/episode/SEOScorePanel';
 import { Spinner } from '@/components/ui/Spinner';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import VideoEditor from '@/components/video/VideoEditor';
@@ -681,6 +682,13 @@ function EpisodeDetail() {
                   >
                     <Archive size={14} /> Download All (.zip)
                   </a>
+                  <a
+                    href={`/api/v1/episodes/${episodeId}/export/raw-assets`}
+                    className="flex items-center gap-2 px-3 py-2.5 text-sm text-txt-primary hover:bg-bg-hover border-t border-border"
+                    title="Per-scene images, voice segments, captions — useful for debugging or hand-editing"
+                  >
+                    <Archive size={14} /> Raw assets (.zip)
+                  </a>
                   {youtubeConnected && (
                     <Popover.Close asChild>
                       <button
@@ -1325,6 +1333,10 @@ function ScriptTab({
 
   return (
     <div className="space-y-4">
+      {/* SEO heuristics — deterministic, no LLM call. Updates when the
+          episode.updated_at changes (post-save, post-regeneration, etc.). */}
+      <SEOScorePanel episodeId={episodeId} refreshKey={Date.parse(episode.updated_at)} />
+
       {/* Voice Control Panel */}
       <Card className="p-3">
         <div className="flex items-center justify-between mb-2">

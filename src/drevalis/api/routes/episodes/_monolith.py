@@ -14,6 +14,7 @@ import structlog
 from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import FileResponse, Response
+from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -2117,6 +2118,508 @@ async def export_bundle(
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{safe_name}_bundle.zip"',
+        },
+    )
+
+
+class SEOCheck(BaseModel):
+    id: str
+    label: str
+    pass_: bool = Field(alias="pass")
+    severity: str  # "ok" | "warn" | "error" | "info"
+    hint: str
+
+    model_config = {"populate_by_name": True}
+
+
+class SEOScoreResponse(BaseModel):
+    overall_score: int  # 0 - 100
+    grade: str  # "A" | "B" | "C" | "D"
+    summary: str
+    has_seo_metadata: bool
+    checks: list[SEOCheck]
+
+
+def _grade_for(score: int) -> str:
+    if score >= 90:
+        return "A"
+    if score >= 75:
+        return "B"
+    if score >= 55:
+        return "C"
+    return "D"
+
+
+@router.get(
+    "/{episode_id}/seo-score",
+    response_model=SEOScoreResponse,
+    tags=["seo"],
+    summary="Deterministic SEO heuristics for the current episode metadata",
+)
+async def get_seo_score(
+    episode_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> SEOScoreResponse:
+    """Pure heuristics — no LLM call. Returns a list of pass/fail checks
+    against YouTube-style SEO best practices (title length, description
+    depth, tag count, hook presence, CTA density). Used by the script
+    review panel to surface quick-wins before the user ships.
+
+    Points per check are hard-coded and sum to 100; the overall grade
+    is a function of the total.
+    """
+    repo = EpisodeRepository(db)
+    episode = await repo.get(episode_id)
+    if not episode:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="episode_not_found",
+        )
+
+    meta = episode.metadata_ or {}
+    seo = meta.get("seo") if isinstance(meta, dict) else None
+    has_seo = isinstance(seo, dict)
+
+    # Use the LLM-generated SEO metadata when present, otherwise fall
+    # back to the raw episode fields — that way the score is available
+    # before SEO generation has been run (and nudges the user to run it).
+    title = (seo or {}).get("title") or episode.title or ""
+    description = (seo or {}).get("description") or (episode.topic or "")
+    hashtags = list((seo or {}).get("hashtags") or [])
+    tags = list((seo or {}).get("tags") or [])
+    hook = (seo or {}).get("hook") or ""
+
+    checks: list[SEOCheck] = []
+    score = 0
+
+    # Title length — YouTube shows the first 60-70 chars in search.
+    tlen = len(title)
+    if 45 <= tlen <= 70:
+        checks.append(
+            SEOCheck(
+                id="title_length",
+                label="Title length",
+                pass_=True,
+                severity="ok",
+                hint=f"{tlen} chars — in the sweet spot.",
+            )
+        )
+        score += 20
+    elif tlen < 20:
+        checks.append(
+            SEOCheck(
+                id="title_length",
+                label="Title length",
+                pass_=False,
+                severity="error",
+                hint=f"Only {tlen} chars — likely to underperform. Aim for 45-70.",
+            )
+        )
+    elif tlen < 45:
+        checks.append(
+            SEOCheck(
+                id="title_length",
+                label="Title length",
+                pass_=False,
+                severity="warn",
+                hint=f"{tlen} chars — try expanding toward 45-70 for better CTR.",
+            )
+        )
+        score += 10
+    else:  # > 70
+        checks.append(
+            SEOCheck(
+                id="title_length",
+                label="Title length",
+                pass_=False,
+                severity="warn",
+                hint=f"{tlen} chars — will be truncated in search. Trim toward 60-65.",
+            )
+        )
+        score += 10
+
+    # Description length — >= 125 chars fills the visible snippet; >= 400 is ideal.
+    dlen = len(description)
+    if dlen >= 400:
+        checks.append(
+            SEOCheck(
+                id="desc_length",
+                label="Description depth",
+                pass_=True,
+                severity="ok",
+                hint=f"{dlen} chars — plenty of room for context + links.",
+            )
+        )
+        score += 20
+    elif dlen >= 125:
+        checks.append(
+            SEOCheck(
+                id="desc_length",
+                label="Description depth",
+                pass_=False,
+                severity="warn",
+                hint=f"{dlen} chars — enough for search snippet; expand toward 400 for more keyword coverage.",
+            )
+        )
+        score += 12
+    else:
+        checks.append(
+            SEOCheck(
+                id="desc_length",
+                label="Description depth",
+                pass_=False,
+                severity="error",
+                hint=f"Only {dlen} chars. YouTube shows ~125 chars in search; add context, keywords, and a CTA.",
+            )
+        )
+
+    # Tag count — 5-15 keywords is healthy.
+    tag_count = len(tags)
+    if 5 <= tag_count <= 15:
+        checks.append(
+            SEOCheck(
+                id="tag_count",
+                label="Keyword tags",
+                pass_=True,
+                severity="ok",
+                hint=f"{tag_count} tags — good spread.",
+            )
+        )
+        score += 15
+    elif 1 <= tag_count < 5:
+        checks.append(
+            SEOCheck(
+                id="tag_count",
+                label="Keyword tags",
+                pass_=False,
+                severity="warn",
+                hint=f"Only {tag_count} tags. Aim for 5-15 to help discovery.",
+            )
+        )
+        score += 7
+    elif tag_count > 15:
+        checks.append(
+            SEOCheck(
+                id="tag_count",
+                label="Keyword tags",
+                pass_=False,
+                severity="warn",
+                hint=f"{tag_count} tags is over-tagging territory. Trim to 5-15 strongest.",
+            )
+        )
+        score += 8
+    else:
+        checks.append(
+            SEOCheck(
+                id="tag_count",
+                label="Keyword tags",
+                pass_=False,
+                severity="error",
+                hint="No keyword tags — add 5-15 to help YouTube's algorithm place this.",
+            )
+        )
+
+    # Hashtags — 3-5 is YouTube's own recommendation.
+    htag_count = len(hashtags)
+    if 3 <= htag_count <= 5:
+        checks.append(
+            SEOCheck(
+                id="hashtag_count",
+                label="Hashtags",
+                pass_=True,
+                severity="ok",
+                hint=f"{htag_count} hashtags — matches YouTube's own guidance.",
+            )
+        )
+        score += 10
+    elif 1 <= htag_count < 3:
+        checks.append(
+            SEOCheck(
+                id="hashtag_count",
+                label="Hashtags",
+                pass_=False,
+                severity="warn",
+                hint=f"Only {htag_count} hashtag(s). YouTube recommends 3-5 — add one or two more.",
+            )
+        )
+        score += 5
+    elif htag_count > 5:
+        checks.append(
+            SEOCheck(
+                id="hashtag_count",
+                label="Hashtags",
+                pass_=False,
+                severity="warn",
+                hint=f"{htag_count} hashtags — YouTube caps at 15, but only the first 3 render in the title bar. Keep the strongest 3-5.",
+            )
+        )
+        score += 5
+    else:
+        checks.append(
+            SEOCheck(
+                id="hashtag_count",
+                label="Hashtags",
+                pass_=False,
+                severity="warn",
+                hint="No hashtags set. Add 3-5 to appear in topical feeds.",
+            )
+        )
+
+    # Hook — must be non-empty and fit in ~8 seconds of speech (~25 words).
+    hook_words = len(hook.split())
+    if 6 <= hook_words <= 25 and hook.strip():
+        checks.append(
+            SEOCheck(
+                id="hook",
+                label="Opening hook",
+                pass_=True,
+                severity="ok",
+                hint=f"{hook_words}-word hook — fits the first 8-10 seconds.",
+            )
+        )
+        score += 15
+    elif hook.strip() and hook_words > 25:
+        checks.append(
+            SEOCheck(
+                id="hook",
+                label="Opening hook",
+                pass_=False,
+                severity="warn",
+                hint=f"Hook is {hook_words} words — too long to land in the first 8 seconds. Tighten to 10-20.",
+            )
+        )
+        score += 7
+    elif hook.strip():
+        checks.append(
+            SEOCheck(
+                id="hook",
+                label="Opening hook",
+                pass_=False,
+                severity="warn",
+                hint=f"Hook is only {hook_words} words — add a concrete claim or question.",
+            )
+        )
+        score += 7
+    else:
+        checks.append(
+            SEOCheck(
+                id="hook",
+                label="Opening hook",
+                pass_=False,
+                severity="error",
+                hint="No hook set. Generate SEO metadata or write a 10-20 word opener — this is the single biggest retention lever.",
+            )
+        )
+
+    # CTA — at least one of (subscribe, comment, like, follow) in the description.
+    cta_patterns = ("subscribe", "comment", "like", "follow", "share")
+    cta_hits = [w for w in cta_patterns if w in description.lower()]
+    if cta_hits:
+        checks.append(
+            SEOCheck(
+                id="cta",
+                label="Call to action",
+                pass_=True,
+                severity="ok",
+                hint=f"Found: {', '.join(cta_hits)}.",
+            )
+        )
+        score += 10
+    else:
+        checks.append(
+            SEOCheck(
+                id="cta",
+                label="Call to action",
+                pass_=False,
+                severity="warn",
+                hint="No CTA in description. Add 'Subscribe for more…' or 'Comment if this helped' to lift engagement signals.",
+            )
+        )
+
+    # Keyword density — at least one of the top-3 tags should appear in the description.
+    if tags and description:
+        d_lower = description.lower()
+        matched = [t for t in tags[:5] if t.lower() in d_lower]
+        if matched:
+            checks.append(
+                SEOCheck(
+                    id="keyword_density",
+                    label="Keyword reuse",
+                    pass_=True,
+                    severity="ok",
+                    hint=f"Top tag(s) appear in description: {', '.join(matched)}.",
+                )
+            )
+            score += 10
+        else:
+            checks.append(
+                SEOCheck(
+                    id="keyword_density",
+                    label="Keyword reuse",
+                    pass_=False,
+                    severity="warn",
+                    hint="None of your top tags appear in the description. Weave 1-2 in naturally to reinforce the topic.",
+                )
+            )
+    else:
+        checks.append(
+            SEOCheck(
+                id="keyword_density",
+                label="Keyword reuse",
+                pass_=False,
+                severity="info",
+                hint="Set keyword tags + description first, then this check will score.",
+            )
+        )
+
+    # SEO-metadata freshness flag — info-only, doesn't move the score.
+    if not has_seo:
+        checks.append(
+            SEOCheck(
+                id="seo_generated",
+                label="SEO metadata",
+                pass_=False,
+                severity="info",
+                hint="Run 'Generate SEO' to replace these heuristics with LLM-optimised title/description/tags.",
+            )
+        )
+    else:
+        vs = (seo or {}).get("virality_score")
+        if isinstance(vs, (int, float)) and vs > 0:
+            checks.append(
+                SEOCheck(
+                    id="seo_generated",
+                    label="SEO metadata",
+                    pass_=True,
+                    severity="info",
+                    hint=f"LLM virality estimate: {vs}/10.",
+                )
+            )
+
+    score = max(0, min(100, score))
+    grade = _grade_for(score)
+
+    error_count = sum(1 for c in checks if c.severity == "error")
+    warn_count = sum(1 for c in checks if c.severity == "warn")
+
+    if error_count:
+        summary = f"{error_count} blocking issue(s) and {warn_count} improvement(s) flagged."
+    elif warn_count:
+        summary = f"Looks solid — {warn_count} optional improvement(s)."
+    else:
+        summary = "All heuristics green. Ready to publish."
+
+    return SEOScoreResponse(
+        overall_score=score,
+        grade=grade,
+        summary=summary,
+        has_seo_metadata=has_seo,
+        checks=checks,
+    )
+
+
+@router.get(
+    "/{episode_id}/export/raw-assets",
+    status_code=status.HTTP_200_OK,
+    summary="Download a ZIP of every per-scene image, voice segment, and caption asset",
+    tags=["export"],
+)
+async def export_raw_assets(
+    episode_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> Response:
+    """Zip every raw generation asset — one file per scene image, per
+    voice segment, the final composited assets, and any ASS/SRT caption
+    files. Useful for debugging, moving content between installs, or
+    cherry-picking scenes for a manual re-edit outside the pipeline.
+
+    Layout inside the archive::
+
+        <safe_name>/scenes/scene_01.png
+        <safe_name>/scenes/scene_02.png
+        <safe_name>/voice/segment_01.wav
+        <safe_name>/captions/captions.ass
+        <safe_name>/captions/captions.srt
+        <safe_name>/video/final.mp4       (when present)
+        <safe_name>/thumbnail/thumb.jpg   (when present)
+        <safe_name>/README.txt            (asset index + generation notes)
+    """
+    episode = await _load_episode_with_series(episode_id, db)
+    series_name = episode.series.name if episode.series else "Short"
+    safe_name = _sanitize_filename(series_name, episode.title)
+
+    asset_repo = MediaAssetRepository(db)
+    base = Path(settings.storage_base_path)
+
+    all_assets = await asset_repo.get_by_episode(episode_id)
+    if not all_assets:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No media assets found for this episode yet",
+        )
+
+    # Group assets by kind for a tidy zip layout.
+    # MediaAsset.asset_type is the authoritative enum — one of
+    # scene / voice / caption / video / thumbnail / music (+ variants).
+    per_kind: dict[str, list] = {}
+    for a in all_assets:
+        per_kind.setdefault(a.asset_type, []).append(a)
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        included: dict[str, int] = {}
+        for kind, assets in per_kind.items():
+            # Sort by scene_number when present, otherwise by created_at
+            # so segment_01 < segment_02 inside the archive.
+            assets.sort(key=lambda a: (a.scene_number or 0, a.created_at or 0))
+            for a in assets:
+                src = base / a.file_path
+                if not src.exists():
+                    continue
+                ext = Path(a.file_path).suffix or ""
+                if a.scene_number is not None:
+                    entry = f"{safe_name}/{kind}/{kind}_{a.scene_number:02d}{ext}"
+                else:
+                    # Stable deterministic filename for "only one of these" kinds.
+                    entry = f"{safe_name}/{kind}/{kind}{ext}"
+                    # If multiple assets of the same kind exist without scene
+                    # numbers, suffix with the asset id's short form.
+                    if included.get(kind):
+                        entry = f"{safe_name}/{kind}/{kind}_{str(a.id)[:8]}{ext}"
+                zf.write(str(src), entry)
+                included[kind] = included.get(kind, 0) + 1
+
+        # README with a machine-readable manifest of what went in.
+        readme_lines = [
+            f"Drevalis raw-assets export for: {series_name} — {episode.title}",
+            f"Episode ID: {episode.id}",
+            f"Generated: {episode.created_at}",
+            "",
+            "Contents:",
+        ]
+        for kind, count in sorted(included.items()):
+            readme_lines.append(f"  {kind:<12} {count} file(s)")
+        readme_lines.append("")
+        readme_lines.append(
+            "Regenerating any asset rebuilds the database row with a new "
+            "UUID — so re-running an export after edits will overwrite this "
+            "archive, not merge with it."
+        )
+        zf.writestr(f"{safe_name}/README.txt", "\n".join(readme_lines))
+
+    buffer.seek(0)
+    logger.info(
+        "export_raw_assets",
+        episode_id=str(episode_id),
+        zip_size=buffer.getbuffer().nbytes,
+        kinds=list(per_kind.keys()),
+    )
+    return Response(
+        content=buffer.getvalue(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{safe_name}_raw_assets.zip"',
         },
     )
 
