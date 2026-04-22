@@ -11,7 +11,7 @@ twice collapses into one row (the API returns the existing row).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 from sqlalchemy import BIGINT, FLOAT, INT, JSON, TEXT, CheckConstraint, ForeignKey, Index
@@ -96,8 +96,8 @@ class VideoIngestJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     status: Mapped[str] = mapped_column(TEXT, nullable=False, server_default="'queued'")
     progress_pct: Mapped[int] = mapped_column(INT, nullable=False, server_default="0")
     stage: Mapped[str | None] = mapped_column(TEXT, nullable=True)
-    transcript: Mapped[dict | list | None] = mapped_column(JSON, nullable=True)
-    candidate_clips: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    transcript: Mapped[dict[str, Any] | list[Any] | None] = mapped_column(JSON, nullable=True)
+    candidate_clips: Mapped[list[Any] | None] = mapped_column(JSON, nullable=True)
     selected_clip_index: Mapped[int | None] = mapped_column(INT, nullable=True)
     resulting_episode_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),

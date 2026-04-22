@@ -169,8 +169,8 @@ class Series(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # ``character_lock`` drives IPAdapter-FaceID; ``style_lock`` drives
     # style-reference flows. Workflows without the matching input slot
     # silently ignore these.
-    character_lock: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    style_lock: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    character_lock: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    style_lock: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     voice_profile: Mapped[VoiceProfile | None] = relationship(

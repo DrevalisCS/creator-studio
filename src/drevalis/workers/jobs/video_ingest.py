@@ -108,7 +108,8 @@ async def analyze_video_ingest(ctx: dict[str, Any], job_id: str) -> dict[str, An
         caption_svc: CaptionService = ctx["caption_service"]
         word_ts = await asyncio.to_thread(caption_svc._transcribe, audio_out, "en")
         transcript_payload = [
-            {"w": w.text, "s": round(w.start, 2), "e": round(w.end, 2)} for w in word_ts
+            {"w": w.word, "s": round(w.start_seconds, 2), "e": round(w.end_seconds, 2)}
+            for w in word_ts
         ]
         await job_repo.update(
             job.id,
@@ -120,7 +121,7 @@ async def analyze_video_ingest(ctx: dict[str, Any], job_id: str) -> dict[str, An
 
         # ── 3. LLM picks candidate clips ───────────────────────────
         llm_configs = await llm_repo.get_all(limit=10)
-        llm_config = next((c for c in llm_configs if c.is_active), None) if llm_configs else None
+        llm_config = llm_configs[0] if llm_configs else None
         if llm_config is None:
             # Fall back to a naive duration-based split so the feature
             # still works without an LLM configured.

@@ -343,7 +343,7 @@ async def get_waveform(
     episode_id: UUID,
     track: str = "voice",
     db: AsyncSession = Depends(get_db),
-):
+) -> Any:
     """Render (or reuse) a waveform PNG for the voice or music track
     and stream it. Returns 404 if the track has no source asset.
     """

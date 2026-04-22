@@ -110,6 +110,7 @@ def parse_session_token(token: str, *, secret: str) -> dict[str, Any] | None:
         return None
     if int(payload.get("exp", 0)) < int(datetime.now(tz=UTC).timestamp()):
         return None
+    assert isinstance(payload, dict)
     return payload
 
 

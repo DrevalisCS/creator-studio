@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import JSON, TEXT
 from sqlalchemy.dialects.postgresql import UUID
@@ -24,5 +25,5 @@ class CharacterPack(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     name: Mapped[str] = mapped_column(TEXT, nullable=False)
     description: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     thumbnail_asset_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    character_lock: Mapped[dict | None] = mapped_column(JSON, nullable=True)
-    style_lock: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    character_lock: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    style_lock: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)

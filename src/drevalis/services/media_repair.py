@@ -59,9 +59,7 @@ class RepairReport:
             "already_ok": self.already_ok,
             "relinked": self.relinked,
             "unresolved": self.unresolved,
-            "relinked_paths": [
-                {"from": a, "to": b} for a, b in self.relinked_paths[:50]
-            ],
+            "relinked_paths": [{"from": a, "to": b} for a, b in self.relinked_paths[:50]],
             "unresolved_paths": self.unresolved_paths[:50],
         }
 

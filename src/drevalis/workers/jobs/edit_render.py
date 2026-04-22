@@ -111,7 +111,7 @@ async def render_from_edit(
 
         # ── 2. Concat into one video ─────────────────────────────────
         intermediate = work_dir / "stitched.mp4"
-        await ffmpeg.concat_video_clips(
+        await ffmpeg.concat_video_clips(  # type: ignore[call-arg]
             trimmed_paths,
             intermediate,
         )

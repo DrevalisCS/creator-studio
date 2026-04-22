@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -30,7 +31,7 @@ class WorkflowTemplate:
     scene_mode: str  # "image" | "video"
     # Named inputs the pipeline hands off to the workflow. Shape mirrors
     # ``WorkflowInputMapping`` on the ComfyUIWorkflow model.
-    input_mappings: dict
+    input_mappings: dict[str, Any]
 
 
 TEMPLATES: dict[str, WorkflowTemplate] = {

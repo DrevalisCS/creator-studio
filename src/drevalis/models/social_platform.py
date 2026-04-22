@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
     BIGINT,
@@ -63,7 +63,7 @@ class SocialPlatform(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, server_default=text("true"))
 
     # Platform-specific config (public_video_base_url for IG, etc).
-    account_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    account_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     uploads: Mapped[list[SocialUpload]] = relationship(

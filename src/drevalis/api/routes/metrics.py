@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.deps import get_db
@@ -184,7 +184,7 @@ async def usage_summary(
                 day_expr.label("day"),
                 func.count().label("runs"),
                 func.coalesce(func.sum(duration_expr), 0.0).label("seconds"),
-                func.sum(func.cast(GenerationJob.status == "failed", type_=func.INTEGER())).label(
+                func.sum(func.cast(GenerationJob.status == "failed", type_=Integer)).label(
                     "failures"
                 ),
                 func.count(func.distinct(GenerationJob.episode_id)).label("episodes"),

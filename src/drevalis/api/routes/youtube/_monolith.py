@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from uuid import UUID, uuid4
 
 import structlog
@@ -1194,8 +1194,8 @@ async def get_channel_analytics(
                 }
             )
         totals = {
-            "views": sum(d["views"] for d in daily),
-            "minutes_watched": sum(d["minutes_watched"] for d in daily),
+            "views": sum(cast(int, d["views"]) for d in daily),
+            "minutes_watched": sum(cast(int, d["minutes_watched"]) for d in daily),
             "subscribers_gained": rng.randint(40, 220),
             "likes": rng.randint(600, 2400),
             "comments": rng.randint(30, 180),

@@ -2078,7 +2078,7 @@ async def upload_thumbnail(
 
     # 2. Load episode, ensure the output directory exists.
     episode_repo = EpisodeRepository(db)
-    episode = await episode_repo.get(episode_id)
+    episode = await episode_repo.get_by_id(episode_id)
     if not episode:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -2103,7 +2103,7 @@ async def upload_thumbnail(
         ) from exc
 
     try:
-        img = Image.open(BytesIO(bytes(data)))
+        img: Any = Image.open(BytesIO(bytes(data)))
         if img.mode in ("RGBA", "LA", "P"):
             img = img.convert("RGB")
         img.save(abs_path, format="JPEG", quality=92, optimize=True)
@@ -2295,7 +2295,7 @@ async def get_seo_score(
     is a function of the total.
     """
     repo = EpisodeRepository(db)
-    episode = await repo.get(episode_id)
+    episode = await repo.get_by_id(episode_id)
     if not episode:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -2688,7 +2688,7 @@ async def export_raw_assets(
     # Group assets by kind for a tidy zip layout.
     # MediaAsset.asset_type is the authoritative enum — one of
     # scene / voice / caption / video / thumbnail / music (+ variants).
-    per_kind: dict[str, list] = {}
+    per_kind: dict[str, list[Any]] = {}
     for a in all_assets:
         per_kind.setdefault(a.asset_type, []).append(a)
 
@@ -3046,7 +3046,7 @@ async def publish_all(
     from drevalis.models.youtube_channel import YouTubeUpload
 
     ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get(episode_id)
+    episode = await ep_repo.get_by_id(episode_id)
     if not episode:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
     if episode.status not in ("review", "exported", "editing"):
@@ -3227,7 +3227,7 @@ async def seo_preflight(
     from drevalis.services.seo_preflight import preflight as run_preflight
 
     repo = EpisodeRepository(db)
-    episode = await repo.get(episode_id)
+    episode = await repo.get_by_id(episode_id)
     if not episode:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
 
@@ -3293,7 +3293,7 @@ async def seo_variants(
     from drevalis.services.llm import LLMService, _extract_json
 
     repo = EpisodeRepository(db)
-    episode = await repo.get(episode_id)
+    episode = await repo.get_by_id(episode_id)
     if not episode or not episode.script:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
 
@@ -3393,7 +3393,7 @@ async def inpaint_scene(
     import base64
 
     repo = EpisodeRepository(db)
-    episode = await repo.get(episode_id)
+    episode = await repo.get_by_id(episode_id)
     if not episode:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
 
@@ -3468,7 +3468,7 @@ async def check_script_continuity(
     from drevalis.services.llm import LLMService
 
     repo = EpisodeRepository(db)
-    episode = await repo.get(episode_id)
+    episode = await repo.get_by_id(episode_id)
     if not episode or not episode.script:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "episode or script missing")
 

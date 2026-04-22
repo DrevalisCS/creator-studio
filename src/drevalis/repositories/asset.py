@@ -35,7 +35,7 @@ class AssetRepository(BaseRepository[Asset]):
         if kind:
             conds.append(Asset.kind == kind)
         if tag:
-            conds.append(Asset.tags.any(tag))
+            conds.append(Asset.tags.any(tag))  # type: ignore[arg-type]
         if search:
             needle = f"%{search.lower()}%"
             conds.append(

@@ -419,8 +419,7 @@ async def _facebook_video_upload(
     """Resumable video upload to a Facebook Page. Returns (video_id, url)."""
     if not page_id:
         raise RuntimeError(
-            "Facebook Page ID missing on the SocialPlatform "
-            "(account_id). Re-authorize the channel."
+            "Facebook Page ID missing on the SocialPlatform (account_id). Re-authorize the channel."
         )
 
     size = video_path.stat().st_size

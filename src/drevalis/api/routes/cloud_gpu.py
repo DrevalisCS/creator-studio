@@ -100,7 +100,7 @@ async def list_gpu_types(
         raise
     finally:
         if hasattr(provider, "close"):
-            await provider.close()  # type: ignore[attr-defined]
+            await provider.close()
 
 
 # ── Pods ───────────────────────────────────────────────────────────────
@@ -124,7 +124,7 @@ async def list_pods(
         raise
     finally:
         if hasattr(provider, "close"):
-            await provider.close()  # type: ignore[attr-defined]
+            await provider.close()
 
 
 @router.get("/pods")
@@ -145,7 +145,7 @@ async def list_all_pods(
                 all_pods.extend(pods)
             finally:
                 if hasattr(provider, "close"):
-                    await provider.close()  # type: ignore[attr-defined]
+                    await provider.close()
         except CloudGPUProviderError as exc:
             logger.warning(
                 "cloud_gpu.aggregate_list_failed",
@@ -188,7 +188,7 @@ async def launch_pod(
         raise
     finally:
         if hasattr(provider, "close"):
-            await provider.close()  # type: ignore[attr-defined]
+            await provider.close()
 
 
 @router.post("/{name}/pods/{pod_id}/stop")
@@ -210,7 +210,7 @@ async def stop_pod(
         raise
     finally:
         if hasattr(provider, "close"):
-            await provider.close()  # type: ignore[attr-defined]
+            await provider.close()
 
 
 @router.post("/{name}/pods/{pod_id}/start")
@@ -232,7 +232,7 @@ async def start_pod(
         raise
     finally:
         if hasattr(provider, "close"):
-            await provider.close()  # type: ignore[attr-defined]
+            await provider.close()
 
 
 @router.delete("/{name}/pods/{pod_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -254,4 +254,4 @@ async def delete_pod(
         raise
     finally:
         if hasattr(provider, "close"):
-            await provider.close()  # type: ignore[attr-defined]
+            await provider.close()

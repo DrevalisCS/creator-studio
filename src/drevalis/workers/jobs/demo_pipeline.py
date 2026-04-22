@@ -67,8 +67,8 @@ async def generate_episode_demo(ctx: dict[str, Any], episode_id: str) -> dict[st
         payload = ProgressMessage(
             episode_id=episode_id,
             job_id=job_id,
-            step=step,  # type: ignore[arg-type]
-            status=status,  # type: ignore[arg-type]
+            step=step,
+            status=status,
             progress_pct=pct,
             message=message,
             detail=detail,

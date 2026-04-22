@@ -27,13 +27,13 @@ import re
 import shutil
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 from drevalis.core.deps import get_db, get_settings
 from drevalis.repositories.asset import AssetRepository
@@ -62,6 +62,8 @@ _MAX_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024  # 2 GiB
 
 
 class AssetResponse(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     kind: str
     filename: str
@@ -288,7 +290,7 @@ async def update_asset(
     a = await repo.get_by_id(asset_id)
     if a is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found")
-    changes: dict = {}
+    changes: dict[str, Any] = {}
     if body.tags is not None:
         changes["tags"] = [t.strip() for t in body.tags if t.strip()][:20]
     if body.description is not None:

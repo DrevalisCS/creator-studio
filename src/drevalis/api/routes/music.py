@@ -87,9 +87,10 @@ def _load_sidecar(track_path: Path) -> dict[str, Any]:
     if not sc.exists():
         return {}
     try:
-        return json.loads(sc.read_text(encoding="utf-8"))
+        data = json.loads(sc.read_text(encoding="utf-8"))
     except Exception:
         return {}
+    return data if isinstance(data, dict) else {}
 
 
 @router.get("/custom", response_model=list[CustomTrack])
