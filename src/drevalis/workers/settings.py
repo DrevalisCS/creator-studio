@@ -39,6 +39,7 @@ from drevalis.workers.jobs.runpod import auto_deploy_runpod_pod
 from drevalis.workers.jobs.scheduled import publish_scheduled_posts
 from drevalis.workers.jobs.seo import generate_seo_async
 from drevalis.workers.jobs.series import generate_series_async
+from drevalis.workers.jobs.social import publish_pending_social_uploads
 
 # ---------------------------------------------------------------------------
 # Lifecycle hook imports
@@ -106,6 +107,7 @@ class WorkerSettings:
         generate_episode_music,
         generate_seo_async,
         publish_scheduled_posts,
+        publish_pending_social_uploads,
         auto_deploy_runpod_pod,
         worker_heartbeat,
         license_heartbeat,
@@ -114,6 +116,8 @@ class WorkerSettings:
     cron_jobs = [
         # Check for due scheduled posts every 15 minutes
         cron(publish_scheduled_posts, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
+        # TikTok / (future) IG / X direct uploads — also every 5 minutes
+        cron(publish_pending_social_uploads, minute={0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}),
         # Write worker heartbeat every minute so the API can detect dead workers
         cron(worker_heartbeat, minute=set(range(60))),
         # License heartbeat — once per day at 04:17 UTC (off-peak, arbitrary).

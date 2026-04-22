@@ -3108,8 +3108,27 @@ async def publish_all(
             )
 
     # ── TikTok / Instagram ──────────────────────────────────────────────
+    # Shipping reality: only TikTok has an upload worker today. Instagram
+    # and X are still OAuth-less stubs. We gate each platform by its
+    # real capability so a Studio-tier bulk publish doesn't quietly
+    # enqueue a row that nothing ever processes.
+    _UPLOAD_SUPPORTED: set[str] = {"tiktok"}
+
     for plat_name in ("tiktok", "instagram"):
         if plat_name not in body.platforms:
+            continue
+
+        if plat_name not in _UPLOAD_SUPPORTED:
+            skipped.append(
+                {
+                    "platform": plat_name,
+                    "reason": (
+                        f"{plat_name.capitalize()} uploads aren't shipped yet — the OAuth "
+                        "flow + Direct Post integration are on the roadmap. Export the MP4 "
+                        "and upload manually in the meantime."
+                    ),
+                }
+            )
             continue
 
         from sqlalchemy import select as _select
