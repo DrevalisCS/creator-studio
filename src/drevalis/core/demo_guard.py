@@ -125,6 +125,238 @@ _BLOCKED: list[tuple[str, re.Pattern[str], str]] = [
         re.compile(r"^/api/v1/video-ingest$"),
         "Video uploads are disabled in the demo.",
     ),
+    # ── Demo content protection ─────────────────────────────────────────
+    # The seeded episodes / series / audiobooks on demo.drevalis.com are
+    # meant to be browseable by any visitor. Block every mutation path so
+    # the next visitor gets the same tour as the last one; the nightly
+    # reset is a safety net, not the primary guard.
+    #
+    # Episodes — delete, update, script edit, scene edit/delete/reorder,
+    # regenerate, reset, duplicate.
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/episodes/[^/]+$"),
+        "Deleting episodes is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/episodes/[^/]+$"),
+        "Editing episodes is disabled in the demo.",
+    ),
+    (
+        "PATCH",
+        re.compile(r"^/api/v1/episodes/[^/]+$"),
+        "Editing episodes is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/episodes/[^/]+/script$"),
+        "Editing scripts is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/episodes/[^/]+/scenes/[^/]+$"),
+        "Editing scenes is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/episodes/[^/]+/scenes/[^/]+$"),
+        "Deleting scenes is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/scenes/reorder$"),
+        "Reordering scenes is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/regenerate-scene/"),
+        "Regenerating scenes is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/regenerate-voice"),
+        "Regenerating the voice track is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/regenerate-captions"),
+        "Regenerating captions is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/reassemble"),
+        "Re-assembling episodes is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/reset$"),
+        "Resetting episodes is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/set-music$"),
+        "Changing episode music is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/duplicate$"),
+        "Duplicating episodes is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/bulk-generate$"),
+        "Bulk generation is disabled in the demo.",
+    ),
+    # Series — delete, update, create.
+    (
+        "POST",
+        re.compile(r"^/api/v1/series$"),
+        "Creating series is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/series/[^/]+$"),
+        "Deleting series is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/series/[^/]+$"),
+        "Editing series is disabled in the demo.",
+    ),
+    (
+        "PATCH",
+        re.compile(r"^/api/v1/series/[^/]+$"),
+        "Editing series is disabled in the demo.",
+    ),
+    # Audiobooks — delete, update, create, regenerate chapter.
+    (
+        "POST",
+        re.compile(r"^/api/v1/audiobooks$"),
+        "Creating audiobooks is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/audiobooks/[^/]+$"),
+        "Deleting audiobooks is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/audiobooks/[^/]+$"),
+        "Editing audiobooks is disabled in the demo.",
+    ),
+    (
+        "PATCH",
+        re.compile(r"^/api/v1/audiobooks/[^/]+$"),
+        "Editing audiobooks is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/audiobooks/[^/]+/regenerate-chapter"),
+        "Regenerating audiobook chapters is disabled in the demo.",
+    ),
+    # YouTube — delete an uploaded video (would hit the real API) +
+    # channel edits.
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/youtube/videos/"),
+        "Deleting YouTube videos is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/youtube/channels/"),
+        "Removing YouTube channels is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/youtube/channels/"),
+        "Editing YouTube channels is disabled in the demo.",
+    ),
+    # Voice profiles, ComfyUI servers/workflows, LLM configs, prompt
+    # templates, scheduled posts — same story: read stays open, writes
+    # blocked so visitors can't corrupt the demo state.
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/voice-profiles/[^/]+$"),
+        "Deleting voice profiles is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/voice-profiles/[^/]+$"),
+        "Editing voice profiles is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/comfyui/servers/[^/]+$"),
+        "Deleting ComfyUI servers is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/comfyui/servers/[^/]+$"),
+        "Editing ComfyUI servers is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/comfyui/workflows/[^/]+$"),
+        "Deleting ComfyUI workflows is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/comfyui/workflows/[^/]+$"),
+        "Editing ComfyUI workflows is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/llm/[^/]+$"),
+        "Deleting LLM configs is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/llm/[^/]+$"),
+        "Editing LLM configs is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/prompt-templates/[^/]+$"),
+        "Deleting prompt templates is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/prompt-templates/[^/]+$"),
+        "Editing prompt templates is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/schedule/[^/]+$"),
+        "Deleting scheduled posts is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/schedule/[^/]+$"),
+        "Editing scheduled posts is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/api-keys/[^/]+$"),
+        "Deleting API keys is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/api-keys$"),
+        "Adding API keys is disabled in the demo.",
+    ),
+    # Editor timeline saves — would overwrite the seeded timeline the
+    # next visitor sees.
+    (
+        "PUT",
+        re.compile(r"^/api/v1/episodes/[^/]+/editor"),
+        "Saving editor changes is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/editor/render"),
+        "Rendering from the editor is disabled in the demo.",
+    ),
 ]
 
 
