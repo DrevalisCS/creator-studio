@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   ArrowLeft,
@@ -29,6 +29,7 @@ import {
   type EditTimeline,
   type EditTimelineClip,
   type EditTimelineTrack,
+  type CaptionWord,
 } from '@/lib/api';
 
 function waveformUrlFor(episodeId: string, trackId: string): string | null {
@@ -47,6 +48,12 @@ type Action =
   | { type: 'reorder'; trackId: string; fromIndex: number; toIndex: number }
   | { type: 'add_overlay'; clip: EditTimelineClip }
   | { type: 'update_overlay'; clipId: string; patch: Partial<EditTimelineClip> }
+  | {
+      type: 'envelope';
+      trackId: string;
+      clipId: string;
+      envelope: Array<[number, number]>;
+    }
   | { type: 'undo' }
   | { type: 'redo' };
 
@@ -152,6 +159,19 @@ function applyAction(timeline: EditTimeline, action: Action): EditTimeline {
       );
       return { ...timeline, tracks };
     }
+    case 'envelope': {
+      const tracks = timeline.tracks.map((t) =>
+        t.id === action.trackId
+          ? {
+              ...t,
+              clips: t.clips.map((c) =>
+                c.id === action.clipId ? { ...c, envelope: action.envelope } : c,
+              ),
+            }
+          : t,
+      );
+      return { ...timeline, tracks };
+    }
     default:
       return timeline;
   }
@@ -207,6 +227,9 @@ export default function EpisodeEditor() {
   const [zoom, setZoom] = useState(60); // px per second
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [inspectorTab, setInspectorTab] = useState<'clip' | 'captions'>('clip');
+  const [previewingProxy, setPreviewingProxy] = useState(false);
+  const [proxyReadyTs, setProxyReadyTs] = useState<number | null>(null);
   const saveDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load session.
@@ -335,6 +358,30 @@ export default function EpisodeEditor() {
         >
           <Redo2 className="w-4 h-4" />
         </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={async () => {
+            if (!episodeId) return;
+            setPreviewingProxy(true);
+            try {
+              await editorApi.preview(episodeId);
+              // Bump the cache key so the video element reloads the proxy.
+              setTimeout(() => setProxyReadyTs(Date.now()), 30_000);
+              toast.success('Preview render enqueued', {
+                description: 'Proxy will swap in once FFmpeg finishes (~30s).',
+              });
+            } catch (err) {
+              toast.error('Preview failed', { description: formatError(err) });
+            } finally {
+              setPreviewingProxy(false);
+            }
+          }}
+          disabled={previewingProxy}
+          title="Render a fast 480p proxy with overlays + envelope mixed in"
+        >
+          {previewingProxy ? 'Preview…' : 'Preview'}
+        </Button>
         <Button variant="primary" size="sm" onClick={() => void onRender()} disabled={rendering}>
           <Rocket className="w-4 h-4 mr-1" />
           {rendering ? 'Rendering…' : 'Render'}
@@ -350,12 +397,38 @@ export default function EpisodeEditor() {
             onPlayheadChange={setPlayhead}
             playing={playing}
             onPlayToggle={() => setPlaying((p) => !p)}
+            proxyUrl={
+              proxyReadyTs
+                ? `/storage/episodes/${episodeId}/output/proxy.mp4?v=${proxyReadyTs}`
+                : null
+            }
           />
         </Card>
 
         <Card className="col-span-4 p-4 space-y-3">
-          <div className="text-xs uppercase tracking-wider text-txt-muted">Inspector</div>
-          {selectedClip ? (
+          <div className="flex items-center gap-2">
+            <button
+              className={[
+                'text-[11px] uppercase tracking-wider px-2 py-1 rounded',
+                inspectorTab === 'clip' ? 'bg-accent/20 text-accent' : 'text-txt-muted',
+              ].join(' ')}
+              onClick={() => setInspectorTab('clip')}
+            >
+              Inspector
+            </button>
+            <button
+              className={[
+                'text-[11px] uppercase tracking-wider px-2 py-1 rounded',
+                inspectorTab === 'captions' ? 'bg-accent/20 text-accent' : 'text-txt-muted',
+              ].join(' ')}
+              onClick={() => setInspectorTab('captions')}
+            >
+              Captions
+            </button>
+          </div>
+          {inspectorTab === 'captions' ? (
+            <CaptionsInspector episodeId={episodeId} playhead={playhead} />
+          ) : selectedClip ? (
             selectedClip.kind ? (
               <OverlayInspector
                 clip={selectedClip}
@@ -510,6 +583,9 @@ export default function EpisodeEditor() {
                 dispatch({ type: 'reorder', trackId: track.id, fromIndex: from, toIndex: to })
               }
               onTrim={(id, in_s, out_s) => dispatch({ type: 'trim', clipId: id, in_s, out_s })}
+              onEnvelope={(clipId, envelope) =>
+                dispatch({ type: 'envelope', trackId: track.id, clipId, envelope })
+              }
               waveformUrl={waveformUrlFor(episodeId, track.id)}
             />
           ))}
@@ -527,12 +603,14 @@ function PreviewPlayer({
   onPlayheadChange,
   playing,
   onPlayToggle,
+  proxyUrl,
 }: {
   timeline: EditTimeline;
   playhead: number;
   onPlayheadChange: (t: number) => void;
   playing: boolean;
   onPlayToggle: () => void;
+  proxyUrl: string | null;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const videoTrack = timeline.tracks.find((t) => t.kind === 'video');
@@ -541,18 +619,19 @@ function PreviewPlayer({
   );
   const localTime = activeClip ? playhead - activeClip.start_s + activeClip.in_s : 0;
 
-  // Use a raw storage URL for direct playback.
-  const srcUrl = activeClip?.asset_path
-    ? `/storage/${activeClip.asset_path}`
-    : undefined;
+  // When a proxy MP4 exists, play it directly with absolute timeline
+  // seconds — no per-clip trimming. Otherwise fall back to per-scene
+  // playback of the raw storage files.
+  const srcUrl = proxyUrl ?? (activeClip?.asset_path ? `/storage/${activeClip.asset_path}` : undefined);
+  const effectiveLocalTime = proxyUrl ? playhead : localTime;
 
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !srcUrl) return;
-    if (Math.abs(v.currentTime - localTime) > 0.25) v.currentTime = localTime;
+    if (Math.abs(v.currentTime - effectiveLocalTime) > 0.25) v.currentTime = effectiveLocalTime;
     if (playing) void v.play().catch(() => undefined);
     else v.pause();
-  }, [playing, localTime, srcUrl]);
+  }, [playing, effectiveLocalTime, srcUrl]);
 
   // Advance playhead from the video element's currentTime when playing.
   useEffect(() => {
@@ -560,13 +639,18 @@ function PreviewPlayer({
     const v = videoRef.current;
     if (!v) return;
     const onTime = () => {
+      if (proxyUrl) {
+        // Proxy MP4 is the full timeline — currentTime == absolute timeline seconds.
+        onPlayheadChange(v.currentTime);
+        return;
+      }
       if (!activeClip) return;
       const delta = v.currentTime - activeClip.in_s;
       onPlayheadChange(activeClip.start_s + delta);
     };
     v.addEventListener('timeupdate', onTime);
     return () => v.removeEventListener('timeupdate', onTime);
-  }, [playing, activeClip, onPlayheadChange]);
+  }, [playing, activeClip, onPlayheadChange, proxyUrl]);
 
   return (
     <div className="w-full max-w-md">
@@ -601,6 +685,7 @@ function TrackRow({
   onSelectClip,
   onReorder,
   onTrim,
+  onEnvelope,
   waveformUrl,
 }: {
   track: EditTimelineTrack;
@@ -612,6 +697,7 @@ function TrackRow({
   onSelectClip: (id: string | null) => void;
   onReorder: (from: number, to: number) => void;
   onTrim: (id: string, in_s?: number, out_s?: number) => void;
+  onEnvelope: (clipId: string, envelope: Array<[number, number]>) => void;
   waveformUrl: string | null;
 }) {
   const dragFrom = useRef<number | null>(null);
@@ -707,8 +793,123 @@ function TrackRow({
             </div>
           );
         })}
+        {track.kind === 'audio' &&
+          track.clips.map((c) => (
+            <EnvelopeLayer
+              key={`env-${c.id}`}
+              clip={c}
+              zoom={zoom}
+              onChange={(env) => onEnvelope(c.id, env)}
+            />
+          ))}
       </div>
     </div>
+  );
+}
+
+function EnvelopeLayer({
+  clip,
+  zoom,
+  onChange,
+}: {
+  clip: EditTimelineClip;
+  zoom: number;
+  onChange: (env: Array<[number, number]>) => void;
+}) {
+  const envelope = clip.envelope && clip.envelope.length > 0 ? clip.envelope : [];
+
+  const height = 48; // matches the h-12 track body
+  const dbMin = -40;
+  const dbMax = 6;
+  const dbToY = (db: number) =>
+    ((dbMax - Math.max(dbMin, Math.min(dbMax, db))) / (dbMax - dbMin)) * height;
+  const yToDb = (y: number) =>
+    Math.round((dbMax - (y / height) * (dbMax - dbMin)) * 10) / 10;
+
+  const widthPx = (clip.end_s - clip.start_s) * zoom;
+
+  const points = envelope.length
+    ? envelope
+    : // Default envelope: flat line at the clip's gain_db (or 0).
+      ([
+        [0, clip.gain_db ?? 0],
+        [clip.end_s - clip.start_s, clip.gain_db ?? 0],
+      ] as Array<[number, number]>);
+
+  const path = points
+    .map(([t, db], i) => `${i === 0 ? 'M' : 'L'} ${t * zoom} ${dbToY(db)}`)
+    .join(' ');
+
+  const handleBgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const relX = e.clientX - rect.left;
+    const relY = e.clientY - rect.top;
+    const t = Math.max(0, Math.min(clip.end_s - clip.start_s, relX / zoom));
+    const db = yToDb(relY);
+    const next: Array<[number, number]> = [...points, [t, db] as [number, number]].sort(
+      (a, b) => a[0]! - b[0]!,
+    );
+    onChange(next);
+  };
+
+  return (
+    <svg
+      className="absolute top-0 left-0 h-full pointer-events-auto"
+      width={widthPx}
+      style={{ left: clip.start_s * zoom }}
+      height={height}
+      onDoubleClick={handleBgClick}
+    >
+      <path d={path} fill="none" stroke="rgba(255,208,102,0.8)" strokeWidth={1.5} />
+      {points.map(([t, db], i) => {
+        const cx = t * zoom;
+        const cy = dbToY(db);
+        return (
+          <circle
+            key={i}
+            cx={cx}
+            cy={cy}
+            r={4}
+            fill="#ffd066"
+            stroke="#000"
+            strokeWidth={0.5}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              const svg = (e.target as SVGElement).ownerSVGElement;
+              if (!svg) return;
+              const rect = svg.getBoundingClientRect();
+              const onMove = (me: MouseEvent) => {
+                const relX = me.clientX - rect.left;
+                const relY = me.clientY - rect.top;
+                const newT = Math.max(
+                  0,
+                  Math.min(clip.end_s - clip.start_s, relX / zoom),
+                );
+                const newDb = yToDb(relY);
+                const next = points.map((p, idx): [number, number] =>
+                  idx === i ? [newT, newDb] : p,
+                );
+                next.sort((a, b) => a[0] - b[0]);
+                onChange(next);
+              };
+              const onUp = () => {
+                window.removeEventListener('mousemove', onMove);
+                window.removeEventListener('mouseup', onUp);
+              };
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp);
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              if (points.length <= 2) return; // always keep the flat baseline
+              const next = points.filter((_, idx) => idx !== i);
+              onChange(next);
+            }}
+            style={{ cursor: 'grab' }}
+          />
+        );
+      })}
+    </svg>
   );
 }
 
@@ -947,6 +1148,159 @@ function OverlayInspector({
 
       <div className="text-[10px] text-txt-muted">
         X / Y accept FFmpeg expressions like <code>(w-text_w)/2</code>, <code>h-200</code>, etc.
+      </div>
+    </div>
+  );
+}
+
+// ─── Captions inspector ───────────────────────────────────────────
+
+function CaptionsInspector({
+  episodeId,
+  playhead,
+}: {
+  episodeId: string;
+  playhead: number;
+}) {
+  const [words, setWords] = useState<CaptionWord[] | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const saveDeb = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    void editorApi
+      .getCaptions(episodeId)
+      .then((r) => {
+        if (alive) setWords(r.words || []);
+      })
+      .catch(() => {
+        if (alive) setWords([]);
+      })
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, [episodeId]);
+
+  const save = useCallback(
+    (next: CaptionWord[]) => {
+      setWords(next);
+      if (saveDeb.current) clearTimeout(saveDeb.current);
+      saveDeb.current = setTimeout(async () => {
+        setSaving(true);
+        try {
+          await editorApi.putCaptions(episodeId, next);
+        } catch {
+          /* autosave best-effort */
+        } finally {
+          setSaving(false);
+        }
+      }, 700);
+    },
+    [episodeId],
+  );
+
+  if (loading) {
+    return <div className="text-xs text-txt-muted py-6 text-center">Loading caption words…</div>;
+  }
+  if (!words || words.length === 0) {
+    return (
+      <div className="text-xs text-txt-muted py-4">
+        No word-level captions stored. Run the captions step on the episode first, then come back.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 text-xs">
+      <div className="flex items-center justify-between">
+        <span className="text-txt-muted">{words.length} words</span>
+        <span className="text-[10px] text-txt-muted">{saving ? 'Saving…' : 'Saved'}</span>
+      </div>
+      <div className="max-h-[420px] overflow-y-auto space-y-1 pr-1">
+        {words.map((w, i) => {
+          const active = playhead >= w.start_seconds && playhead < w.end_seconds;
+          return (
+            <div
+              key={i}
+              className={[
+                'flex items-center gap-1 p-1.5 rounded border',
+                active ? 'border-accent bg-accent/10' : 'border-white/[0.04]',
+              ].join(' ')}
+            >
+              <input
+                value={w.word}
+                onChange={(e) => {
+                  const next = [...words];
+                  next[i] = { ...w, word: e.target.value };
+                  save(next);
+                }}
+                className="flex-1 px-1.5 py-0.5 bg-bg-base border border-white/[0.08] rounded text-xs"
+              />
+              <input
+                type="number"
+                step={0.01}
+                value={w.start_seconds}
+                onChange={(e) => {
+                  const next = [...words];
+                  next[i] = { ...w, start_seconds: parseFloat(e.target.value) || 0 };
+                  save(next);
+                }}
+                className="w-14 px-1 py-0.5 bg-bg-base border border-white/[0.08] rounded text-[10px] font-mono"
+                title="Start (s)"
+              />
+              <input
+                type="number"
+                step={0.01}
+                value={w.end_seconds}
+                onChange={(e) => {
+                  const next = [...words];
+                  next[i] = { ...w, end_seconds: parseFloat(e.target.value) || w.start_seconds + 0.1 };
+                  save(next);
+                }}
+                className="w-14 px-1 py-0.5 bg-bg-base border border-white/[0.08] rounded text-[10px] font-mono"
+                title="End (s)"
+              />
+              <button
+                onClick={() => {
+                  const next = [...words];
+                  next[i] = { ...w, emphasis: !w.emphasis };
+                  save(next);
+                }}
+                className={[
+                  'px-1.5 py-0.5 rounded text-[10px] font-semibold',
+                  w.emphasis ? 'bg-accent text-bg-base' : 'bg-bg-elevated text-txt-muted',
+                ].join(' ')}
+                title="Emphasis"
+              >
+                !
+              </button>
+              <input
+                type="color"
+                value={w.color ?? '#ffffff'}
+                onChange={(e) => {
+                  const next = [...words];
+                  next[i] = { ...w, color: e.target.value };
+                  save(next);
+                }}
+                className="w-6 h-6 rounded cursor-pointer"
+                title="Word color"
+              />
+              <button
+                onClick={() => {
+                  const next = words.filter((_, idx) => idx !== i);
+                  save(next);
+                }}
+                className="text-error hover:bg-error/10 rounded px-1.5 py-0.5 text-[10px]"
+                title="Delete word"
+              >
+                ✕
+              </button>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

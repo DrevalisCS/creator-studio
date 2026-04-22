@@ -476,3 +476,92 @@ async def test_voice_profile(
             success=False,
             message=f"Voice test failed: {exc}",
         )
+
+
+# ── Voice cloning (Phase E) ─────────────────────────────────────────
+
+
+from pydantic import BaseModel as _CloneBase  # noqa: E402
+
+
+class CloneVoiceRequest(_CloneBase):
+    asset_id: UUID
+    display_name: str
+    provider: str = "elevenlabs"  # elevenlabs | piper | kokoro
+    language_code: str | None = None
+
+
+class CloneVoiceResponse(_CloneBase):
+    voice_profile_id: UUID
+    provider: str
+    status: str  # "ready" | "pending_training"
+    note: str
+
+
+@router.post(
+    "/clone",
+    response_model=CloneVoiceResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a VoiceProfile from an uploaded voice sample",
+)
+async def clone_voice(
+    body: CloneVoiceRequest,
+    db: AsyncSession = Depends(get_db),
+) -> CloneVoiceResponse:
+    """Clone a voice from an existing asset.
+
+    The asset must be an audio file (``kind='audio'``) already in the
+    library. This route copies its path into
+    ``VoiceProfile.sample_audio_path`` and creates a profile row.
+
+    For ``elevenlabs`` we mark the profile as ``pending_training`` — a
+    follow-up pass uploads the sample to ElevenLabs IVC and stores the
+    returned ``voice_id`` back into ``elevenlabs_voice_id``. For local
+    TTS (piper / kokoro) the profile is created but flagged
+    ``pending_training`` since those engines need offline model
+    fine-tuning which isn't automated yet.
+    """
+    from drevalis.repositories.asset import AssetRepository
+    from drevalis.repositories.voice_profile import VoiceProfileRepository
+
+    valid_providers = {"elevenlabs", "piper", "kokoro"}
+    if body.provider not in valid_providers:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"provider must be one of {sorted(valid_providers)}",
+        )
+
+    asset = await AssetRepository(db).get_by_id(body.asset_id)
+    if asset is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found")
+    if asset.kind != "audio":
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"asset kind must be 'audio', got '{asset.kind}'",
+        )
+
+    profile_repo = VoiceProfileRepository(db)
+    profile = await profile_repo.create(
+        name=body.display_name.strip() or "Cloned voice",
+        provider=body.provider,
+        piper_voice_model=None,
+        elevenlabs_voice_id=None,
+        kokoro_voice_id=None,
+        sample_audio_path=asset.file_path,
+        language_code=body.language_code,
+    )
+    await db.commit()
+
+    note = (
+        "Profile created. ElevenLabs upload will happen on the first "
+        "voice test; until then the profile is pending_training."
+        if body.provider == "elevenlabs"
+        else "Profile created — local TTS voices require offline model "
+        "fine-tuning which isn't automated yet."
+    )
+    return CloneVoiceResponse(
+        voice_profile_id=profile.id,
+        provider=body.provider,
+        status="pending_training",
+        note=note,
+    )

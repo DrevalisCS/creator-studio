@@ -163,6 +163,15 @@ class Series(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # episode in this series. Leave empty for pure prompt-driven gen.
     reference_asset_ids: Mapped[list[str] | None] = mapped_column(JSON, nullable=True)
 
+    # ── Phase E: character + style locks ─────────────────────────────
+    # Opaque-to-us JSON that workflows consume as named inputs.
+    # Shape: ``{"asset_ids": [...], "strength": 0.75, "lora": "..."}``
+    # ``character_lock`` drives IPAdapter-FaceID; ``style_lock`` drives
+    # style-reference flows. Workflows without the matching input slot
+    # silently ignore these.
+    character_lock: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    style_lock: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
     # ── Relationships ──────────────────────────────────────────────────
     voice_profile: Mapped[VoiceProfile | None] = relationship(
         back_populates="series",
