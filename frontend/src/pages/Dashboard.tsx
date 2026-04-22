@@ -340,9 +340,12 @@ function Dashboard() {
                 <div className="empty-state py-8">
                   <Film size={28} />
                   <p className="text-sm font-display">No episodes yet</p>
-                  <p className="text-xs">
+                  <p className="text-xs mb-3">
                     Create a series and generate your first episode
                   </p>
+                  <Button size="sm" variant="primary" onClick={() => navigate('/series')}>
+                    Create a series
+                  </Button>
                 </div>
               ) : (
                 <div className="space-y-0.5">
@@ -462,9 +465,17 @@ function Dashboard() {
           <div className="empty-state py-12">
             <Film size={36} />
             <p className="text-sm font-display">No episodes yet</p>
-            <p className="text-xs">
+            <p className="text-xs mb-3">
               Create a series and generate your first episode
             </p>
+            <div className="flex gap-2 justify-center">
+              <Button size="sm" variant="primary" onClick={() => navigate('/series')}>
+                Create a series
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => navigate('/help')}>
+                Read the Help
+              </Button>
+            </div>
           </div>
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

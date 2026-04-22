@@ -20,4 +20,9 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Ensure nginx can read everything regardless of the host's umask.
 RUN chmod -R a+rX /usr/share/nginx/html
 
+# wget is in busybox on alpine — use it for the healthcheck so we don't
+# inflate the image with curl.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget --quiet --spider http://127.0.0.1:3000/ || exit 1
+
 EXPOSE 3000

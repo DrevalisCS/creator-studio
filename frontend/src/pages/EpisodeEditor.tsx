@@ -18,10 +18,12 @@ import {
   Image as ImageIcon,
   Square,
 } from 'lucide-react';
+import { AssetPicker } from '@/components/assets/AssetPicker';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
+import { assets as assetsApi } from '@/lib/api';
 import {
   editor as editorApi,
   formatError,
@@ -224,6 +226,7 @@ export default function EpisodeEditor() {
   const [saving, setSaving] = useState(false);
   const [rendering, setRendering] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  const [assetPickerOpen, setAssetPickerOpen] = useState(false);
   const [zoom, setZoom] = useState(60); // px per second
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -583,27 +586,8 @@ export default function EpisodeEditor() {
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => {
-            const path = window.prompt('Paste an asset path (storage-relative, e.g. assets/images/<uuid>/logo.png):');
-            if (!path) return;
-            const id = `i-${Date.now()}`;
-            dispatch({
-              type: 'add_overlay',
-              clip: {
-                id,
-                kind: 'image',
-                asset_path: path,
-                x: '(W-w)/2',
-                y: 'H-h-80',
-                in_s: 0,
-                out_s: 3,
-                start_s: playhead,
-                end_s: Math.min(playhead + 3, timeline.duration_s),
-              },
-            });
-            setSelectedClipId(id);
-          }}
-          title="Add image overlay"
+          onClick={() => setAssetPickerOpen(true)}
+          title="Add image overlay — pick from asset library"
         >
           <ImageIcon className="w-4 h-4" />
         </Button>
@@ -658,6 +642,42 @@ export default function EpisodeEditor() {
         <span><kbd className="kbd">⌫</kbd> delete selected clip</span>
         <span><kbd className="kbd">⌘Z</kbd> / <kbd className="kbd">⌘⇧Z</kbd> undo/redo</span>
       </div>
+
+      <AssetPicker
+        open={assetPickerOpen}
+        onClose={() => setAssetPickerOpen(false)}
+        kind="image"
+        multi={false}
+        title="Add image overlay"
+        onSelect={async (assetIds) => {
+          setAssetPickerOpen(false);
+          const id = assetIds[0];
+          if (!id) return;
+          try {
+            const asset = await assetsApi.get(id);
+            const clipId = `i-${Date.now()}`;
+            dispatch({
+              type: 'add_overlay',
+              clip: {
+                id: clipId,
+                kind: 'image',
+                asset_path: asset.file_path,
+                x: '(W-w)/2',
+                y: 'H-h-80',
+                in_s: 0,
+                out_s: 3,
+                start_s: playhead,
+                end_s: Math.min(playhead + 3, timeline.duration_s),
+              },
+            });
+            setSelectedClipId(clipId);
+          } catch (err) {
+            toast.error('Failed to attach asset', {
+              description: err instanceof Error ? err.message : 'Unknown error',
+            });
+          }
+        }}
+      />
     </div>
   );
 }
