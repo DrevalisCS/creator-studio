@@ -24,7 +24,7 @@ from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from drevalis.core.deps import get_db, get_settings
@@ -36,6 +36,10 @@ from drevalis.services.team import (
     parse_session_token,
     verify_password,
 )
+
+# Plain-string email with a light regex — avoids a hard dep on
+# ``email-validator`` (pydantic[email]) which isn't in the runtime image.
+_EMAIL_RE = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -50,7 +54,7 @@ _COOKIE_NAME = "drevalis_session"
 
 
 class LoginRequest(BaseModel):
-    email: EmailStr
+    email: str = Field(..., pattern=_EMAIL_RE)
     password: str = Field(..., min_length=1)
 
 
@@ -171,7 +175,7 @@ async def auth_mode(db: AsyncSession = Depends(get_db)) -> dict[str, bool]:
 
 
 class UserCreate(BaseModel):
-    email: EmailStr
+    email: str = Field(..., pattern=_EMAIL_RE)
     password: str = Field(..., min_length=8)
     role: str = Field(default="editor", pattern="^(owner|editor|viewer)$")
     display_name: str | None = None
