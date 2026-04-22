@@ -14,6 +14,7 @@ from arq import cron
 from arq.connections import RedisSettings
 
 from drevalis.core.config import Settings
+from drevalis.workers.jobs.ab_test_winner import compute_ab_test_winners
 from drevalis.workers.jobs.audiobook import (
     generate_ai_audiobook,
     generate_audiobook,
@@ -108,6 +109,7 @@ class WorkerSettings:
         generate_seo_async,
         publish_scheduled_posts,
         publish_pending_social_uploads,
+        compute_ab_test_winners,
         auto_deploy_runpod_pod,
         worker_heartbeat,
         license_heartbeat,
@@ -122,6 +124,10 @@ class WorkerSettings:
         cron(worker_heartbeat, minute=set(range(60))),
         # License heartbeat — once per day at 04:17 UTC (off-peak, arbitrary).
         cron(license_heartbeat, hour={4}, minute={17}),
+        # A/B winner settle — once per day at 04:31 UTC. Only touches
+        # pairs where both episodes have been live on YouTube for 7+
+        # days, so it's cheap (no-op until pairs mature).
+        cron(compute_ab_test_winners, hour={4}, minute={31}),
         # Nightly full-install backup at 03:00 UTC. The job itself checks
         # backup_auto_enabled and no-ops when disabled, so it's safe to
         # register unconditionally.
