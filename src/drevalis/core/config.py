@@ -22,9 +22,7 @@ class Settings(BaseSettings):
     app_timezone: str = "UTC"  # IANA timezone (e.g. "Europe/Amsterdam")
 
     # ── Database ──────────────────────────────────────────────────────────
-    database_url: str = (
-        "postgresql+asyncpg://drevalis:drevalis@localhost:5432/drevalis"
-    )
+    database_url: str = "postgresql+asyncpg://drevalis:drevalis@localhost:5432/drevalis"
     db_pool_size: int = 10
     db_max_overflow: int = 20
     # SQLAlchemy echoes every executed statement when enabled. Previously

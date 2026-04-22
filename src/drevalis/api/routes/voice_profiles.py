@@ -233,8 +233,7 @@ async def create_voice_profile(
 
     # Auto-generate a voice preview (best-effort, does not block creation)
     preview_text = (
-        "Welcome to Drevalis. This is how I sound when narrating "
-        "your videos. Pretty cool, right?"
+        "Welcome to Drevalis. This is how I sound when narrating your videos. Pretty cool, right?"
     )
     try:
         preview_dir = settings.storage_base_path / "voice_previews"
