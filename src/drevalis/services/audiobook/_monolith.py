@@ -960,7 +960,14 @@ class AudiobookService:
 
         concat_list.write_text("\n".join(lines), encoding="utf-8")
 
-        # Concatenate
+        # Concatenate. ``-c copy`` corrupts output silently when chunks
+        # differ in sample rate / channels (a Piper 22.05 kHz mono clip
+        # next to an ElevenLabs 44.1 kHz stereo clip is a common real-
+        # world shape). Re-encode to a single canonical PCM stream —
+        # 44.1 kHz stereo s16le — so the mix is guaranteed playable
+        # regardless of which TTS provider voiced which chapter. The
+        # audiobook post-step re-encodes to MP3/AAC from this anyway,
+        # so the intermediate WAV size is not a concern.
         proc = await asyncio.create_subprocess_exec(
             "ffmpeg",
             "-y",
@@ -970,8 +977,14 @@ class AudiobookService:
             "0",
             "-i",
             str(concat_list),
-            "-c",
-            "copy",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
+            "-sample_fmt",
+            "s16",
+            "-c:a",
+            "pcm_s16le",
             str(output),
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

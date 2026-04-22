@@ -379,6 +379,25 @@ class ComfyUIPool:
             start = (next(self._rr_counter) % len(server_ids)) if server_ids else 0
             candidates = server_ids[start:] + server_ids[:start]
 
+        # Drop any server still in its cool-down window — they'll be
+        # re-eligible automatically once the timestamp passes. Callers
+        # that explicitly pinned a ``server_id`` always get that server,
+        # regardless of cool-down (so the user can force-retry).
+        import time as _time
+
+        _cd_map = getattr(self, "_cooldown", {})
+        if server_id is None and _cd_map:
+            now = _time.monotonic()
+            live_candidates = [c for c in candidates if _cd_map.get(c, 0) <= now]
+            # Drop keys that have expired so the dict doesn't grow
+            # without bound.
+            for sid, exp in list(_cd_map.items()):
+                if exp <= now:
+                    _cd_map.pop(sid, None)
+            candidates = (
+                live_candidates or candidates
+            )  # if every server is cooled down, try them anyway
+
         last_error: Exception | None = None
         for chosen_id in candidates:
             if chosen_id not in self._servers:
@@ -392,22 +411,28 @@ class ComfyUIPool:
             await semaphore.acquire()
 
             # Verify the server is responsive before handing the lease to
-            # the caller.  Unhealthy servers are removed from the pool so
-            # they don't block future requests.
+            # the caller. A brief timeout / 5xx puts the server in a
+            # short cool-down instead of permanently dropping it — a 1s
+            # hiccup used to evict the server until the whole worker
+            # restarted (audit: P1 resilience). Servers that keep failing
+            # stay cooled down; healthy next-time pings clear the mark.
             try:
                 await asyncio.wait_for(client.get_queue_status(), timeout=5.0)
             except Exception as ping_exc:
                 semaphore.release()
                 last_error = ping_exc
+                if not hasattr(self, "_cooldown"):
+                    self._cooldown = {}
+                import time as _time
+
+                self._cooldown[chosen_id] = _time.monotonic() + 60.0
                 logger.warning(
-                    "comfyui_server_unhealthy_skipping",
+                    "comfyui_server_unhealthy_cooldown",
                     server_id=str(chosen_id),
                     error=str(ping_exc)[:120],
+                    cooldown_seconds=60,
                     remaining_candidates=len(candidates) - candidates.index(chosen_id) - 1,
                 )
-                # Remove the dead server so it's not tried again this run
-                self._servers.pop(chosen_id, None)
-                await client.close()
                 continue
 
             try:
@@ -456,20 +481,47 @@ class ComfyUIService:
         width: int,
         height: int,
         seed: int,
+        *,
+        character_ref_image: str | None = None,
+        style_ref_image: str | None = None,
+        character_lora: str | None = None,
+        style_lora: str | None = None,
+        character_strength: float | None = None,
+        style_strength: float | None = None,
     ) -> dict[str, Any]:
         """Inject dynamic parameters into a ComfyUI API-format workflow.
 
         Returns a **new** dict — the original is not mutated.
+
+        Phase-E locks (character / style reference images + LoRAs +
+        strengths) are only injected when the workflow declares a
+        matching ``sf_field`` in its ``input_mappings``; workflows that
+        don't advertise a slot for them are silently left alone.
         """
         wf = copy.deepcopy(workflow)
 
-        value_map: dict[str, str | int] = {
+        value_map: dict[str, str | int | float] = {
             "visual_prompt": prompt,
             "negative_prompt": negative_prompt,
             "width": width,
             "height": height,
             "seed": seed,
         }
+        # Only expose Phase-E keys when the caller actually supplied a value —
+        # otherwise the workflow would overwrite a meaningful default with
+        # None/empty and drop the lock entirely.
+        if character_ref_image:
+            value_map["character_ref_image"] = character_ref_image
+        if style_ref_image:
+            value_map["style_ref_image"] = style_ref_image
+        if character_lora:
+            value_map["character_lora"] = character_lora
+        if style_lora:
+            value_map["style_lora"] = style_lora
+        if character_strength is not None:
+            value_map["character_strength"] = float(character_strength)
+        if style_strength is not None:
+            value_map["style_strength"] = float(style_strength)
 
         for mapping in mappings.mappings:
             if mapping.sf_field not in value_map:
@@ -636,6 +688,12 @@ class ComfyUIService:
         seed: int | None = None,
         *,
         save_relative_dir: str = "",
+        character_ref_image: str | None = None,
+        style_ref_image: str | None = None,
+        character_lora: str | None = None,
+        style_lora: str | None = None,
+        character_strength: float | None = None,
+        style_strength: float | None = None,
     ) -> GeneratedImage:
         """Generate a single image end-to-end.
 
@@ -653,7 +711,19 @@ class ComfyUIService:
 
         workflow = await self._load_workflow(workflow_path)
         injected = self.inject_params(
-            workflow, input_mappings, prompt, negative_prompt, width, height, seed
+            workflow,
+            input_mappings,
+            prompt,
+            negative_prompt,
+            width,
+            height,
+            seed,
+            character_ref_image=character_ref_image,
+            style_ref_image=style_ref_image,
+            character_lora=character_lora,
+            style_lora=style_lora,
+            character_strength=character_strength,
+            style_strength=style_strength,
         )
 
         async with self._pool.acquire(server_id) as (sid, client):
@@ -863,11 +933,13 @@ class ComfyUIService:
         # Resolve quality suffix once per call — it depends only on visual_style.
         quality = self._resolve_quality_suffix(visual_style, self.QUALITY_SUFFIXES)
 
-        # Phase E log: surface when locks are being used. Injection into
-        # the workflow JSON happens at _inject_workflow_inputs via the
-        # ``character_ref_image`` / ``style_ref_image`` / ``character_lora``
-        # / ``style_lora`` named inputs — workflows without those slots
-        # silently ignore the values.
+        # Phase E: the character / style reference images and LoRAs are
+        # threaded into each ``generate_image`` call below. They land on
+        # the workflow via ``inject_params`` through the matching
+        # ``sf_field`` entries (character_ref_image / style_ref_image /
+        # character_lora / style_lora / character_strength /
+        # style_strength). Workflows without those mappings silently
+        # ignore the values.
         if character_lock_paths or style_lock_paths:
             logger.info(
                 "comfyui_locks_active",
@@ -947,6 +1019,14 @@ class ComfyUIService:
                     width=1080,
                     height=1920,
                     save_relative_dir=save_dir,
+                    # Phase-E locks — first ref image wins for simplicity;
+                    # multi-ref blending is a workflow-level concern.
+                    character_ref_image=(character_lock_paths or [None])[0],
+                    style_ref_image=(style_lock_paths or [None])[0],
+                    character_lora=(character_lock or {}).get("lora"),
+                    style_lora=(style_lock or {}).get("lora"),
+                    character_strength=(character_lock or {}).get("strength"),
+                    style_strength=(style_lock or {}).get("strength"),
                 )
 
                 # Broadcast: scene done

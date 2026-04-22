@@ -1823,46 +1823,69 @@ class PipelineOrchestrator:
             PipelineStep.THUMBNAIL, 20, "running", "Extracting thumbnail..."
         )
 
-        match thumbnail_mode:
-            case "simple":
-                # Legacy path: grab a fixed frame at 0.5 s.
+        # The thumbnail step is non-critical: the video and captions are
+        # already assembled at this point. A flaky drawtext filter or a
+        # weird FFmpeg build shouldn't flip the whole episode to
+        # ``failed`` — try the requested mode, then fall through to the
+        # cheapest possible "grab any frame" path, and only raise if
+        # even that fails.
+        async def _try_modes() -> None:
+            if thumbnail_mode == "simple":
                 await self.ffmpeg_service.extract_thumbnail(
                     video_path=video_path,
                     output_path=thumbnail_path,
                     timestamp_seconds=0.5,
                 )
-
-            case "text_overlay":
-                # Smart frame selection, then title text composited on top.
+                return
+            if thumbnail_mode == "text_overlay":
                 await self._broadcast_progress(
-                    PipelineStep.THUMBNAIL, 30, "running", "Selecting best frame for thumbnail..."
+                    PipelineStep.THUMBNAIL, 30, "running", "Selecting best frame..."
                 )
                 await self.ffmpeg_service.extract_best_thumbnail(
                     video_path=video_path,
                     output_path=thumbnail_path,
                 )
                 await self._broadcast_progress(
-                    PipelineStep.THUMBNAIL,
-                    60,
-                    "running",
-                    "Compositing title text onto thumbnail...",
+                    PipelineStep.THUMBNAIL, 60, "running", "Compositing title text..."
                 )
-                episode_title: str = episode.title or ""
-                episode_subtitle: str = getattr(episode, "topic", "") or ""
                 await self.ffmpeg_service.compose_thumbnail(
                     base_image_path=thumbnail_path,
                     output_path=thumbnail_path,
-                    title=episode_title,
-                    subtitle=episode_subtitle,
+                    title=episode.title or "",
+                    subtitle=getattr(episode, "topic", "") or "",
                 )
+                return
+            # smart_frame (default) and any unknown future value
+            await self.ffmpeg_service.extract_best_thumbnail(
+                video_path=video_path,
+                output_path=thumbnail_path,
+            )
 
-            case _:
-                # "smart_frame" and any unknown future value — sample frames,
-                # pick the sharpest one.
-                await self.ffmpeg_service.extract_best_thumbnail(
+        try:
+            await _try_modes()
+        except Exception as thumb_exc:
+            self.log.warning(
+                "thumbnail_mode_failed_falling_back",
+                mode=thumbnail_mode,
+                error=str(thumb_exc)[:200],
+            )
+            try:
+                # Cheapest fallback — grab a mid-video frame.
+                await self.ffmpeg_service.extract_thumbnail(
                     video_path=video_path,
                     output_path=thumbnail_path,
+                    timestamp_seconds=0.5,
                 )
+            except Exception as final_exc:
+                # Even the fallback failed. Don't kill the episode — the
+                # video is already usable; just warn and carry on without
+                # a thumbnail. The operator can regenerate one from the
+                # Episode detail page.
+                self.log.error(
+                    "thumbnail_generation_skipped",
+                    error=str(final_exc)[:200],
+                )
+                return
 
         await self._broadcast_progress(
             PipelineStep.THUMBNAIL, 80, "running", "Saving thumbnail asset..."
