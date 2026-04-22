@@ -57,7 +57,7 @@
       <ul>
         <li><strong>Your content stays on your machine.</strong> Scripts, voices, videos, models, OAuth tokens for YouTube / TikTok / Instagram — all on your disk. We have no access.</li>
         <li>We hold the minimum data needed to sell and license the Software: your email, payment metadata (held by Stripe), license state, and the list of machines that have activated.</li>
-        <li>We do not sell, rent, or share personal data for marketing. We use four subprocessors: Stripe (billing), Resend (transactional email), Hetzner (hosting), and — only if you accept our consent banner — Google Analytics for website statistics.</li>
+        <li>We do not sell, rent, or share personal data for marketing. We use four subprocessors: Stripe (billing), Resend (transactional email), an EU cloud-hosting provider, and — only if you accept our consent banner — Google Analytics for website statistics.</li>
         <li>You may contact the FDPIC (EDÖB) or your national data-protection authority at any time.</li>
       </ul>
 
@@ -111,7 +111,7 @@
         <tbody>
           <tr><td>Stripe Payments Europe Ltd.</td><td>Billing, tax, invoicing</td><td>Name, email, card data, billing address</td><td>Ireland / USA</td></tr>
           <tr><td>Resend, Inc.</td><td>Transactional email</td><td>Email, message content</td><td>USA</td></tr>
-          <tr><td>Hetzner Online GmbH</td><td>Hosting of license server</td><td>License &amp; activation records</td><td>Germany (EU)</td></tr>
+          <tr><td>EU cloud-hosting provider</td><td>Hosting of license server</td><td>License &amp; activation records</td><td>Germany (EU)</td></tr>
           <tr><td>Google Ireland Ltd. (Analytics)</td><td>Website analytics (consent-gated)</td><td>Pseudonymised pageviews, IP-anonymised</td><td>Ireland / USA</td></tr>
         </tbody>
       </table>
@@ -130,11 +130,11 @@
       <p>To exercise any of these, email <a href="mailto:privacy@drevalis.com">privacy@drevalis.com</a> from the address on your account. We respond within 30 days.</p>
 
       <h2>6. Security</h2>
-      <p>Our license server runs on a hardened Hetzner Cloud instance with fail2ban, ufw, key-only SSH, and automatic security updates. License JWTs are signed with Ed25519; activation heartbeats use HTTPS (TLS 1.2+). Customer data in our database is limited to what section 2 describes.</p>
+      <p>Our license server runs on a hardened EU cloud instance with automatic security updates, host-based firewalling, and key-only administrative access. License JWTs are signed with Ed25519; activation heartbeats use HTTPS (TLS 1.2+). Customer data in our database is limited to what section 2 describes.</p>
       <p>Inside your install, OAuth tokens and third-party API keys are encrypted at rest with a Fernet key unique to your install (stored in <code>.env</code>; never sent to us).</p>
 
       <h2>7. Cross-border data transfer</h2>
-      <p>We host our license server in Germany (Hetzner), an EU/EEA country with an adequate level of protection recognised by Switzerland. Stripe and Resend process data in the United States under the Swiss–U.S. DPF and EU–U.S. DPF; where those frameworks do not cover a specific transfer, Standard Contractual Clauses plus supplementary technical measures are in place.</p>
+      <p>We host our license server in Germany, an EU/EEA country with an adequate level of protection recognised by Switzerland. Stripe and Resend process data in the United States under the Swiss–U.S. DPF and EU–U.S. DPF; where those frameworks do not cover a specific transfer, Standard Contractual Clauses plus supplementary technical measures are in place.</p>
 
       <h2>8. Children</h2>
       <p>The Software is not directed to children under 16. We do not knowingly collect data from anyone under 16. If you believe we have, contact us and we will delete it.</p>

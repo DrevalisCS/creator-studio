@@ -82,14 +82,14 @@
             <span class="pill pill-blue">Windows 10 · 11</span>
           </div>
           <h3 class="mb-2">One line in PowerShell</h3>
-          <p class="text-sm text-[var(--txt-secondary)] mb-4">Install <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noreferrer">Docker Desktop</a> first (it enables WSL2 automatically). Then open PowerShell and paste:</p>
+          <p class="text-sm text-[var(--txt-secondary)] mb-4">Install <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">Docker Desktop</a> first (it enables WSL2 automatically). Then open PowerShell and paste:</p>
           <pre class="text-sm"><code>iwr -useb https://drevalis.com/install.ps1 | iex</code></pre>
           <p class="small-muted mt-3">If PowerShell blocks remote scripts, run <code class="inline">Set-ExecutionPolicy -Scope Process RemoteSigned</code> first. View <a href="/install.ps1">install.ps1</a>.</p>
 
           <details class="mt-5 text-sm">
             <summary class="cursor-pointer text-[var(--accent)] font-medium">First time with Docker Desktop?</summary>
             <ol class="mt-3 space-y-2 text-[var(--txt-secondary)] list-decimal list-inside text-sm">
-              <li>Download Docker Desktop from <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noreferrer">docker.com</a> — choose Windows · AMD64 or ARM64.</li>
+              <li>Download Docker Desktop from <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">docker.com</a> — choose Windows · AMD64 or ARM64.</li>
               <li>Run the installer, accept the WSL2 option when prompted.</li>
               <li>Reboot when it asks.</li>
               <li>Launch Docker Desktop; wait until the tray icon is solid, not animated.</li>
@@ -158,12 +158,12 @@
         <div class="card p-6">
           <h4 class="mb-2">ComfyUI</h4>
           <p class="text-sm text-[var(--txt-secondary)] mb-3">Scene image and video generation.</p>
-          <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noreferrer" class="text-sm">Install guide →</a>
+          <a href="https://github.com/comfyanonymous/ComfyUI" target="_blank" rel="noopener noreferrer" class="text-sm">Install guide →</a>
         </div>
         <div class="card p-6">
           <h4 class="mb-2">LM Studio or Ollama</h4>
           <p class="text-sm text-[var(--txt-secondary)] mb-3">Local LLM for scripts. Or plug in Claude / OpenAI-compatible instead.</p>
-          <a href="https://lmstudio.ai" target="_blank" rel="noreferrer" class="text-sm">LM Studio →</a>
+          <a href="https://lmstudio.ai" target="_blank" rel="noopener noreferrer" class="text-sm">LM Studio →</a>
         </div>
         <div class="card p-6">
           <h4 class="mb-2">FFmpeg</h4>

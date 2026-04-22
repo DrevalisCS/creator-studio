@@ -45,17 +45,17 @@
 
   // Line schema: text, time-to-appear (ms), tone ('title' | 'info' | 'ok' | 'warn' | 'accent' | 'dim')
   var LINES = [
-    { t: 'DREVALIS // CREATOR STUDIO  v0.19', at: 0,    tone: 'title' },
+    { t: 'DREVALIS // CREATOR STUDIO', at: 0,    tone: 'title' },
     { t: '//  est. 2026 · Made in Switzerland · Self-hosted AI pipeline', at: 140, tone: 'dim' },
     { t: '',                                            at: 260,  tone: 'dim' },
     { t: '[BOOT] Initializing runtime ...............', at: 380,  tone: 'info' },
     { t: '[NET ] Handshake → drevalis.com ........... OK', at: 620, tone: 'ok' },
-    { t: '[GPU ] ComfyUI node pool (4 workers) ...... OK', at: 860, tone: 'ok' },
-    { t: '[LLM ] Anthropic · OpenAI · local ......... OK', at: 1100, tone: 'ok' },
-    { t: '[TTS ] ElevenLabs · Edge · Piper · Kokoro . OK', at: 1340, tone: 'ok' },
-    { t: '[CV  ] FFmpeg 7.1 · faster-whisper v1.1 ... OK', at: 1580, tone: 'ok' },
-    { t: '[SEC ] Fernet keystore · OAuth vault ...... OK', at: 1820, tone: 'ok' },
-    { t: '[LIC ] License server (Hetzner EU) ........ OK', at: 2060, tone: 'ok' },
+    { t: '[GPU ] Scene generator pool ............... OK', at: 860, tone: 'ok' },
+    { t: '[LLM ] Script engine router ............... OK', at: 1100, tone: 'ok' },
+    { t: '[TTS ] Voice engine stack .................. OK', at: 1340, tone: 'ok' },
+    { t: '[CV  ] Video + captions pipeline ........... OK', at: 1580, tone: 'ok' },
+    { t: '[SEC ] Encryption vault · OAuth vault ...... OK', at: 1820, tone: 'ok' },
+    { t: '[LIC ] License service ..................... OK', at: 2060, tone: 'ok' },
     { t: '',                                            at: 2180, tone: 'dim' },
     { t: '> All systems nominal. Jacking in.',           at: 2320, tone: 'accent' },
     { t: '> Loading interface ...',                      at: 2620, tone: 'info' },
@@ -169,7 +169,7 @@
     '<div class="wrap">' +
       '<span class="chip"><span class="dot"></span>System boot</span>' +
       '<div class="title" data-text="DREVALIS // CREATOR STUDIO">DREVALIS // CREATOR STUDIO</div>' +
-      '<div class="sub">v0.19 · Neural-assisted content pipeline · secure-by-default</div>' +
+      '<div class="sub">Neural-assisted content pipeline · secure-by-default</div>' +
       '<div class="out" data-out></div>' +
       '<div class="bar" data-bar></div>' +
       '<div class="meta"><span>0x00 — checksum verified</span><span data-pct>0%</span></div>' +

@@ -225,7 +225,7 @@
         <div class="stack-chip">Anthropic Claude</div>
         <div class="stack-chip">ElevenLabs</div>
         <div class="stack-chip">Kokoro · Piper · Edge TTS</div>
-        <div class="stack-chip">faster-whisper</div>
+        <div class="stack-chip">Speech alignment</div>
         <div class="stack-chip">FFmpeg</div>
         <div class="stack-chip">YouTube · TikTok · Instagram</div>
       </div>
@@ -268,7 +268,7 @@
           <div>
             <span class="pill pill-blue mb-4">Step 2 · Voice</span>
             <h3>Four TTS engines. Per-character casting. Zero re-uploads.</h3>
-            <p class="mb-4">Mix Microsoft Edge neural voices (free, 300+ available), Kokoro 24 kHz, Piper local ONNX, or ElevenLabs. Bracket speakers in your script and the engine casts them separately — perfect for dialogue-heavy audiobooks.</p>
+            <p class="mb-4">Mix free local voices (hundreds of neural speakers bundled) with premium cloud providers. Bracket speakers in your script and the engine casts them separately — perfect for dialogue-heavy audiobooks.</p>
             <ul class="text-sm text-[var(--txt-secondary)] space-y-2 leading-relaxed">
               <li><strong class="text-[var(--txt-primary)]">Parallel synthesis.</strong> Segments split across multiple ComfyUI servers for long runs.</li>
               <li><strong class="text-[var(--txt-primary)]">Per-speaker pauses.</strong> Context-aware 150 ms / 400 ms gaps between speakers read naturally.</li>
@@ -285,7 +285,7 @@
           <div>
             <span class="pill pill-purple mb-4">Step 3 · Scenes</span>
             <h3>Your ComfyUI workflows. Your visual style. Per-scene control.</h3>
-            <p class="mb-4">Qwen Image for 9:16 Shorts, Wan 2.2 for 16:9 long-form — or any ComfyUI workflow you import. Multi-server pool runs scenes in parallel. Need a scene redone? One click, keeps everything else.</p>
+            <p class="mb-4">Format-specialised workflows for 9:16 Shorts and 16:9 long-form — or any ComfyUI workflow you import. Multi-server pool runs scenes in parallel. Need a scene redone? One click, keeps everything else.</p>
             <ul class="text-sm text-[var(--txt-secondary)] space-y-2 leading-relaxed">
               <li><strong class="text-[var(--txt-primary)]">Visual consistency.</strong> Base seed per series + style prompt appended to every scene.</li>
               <li><strong class="text-[var(--txt-primary)]">Per-scene resumability.</strong> Failed mid-run? Completed scenes are kept. Retries resume from the first failure.</li>
@@ -331,7 +331,7 @@
         </div>
         <div class="card card-hover p-6">
           <h4 class="mb-2">Word-level captions</h4>
-          <p class="text-sm">faster-whisper aligns every word to the audio. Burned-in animated subtitles with style presets (YouTube, TikTok, minimal).</p>
+          <p class="text-sm">Word-level speech alignment drives animated subtitles with style presets (YouTube, TikTok, minimal).</p>
         </div>
         <div class="card card-hover p-6">
           <h4 class="mb-2">Background music</h4>
@@ -359,7 +359,7 @@
         </div>
         <div class="card card-hover p-6">
           <h4 class="mb-2">API access (Studio)</h4>
-          <p class="text-sm">The same REST endpoints the UI uses are available for your own scripts. Bring-your-own API token via the <code class="inline">API_AUTH_TOKEN</code> env var.</p>
+          <p class="text-sm">The same REST endpoints the UI uses are available for your own scripts. Bring-your-own API token gates the API by env-var.</p>
         </div>
         <div class="card card-hover p-6">
           <h4 class="mb-2">Central asset library</h4>
@@ -367,7 +367,7 @@
         </div>
         <div class="card card-hover p-6">
           <h4 class="mb-2">Video-in pipeline</h4>
-          <p class="text-sm">Drop a raw recording (podcast, webinar, vlog). faster-whisper transcribes it and the LLM picks the best 30–60s moments. One click turns a clip into an episode.</p>
+          <p class="text-sm">Drop a raw recording (podcast, webinar, vlog). Automatic transcription + an LLM picks the best 30–60s moments. One click turns a clip into an episode.</p>
         </div>
         <div class="card card-hover p-6">
           <h4 class="mb-2">In-browser video editor</h4>
@@ -500,8 +500,8 @@
       </div>
 
       <div class="grid md:grid-cols-2 gap-4 mt-6 reveal">
-        <p class="small-muted"><strong class="text-[var(--txt-primary)]">Method.</strong> Wall-clock end-to-end on published models (Qwen Image / Wan 2.2 for scenes, Kokoro 24 kHz for voice, faster-whisper base for captions). First run is slower — model downloads.</p>
-        <p class="small-muted"><strong class="text-[var(--txt-primary)]">Caveats.</strong> Wan 2.2 can peak at 16 GB+ VRAM. Under 8 GB VRAM, use image-only scene workflows or offload to RunPod. Audiobooks are CPU/TTS-bound; GPU matters only with per-chapter images enabled.</p>
+        <p class="small-muted"><strong class="text-[var(--txt-primary)]">Method.</strong> Wall-clock end-to-end with the default workflow set: published open-weights models for scenes, local neural TTS, and word-level speech alignment. First run is slower — model downloads.</p>
+        <p class="small-muted"><strong class="text-[var(--txt-primary)]">Caveats.</strong> Long-form video workflows peak at 16 GB+ VRAM. Under 8 GB VRAM, stick to image-only scene workflows or offload to RunPod. Audiobooks are CPU/TTS-bound; GPU matters only with per-chapter images enabled.</p>
       </div>
     </div>
   </section>
@@ -615,7 +615,7 @@
           </div>
           <div>
             <h4 class="mb-2">Not guaranteed stable on exotic setups</h4>
-            <p class="text-sm">Tested: Docker + Ubuntu 24.04, macOS Docker Desktop, Windows 11 + WSL2. Arch, BSD, Podman, corporate proxies — best-effort support.</p>
+            <p class="text-sm">Tested on Linux, macOS and Windows via Docker Desktop. Alternative Docker runtimes and corporate proxies — best-effort support.</p>
           </div>
           <div>
             <h4 class="mb-2">Not free forever if you cancel</h4>
