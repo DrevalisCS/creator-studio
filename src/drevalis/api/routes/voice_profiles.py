@@ -39,14 +39,22 @@ router = APIRouter(prefix="/api/v1/voice-profiles", tags=["voice-profiles"])
 )
 async def list_voice_profiles(
     provider: str | None = Query(default=None, description="Filter by provider"),
+    language_code: str | None = Query(
+        default=None,
+        description="Filter by BCP-47 language tag (e.g. 'en-US'). Profiles with "
+        "language_code=NULL always pass through so legacy voices aren't hidden.",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> list[VoiceProfileResponse]:
-    """Return all voice profiles, optionally filtered by provider."""
+    """Return all voice profiles, optionally filtered by provider and language."""
     repo = VoiceProfileRepository(db)
     if provider is not None:
         profiles = await repo.get_by_provider(provider)
     else:
         profiles = await repo.get_all()
+
+    if language_code:
+        profiles = [p for p in profiles if not p.language_code or p.language_code == language_code]
     return [VoiceProfileResponse.model_validate(p) for p in profiles]
 
 
@@ -227,7 +235,18 @@ async def create_voice_profile(
 ) -> VoiceProfileResponse:
     """Create a new voice profile and auto-generate a voice preview."""
     repo = VoiceProfileRepository(db)
-    profile = await repo.create(**payload.model_dump())
+    create_kwargs = payload.model_dump()
+
+    # Auto-derive language_code from edge_voice_id when the caller didn't
+    # supply one — e.g. "en-US-AriaNeural" → "en-US". Keeps users from
+    # having to fill it in manually for the most common case.
+    if not create_kwargs.get("language_code") and create_kwargs.get("provider") == "edge":
+        evid = create_kwargs.get("edge_voice_id") or ""
+        parts = evid.split("-")
+        if len(parts) >= 2:
+            create_kwargs["language_code"] = f"{parts[0]}-{parts[1]}"
+
+    profile = await repo.create(**create_kwargs)
     await db.commit()
     await db.refresh(profile)
 

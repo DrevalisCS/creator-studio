@@ -24,6 +24,10 @@ class VoiceProfileCreate(BaseModel):
     edge_voice_id: str | None = None
     gender: str | None = None  # "male" | "female"
     sample_audio_path: str | None = None
+    language_code: str | None = Field(
+        default=None,
+        description="BCP-47 tag, e.g. 'en-US', 'de-DE'. Auto-derived from edge_voice_id when omitted.",
+    )
 
 
 class VoiceProfileUpdate(BaseModel):
@@ -41,6 +45,7 @@ class VoiceProfileUpdate(BaseModel):
     edge_voice_id: str | None = None
     gender: str | None = None
     sample_audio_path: str | None = None
+    language_code: str | None = None
 
 
 class VoiceProfileResponse(BaseModel):
@@ -61,6 +66,7 @@ class VoiceProfileResponse(BaseModel):
     edge_voice_id: str | None
     gender: str | None
     sample_audio_path: str | None
+    language_code: str | None = None
     created_at: datetime
     updated_at: datetime
 

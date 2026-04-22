@@ -423,9 +423,12 @@ export const episodes = {
 // ---------------------------------------------------------------------------
 
 export const voiceProfiles = {
-  list: (provider?: string) => {
-    const qs = provider ? `?provider=${provider}` : '';
-    return get<VoiceProfile[]>(`/api/v1/voice-profiles${qs}`);
+  list: (params?: { provider?: string; language_code?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.provider) qs.set('provider', params.provider);
+    if (params?.language_code) qs.set('language_code', params.language_code);
+    const q = qs.toString();
+    return get<VoiceProfile[]>(`/api/v1/voice-profiles${q ? `?${q}` : ''}`);
   },
 
   get: (id: string) => get<VoiceProfile>(`/api/v1/voice-profiles/${id}`),

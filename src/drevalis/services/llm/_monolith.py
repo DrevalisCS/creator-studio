@@ -508,6 +508,7 @@ class LLMService:
         topic: str,
         character_description: str,
         target_duration: int,
+        language_code: str | None = None,
     ) -> EpisodeScript:
         """Generate a full episode script as a validated :class:`EpisodeScript`.
 
@@ -548,6 +549,19 @@ class LLMService:
                 "nature shots, cityscapes, macro photography, aerial views, etc. "
                 "Do NOT include people, humans, or humanoid figures in the visual prompts. "
                 "Focus on cinematic compositions, dramatic lighting, and atmospheric visuals."
+            )
+
+        # Language steer — the *narration* fields must be in the series'
+        # language. Visual prompts stay in English (ComfyUI models were
+        # trained on English captions, multilingual prompts degrade
+        # image quality). Only add the steer when a language is set and
+        # it's not English.
+        if language_code and not language_code.lower().startswith("en"):
+            user_prompt += (
+                f"\n\nLANGUAGE: Write every 'narration' field in {language_code}. "
+                "Keep the 'visual_prompt' fields in English — the image generator "
+                "only understands English. All other JSON keys and values should "
+                "remain in English."
             )
 
         logger.info(

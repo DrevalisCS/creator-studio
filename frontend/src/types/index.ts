@@ -325,6 +325,7 @@ export interface VoiceProfileCreate {
   kokoro_model_path?: string | null;
   edge_voice_id?: string | null;
   gender?: string | null;
+  language_code?: string | null;
 }
 
 export interface VoiceProfileUpdate {
@@ -355,6 +356,7 @@ export interface VoiceProfile {
   kokoro_model_path: string | null;
   edge_voice_id: string | null;
   gender: string | null;
+  language_code: string | null;
   created_at: string;
   updated_at: string;
 }

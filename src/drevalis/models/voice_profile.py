@@ -50,6 +50,13 @@ class VoiceProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # Gender tag for voice casting
     gender: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 
+    # BCP-47 language tag ("en-US", "de-DE", "fr-FR"). Derived automatically
+    # from edge_voice_id for Edge voices, user-set for Piper / Kokoro /
+    # ElevenLabs where the locale isn't embedded in the ID. Nullable so
+    # legacy voices aren't hidden from the picker until the operator
+    # backfills them — UI treats NULL as "any language".
+    language_code: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+
     # Optional sample audio for preview
     sample_audio_path: Mapped[str | None] = mapped_column(TEXT, nullable=True)
 

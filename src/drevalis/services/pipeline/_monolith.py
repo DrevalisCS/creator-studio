@@ -497,6 +497,7 @@ class PipelineOrchestrator:
                 topic=topic,
                 character_description=character_description,
                 target_duration=target_duration,
+                language_code=getattr(series, "default_language", None),
             )
 
             # Best-effort visual prompt refinement via template (shorts path).
