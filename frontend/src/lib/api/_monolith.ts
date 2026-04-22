@@ -282,6 +282,17 @@ export const episodes = {
       descriptions: string[];
     }>(`/api/v1/episodes/${id}/seo-variants`),
 
+  continuity: (id: string) =>
+    post<{
+      issues: Array<{
+        from_scene: number;
+        to_scene: number;
+        severity: 'info' | 'warn' | 'fail';
+        issue: string;
+        suggestion: string;
+      }>;
+    }>(`/api/v1/episodes/${id}/continuity`),
+
   retryStep: (id: string, step: string) =>
     post<RetryResponse>(`/api/v1/episodes/${id}/retry/${step}`),
 

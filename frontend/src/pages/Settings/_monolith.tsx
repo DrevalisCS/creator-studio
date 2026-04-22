@@ -703,8 +703,19 @@ function VoiceSection() {
     try {
       const result = await voiceProfiles.test(id);
       if (result.audio_path) {
-        toast.success('Voice sample generated');
+        toast.success('Voice sample generated — playing');
         void fetchProfiles();
+        // Auto-play the test result. The path the API returns is
+        // absolute inside the container (storage/temp/…); convert to
+        // the frontend-proxied /storage URL for playback.
+        let src = result.audio_path;
+        const idx = src.indexOf('storage/');
+        if (idx >= 0) src = '/' + src.slice(idx);
+        else if (!src.startsWith('/')) src = '/' + src;
+        const audio = new Audio(src);
+        audio.play().catch(() => {
+          /* autoplay might be blocked — the toast already told the user it's ready */
+        });
       }
     } catch (err) {
       toast.error('Failed to generate voice sample', { description: String(err) });
@@ -824,13 +835,18 @@ function VoiceSection() {
                   <h4 className="text-sm font-semibold text-txt-primary truncate">
                     {p.name}
                   </h4>
-                  <div className="flex items-center gap-1.5 mt-1.5">
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                     <Badge variant={getProviderBadgeVariant(p.provider)} className="text-[10px]">
                       {p.provider}
                     </Badge>
                     <span className="text-[10px] text-txt-tertiary">
                       {p.speed}x speed
                     </span>
+                    {p.sample_audio_path && p.provider === 'elevenlabs' && !p.elevenlabs_voice_id && (
+                      <Badge variant="neutral" className="text-[10px]">
+                        clone · pending training
+                      </Badge>
+                    )}
                   </div>
                 </div>
                 <Button

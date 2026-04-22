@@ -29,6 +29,7 @@ const Usage = lazy(() => import('@/pages/Usage'));
 const CloudGPU = lazy(() => import('@/pages/CloudGPU'));
 const Assets = lazy(() => import('@/pages/Assets'));
 const EpisodeEditor = lazy(() => import('@/pages/EpisodeEditor'));
+const ShotList = lazy(() => import('@/pages/ShotList'));
 const Login = lazy(() => import('@/pages/Login'));
 
 // ---------------------------------------------------------------------------
@@ -89,6 +90,7 @@ function App() {
         <Route path="/episodes" element={<EpisodesList />} />
         <Route path="/episodes/:episodeId" element={<EpisodeDetail />} />
         <Route path="/episodes/:episodeId/edit" element={<EpisodeEditor />} />
+        <Route path="/episodes/:episodeId/shot-list" element={<ShotList />} />
         <Route path="/audiobooks" element={<Audiobooks />} />
         <Route path="/audiobooks/:audiobookId" element={<AudiobookDetail />} />
         <Route path="/calendar" element={<Calendar />} />

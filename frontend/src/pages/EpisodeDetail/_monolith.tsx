@@ -29,6 +29,7 @@ import {
   CalendarDays,
   Search,
   Scissors,
+  ListChecks,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -560,6 +561,15 @@ function EpisodeDetail() {
             >
               <Scissors size={14} />
               Edit
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => navigate(`/episodes/${episode.id}/shot-list`)}
+              aria-label="Open the shot list overview"
+            >
+              <ListChecks size={14} />
+              Shot list
             </Button>
             <Button
               variant="secondary"
