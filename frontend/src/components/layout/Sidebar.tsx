@@ -13,6 +13,7 @@ import {
   Terminal,
   ListChecks,
   Activity,
+  Cpu,
   Settings,
   HelpCircle,
   ChevronLeft,
@@ -48,6 +49,7 @@ const NAV_PUBLISH = [
 // System — Jobs promoted (users need it when things break)
 const NAV_SYSTEM = [
   { to: '/settings', icon: Settings, label: 'Settings' },
+  { to: '/cloud-gpu', icon: Cpu, label: 'Cloud GPU' },
   { to: '/jobs', icon: ListChecks, label: 'Jobs' },
   { to: '/usage', icon: Activity, label: 'Usage' },
   { to: '/logs', icon: Terminal, label: 'Event Log' },

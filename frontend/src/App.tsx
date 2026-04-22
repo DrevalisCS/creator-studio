@@ -25,6 +25,7 @@ const Settings = lazy(() => import('@/pages/Settings'));
 const Help = lazy(() => import('@/pages/Help'));
 const YouTube = lazy(() => import('@/pages/YouTube'));
 const Usage = lazy(() => import('@/pages/Usage'));
+const CloudGPU = lazy(() => import('@/pages/CloudGPU'));
 
 // ---------------------------------------------------------------------------
 // Loading fallback
@@ -85,6 +86,7 @@ function App() {
         <Route path="/help" element={<Help />} />
         <Route path="/youtube" element={<YouTube />} />
         <Route path="/usage" element={<Usage />} />
+        <Route path="/cloud-gpu" element={<CloudGPU />} />
         <Route path="/youtube/callback" element={<YouTubeCallback />} />
       </Route>
     </Routes>

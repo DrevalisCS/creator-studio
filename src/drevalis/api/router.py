@@ -9,6 +9,7 @@ from drevalis.api.routes.ab_tests import router as ab_tests_router
 from drevalis.api.routes.api_keys import router as api_keys_router
 from drevalis.api.routes.audiobooks import router as audiobooks_router
 from drevalis.api.routes.backup import router as backup_router
+from drevalis.api.routes.cloud_gpu import router as cloud_gpu_router
 from drevalis.api.routes.comfyui import router as comfyui_router
 from drevalis.api.routes.episodes import router as episodes_router
 from drevalis.api.routes.jobs import router as jobs_router
@@ -73,3 +74,4 @@ router.include_router(backup_router)
 router.include_router(onboarding_router)
 router.include_router(music_router)
 router.include_router(ab_tests_router)
+router.include_router(cloud_gpu_router)
