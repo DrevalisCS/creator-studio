@@ -93,6 +93,10 @@ class SeriesUpdate(BaseModel):
     music_key: str | None = None
     audio_preset: str | None = None
     video_clip_duration: int | None = None
+    # Phase B + E: asset-driven conditioning.
+    reference_asset_ids: list[str] | None = None
+    character_lock: dict[str, Any] | None = None
+    style_lock: dict[str, Any] | None = None
 
 
 class SeriesResponse(BaseModel):
@@ -139,6 +143,9 @@ class SeriesResponse(BaseModel):
     music_key: str | None
     audio_preset: str | None
     video_clip_duration: int
+    reference_asset_ids: list[str] | None = None
+    character_lock: dict[str, Any] | None = None
+    style_lock: dict[str, Any] | None = None
     created_at: datetime
     updated_at: datetime
 

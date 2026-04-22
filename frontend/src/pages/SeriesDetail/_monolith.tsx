@@ -244,6 +244,13 @@ function SeriesDetail() {
   const [editScenesPerChapter, setEditScenesPerChapter] = useState(8);
   const [editVisualConsistency, setEditVisualConsistency] = useState('');
   const [editAspectRatio, setEditAspectRatio] = useState('9:16');
+  // Phase E locks — comma-separated UUIDs + strength/lora.
+  const [editCharacterAssetIds, setEditCharacterAssetIds] = useState('');
+  const [editCharacterStrength, setEditCharacterStrength] = useState(0.75);
+  const [editCharacterLora, setEditCharacterLora] = useState('');
+  const [editStyleAssetIds, setEditStyleAssetIds] = useState('');
+  const [editStyleStrength, setEditStyleStrength] = useState(0.5);
+  const [editStyleLora, setEditStyleLora] = useState('');
 
   // Warn about unsaved settings changes
   const hasUnsavedSettings = useMemo(() => {
@@ -324,6 +331,14 @@ function SeriesDetail() {
       setEditScenesPerChapter(s.scenes_per_chapter ?? 8);
       setEditVisualConsistency(s.visual_consistency_prompt ?? '');
       setEditAspectRatio(s.aspect_ratio ?? '9:16');
+      const cLock = (s as any).character_lock || null;
+      const sLock = (s as any).style_lock || null;
+      setEditCharacterAssetIds((cLock?.asset_ids ?? []).join(', '));
+      setEditCharacterStrength(Number(cLock?.strength ?? 0.75));
+      setEditCharacterLora(cLock?.lora ?? '');
+      setEditStyleAssetIds((sLock?.asset_ids ?? []).join(', '));
+      setEditStyleStrength(Number(sLock?.strength ?? 0.5));
+      setEditStyleLora(sLock?.lora ?? '');
     } catch (err) {
       toast.error('Failed to load series', { description: String(err) });
     } finally {
@@ -378,7 +393,27 @@ function SeriesDetail() {
         scenes_per_chapter: editContentFormat === 'longform' ? editScenesPerChapter : undefined,
         visual_consistency_prompt: editVisualConsistency || undefined,
         aspect_ratio: editAspectRatio,
-      });
+        character_lock: editCharacterAssetIds.trim()
+          ? {
+              asset_ids: editCharacterAssetIds
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean),
+              strength: editCharacterStrength,
+              lora: editCharacterLora || null,
+            }
+          : null,
+        style_lock: editStyleAssetIds.trim()
+          ? {
+              asset_ids: editStyleAssetIds
+                .split(',')
+                .map((s) => s.trim())
+                .filter(Boolean),
+              strength: editStyleStrength,
+              lora: editStyleLora || null,
+            }
+          : null,
+      } as any);
       toast.success('Series saved');
       void fetchData();
     } catch (err) {
@@ -876,6 +911,96 @@ function SeriesDetail() {
                   placeholder="Style prompt appended to every scene for visual consistency (e.g., 'cinematic 4K, warm color grading, anime style')"
                   className="w-full min-h-[60px] px-3 py-2 text-sm bg-bg-elevated border border-border rounded-lg text-txt-primary placeholder:text-txt-tertiary resize-y"
                 />
+              </div>
+
+              {/* Phase E — Character + Style locks */}
+              <div className="border-t border-white/[0.04] pt-4 space-y-4">
+                <div>
+                  <div className="text-xs font-semibold text-txt-primary mb-1">
+                    Character reference lock
+                  </div>
+                  <p className="text-[11px] text-txt-muted mb-2">
+                    Pin a face or character across scenes. Upload portrait
+                    assets on the Assets page and paste their UUIDs here.
+                    Workflows with IPAdapter-FaceID slots consume these;
+                    others ignore them.
+                  </p>
+                  <input
+                    type="text"
+                    value={editCharacterAssetIds}
+                    onChange={(e) => setEditCharacterAssetIds(e.target.value)}
+                    placeholder="asset-uuid-1, asset-uuid-2"
+                    className="w-full px-3 py-2 text-xs font-mono bg-bg-elevated border border-border rounded-lg text-txt-primary"
+                  />
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <label className="text-[11px] text-txt-secondary">
+                      Strength ({editCharacterStrength.toFixed(2)})
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={editCharacterStrength}
+                        onChange={(e) =>
+                          setEditCharacterStrength(parseFloat(e.target.value))
+                        }
+                        className="w-full"
+                      />
+                    </label>
+                    <label className="text-[11px] text-txt-secondary">
+                      LoRA (optional)
+                      <input
+                        type="text"
+                        value={editCharacterLora}
+                        onChange={(e) => setEditCharacterLora(e.target.value)}
+                        placeholder="sdxl_face_v2"
+                        className="w-full px-2 py-1 text-xs bg-bg-elevated border border-border rounded text-txt-primary"
+                      />
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <div className="text-xs font-semibold text-txt-primary mb-1">
+                    Style reference lock
+                  </div>
+                  <p className="text-[11px] text-txt-muted mb-2">
+                    Pin a look (lighting, palette, film grain). Same asset-UUIDs-plus-strength pattern.
+                  </p>
+                  <input
+                    type="text"
+                    value={editStyleAssetIds}
+                    onChange={(e) => setEditStyleAssetIds(e.target.value)}
+                    placeholder="asset-uuid-1, asset-uuid-2"
+                    className="w-full px-3 py-2 text-xs font-mono bg-bg-elevated border border-border rounded-lg text-txt-primary"
+                  />
+                  <div className="grid grid-cols-2 gap-2 mt-2">
+                    <label className="text-[11px] text-txt-secondary">
+                      Strength ({editStyleStrength.toFixed(2)})
+                      <input
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.05}
+                        value={editStyleStrength}
+                        onChange={(e) =>
+                          setEditStyleStrength(parseFloat(e.target.value))
+                        }
+                        className="w-full"
+                      />
+                    </label>
+                    <label className="text-[11px] text-txt-secondary">
+                      LoRA (optional)
+                      <input
+                        type="text"
+                        value={editStyleLora}
+                        onChange={(e) => setEditStyleLora(e.target.value)}
+                        placeholder="sdxl_style_v2"
+                        className="w-full px-2 py-1 text-xs bg-bg-elevated border border-border rounded text-txt-primary"
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
             </>
           )}

@@ -434,17 +434,62 @@ async def test_voice_profile(
                 else profile.piper_speaker_id or ""
             )
         elif profile.provider == "elevenlabs":
+            # Resolve the ElevenLabs API key from the encrypted api_key_store.
+            from drevalis.repositories.api_key_store import ApiKeyStoreRepository
+
+            key_store = ApiKeyStoreRepository(db)
+            api_key_row = await key_store.get_by_key_name("elevenlabs")
+            if api_key_row is None:
+                return VoiceTestResponse(
+                    success=False,
+                    message="ElevenLabs API key not configured — add it on the Settings → API Keys page.",
+                )
+            from drevalis.core.security import decrypt_value
+
+            el_api_key = decrypt_value(api_key_row.encrypted_value, settings.encryption_key)
+
+            from drevalis.services.tts import ElevenLabsTTSProvider
+
+            el_provider = ElevenLabsTTSProvider(api_key=el_api_key)
+
+            # Auto-upload the sample via IVC the first time we test a
+            # pending_training clone (no voice_id yet but sample_audio_path is set).
+            if not profile.elevenlabs_voice_id and profile.sample_audio_path:
+                sample_abs = Path(settings.storage_base_path) / profile.sample_audio_path
+                if sample_abs.exists():
+                    try:
+                        new_voice_id = await el_provider.upload_voice_sample(
+                            name=profile.name or f"drevalis-{profile.id.hex[:8]}",
+                            sample_path=sample_abs,
+                        )
+                        await repo.update(profile.id, elevenlabs_voice_id=new_voice_id)
+                        await db.commit()
+                        profile = await repo.get_by_id(profile.id) or profile
+                    except Exception as exc:
+                        return VoiceTestResponse(
+                            success=False,
+                            message=f"ElevenLabs IVC upload failed: {exc}",
+                        )
+
             if not profile.elevenlabs_voice_id:
                 return VoiceTestResponse(
                     success=False,
-                    message="ElevenLabs voice ID is not configured on this profile",
+                    message="ElevenLabs voice ID is not configured and no sample audio is available.",
                 )
-            # ElevenLabs requires an API key -- for now we return an error
-            # if it cannot be resolved.
+
+            result = await el_provider.synthesize(
+                text,
+                profile.elevenlabs_voice_id,
+                output_path,
+                speed=float(profile.speed),
+                pitch=float(profile.pitch),
+            )
+            await el_provider.close()
             return VoiceTestResponse(
-                success=False,
-                message="ElevenLabs voice testing requires API key configuration "
-                "at the application level. Use the TTS service directly.",
+                success=True,
+                message="Voice test completed successfully",
+                audio_path=result.audio_path,
+                duration_seconds=result.duration_seconds,
             )
         elif profile.provider == "edge":
             provider = EdgeTTSProvider()

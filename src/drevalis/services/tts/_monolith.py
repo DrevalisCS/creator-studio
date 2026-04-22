@@ -469,6 +469,42 @@ class ElevenLabsTTSProvider:
         if self._client and not self._client.is_closed:
             await self._client.aclose()
 
+    async def upload_voice_sample(
+        self,
+        *,
+        name: str,
+        sample_path: Path,
+        description: str | None = None,
+    ) -> str:
+        """Upload an audio sample via ElevenLabs Instant Voice Cloning.
+
+        Returns the new ``voice_id`` on success. Requires an IVC-enabled
+        plan; raises ``httpx.HTTPStatusError`` on API rejection so the
+        caller can surface a useful message.
+        """
+        client = self._get_client()
+        # /voices/add uses multipart/form-data, but the shared client
+        # expects JSON — issue a one-off request using the underlying
+        # transport so we don't disturb the Accept/content-type defaults.
+        with sample_path.open("rb") as fh:
+            files = {"files": (sample_path.name, fh, "audio/mpeg")}
+            data = {"name": name}
+            if description:
+                data["description"] = description
+            # Override Accept for this request — the API returns JSON here.
+            r = await client.post(
+                "/voices/add",
+                files=files,
+                data=data,
+                headers={"Accept": "application/json"},
+            )
+        r.raise_for_status()
+        body = r.json()
+        voice_id = body.get("voice_id")
+        if not voice_id:
+            raise ValueError(f"unexpected IVC response shape: {body!r}")
+        return str(voice_id)
+
     # -- public interface ---------------------------------------------------
 
     async def synthesize(

@@ -819,6 +819,12 @@ class ComfyUIService:
         negative_prompt: str | None = None,
         progress_callback: SceneProgressCallback | None = None,
         base_seed: int | None = None,
+        *,
+        reference_asset_paths: list[str] | None = None,
+        character_lock: dict[str, Any] | None = None,
+        style_lock: dict[str, Any] | None = None,
+        character_lock_paths: list[str] | None = None,
+        style_lock_paths: list[str] | None = None,
     ) -> list[GeneratedImage]:
         """Generate images for all scenes in an episode.
 
@@ -852,6 +858,22 @@ class ComfyUIService:
 
         # Resolve quality suffix once per call — it depends only on visual_style.
         quality = self._resolve_quality_suffix(visual_style, self.QUALITY_SUFFIXES)
+
+        # Phase E log: surface when locks are being used. Injection into
+        # the workflow JSON happens at _inject_workflow_inputs via the
+        # ``character_ref_image`` / ``style_ref_image`` / ``character_lora``
+        # / ``style_lora`` named inputs — workflows without those slots
+        # silently ignore the values.
+        if character_lock_paths or style_lock_paths:
+            logger.info(
+                "comfyui_locks_active",
+                character_refs=len(character_lock_paths or []),
+                style_refs=len(style_lock_paths or []),
+                character_strength=(character_lock or {}).get("strength"),
+                style_strength=(style_lock or {}).get("strength"),
+                character_lora=(character_lock or {}).get("lora"),
+                style_lora=(style_lock or {}).get("lora"),
+            )
 
         semaphore = asyncio.Semaphore(_MAX_SCENE_CONCURRENCY)
 

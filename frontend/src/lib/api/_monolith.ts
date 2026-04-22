@@ -468,6 +468,19 @@ export const voiceProfiles = {
 
   test: (id: string, text?: string) =>
     post<VoiceTestResponse>(`/api/v1/voice-profiles/${id}/test`, text ? { text } : undefined),
+
+  clone: (data: {
+    asset_id: string;
+    display_name: string;
+    provider?: 'elevenlabs' | 'piper' | 'kokoro';
+    language_code?: string;
+  }) =>
+    post<{
+      voice_profile_id: string;
+      provider: string;
+      status: string;
+      note: string;
+    }>('/api/v1/voice-profiles/clone', data),
 };
 
 // ---------------------------------------------------------------------------

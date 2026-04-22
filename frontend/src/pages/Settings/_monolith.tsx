@@ -69,6 +69,7 @@ import {
   apiKeys as apiKeysApi,
   runpod as runpodApi,
   videoTemplates as videoTemplatesApi,
+  assets as apiAssets,
 } from '@/lib/api';
 import type { SocialPlatform } from '@/lib/api';
 import type {
@@ -623,6 +624,7 @@ function VoiceSection() {
   const [profiles, setProfiles] = useState<VoiceProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [cloneOpen, setCloneOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [testing, setTesting] = useState<string | null>(null);
   const [filter, setFilter] = useState<ProviderFilter>('all');
@@ -769,10 +771,16 @@ function VoiceSection() {
         <h3 className="text-lg font-semibold text-txt-primary">
           Voice Profiles
         </h3>
-        <Button variant="primary" size="sm" onClick={() => setDialogOpen(true)}>
-          <Plus size={14} />
-          Add Profile
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setCloneOpen(true)}>
+            <Mic2 size={14} />
+            Clone voice
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => setDialogOpen(true)}>
+            <Plus size={14} />
+            Add Profile
+          </Button>
+        </div>
       </div>
 
       {/* Provider filter tabs */}
@@ -980,7 +988,127 @@ function VoiceSection() {
           </Button>
         </DialogFooter>
       </Dialog>
+      {cloneOpen && (
+        <VoiceCloneDialog
+          onClose={() => setCloneOpen(false)}
+          onDone={() => {
+            setCloneOpen(false);
+            void fetchProfiles();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Voice Clone Dialog (Phase E)
+// ---------------------------------------------------------------------------
+
+function VoiceCloneDialog({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { toast } = useToast();
+  const [assets, setAssetsList] = useState<Array<{ id: string; filename: string; duration_seconds: number | null }>>([]);
+  const [displayName, setDisplayName] = useState('');
+  const [selectedAssetId, setSelectedAssetId] = useState('');
+  const [provider, setProvider] = useState<'elevenlabs' | 'piper' | 'kokoro'>('elevenlabs');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void apiAssets.list({ kind: 'audio' }).then((rows) =>
+      setAssetsList(
+        rows.map((a) => ({
+          id: a.id,
+          filename: a.filename,
+          duration_seconds: a.duration_seconds,
+        })),
+      ),
+    );
+  }, []);
+
+  const submit = async () => {
+    if (!displayName.trim() || !selectedAssetId) {
+      toast.error('Pick a sample and give the voice a name');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await voiceProfiles.clone({
+        asset_id: selectedAssetId,
+        display_name: displayName.trim(),
+        provider,
+      });
+      toast.success('Voice profile created', {
+        description: res.note,
+      });
+      onDone();
+    } catch (err) {
+      toast.error('Clone failed', { description: String(err) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Dialog open onClose={onClose} title="Clone voice from sample">
+      <div className="space-y-3">
+        <p className="text-xs text-txt-secondary">
+          Upload a 30-60 second clean recording on the Assets page first
+          (kind=audio), then pick it here. ElevenLabs IVC uploads on the
+          first voice test; Piper / Kokoro clones require offline model
+          fine-tuning.
+        </p>
+        <label className="block text-xs">
+          <span className="text-txt-secondary mb-1 block">Display name</span>
+          <Input
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="My narrator voice"
+          />
+        </label>
+        <label className="block text-xs">
+          <span className="text-txt-secondary mb-1 block">Sample (audio asset)</span>
+          <select
+            value={selectedAssetId}
+            onChange={(e) => setSelectedAssetId(e.target.value)}
+            className="w-full px-3 py-2 bg-bg-base border border-white/[0.08] rounded-md text-sm text-txt-primary"
+          >
+            <option value="">— select an audio asset —</option>
+            {assets.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.filename}
+                {a.duration_seconds ? ` (${Math.round(a.duration_seconds)}s)` : ''}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block text-xs">
+          <span className="text-txt-secondary mb-1 block">Provider</span>
+          <select
+            value={provider}
+            onChange={(e) => setProvider(e.target.value as any)}
+            className="w-full px-3 py-2 bg-bg-base border border-white/[0.08] rounded-md text-sm text-txt-primary"
+          >
+            <option value="elevenlabs">ElevenLabs (Instant Voice Cloning)</option>
+            <option value="piper">Piper (local, needs offline training)</option>
+            <option value="kokoro">Kokoro (local, needs offline training)</option>
+          </select>
+        </label>
+      </div>
+      <DialogFooter>
+        <Button variant="ghost" onClick={onClose}>
+          Cancel
+        </Button>
+        <Button variant="primary" onClick={() => void submit()} disabled={busy}>
+          {busy ? 'Cloning…' : 'Create voice profile'}
+        </Button>
+      </DialogFooter>
+    </Dialog>
   );
 }
 

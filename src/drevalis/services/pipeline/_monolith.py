@@ -842,6 +842,26 @@ class PipelineOrchestrator:
                 source="episode" if getattr(episode, "reference_asset_ids", None) else "series",
             )
 
+        # ── Phase E: character / style locks ─────────────────────────
+        # Each lock is ``{"asset_ids": [...], "strength": float, "lora": str}``.
+        # We resolve asset IDs → absolute paths here and hand the tuple
+        # off to ComfyUI. Workflows that don't declare matching named
+        # inputs silently ignore them.
+        character_lock = getattr(series, "character_lock", None) or None
+        style_lock = getattr(series, "style_lock", None) or None
+        character_lock_paths = await self._resolve_reference_asset_paths(
+            (character_lock or {}).get("asset_ids") or []
+        )
+        style_lock_paths = await self._resolve_reference_asset_paths(
+            (style_lock or {}).get("asset_ids") or []
+        )
+        if character_lock_paths or style_lock_paths:
+            self.log.info(
+                "scenes_phase_e_locks",
+                character_refs=len(character_lock_paths),
+                style_refs=len(style_lock_paths),
+            )
+
         if existing_scene_numbers:
             self.log.info(
                 "scenes_partial_resume",
@@ -985,6 +1005,11 @@ class PipelineOrchestrator:
                 negative_prompt=negative_prompt,
                 progress_callback=_scene_progress,
                 base_seed=base_seed,
+                reference_asset_paths=reference_asset_paths,
+                character_lock=character_lock,
+                style_lock=style_lock,
+                character_lock_paths=character_lock_paths,
+                style_lock_paths=style_lock_paths,
             )
 
             for img in generated_images:
