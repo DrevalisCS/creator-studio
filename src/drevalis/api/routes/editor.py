@@ -64,8 +64,25 @@ async def _seed_timeline_from_episode(
     music_clips: list[dict[str, Any]] = []
 
     running = 0.0
+    # Tolerate malformed / stale scripts — the editor should open with
+    # an empty timeline rather than 500. Fills in missing ``title`` from
+    # the episode row so strict EpisodeScript validation passes.
+    script = None
     if episode.script:
-        script = EpisodeScript.model_validate(episode.script)
+        raw_script = dict(episode.script) if isinstance(episode.script, dict) else {}
+        if not raw_script.get("title"):
+            raw_script["title"] = episode.title or "Untitled episode"
+        try:
+            script = EpisodeScript.model_validate(raw_script)
+        except Exception as exc:
+            logger.warning(
+                "editor_seed_script_invalid",
+                episode_id=str(episode_id),
+                error=str(exc)[:200],
+            )
+            script = None
+
+    if script:
         scene_assets_by_number: dict[int, Any] = {}
         for a in await asset_repo.get_by_episode_and_type(episode_id, "scene"):
             if a.scene_number is not None:

@@ -281,9 +281,15 @@ async def seed() -> None:
             session.add(s)
         await session.flush()
 
+        # Pool of user-provided real content directories — cycled
+        # round-robin across seeded episodes so the demo UI shows real
+        # media instead of gradient placeholders.
+        real_pool = _discover_real_content()
+        print(f"  real content pool: {len(real_pool)} directories")
+
         # Episodes + placeholder assets.
         rng = random.Random(42)
-        for spec in EPISODE_SPECS:
+        for ep_idx, spec in enumerate(EPISODE_SPECS):
             series = series_rows[spec["series"]]
             colour = SERIES_SPECS[spec["series"]]["colour"]
             ep = Episode(
@@ -313,54 +319,98 @@ async def seed() -> None:
 
             # Placeholder media only for exported/review episodes.
             if spec["status"] in ("exported", "review"):
-                base = STORAGE_ROOT / "episodes" / str(ep.id)
+                # If the operator dropped real content under
+                # ``storage/episodes/<authored-uuid>/``, point this
+                # episode's media_assets at those files directly (no
+                # copy — saves disk + makes content swaps trivial).
+                source_dir: Path | None = None
+                if real_pool:
+                    source_dir = real_pool[ep_idx % len(real_pool)]
+                    source_id = source_dir.name
+                else:
+                    source_id = str(ep.id)
 
                 # Thumbnail.
-                thumb_rel = f"episodes/{ep.id}/output/thumbnail.jpg"
-                _write_gradient_png(STORAGE_ROOT / thumb_rel, 1280, 720, colour)
+                thumb_rel = f"episodes/{source_id}/output/thumbnail.jpg"
+                thumb_abs = STORAGE_ROOT / thumb_rel
+                if not thumb_abs.exists():
+                    thumb_rel = f"episodes/{ep.id}/output/thumbnail.jpg"
+                    thumb_abs = STORAGE_ROOT / thumb_rel
+                    _write_gradient_png(thumb_abs, 1280, 720, colour)
                 session.add(
                     MediaAsset(
                         episode_id=ep.id,
                         asset_type="thumbnail",
                         file_path=thumb_rel,
-                        file_size_bytes=(STORAGE_ROOT / thumb_rel).stat().st_size,
+                        file_size_bytes=thumb_abs.stat().st_size,
                     )
                 )
 
-                # Scenes.
-                for i in range(1, int(spec["scenes"]) + 1):
-                    rel = f"episodes/{ep.id}/scenes/scene_{i:02d}.png"
-                    hue_shift = ((i - 1) * 13) % 40
-                    shifted = tuple(min(255, max(0, c + hue_shift - 20)) for c in colour)
-                    _write_gradient_png(STORAGE_ROOT / rel, 1080 if series.aspect_ratio == "9:16" else 1920, 1920 if series.aspect_ratio == "9:16" else 1080, shifted)
+                # Scenes — prefer real PNGs from source_dir, fill gaps
+                # with generated gradients.
+                scene_count = int(spec["scenes"])
+                if source_dir:
+                    real_scenes = sorted((source_dir / "scenes").glob("scene_*.png"))
+                    scene_count = max(scene_count, len(real_scenes))
+                for i in range(1, scene_count + 1):
+                    rel = f"episodes/{source_id}/scenes/scene_{i:02d}.png"
+                    abs_p = STORAGE_ROOT / rel
+                    if not abs_p.exists():
+                        rel = f"episodes/{ep.id}/scenes/scene_{i:02d}.png"
+                        abs_p = STORAGE_ROOT / rel
+                        hue_shift = ((i - 1) * 13) % 40
+                        shifted = tuple(min(255, max(0, c + hue_shift - 20)) for c in colour)
+                        _write_gradient_png(
+                            abs_p,
+                            1080 if series.aspect_ratio == "9:16" else 1920,
+                            1920 if series.aspect_ratio == "9:16" else 1080,
+                            shifted,
+                        )
                     session.add(
                         MediaAsset(
                             episode_id=ep.id,
                             asset_type="scene",
                             scene_number=i,
                             file_path=rel,
-                            file_size_bytes=(STORAGE_ROOT / rel).stat().st_size,
+                            file_size_bytes=abs_p.stat().st_size,
                         )
                     )
 
-                # Voice (single silent WAV per episode — the UI only needs it to exist).
-                voice_rel = f"episodes/{ep.id}/voice/full.wav"
-                _write_silent_wav(STORAGE_ROOT / voice_rel, duration_seconds=float(spec["scenes"]))
+                # Voice.
+                voice_rel = f"episodes/{source_id}/voice/full.wav"
+                voice_abs = STORAGE_ROOT / voice_rel
+                if not voice_abs.exists():
+                    voice_rel = f"episodes/{ep.id}/voice/full.wav"
+                    voice_abs = STORAGE_ROOT / voice_rel
+                    _write_silent_wav(voice_abs, duration_seconds=float(spec["scenes"]))
                 session.add(
                     MediaAsset(
                         episode_id=ep.id,
                         asset_type="voiceover",
                         file_path=voice_rel,
-                        file_size_bytes=(STORAGE_ROOT / voice_rel).stat().st_size,
+                        file_size_bytes=voice_abs.stat().st_size,
                     )
                 )
 
-                # Exported episodes also get a faux video asset (no file — the
-                # row is enough to make the export buttons light up).
-                if spec["status"] == "exported":
+                # Final video — for review episodes too when real content exists.
+                vid_rel = f"episodes/{source_id}/output/final.mp4"
+                vid_abs = STORAGE_ROOT / vid_rel
+                if vid_abs.exists():
+                    session.add(
+                        MediaAsset(
+                            episode_id=ep.id,
+                            asset_type="video",
+                            file_path=vid_rel,
+                            file_size_bytes=vid_abs.stat().st_size,
+                        )
+                    )
+                elif spec["status"] == "exported":
+                    # Exported episodes without real content get a stub
+                    # so the export buttons light up.
                     vid_rel = f"episodes/{ep.id}/output/final.mp4"
-                    (STORAGE_ROOT / vid_rel).parent.mkdir(parents=True, exist_ok=True)
-                    (STORAGE_ROOT / vid_rel).write_bytes(b"\x00" * 1024)  # placeholder
+                    vid_abs = STORAGE_ROOT / vid_rel
+                    vid_abs.parent.mkdir(parents=True, exist_ok=True)
+                    vid_abs.write_bytes(b"\x00" * 1024)
                     session.add(
                         MediaAsset(
                             episode_id=ep.id,
@@ -380,24 +430,59 @@ async def seed() -> None:
 
 
 def _fake_script(title: str, n_scenes: int) -> dict[str, Any]:
-    """Minimal EpisodeScript-shaped JSON for the UI to render the Script tab."""
+    """Minimal EpisodeScript-shaped JSON for the UI to render the Script tab.
+
+    Includes ``title``, ``total_duration_seconds``, and ``outro`` so the
+    strict ``EpisodeScript`` validator used by the editor / reassemble
+    routes doesn't reject it.
+    """
     scenes = []
+    total = 0.0
     for i in range(1, n_scenes + 1):
+        dur = 8 + (i % 3) * 2
+        total += dur
         scenes.append(
             {
                 "scene_number": i,
                 "narration": f"[Scene {i}] Context for '{title}' — paragraph {i} of the narration, "
                 "kept deliberately short so the screenshot reads clean at 1600×1200.",
                 "visual_prompt": f"Cinematic establishing shot illustrating beat {i} of the topic.",
-                "duration_seconds": 8 + (i % 3) * 2,
+                "duration_seconds": dur,
                 "keywords": ["demo", "science", f"beat-{i}"],
             }
         )
     return {
-        "scenes": scenes,
+        "title": title,
         "hook": f"Did you know {title.lower()}?",
+        "outro": "Subscribe for a new one every Monday.",
+        "scenes": scenes,
+        "total_duration_seconds": total,
+        "language": "en-US",
+        "description": f"{title} — short-form demo content.",
+        "hashtags": ["#shorts", "#sciencefacts"],
+        "thumbnail_prompt": f"High-contrast poster for '{title}'.",
         "cta": "Subscribe for a new one every Monday.",
     }
+
+
+def _discover_real_content() -> list[Path]:
+    """Return directories under ``storage/episodes/`` that contain
+    user-provided real content (at least an output/final.mp4 or one
+    scene image). Demo seeds link a copy of these assets to each
+    generated episode row so the UI shows real media.
+    """
+    out: list[Path] = []
+    base = STORAGE_ROOT / "episodes"
+    if not base.exists():
+        return out
+    for child in sorted(base.iterdir()):
+        if not child.is_dir():
+            continue
+        has_final = (child / "output" / "final.mp4").exists()
+        has_scene = (child / "scenes").exists() and any((child / "scenes").glob("scene_*.png"))
+        if has_final or has_scene:
+            out.append(child)
+    return out
 
 
 if __name__ == "__main__":

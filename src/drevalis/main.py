@@ -96,6 +96,11 @@ def create_app() -> FastAPI:
 
     application.add_middleware(LicenseGateMiddleware)
 
+    # ── Demo guard (returns 403 on external-API routes in demo mode) ────
+    from drevalis.core.demo_guard import DemoGuardMiddleware
+
+    application.add_middleware(DemoGuardMiddleware)
+
     # ── CORS (permissive for local development) ──────────────────────────
     application.add_middleware(
         CORSMiddleware,
