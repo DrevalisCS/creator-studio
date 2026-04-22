@@ -49,6 +49,42 @@ import type {
 } from '@/types';
 
 // ---------------------------------------------------------------------------
+// Language options — BCP-47 tags. Shown in the series edit form and used
+// to filter voice profiles. Narration is written in this language; visual
+// prompts stay in English because ComfyUI image models are English-only.
+// ---------------------------------------------------------------------------
+
+const LANGUAGE_OPTIONS = [
+  { value: 'en-US', label: 'English (US)' },
+  { value: 'en-GB', label: 'English (UK)' },
+  { value: 'en-AU', label: 'English (Australia)' },
+  { value: 'de-DE', label: 'German (Germany)' },
+  { value: 'de-AT', label: 'German (Austria)' },
+  { value: 'de-CH', label: 'German (Switzerland)' },
+  { value: 'fr-FR', label: 'French (France)' },
+  { value: 'es-ES', label: 'Spanish (Spain)' },
+  { value: 'es-MX', label: 'Spanish (Mexico)' },
+  { value: 'pt-BR', label: 'Portuguese (Brazil)' },
+  { value: 'pt-PT', label: 'Portuguese (Portugal)' },
+  { value: 'it-IT', label: 'Italian' },
+  { value: 'nl-NL', label: 'Dutch' },
+  { value: 'pl-PL', label: 'Polish' },
+  { value: 'sv-SE', label: 'Swedish' },
+  { value: 'da-DK', label: 'Danish' },
+  { value: 'no-NO', label: 'Norwegian' },
+  { value: 'fi-FI', label: 'Finnish' },
+  { value: 'ru-RU', label: 'Russian' },
+  { value: 'tr-TR', label: 'Turkish' },
+  { value: 'ar-SA', label: 'Arabic (Saudi)' },
+  { value: 'hi-IN', label: 'Hindi' },
+  { value: 'ja-JP', label: 'Japanese' },
+  { value: 'ko-KR', label: 'Korean' },
+  { value: 'zh-CN', label: 'Chinese (Mandarin, Simplified)' },
+  { value: 'zh-TW', label: 'Chinese (Traditional)' },
+];
+
+
+// ---------------------------------------------------------------------------
 // Visual style presets
 // ---------------------------------------------------------------------------
 
@@ -183,6 +219,7 @@ function SeriesDetail() {
   const [editDuration, setEditDuration] = useState('30');
   const [editStyle, setEditStyle] = useState('');
   const [editCharacter, setEditCharacter] = useState('');
+  const [editLanguage, setEditLanguage] = useState('en-US');
 
   // Edit state — caption style
   const [editCaptionStyle, setEditCaptionStyle] =
@@ -273,6 +310,7 @@ function SeriesDetail() {
       setEditDuration(String(s.target_duration_seconds));
       setEditStyle(s.visual_style ?? '');
       setEditCharacter(s.character_description ?? '');
+      setEditLanguage(s.default_language ?? 'en-US');
       setEditCaptionStyle(s.caption_style ?? DEFAULT_CAPTION_STYLE);
       setEditMusicEnabled(s.music_enabled);
       setEditMusicMood(s.music_mood ?? 'upbeat');
@@ -327,6 +365,7 @@ function SeriesDetail() {
         target_duration_seconds: Number(editDuration) as 15 | 30 | 60,
         visual_style: editStyle || undefined,
         character_description: editCharacter || undefined,
+        default_language: editLanguage || undefined,
         caption_style: editCaptionStyle,
         scene_mode: editSceneMode,
         music_enabled: editMusicEnabled,
@@ -516,7 +555,7 @@ function SeriesDetail() {
               onChange={(e) => setEditDescription(e.target.value)}
               placeholder="Describe this series..."
             />
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <Select
                 label="Target Duration"
                 value={editDuration}
@@ -526,6 +565,13 @@ function SeriesDetail() {
                   { value: '30', label: '30 seconds' },
                   { value: '60', label: '60 seconds' },
                 ]}
+              />
+              <Select
+                label="Language"
+                value={editLanguage}
+                onChange={(e) => setEditLanguage(e.target.value)}
+                hint="Narration language. Visual prompts stay in English."
+                options={LANGUAGE_OPTIONS}
               />
               <Input
                 label="Character Description"
