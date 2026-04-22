@@ -170,22 +170,31 @@ SERIES_SPECS = [
     },
 ]
 
-EPISODE_SPECS: list[dict[str, Any]] = [
-    # Series 0 — Science (5 episodes)
-    {"series": 0, "title": "Why your hair stands up before lightning", "status": "exported", "scenes": 6},
-    {"series": 0, "title": "The ant-bridge that can span 70 ants wide", "status": "exported", "scenes": 6},
-    {"series": 0, "title": "Octopuses have three hearts and blue blood", "status": "review", "scenes": 8},
-    {"series": 0, "title": "A spoonful of neutron star weighs 10 million tons", "status": "generating", "scenes": 6},
-    {"series": 0, "title": "Bananas are mildly radioactive (and safe)", "status": "exported", "scenes": 6},
-    # Series 1 — True crime (4 episodes)
-    {"series": 1, "title": "The Somerton Man — 76 years of clues", "status": "review", "scenes": 12},
-    {"series": 1, "title": "Tamam Shud: the pocket note that rewrote the case", "status": "exported", "scenes": 14},
-    {"series": 1, "title": "Elisa Lam and the Cecil Hotel water tank", "status": "generating", "scenes": 12},
-    {"series": 1, "title": "The Isdal Woman — Norway's unsolved spy case", "status": "failed", "scenes": 10},
-    # Series 2 — Odd history (3 episodes)
-    {"series": 2, "title": "The dancing plague of 1518", "status": "exported", "scenes": 6},
-    {"series": 2, "title": "Why Victorians took photos of the dead", "status": "review", "scenes": 6},
-    {"series": 2, "title": "Pope Stephen VI put a corpse on trial", "status": "review", "scenes": 6},
+# Pool of friendly titles cycled across the real content directories
+# at seed time (one episode per real dir, no fake placeholders). The
+# 1:1 mapping means everything the demo shows has actual media behind
+# it — no "no video available" gaps.
+TITLE_POOL = [
+    "Why your hair stands up before lightning",
+    "The ant-bridge that can span 70 ants wide",
+    "Octopuses have three hearts and blue blood",
+    "A spoonful of neutron star weighs 10 million tons",
+    "Bananas are mildly radioactive (and safe)",
+    "Why Victorians took photos of the dead",
+    "The dancing plague of 1518",
+    "Pope Stephen VI put a corpse on trial",
+    "The Somerton Man — 76 years of clues",
+    "Tamam Shud: the pocket note that rewrote the case",
+    "Elisa Lam and the Cecil Hotel water tank",
+    "The Isdal Woman — Norway's unsolved spy case",
+    "The loudest sound ever recorded on Earth",
+    "Why honey never spoils",
+    "The coconut crab can open a can with its claws",
+    "Cleopatra lived closer to the Moon landing than the pyramids",
+    "Medieval people didn't think Earth was flat",
+    "Why cows have best friends",
+    "Saturn would float in water if you had a big enough bathtub",
+    "The Roman concrete that keeps getting stronger",
 ]
 
 
@@ -281,34 +290,48 @@ async def seed() -> None:
             session.add(s)
         await session.flush()
 
-        # Pool of user-provided real content directories — cycled
-        # round-robin across seeded episodes so the demo UI shows real
-        # media instead of gradient placeholders.
+        # One seeded episode per real content directory. No gradient
+        # placeholders, no fake stubs — if a dir is missing any of the
+        # four required pieces (scenes + voice + thumbnail + final)
+        # ``_discover_real_content`` filters it out.
         real_pool = _discover_real_content()
         print(f"  real content pool: {len(real_pool)} directories")
 
-        # Episodes + placeholder assets.
+        if not real_pool:
+            print(
+                "  no complete content directories under storage/episodes/ — "
+                "demo will have zero episodes. Drop a folder with "
+                "output/final.mp4 + output/thumbnail.jpg + voice/full.wav "
+                "+ scenes/scene_NN.png to populate."
+            )
+
         rng = random.Random(42)
-        for ep_idx, spec in enumerate(EPISODE_SPECS):
-            series = series_rows[spec["series"]]
-            colour = SERIES_SPECS[spec["series"]]["colour"]
+        for ep_idx, source_dir in enumerate(real_pool):
+            series = series_rows[ep_idx % len(series_rows)]
+            title = TITLE_POOL[ep_idx % len(TITLE_POOL)]
+            scene_files = sorted((source_dir / "scenes").glob("scene_*.png"))
+            scene_count = len(scene_files)
+
             ep = Episode(
                 series_id=series.id,
-                title=spec["title"],
-                topic=spec["title"],
-                status=spec["status"],
+                title=title,
+                topic=title,
+                # Stagger statuses so the UI has something in review +
+                # exported: first two of every three are exported,
+                # third is review.
+                status="review" if ep_idx % 3 == 2 else "exported",
                 content_format=series.content_format,
-                script=_fake_script(spec["title"], int(spec["scenes"])),
+                script=_fake_script(title, scene_count),
                 metadata_={
                     "seo": {
-                        "title": spec["title"],
+                        "title": title,
                         "description": (
-                            f"{spec['title']}. A short, evidence-first explainer that fits in "
+                            f"{title}. A short, evidence-first explainer that fits in "
                             "under a minute. Subscribe for a new fact every Monday."
                         ),
                         "hashtags": ["#shorts", "#sciencefacts", "#didyouknow"],
                         "tags": ["science", "facts", "shorts", "education", "explainer"],
-                        "hook": f"Did you know {spec['title'].lower()}?",
+                        "hook": f"Did you know {title.lower()}?",
                         "virality_score": rng.randint(6, 9),
                         "virality_reasoning": "Strong open hook + universal curiosity gap.",
                     },
@@ -317,115 +340,63 @@ async def seed() -> None:
             session.add(ep)
             await session.flush()
 
-            # Placeholder media only for exported/review episodes.
-            if spec["status"] in ("exported", "review"):
-                # If the operator dropped real content under
-                # ``storage/episodes/<authored-uuid>/``, point this
-                # episode's media_assets at those files directly (no
-                # copy — saves disk + makes content swaps trivial).
-                source_dir: Path | None = None
-                if real_pool:
-                    source_dir = real_pool[ep_idx % len(real_pool)]
-                    source_id = source_dir.name
-                else:
-                    source_id = str(ep.id)
+            source_id = source_dir.name
 
-                # Thumbnail.
-                thumb_rel = f"episodes/{source_id}/output/thumbnail.jpg"
-                thumb_abs = STORAGE_ROOT / thumb_rel
-                if not thumb_abs.exists():
-                    thumb_rel = f"episodes/{ep.id}/output/thumbnail.jpg"
-                    thumb_abs = STORAGE_ROOT / thumb_rel
-                    _write_gradient_png(thumb_abs, 1280, 720, colour)
+            # Thumbnail.
+            thumb_rel = f"episodes/{source_id}/output/thumbnail.jpg"
+            thumb_abs = STORAGE_ROOT / thumb_rel
+            session.add(
+                MediaAsset(
+                    episode_id=ep.id,
+                    asset_type="thumbnail",
+                    file_path=thumb_rel,
+                    file_size_bytes=thumb_abs.stat().st_size,
+                )
+            )
+
+            # Scenes (one row per scene_*.png).
+            for i, scene_path in enumerate(scene_files, start=1):
+                rel = f"episodes/{source_id}/scenes/{scene_path.name}"
                 session.add(
                     MediaAsset(
                         episode_id=ep.id,
-                        asset_type="thumbnail",
-                        file_path=thumb_rel,
-                        file_size_bytes=thumb_abs.stat().st_size,
+                        asset_type="scene",
+                        scene_number=i,
+                        file_path=rel,
+                        file_size_bytes=scene_path.stat().st_size,
                     )
                 )
 
-                # Scenes — prefer real PNGs from source_dir, fill gaps
-                # with generated gradients.
-                scene_count = int(spec["scenes"])
-                if source_dir:
-                    real_scenes = sorted((source_dir / "scenes").glob("scene_*.png"))
-                    scene_count = max(scene_count, len(real_scenes))
-                for i in range(1, scene_count + 1):
-                    rel = f"episodes/{source_id}/scenes/scene_{i:02d}.png"
-                    abs_p = STORAGE_ROOT / rel
-                    if not abs_p.exists():
-                        rel = f"episodes/{ep.id}/scenes/scene_{i:02d}.png"
-                        abs_p = STORAGE_ROOT / rel
-                        hue_shift = ((i - 1) * 13) % 40
-                        shifted = tuple(min(255, max(0, c + hue_shift - 20)) for c in colour)
-                        _write_gradient_png(
-                            abs_p,
-                            1080 if series.aspect_ratio == "9:16" else 1920,
-                            1920 if series.aspect_ratio == "9:16" else 1080,
-                            shifted,
-                        )
-                    session.add(
-                        MediaAsset(
-                            episode_id=ep.id,
-                            asset_type="scene",
-                            scene_number=i,
-                            file_path=rel,
-                            file_size_bytes=abs_p.stat().st_size,
-                        )
-                    )
-
-                # Voice.
-                voice_rel = f"episodes/{source_id}/voice/full.wav"
-                voice_abs = STORAGE_ROOT / voice_rel
-                if not voice_abs.exists():
-                    voice_rel = f"episodes/{ep.id}/voice/full.wav"
-                    voice_abs = STORAGE_ROOT / voice_rel
-                    _write_silent_wav(voice_abs, duration_seconds=float(spec["scenes"]))
-                session.add(
-                    MediaAsset(
-                        episode_id=ep.id,
-                        asset_type="voiceover",
-                        file_path=voice_rel,
-                        file_size_bytes=voice_abs.stat().st_size,
-                    )
+            # Voice.
+            voice_rel = f"episodes/{source_id}/voice/full.wav"
+            voice_abs = STORAGE_ROOT / voice_rel
+            session.add(
+                MediaAsset(
+                    episode_id=ep.id,
+                    asset_type="voiceover",
+                    file_path=voice_rel,
+                    file_size_bytes=voice_abs.stat().st_size,
                 )
+            )
 
-                # Final video — for review episodes too when real content exists.
-                vid_rel = f"episodes/{source_id}/output/final.mp4"
-                vid_abs = STORAGE_ROOT / vid_rel
-                if vid_abs.exists():
-                    session.add(
-                        MediaAsset(
-                            episode_id=ep.id,
-                            asset_type="video",
-                            file_path=vid_rel,
-                            file_size_bytes=vid_abs.stat().st_size,
-                        )
-                    )
-                elif spec["status"] == "exported":
-                    # Exported episodes without real content get a stub
-                    # so the export buttons light up.
-                    vid_rel = f"episodes/{ep.id}/output/final.mp4"
-                    vid_abs = STORAGE_ROOT / vid_rel
-                    vid_abs.parent.mkdir(parents=True, exist_ok=True)
-                    vid_abs.write_bytes(b"\x00" * 1024)
-                    session.add(
-                        MediaAsset(
-                            episode_id=ep.id,
-                            asset_type="video",
-                            file_path=vid_rel,
-                            file_size_bytes=1024,
-                        )
-                    )
+            # Final video.
+            vid_rel = f"episodes/{source_id}/output/final.mp4"
+            vid_abs = STORAGE_ROOT / vid_rel
+            session.add(
+                MediaAsset(
+                    episode_id=ep.id,
+                    asset_type="video",
+                    file_path=vid_rel,
+                    file_size_bytes=vid_abs.stat().st_size,
+                )
+            )
 
             _ = UUID  # keep import used if type-checker runs
 
         await session.commit()
         print(
             f"seeded: {len(voices)} voices, {len(channels)} yt channels, "
-            f"{len(series_rows)} series, {len(EPISODE_SPECS)} episodes"
+            f"{len(series_rows)} series, {len(real_pool)} episodes"
         )
 
 
