@@ -5,6 +5,7 @@ Import from here for convenience::
     from drevalis.models import Series, Episode, MediaAsset, ...
 """
 
+from .ab_test import ABTest
 from .api_key_store import ApiKeyStore
 from .audiobook import Audiobook
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -28,6 +29,7 @@ from .youtube_channel import (
 )
 
 __all__ = [
+    "ABTest",
     "ApiKeyStore",
     "Audiobook",
     "Base",

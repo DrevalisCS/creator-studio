@@ -27,6 +27,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
 import { Spinner } from '@/components/ui/Spinner';
 import { EpisodeCard } from '@/components/episodes/EpisodeCard';
+import { ABTestsPanel } from '@/components/series/ABTestsPanel';
 import {
   CaptionStyleEditor,
   DEFAULT_CAPTION_STYLE,
@@ -1078,6 +1079,13 @@ function SeriesDetail() {
           </Button>
         </DialogFooter>
       </Dialog>
+
+      {/* A/B tests panel */}
+      {seriesId && (
+        <div className="mt-6">
+          <ABTestsPanel seriesId={seriesId} />
+        </div>
+      )}
 
       {/* Delete All Episodes dialog */}
       <Dialog

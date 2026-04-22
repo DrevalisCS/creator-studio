@@ -23,6 +23,7 @@ export {
   license,
   updates,
   onboarding,
+  abTests,
   ApiError,
   formatError,
 } from './_monolith';
@@ -40,4 +41,7 @@ export type {
   SEOCheck,
   SEOScore,
   YouTubeChannelAnalytics,
+  ABTest,
+  ABTestStats,
+  ABTestDetail,
 } from './_monolith';

@@ -1089,6 +1089,54 @@ export const updates = {
 };
 
 // ---------------------------------------------------------------------------
+// A/B tests
+// ---------------------------------------------------------------------------
+
+export interface ABTest {
+  id: string;
+  series_id: string;
+  episode_a_id: string;
+  episode_b_id: string;
+  variant_label: string;
+  notes: string | null;
+  winner_episode_id: string | null;
+  comparison_at: string | null;
+  created_at: string;
+}
+
+export interface ABTestStats {
+  episode_id: string;
+  title: string;
+  status: string;
+  youtube_video_id: string | null;
+  youtube_url: string | null;
+  youtube_views: number | null;
+  youtube_likes: number | null;
+  youtube_comments: number | null;
+}
+
+export interface ABTestDetail extends ABTest {
+  episode_a_stats: ABTestStats;
+  episode_b_stats: ABTestStats;
+}
+
+export const abTests = {
+  list: (seriesId?: string) => {
+    const qs = seriesId ? `?series_id=${seriesId}` : '';
+    return get<ABTest[]>(`/api/v1/ab-tests${qs}`);
+  },
+  get: (id: string) => get<ABTestDetail>(`/api/v1/ab-tests/${id}`),
+  create: (data: {
+    series_id: string;
+    episode_a_id: string;
+    episode_b_id: string;
+    variant_label: string;
+    notes?: string;
+  }) => post<ABTest>('/api/v1/ab-tests', data),
+  remove: (id: string) => del(`/api/v1/ab-tests/${id}`),
+};
+
+// ---------------------------------------------------------------------------
 // SEO score
 // ---------------------------------------------------------------------------
 
