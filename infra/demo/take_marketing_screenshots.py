@@ -30,8 +30,10 @@ from pathlib import Path
 
 from playwright.async_api import Page, async_playwright
 
-APP_URL = os.environ.get("DEMO_APP_URL", "http://localhost:18000")
 FRONTEND_URL = os.environ.get("DEMO_FRONTEND_URL", "http://localhost:13000")
+# Route API calls through the frontend container's nginx proxy — same
+# origin as page.goto() avoids CORS on Playwright fetch() calls.
+FRONTEND_URL_FOR_API = os.environ.get("DEMO_FRONTEND_URL_FOR_API", FRONTEND_URL)
 LICENSE_JWT = os.environ.get("DEMO_LICENSE_JWT", "")
 
 OUT_DIR = Path(os.environ.get("MARKETING_IMAGES_DIR", "/srv/drevalis-site/public/assets/images"))
@@ -97,7 +99,7 @@ async def _activate_license(page: Page) -> None:
             });
             return { status: res.status, body: await res.text() };
         }""",
-        [APP_URL, LICENSE_JWT],
+        [FRONTEND_URL_FOR_API, LICENSE_JWT],
     )
     print(f"  activate: status={result['status']}")
     if result["status"] >= 400:
@@ -113,7 +115,7 @@ async def _dismiss_onboarding(page: Page) -> None:
                 await fetch(apiUrl + '/api/v1/onboarding/dismiss', { method: 'POST' });
             } catch (e) {}
         }""",
-        APP_URL,
+        FRONTEND_URL_FOR_API,
     )
 
 
@@ -128,7 +130,7 @@ async def _pick_review_episode_id(page: Page) -> str | None:
             const review = items.find(e => e.status === 'review');
             return review ? review.id : null;
         }""",
-        APP_URL,
+        FRONTEND_URL_FOR_API,
     )
     return res
 
@@ -150,7 +152,12 @@ async def capture(page: Page, spec: dict[str, object], review_id: str | None) ->
         url = f"{FRONTEND_URL}{path_template}"
 
     print(f"  → {url}")
-    await page.goto(url, wait_until="networkidle", timeout=30_000)
+    # `networkidle` is fragile on pages with background polling (stats
+    # API, heartbeats). Fall back to `load` + explicit settle sleep.
+    try:
+        await page.goto(url, wait_until="networkidle", timeout=8_000)
+    except Exception:
+        await page.goto(url, wait_until="load", timeout=30_000)
     await page.wait_for_timeout(int(spec["settle_ms"]))  # type: ignore[arg-type]
 
     out_path = OUT_DIR / str(spec["name"])
@@ -174,7 +181,7 @@ async def main() -> int:
         ctx = await browser.new_context(device_scale_factor=1)
         page = await ctx.new_page()
 
-        print(f"activating license on {APP_URL}…")
+        print(f"activating license on {FRONTEND_URL_FOR_API}…")
         # We must hit the API from inside the browser context so the
         # license state sticks for subsequent same-origin requests.
         await page.goto(f"{FRONTEND_URL}/", wait_until="domcontentloaded")

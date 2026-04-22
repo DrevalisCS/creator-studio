@@ -46,6 +46,7 @@ sys.path.insert(0, "/app/src")
 
 from sqlalchemy import text  # noqa: E402
 
+from drevalis.core.config import Settings  # noqa: E402
 from drevalis.core.database import get_session_factory, init_db  # noqa: E402
 from drevalis.models.comfyui import ComfyUIServer  # noqa: E402
 from drevalis.models.episode import Episode  # noqa: E402
@@ -189,7 +190,8 @@ EPISODE_SPECS: list[dict[str, Any]] = [
 
 
 async def seed() -> None:
-    await init_db()
+    settings = Settings()
+    await init_db(settings)
     Session = get_session_factory()
 
     async with Session() as session:
@@ -213,10 +215,8 @@ async def seed() -> None:
         # LLM config.
         llm = LLMConfig(
             name="Local — LM Studio",
-            provider="openai_compatible",
             base_url="http://host.docker.internal:1234/v1",
             model_name="local-llama-3.1-8b",
-            is_active=True,
         )
         session.add(llm)
 
@@ -349,7 +349,7 @@ async def seed() -> None:
                 session.add(
                     MediaAsset(
                         episode_id=ep.id,
-                        asset_type="voice",
+                        asset_type="voiceover",
                         file_path=voice_rel,
                         file_size_bytes=(STORAGE_ROOT / voice_rel).stat().st_size,
                     )
