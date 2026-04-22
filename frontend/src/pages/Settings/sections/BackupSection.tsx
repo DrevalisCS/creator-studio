@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Archive, Download, Trash2, Upload, RefreshCw, AlertTriangle } from 'lucide-react';
+import {
+  Archive,
+  Download,
+  Trash2,
+  Upload,
+  RefreshCw,
+  AlertTriangle,
+  Wrench,
+} from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -19,6 +27,15 @@ interface BackupListResponse {
   archives: Archive[];
 }
 
+interface RepairReport {
+  scanned: number;
+  already_ok: number;
+  relinked: number;
+  unresolved: number;
+  relinked_paths: Array<{ from: string; to: string }>;
+  unresolved_paths: string[];
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -32,6 +49,8 @@ export function BackupSection() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
+  const [repairing, setRepairing] = useState(false);
+  const [repairReport, setRepairReport] = useState<RepairReport | null>(null);
   const [restoreConfirm, setRestoreConfirm] = useState('');
   const [allowKeyMismatch, setAllowKeyMismatch] = useState(false);
   const [restoreDb, setRestoreDb] = useState(true);
@@ -89,6 +108,37 @@ export function BackupSection() {
 
   const onDownload = (filename: string) => {
     window.open(`/api/v1/backup/${encodeURIComponent(filename)}`, '_blank');
+  };
+
+  const onRepair = async () => {
+    setRepairing(true);
+    setRepairReport(null);
+    try {
+      const res = await fetch('/api/v1/backup/repair-media', { method: 'POST' });
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, res.statusText, detail.detail ?? res.statusText);
+      }
+      const data: RepairReport = await res.json();
+      setRepairReport(data);
+      if (data.relinked > 0) {
+        toast.success('Media links repaired', {
+          description: `${data.relinked} relinked, ${data.unresolved} unresolved`,
+        });
+      } else if (data.unresolved > 0) {
+        toast.error('No matches found', {
+          description: `${data.unresolved} rows still point nowhere`,
+        });
+      } else {
+        toast.success('Nothing to repair', {
+          description: `All ${data.already_ok} media rows resolve correctly`,
+        });
+      }
+    } catch (err) {
+      toast.error('Repair failed', { description: formatError(err) });
+    } finally {
+      setRepairing(false);
+    }
   };
 
   const onRestore = async () => {
@@ -228,6 +278,105 @@ export function BackupSection() {
                 </div>
               </div>
             ))}
+          </div>
+        )}
+      </Card>
+
+      {/* Repair media links — non-destructive */}
+      <Card className="p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h4 className="font-semibold flex items-center gap-2">
+              <Wrench className="w-4 h-4" />
+              Repair media links
+            </h4>
+            <p className="text-sm text-txt-secondary mt-1">
+              Relink <code>media_assets</code> rows to files on disk after a rough restore or
+              manual copy. Non-destructive: only rows whose current path is broken get updated.
+            </p>
+          </div>
+          <Button onClick={onRepair} disabled={repairing} variant="primary">
+            {repairing ? 'Scanning...' : 'Repair now'}
+          </Button>
+        </div>
+        {repairReport && (
+          <div className="mt-4 space-y-3">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div className="rounded bg-bg-elevated p-3">
+                <div className="text-txt-muted uppercase tracking-wider mb-1">Scanned</div>
+                <div className="text-txt-primary text-lg font-semibold">
+                  {repairReport.scanned}
+                </div>
+              </div>
+              <div className="rounded bg-bg-elevated p-3">
+                <div className="text-txt-muted uppercase tracking-wider mb-1">Already OK</div>
+                <div className="text-txt-primary text-lg font-semibold">
+                  {repairReport.already_ok}
+                </div>
+              </div>
+              <div className="rounded bg-emerald-500/10 p-3">
+                <div className="text-emerald-300 uppercase tracking-wider mb-1">Relinked</div>
+                <div className="text-emerald-200 text-lg font-semibold">
+                  {repairReport.relinked}
+                </div>
+              </div>
+              <div
+                className={`rounded p-3 ${
+                  repairReport.unresolved > 0 ? 'bg-amber-500/10' : 'bg-bg-elevated'
+                }`}
+              >
+                <div
+                  className={`uppercase tracking-wider mb-1 ${
+                    repairReport.unresolved > 0 ? 'text-amber-300' : 'text-txt-muted'
+                  }`}
+                >
+                  Unresolved
+                </div>
+                <div
+                  className={`text-lg font-semibold ${
+                    repairReport.unresolved > 0 ? 'text-amber-200' : 'text-txt-primary'
+                  }`}
+                >
+                  {repairReport.unresolved}
+                </div>
+              </div>
+            </div>
+            {repairReport.relinked_paths.length > 0 && (
+              <details className="rounded bg-bg-elevated p-3 text-xs">
+                <summary className="cursor-pointer text-txt-secondary">
+                  Relinked paths ({repairReport.relinked_paths.length}
+                  {repairReport.relinked > repairReport.relinked_paths.length ? '+' : ''})
+                </summary>
+                <div className="mt-2 space-y-1 font-mono">
+                  {repairReport.relinked_paths.map((p, i) => (
+                    <div key={i} className="truncate">
+                      <span className="text-txt-muted">{p.from || '(empty)'}</span>
+                      <span className="text-emerald-300 mx-1">→</span>
+                      <span className="text-txt-primary">{p.to}</span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+            {repairReport.unresolved_paths.length > 0 && (
+              <details className="rounded bg-amber-500/5 p-3 text-xs">
+                <summary className="cursor-pointer text-amber-300">
+                  Unresolved paths ({repairReport.unresolved_paths.length}
+                  {repairReport.unresolved > repairReport.unresolved_paths.length ? '+' : ''})
+                </summary>
+                <div className="mt-2 space-y-1 font-mono text-txt-secondary">
+                  {repairReport.unresolved_paths.map((p, i) => (
+                    <div key={i} className="truncate">
+                      {p}
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-2 text-txt-muted">
+                  These rows still point nowhere. If the underlying files are genuinely gone,
+                  regenerate the affected episodes or delete the orphan rows.
+                </p>
+              </details>
+            )}
           </div>
         )}
       </Card>

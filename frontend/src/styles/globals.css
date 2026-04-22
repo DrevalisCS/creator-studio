@@ -905,3 +905,18 @@ html.light .text-gradient-accent {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Inline keyboard hint pill — used in the video editor key-shortcuts row. */
+.kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-text-secondary);
+  background: var(--color-bg-elevated);
+  border: 1px solid var(--color-border);
+  border-bottom-width: 2px;
+  border-radius: 3px;
+  line-height: 1.2;
+  vertical-align: middle;
+}

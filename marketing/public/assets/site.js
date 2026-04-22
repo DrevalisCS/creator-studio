@@ -6,6 +6,38 @@
 //   3. Monthly / yearly pricing toggle
 //   4. Progressive reveal-on-scroll for .reveal elements
 //   5. Email collection UX (stash in sessionStorage, prefill later)
+//   6. Opt-in analytics (see initAnalytics below)
+
+// ── Analytics (opt-in) ───────────────────────────────────────────────
+// Set ``window.ANALYTICS`` in the page's <head> to enable. Examples:
+//   window.ANALYTICS = { provider: 'plausible', domain: 'drevalis.com' }
+//   window.ANALYTICS = { provider: 'umami', id: '...', src: 'https://analytics.yourdomain.com/script.js' }
+//   window.ANALYTICS = { provider: 'ga4', id: 'G-XXXXXXXXXX' }
+// Plausible / Umami set no cookies so no banner is required under
+// FADP/GDPR. GA4 needs a consent banner if you target the EU.
+(function initAnalytics() {
+  if (typeof window === 'undefined') return;
+  var a = window.ANALYTICS;
+  if (!a || !a.provider) return;
+  var s = document.createElement('script');
+  s.defer = true;
+  if (a.provider === 'plausible') {
+    s.src = a.src || 'https://plausible.io/js/script.js';
+    s.setAttribute('data-domain', a.domain || location.hostname);
+  } else if (a.provider === 'umami') {
+    s.src = a.src;
+    if (a.id) s.setAttribute('data-website-id', a.id);
+  } else if (a.provider === 'ga4') {
+    s.src = 'https://www.googletagmanager.com/gtag/js?id=' + a.id;
+    s.async = true;
+    var inline = document.createElement('script');
+    inline.innerHTML =
+      "window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments)};" +
+      "gtag('js',new Date());gtag('config','" + a.id + "',{anonymize_ip:true});";
+    document.head.appendChild(inline);
+  }
+  document.head.appendChild(s);
+})();
 
 const LICENSE_SERVER = 'https://license.drevalis.com';
 

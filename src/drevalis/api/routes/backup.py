@@ -35,6 +35,7 @@ from fastapi.responses import FileResponse
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
 from drevalis.services.backup import BackupError, BackupService
+from drevalis.services.media_repair import repair_media_links
 
 if TYPE_CHECKING:
     from sqlalchemy.ext.asyncio import AsyncSession
@@ -216,6 +217,36 @@ async def restore_backup(
             tmp.unlink()
         except OSError:
             pass
+
+
+# ── Repair media links (after a rough restore or manual copy) ────────────
+
+
+@router.post(
+    "/repair-media",
+    summary="Relink media_assets rows to files on disk",
+    description=(
+        "Walks every media_assets row and, for those whose file_path no "
+        "longer resolves, tries to locate the matching file on disk under "
+        "storage/episodes/ and updates the row. Use after restoring a DB "
+        "backup into a directory structure that doesn't match the original "
+        "storage layout, or after manually copying media. Non-destructive: "
+        "only updates rows whose current path is broken."
+    ),
+)
+async def repair_media(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    try:
+        report = await repair_media_links(db, settings.storage_base_path)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("media_repair_failed", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"media repair failed: {exc}",
+        ) from exc
+    return report.to_dict()
 
 
 # ── Nightly cron hook (called by the arq worker) ─────────────────────────

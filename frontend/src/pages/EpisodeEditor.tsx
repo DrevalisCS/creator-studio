@@ -230,6 +230,8 @@ export default function EpisodeEditor() {
   const [inspectorTab, setInspectorTab] = useState<'clip' | 'captions'>('clip');
   const [previewingProxy, setPreviewingProxy] = useState(false);
   const [proxyReadyTs, setProxyReadyTs] = useState<number | null>(null);
+  const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [savedAgo, setSavedAgo] = useState<string>('');
   const saveDebounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Load session.
@@ -254,6 +256,7 @@ export default function EpisodeEditor() {
       setSaving(true);
       try {
         await editorApi.save(episodeId, history.present);
+        setSavedAt(Date.now());
       } catch (err) {
         toast.error('Autosave failed', { description: formatError(err) });
       } finally {
@@ -264,6 +267,20 @@ export default function EpisodeEditor() {
       if (saveDebounce.current) clearTimeout(saveDebounce.current);
     };
   }, [history.present, episodeId, session, toast]);
+
+  // Relative "saved Xs ago" label, refreshed every 5s.
+  useEffect(() => {
+    if (!savedAt) return;
+    const update = () => {
+      const secs = Math.max(0, Math.round((Date.now() - savedAt) / 1000));
+      if (secs < 5) setSavedAgo('just now');
+      else if (secs < 60) setSavedAgo(`${secs}s ago`);
+      else setSavedAgo(`${Math.round(secs / 60)}m ago`);
+    };
+    update();
+    const t = setInterval(update, 5000);
+    return () => clearInterval(t);
+  }, [savedAt]);
 
   // Keyboard shortcuts.
   useEffect(() => {
@@ -288,10 +305,26 @@ export default function EpisodeEditor() {
         e.preventDefault();
         dispatch({ type: 'redo' });
       }
+      // Arrow nudge — 0.1s, or 1s with shift.
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const step = e.shiftKey ? 1 : 0.1;
+        const dir = e.key === 'ArrowLeft' ? -1 : 1;
+        setPlayhead((p) => Math.max(0, Math.min(history.present.duration_s, p + dir * step)));
+      }
+      // Home / End jump to start / end.
+      if (e.key === 'Home') {
+        e.preventDefault();
+        setPlayhead(0);
+      }
+      if (e.key === 'End') {
+        e.preventDefault();
+        setPlayhead(history.present.duration_s);
+      }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [playhead, selectedClipId]);
+  }, [playhead, selectedClipId, history.present.duration_s]);
 
   const onRender = async () => {
     if (!episodeId) return;
@@ -339,9 +372,25 @@ export default function EpisodeEditor() {
         </Button>
         <h1 className="text-lg font-semibold">Video Editor</h1>
         <div className="flex-1" />
-        <span className="text-xs text-txt-muted">
-          {saving ? 'Saving…' : 'Saved'}
-        </span>
+        <div
+          className={[
+            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium',
+            saving
+              ? 'bg-warning/10 text-warning border border-warning/30'
+              : savedAt
+              ? 'bg-success/10 text-success border border-success/30'
+              : 'bg-bg-elevated text-txt-muted border border-white/[0.06]',
+          ].join(' ')}
+          title="Autosave status"
+        >
+          <span
+            className={[
+              'w-1.5 h-1.5 rounded-full',
+              saving ? 'bg-warning animate-pulse' : savedAt ? 'bg-success' : 'bg-txt-muted',
+            ].join(' ')}
+          />
+          {saving ? 'Saving…' : savedAt ? `Saved ${savedAgo}` : 'Ready'}
+        </div>
         <Button
           variant="ghost"
           size="sm"
@@ -566,31 +615,134 @@ export default function EpisodeEditor() {
         </Button>
       </div>
 
-      {/* Timeline tracks */}
+      {/* Timeline — ruler + tracks */}
       <Card className="p-3 overflow-x-auto">
-        <div className="space-y-2" style={{ minWidth: timeline.duration_s * zoom + 80 }}>
-          {timeline.tracks.map((track) => (
-            <TrackRow
-              key={track.id}
-              track={track}
-              zoom={zoom}
-              duration={timeline.duration_s}
-              playhead={playhead}
-              onScrub={setPlayhead}
-              selectedClipId={selectedClipId}
-              onSelectClip={setSelectedClipId}
-              onReorder={(from, to) =>
-                dispatch({ type: 'reorder', trackId: track.id, fromIndex: from, toIndex: to })
-              }
-              onTrim={(id, in_s, out_s) => dispatch({ type: 'trim', clipId: id, in_s, out_s })}
-              onEnvelope={(clipId, envelope) =>
-                dispatch({ type: 'envelope', trackId: track.id, clipId, envelope })
-              }
-              waveformUrl={waveformUrlFor(episodeId, track.id)}
-            />
-          ))}
+        <div style={{ minWidth: Math.max(timeline.duration_s * zoom + 80, 600) }}>
+          <TimelineRuler
+            duration={timeline.duration_s}
+            zoom={zoom}
+            playhead={playhead}
+            onScrub={setPlayhead}
+          />
+          <div className="space-y-2 mt-1">
+            {timeline.tracks.map((track) => (
+              <TrackRow
+                key={track.id}
+                track={track}
+                zoom={zoom}
+                duration={timeline.duration_s}
+                playhead={playhead}
+                onScrub={setPlayhead}
+                selectedClipId={selectedClipId}
+                onSelectClip={setSelectedClipId}
+                onReorder={(from, to) =>
+                  dispatch({ type: 'reorder', trackId: track.id, fromIndex: from, toIndex: to })
+                }
+                onTrim={(id, in_s, out_s) => dispatch({ type: 'trim', clipId: id, in_s, out_s })}
+                onEnvelope={(clipId, envelope) =>
+                  dispatch({ type: 'envelope', trackId: track.id, clipId, envelope })
+                }
+                waveformUrl={waveformUrlFor(episodeId, track.id)}
+              />
+            ))}
+          </div>
         </div>
       </Card>
+
+      <div className="text-[10px] text-txt-muted flex flex-wrap gap-x-3 gap-y-1">
+        <span><kbd className="kbd">Space</kbd> play/pause</span>
+        <span><kbd className="kbd">←</kbd><kbd className="kbd">→</kbd> nudge playhead 0.1s</span>
+        <span><kbd className="kbd">Shift</kbd>+arrows 1s</span>
+        <span><kbd className="kbd">Home</kbd> / <kbd className="kbd">End</kbd> jump to edges</span>
+        <span><kbd className="kbd">S</kbd> split at playhead</span>
+        <span><kbd className="kbd">⌫</kbd> delete selected clip</span>
+        <span><kbd className="kbd">⌘Z</kbd> / <kbd className="kbd">⌘⇧Z</kbd> undo/redo</span>
+      </div>
+    </div>
+  );
+}
+
+// ─── Timeline ruler ─────────────────────────────────────────────
+
+/**
+ * Tick-marked ruler above the tracks. Major ticks every second (long
+ * line + time code), minor ticks every 0.1s (short line). Click/drag
+ * on the ruler scrubs the playhead.
+ */
+function TimelineRuler({
+  duration,
+  zoom,
+  playhead,
+  onScrub,
+}: {
+  duration: number;
+  zoom: number;
+  playhead: number;
+  onScrub: (t: number) => void;
+}) {
+  const majorStep = zoom < 40 ? 5 : zoom < 80 ? 2 : 1; // seconds between labels
+  const minorStep = zoom < 80 ? 1 : 0.5;
+  const width = Math.max(duration * zoom, 400);
+  const handleScrub = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const t = Math.max(0, Math.min(duration, (e.clientX - rect.left) / zoom));
+    onScrub(t);
+  };
+  const ticks: React.ReactNode[] = [];
+  for (let t = 0; t <= duration + 0.001; t += minorStep) {
+    const isMajor = Math.abs((t / majorStep) - Math.round(t / majorStep)) < 0.001;
+    ticks.push(
+      <div
+        key={t.toFixed(2)}
+        className={['absolute top-0', isMajor ? 'h-3 bg-txt-secondary' : 'h-1.5 bg-txt-muted'].join(' ')}
+        style={{ left: t * zoom, width: 1 }}
+      />,
+    );
+    if (isMajor) {
+      const m = Math.floor(t / 60);
+      const s = Math.round(t % 60);
+      ticks.push(
+        <div
+          key={`lbl-${t.toFixed(2)}`}
+          className="absolute top-3 text-[10px] font-mono text-txt-secondary select-none"
+          style={{ left: t * zoom + 3 }}
+        >
+          {m > 0 ? `${m}:${s.toString().padStart(2, '0')}` : `${s}s`}
+        </div>,
+      );
+    }
+  }
+  return (
+    <div className="flex gap-2">
+      <div className="w-24 shrink-0 text-[10px] uppercase tracking-wider text-txt-muted pt-1">
+        timeline
+      </div>
+      <div
+        className="relative flex-1 h-7 select-none cursor-col-resize"
+        style={{ width }}
+        onMouseDown={(e) => {
+          handleScrub(e);
+          const onMove = (me: MouseEvent) => {
+            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+            const t = Math.max(0, Math.min(duration, (me.clientX - rect.left) / zoom));
+            onScrub(t);
+          };
+          const onUp = () => {
+            window.removeEventListener('mousemove', onMove);
+            window.removeEventListener('mouseup', onUp);
+          };
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        }}
+      >
+        {ticks}
+        <div
+          className="absolute top-0 bottom-0 w-[1.5px] bg-accent pointer-events-none"
+          style={{ left: playhead * zoom }}
+        >
+          <div className="w-2 h-2 rounded-full bg-accent -translate-x-[3px] -translate-y-[2px]" />
+        </div>
+      </div>
     </div>
   );
 }

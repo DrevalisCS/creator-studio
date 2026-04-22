@@ -493,9 +493,9 @@
   <section id="pricing" class="section">
     <div class="container-xl">
       <div class="text-center max-w-2xl mx-auto mb-14 reveal">
-        <span class="eyebrow mb-4">Simple pricing, no feature paywalls</span>
-        <h2 class="display-section mt-4 mb-4">Every tier ships every feature.</h2>
-        <p class="lead">Tiers only cap concurrency, machine seats, and cloud-GPU access. See the <a href="/pricing">full comparison</a>.</p>
+        <span class="eyebrow mb-4">Pricing</span>
+        <h2 class="display-section mt-4 mb-4">Honest tiers. CHF pricing. No feature paywalls.</h2>
+        <p class="lead">Free to try in the <a href="https://demo.drevalis.com" class="underline text-[var(--accent)]">live demo</a>. When you're ready, pick a tier below. Stripe converts CHF → your local currency at checkout. PayPal supported on all paid tiers.</p>
       </div>
 
       <div class="flex items-center justify-center gap-3 mb-10 reveal">
@@ -509,63 +509,65 @@
       </div>
 
       <div class="grid md:grid-cols-3 gap-5 reveal">
+        <!-- Creator -->
         <div class="card p-8 flex flex-col">
-          <h3 class="text-xl mb-1">Solo</h3>
-          <p class="text-xs text-[var(--txt-muted)] mb-5">For one creator, one channel.</p>
+          <h3 class="text-xl mb-1">Creator</h3>
+          <p class="text-xs text-[var(--txt-muted)] mb-5">Solo creator, one channel.</p>
           <div class="mb-6">
-            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">$<span data-price data-price-monthly="19" data-price-yearly="190">19</span></span>
+            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="19" data-price-yearly="190">19</span></span>
             <span class="text-[var(--txt-secondary)]" data-interval-label>/mo</span>
           </div>
           <ul class="text-sm space-y-2 text-[var(--txt-secondary)] mb-8 flex-1">
             <li>— 1 machine seat</li>
-            <li>— 5 episodes / day</li>
+            <li>— 30 episodes / month</li>
             <li>— 1 YouTube channel</li>
-            <li>— Edge, Piper, Kokoro TTS</li>
-            <li>— Updates included</li>
+            <li>— Free local TTS + editor + asset library</li>
+            <li>— SEO pre-flight</li>
           </ul>
-          <button data-checkout data-tier="solo" data-interval="monthly" class="btn btn-secondary">Start Solo</button>
+          <button data-checkout data-tier="creator" data-interval="monthly" class="btn btn-secondary">Start Creator</button>
         </div>
 
+        <!-- Pro -->
         <div class="card card-featured p-8 flex flex-col relative">
           <div class="absolute -top-3 left-1/2 -translate-x-1/2 pill pill-green" style="padding: 4px 12px; font-size: 11px;">Most popular</div>
           <h3 class="text-xl mb-1">Pro</h3>
-          <p class="text-xs text-[var(--txt-muted)] mb-5">A few channels, some volume.</p>
+          <p class="text-xs text-[var(--txt-muted)] mb-5">Multiple channels, real volume.</p>
           <div class="mb-6">
-            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">$<span data-price data-price-monthly="39" data-price-yearly="390">39</span></span>
+            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="49" data-price-yearly="490">49</span></span>
             <span class="text-[var(--txt-secondary)]" data-interval-label>/mo</span>
           </div>
           <ul class="text-sm space-y-2 text-[var(--txt-secondary)] mb-8 flex-1">
             <li>— 3 machine seats</li>
             <li>— <strong>Unlimited</strong> episodes</li>
-            <li>— 3 YouTube channels</li>
-            <li>— Cloud GPU offload (RunPod · Vast.ai · Lambda Labs)</li>
-            <li>— Audiobook studio</li>
-            <li>— ElevenLabs TTS</li>
+            <li>— 3 YouTube channels + TikTok</li>
+            <li>— Cloud GPU (RunPod · Vast.ai · Lambda)</li>
+            <li>— ElevenLabs TTS + voice cloning</li>
+            <li>— Character + style locks · Audiobooks</li>
           </ul>
           <button data-checkout data-tier="pro" data-interval="monthly" class="btn btn-primary">Start Pro</button>
         </div>
 
+        <!-- Studio -->
         <div class="card p-8 flex flex-col">
           <h3 class="text-xl mb-1">Studio</h3>
-          <p class="text-xs text-[var(--txt-muted)] mb-5">Multi-platform operation.</p>
+          <p class="text-xs text-[var(--txt-muted)] mb-5">Teams, agencies, studios.</p>
           <div class="mb-6">
-            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">$<span data-price data-price-monthly="99" data-price-yearly="990">99</span></span>
+            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="99" data-price-yearly="990">99</span></span>
             <span class="text-[var(--txt-secondary)]" data-interval-label>/mo</span>
           </div>
           <ul class="text-sm space-y-2 text-[var(--txt-secondary)] mb-8 flex-1">
-            <li>— 5 machine seats</li>
-            <li>— Unlimited everything</li>
-            <li>— Unlimited YouTube channels</li>
-            <li>— TikTok + Instagram</li>
+            <li>— 5 machine seats · unlimited channels</li>
+            <li>— Instagram Reels + X video upload</li>
+            <li>— Team / workspace mode with roles</li>
             <li>— REST API access</li>
-            <li>— Priority email support</li>
+            <li>— Priority support (24h SLA)</li>
           </ul>
           <button data-checkout data-tier="studio" data-interval="monthly" class="btn btn-secondary">Start Studio</button>
         </div>
       </div>
 
       <p class="text-center small-muted mt-8">
-        14-day money-back guarantee · VAT / MWST handled via Stripe · Cancel anytime
+        14-day money-back guarantee · Stripe + PayPal · VAT/MWST automatic · Cancel anytime · See the full comparison on <a href="/pricing" class="underline">Pricing</a>
       </p>
     </div>
   </section>
