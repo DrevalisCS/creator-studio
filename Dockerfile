@@ -75,8 +75,18 @@ COPY --from=builder /build/alembic.ini /app/alembic.ini
 # Create storage directory
 RUN mkdir -p /app/storage && chown -R appuser:appuser /app
 
-USER appuser
+# Entrypoint runs as root *just* long enough to normalise the
+# permissions on the bind-mounted /app/storage, then drops to
+# appuser via runuser. Docker Desktop (Windows) and some Linux hosts
+# present bind mounts root-owned, which would otherwise break the
+# app's first `mkdir('storage/episodes')` call. Keeping this idempotent
+# + failure-tolerant means existing installs don't regress.
+COPY docker/entrypoint.sh /usr/local/bin/drevalis-entrypoint.sh
+RUN chmod +x /usr/local/bin/drevalis-entrypoint.sh
 
+# NOTE: container starts as root so entrypoint can chown; entrypoint
+# itself drops to appuser before exec'ing the CMD.
 EXPOSE 8000
 
+ENTRYPOINT ["/usr/local/bin/drevalis-entrypoint.sh"]
 CMD ["python", "-m", "uvicorn", "drevalis.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
