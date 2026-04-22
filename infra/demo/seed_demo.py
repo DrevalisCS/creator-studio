@@ -439,22 +439,25 @@ def _fake_script(title: str, n_scenes: int) -> dict[str, Any]:
 def _discover_real_content() -> list[Path]:
     """Return directories under ``storage/episodes/`` that contain a
     **complete** set of demo-worthy media: scenes + voice + thumbnail
-    + final video. Incomplete dirs are skipped so the UI never lands
-    on an episode with a missing video row.
+    + **real** final video. 1-KB stub videos left over from older seed
+    runs are rejected via a minimum file-size threshold.
     """
     out: list[Path] = []
     base = STORAGE_ROOT / "episodes"
     if not base.exists():
         return out
+    MIN_VIDEO_BYTES = 64 * 1024  # 64 KB — anything smaller is a stub
     for child in sorted(base.iterdir()):
         if not child.is_dir():
             continue
-        has_final = (child / "output" / "final.mp4").exists()
-        has_thumb = (child / "output" / "thumbnail.jpg").exists()
-        has_voice = (child / "voice" / "full.wav").exists()
-        has_scenes = (child / "scenes").exists() and any(
-            (child / "scenes").glob("scene_*.png")
-        )
+        final = child / "output" / "final.mp4"
+        thumb = child / "output" / "thumbnail.jpg"
+        voice = child / "voice" / "full.wav"
+        scenes_dir = child / "scenes"
+        has_final = final.exists() and final.stat().st_size >= MIN_VIDEO_BYTES
+        has_thumb = thumb.exists() and thumb.stat().st_size >= 1024
+        has_voice = voice.exists() and voice.stat().st_size >= 1024
+        has_scenes = scenes_dir.exists() and any(scenes_dir.glob("scene_*.png"))
         if has_final and has_scenes and has_voice and has_thumb:
             out.append(child)
     return out

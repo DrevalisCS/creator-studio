@@ -102,6 +102,29 @@ _BLOCKED: list[tuple[str, re.Pattern[str], str]] = [
     ),
     # Updates — won't work against the demo image anyway.
     ("POST", re.compile(r"^/api/v1/updates/"), "In-app updates are disabled in the demo."),
+    # Asset uploads — prevent random visitors from filling the demo VPS
+    # disk with anything they like. Reading + listing assets stays open.
+    (
+        "POST",
+        re.compile(r"^/api/v1/assets$"),
+        "Uploading assets is disabled in the demo.",
+    ),
+    (
+        "PATCH",
+        re.compile(r"^/api/v1/assets/[^/]+$"),
+        "Editing assets is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/assets/[^/]+$"),
+        "Deleting assets is disabled in the demo.",
+    ),
+    # Video ingest uploads a whole video file — same security concern.
+    (
+        "POST",
+        re.compile(r"^/api/v1/video-ingest$"),
+        "Video uploads are disabled in the demo.",
+    ),
 ]
 
 
