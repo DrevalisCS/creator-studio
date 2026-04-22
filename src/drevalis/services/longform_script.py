@@ -342,7 +342,14 @@ class LongFormScriptService:
 
     @staticmethod
     def _parse_json(text: str) -> Any:
-        """Extract and parse JSON from LLM output."""
+        """Extract and parse JSON from LLM output.
+
+        Raises ``ValueError`` rather than returning ``{}`` on total
+        failure — the previous silent fallback let a bad outline
+        propagate through every chapter, leaving the user with a "it
+        generated but the chapters are empty" mystery. Raising here
+        lets the LLMPool retry on the next provider.
+        """
         text = text.strip()
         # Strip markdown fences
         if "```" in text:
@@ -362,4 +369,4 @@ class LongFormScriptService:
                     except json.JSONDecodeError:
                         continue
             log.warning("longform_script.json_parse_failed", text=text[:200])
-            return {}
+            raise ValueError("LLM did not return parseable JSON")

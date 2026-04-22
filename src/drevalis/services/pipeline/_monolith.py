@@ -136,13 +136,28 @@ class PipelineOrchestrator:
         Called at the start of the ``run()`` loop before each step.
         If the ``cancel:{episode_id}`` key is set, the pipeline raises
         :class:`asyncio.CancelledError` to abort cleanly.
+
+        The cancel key is **not deleted here** — if an exception fires
+        between the delete and the status flip, the signal would be
+        lost and the UI would show "still generating" until the arq
+        timeout kicked in. The ``run()`` finaliser clears it after
+        the status update commits, under a ``try/except`` so a Redis
+        hiccup during cleanup doesn't mask the cancellation itself.
         """
         cancel_key = f"cancel:{self.episode_id}"
         result = await self.redis.get(cancel_key)
         if result:
-            await self.redis.delete(cancel_key)
             self.log.info("pipeline_cancelled_by_user")
             raise asyncio.CancelledError(f"Episode {self.episode_id} cancelled by user")
+
+    async def _clear_cancel_flag(self) -> None:
+        """Drop the Redis cancel key once the episode's final status is
+        persisted, so a subsequent generation of the same episode
+        doesn't see the stale flag and abort immediately."""
+        try:
+            await self.redis.delete(f"cancel:{self.episode_id}")
+        except Exception as exc:  # noqa: BLE001
+            self.log.warning("cancel_flag_cleanup_failed", error=str(exc)[:120])
 
     # ── Error suggestions ────────────────────────────────────────────────
 
@@ -199,6 +214,10 @@ class PipelineOrchestrator:
             self.log.info("pipeline_cancelled_before_start")
             await self.episode_repo.update_status(self.episode_id, "failed")
             await self.db.commit()
+            # Only clear the Redis flag AFTER the DB commit succeeded —
+            # a mid-step crash between delete+commit previously lost
+            # the cancellation signal.
+            await self._clear_cancel_flag()
             await metrics.record_generation(success=False)
             clear_pipeline_context()
             return
@@ -224,6 +243,7 @@ class PipelineOrchestrator:
                 # leaves a consistent record on disk.
                 await self.episode_repo.update_status(self.episode_id, "failed")
                 await self.db.commit()
+                await self._clear_cancel_flag()
                 await metrics.record_generation(success=False)
                 clear_pipeline_context()
                 return  # Exit cleanly.
