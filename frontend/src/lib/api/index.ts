@@ -22,6 +22,7 @@ export {
   schedule,
   license,
   updates,
+  onboarding,
   ApiError,
   formatError,
 } from './_monolith';
@@ -35,4 +36,5 @@ export type {
   UpdateProgress,
   ActivationEntry,
   ActivationsResponse,
+  OnboardingStatus,
 } from './_monolith';

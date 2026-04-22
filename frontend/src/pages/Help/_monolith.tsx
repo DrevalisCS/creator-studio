@@ -29,6 +29,7 @@ import {
   Hash,
   Clock,
 } from 'lucide-react';
+import { onboarding as onboardingApi } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -350,6 +351,15 @@ function StepBadge({ step, color }: { step: string; color: string }) {
 function Help() {
   const [tab, setTab] = useState<'guide' | 'api'>('guide');
 
+  const rerunOnboarding = async () => {
+    try {
+      await onboardingApi.reset();
+      window.location.reload();
+    } catch {
+      // noop — user can just refresh
+    }
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Page header */}
@@ -360,6 +370,12 @@ function Help() {
             Comprehensive guides, examples, and reference for every feature in Drevalis Creator Studio.
           </p>
         </div>
+        <button
+          onClick={() => void rerunOnboarding()}
+          className="text-xs px-3 py-1.5 rounded-md border border-border text-txt-secondary hover:text-txt-primary hover:border-white/20 transition-colors"
+        >
+          Re-run onboarding
+        </button>
       </div>
 
       {/* Tabs */}

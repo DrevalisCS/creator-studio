@@ -4,6 +4,7 @@ import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
 import { ActivityMonitor } from '@/components/ActivityMonitor';
+import { OnboardingGate } from '@/components/onboarding/OnboardingGate';
 import { jobs as jobsApi } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
@@ -73,6 +74,10 @@ function Layout() {
 
       {/* Bottom tab navigation — only rendered below md breakpoint */}
       <MobileNav />
+
+      {/* First-run onboarding wizard (renders nothing when dismissed or when
+          the critical three — ComfyUI/LLM/voice — are already configured) */}
+      <OnboardingGate />
     </div>
   );
 }

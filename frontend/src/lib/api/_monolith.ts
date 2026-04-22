@@ -1039,3 +1039,22 @@ export const updates = {
   apply: () => post<{ queued: boolean; hint: string }>('/api/v1/updates/apply'),
   progress: () => get<UpdateProgress>('/api/v1/updates/progress'),
 };
+
+// ---------------------------------------------------------------------------
+// Onboarding
+// ---------------------------------------------------------------------------
+
+export interface OnboardingStatus {
+  comfyui_servers: number;
+  llm_configs: number;
+  voice_profiles: number;
+  youtube_channels: number;
+  dismissed: boolean;
+  should_show: boolean;
+}
+
+export const onboarding = {
+  status: () => get<OnboardingStatus>('/api/v1/onboarding/status'),
+  dismiss: () => post<void>('/api/v1/onboarding/dismiss'),
+  reset: () => post<void>('/api/v1/onboarding/reset'),
+};
