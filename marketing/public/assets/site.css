@@ -450,6 +450,8 @@ body.lightbox-open { overflow: hidden; }
   font-weight: 500;
 }
 .site-nav-link:hover, .site-nav-link[aria-current="page"] { color: var(--txt-primary); }
+.site-nav-link.accent { color: var(--accent); }
+.site-nav-link.accent:hover { color: var(--accent-glow, var(--accent)); }
 
 @media (max-width: 820px) {
   .site-nav-links { gap: 1rem; font-size: 0.85rem; }

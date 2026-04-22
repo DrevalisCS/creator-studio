@@ -34,10 +34,18 @@ async def generate_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, An
     dict:
         Summary of the pipeline run including status.
     """
+    from drevalis.core.deps import get_settings
     from drevalis.services.pipeline import PipelineOrchestrator
 
     log = logger.bind(episode_id=episode_id, job="generate_episode")
     log.info("job_start")
+
+    # Demo mode: redirect to the scripted fake pipeline. No GPU, no LLM,
+    # no ComfyUI — emits the same WS events a real run would.
+    if get_settings().demo_mode:
+        from drevalis.workers.jobs.demo_pipeline import generate_episode_demo
+
+        return await generate_episode_demo(ctx, episode_id)
 
     # License gate: 4th validation site (on_job_start is the first, middleware
     # the second, lifespan bootstrap the third). Duplicating the check here

@@ -105,6 +105,21 @@ class Settings(BaseSettings):
     # Cron job on/off. When True, runs daily at 03:00 UTC.
     backup_auto_enabled: bool = False
 
+    # ── Demo mode ────────────────────────────────────────────────────────
+    # When ``True`` the backend runs the public-facing demo shape:
+    #   * ``generate_episode`` is replaced by a fake state machine that
+    #     copies pre-baked sample media and emits WS progress events.
+    #   * Destructive routes (delete, reset, restore) return 403.
+    #   * License activation is bypassed.
+    #   * YouTube/TikTok upload returns a simulated success with a fake URL.
+    #   * Onboarding is auto-dismissed, licence check is waived.
+    # Leave OFF in real installs. Sharing ``DEMO_MODE=true`` in a prod env
+    # would break real generations — that's the intent.
+    demo_mode: bool = False
+    # Where the pre-baked demo assets live (video, thumbnail, scenes).
+    # Defaults to a directory shipped in the Docker image.
+    demo_assets_path: Path = Path("/app/infra/demo/assets")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

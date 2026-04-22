@@ -48,14 +48,18 @@ services:
     # this port without exposing the demo instance to the public.
     ports:
       - "127.0.0.1:18000:8000"
+    networks: [default, proxy]
     env_file:
       - .env
     environment:
       DATABASE_URL: postgresql+asyncpg://drevalis:drevalis@postgres:5432/drevalis
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app/src
+      DEMO_MODE: "true"
+      DEMO_ASSETS_PATH: /app/infra/demo/assets
     volumes:
       - ./storage:/app/storage
+      - ./demo_assets:/app/infra/demo/assets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -80,8 +84,11 @@ services:
       DATABASE_URL: postgresql+asyncpg://drevalis:drevalis@postgres:5432/drevalis
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app/src
+      DEMO_MODE: "true"
+      DEMO_ASSETS_PATH: /app/infra/demo/assets
     volumes:
       - ./storage:/app/storage
+      - ./demo_assets:/app/infra/demo/assets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -96,12 +103,46 @@ services:
     restart: unless-stopped
     ports:
       - "127.0.0.1:13000:3000"
+    networks: [default, proxy]
     environment:
       VITE_PROXY_TARGET: http://app:8000
       VITE_WS_PROXY_TARGET: ws://app:8000
     depends_on:
       app:
         condition: service_healthy
+
+  # Nightly reset — 04:00 UTC wipes the demo DB + storage and re-seeds.
+  # Uses the same app image so it can import the seed script.
+  reset:
+    image: ghcr.io/drevaliscs/creator-studio-app:stable
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://drevalis:drevalis@postgres:5432/drevalis
+      REDIS_URL: redis://redis:6379/0
+      PYTHONPATH: /app/src
+      DEMO_MODE: "true"
+      DEMO_RESET_CRON: "0 4 * * *"  # 04:00 UTC, every day
+    volumes:
+      - ./storage:/app/storage
+      - ./seed_demo.py:/app/seed_demo.py:ro
+      - ./reset_demo.sh:/app/reset_demo.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command: |
+      "apk add --no-cache dcron tzdata postgresql-client >/dev/null 2>&1 || true;
+       echo '$${DEMO_RESET_CRON} /app/reset_demo.sh >> /var/log/demo-reset.log 2>&1' | crontab -;
+       touch /var/log/demo-reset.log;
+       crond -f -l 2 &
+       tail -F /var/log/demo-reset.log"
+
+networks:
+  default:
+  proxy:
+    external: true
 
 volumes:
   postgres_data:

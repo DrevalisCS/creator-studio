@@ -1220,7 +1220,7 @@ export const auth = {
     post<LoginResponse>('/api/v1/auth/login', { email, password }),
   logout: () => post<{ message: string }>('/api/v1/auth/logout'),
   me: () => get<AuthUser | null>('/api/v1/auth/me'),
-  mode: () => get<{ team_mode: boolean }>('/api/v1/auth/mode'),
+  mode: () => get<{ team_mode: boolean; demo_mode?: boolean }>('/api/v1/auth/mode'),
 };
 
 export const users = {

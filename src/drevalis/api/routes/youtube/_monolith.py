@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -392,6 +393,25 @@ async def upload_episode(
     Requires an active YouTube channel connection.  The upload runs
     asynchronously via ``asyncio.to_thread``.
     """
+    # Demo mode: return a simulated successful upload instead of calling
+    # the real YouTube API (the demo install has no real OAuth tokens).
+    if settings.demo_mode:
+        fake_id = "demo_" + episode_id.hex[:11]
+        now = datetime.now(tz=UTC)
+        return YouTubeUploadResponse(
+            id=uuid4(),
+            episode_id=episode_id,
+            channel_id=payload.channel_id or uuid4(),
+            youtube_video_id=fake_id,
+            youtube_url=f"https://www.youtube.com/watch?v={fake_id}",
+            title=payload.title or "Demo episode",
+            description=payload.description or "",
+            privacy_status=payload.privacy_status or "private",
+            upload_status="done",
+            created_at=now,
+            updated_at=now,
+        )
+
     svc = _get_youtube_service(settings)
 
     # Validate episode exists.

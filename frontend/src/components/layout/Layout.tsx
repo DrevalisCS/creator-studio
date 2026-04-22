@@ -5,6 +5,8 @@ import { Header } from './Header';
 import { MobileNav } from './MobileNav';
 import { ActivityMonitor } from '@/components/ActivityMonitor';
 import { OnboardingGate } from '@/components/onboarding/OnboardingGate';
+import { DemoBanner } from '@/components/DemoBanner';
+import { useAuthMode } from '@/lib/useAuth';
 import { jobs as jobsApi } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
@@ -14,6 +16,7 @@ import { jobs as jobsApi } from '@/lib/api';
 function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeJobCount, setActiveJobCount] = useState(0);
+  const { demoMode } = useAuthMode();
 
   // Poll active jobs count every 10 seconds
   useEffect(() => {
@@ -38,7 +41,11 @@ function Layout() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-bg-base noise-overlay">
+    <div
+      className="min-h-screen bg-bg-base noise-overlay"
+      style={demoMode ? { paddingTop: 32 } : undefined}
+    >
+      <DemoBanner />
       {/* Sidebar — hidden on mobile, visible md+ */}
       <Sidebar
         collapsed={sidebarCollapsed}

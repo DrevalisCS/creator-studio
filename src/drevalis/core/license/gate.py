@@ -66,6 +66,16 @@ class LicenseGateMiddleware(BaseHTTPMiddleware):
         if not any(path.startswith(p) for p in self._guarded):
             return await call_next(request)
 
+        # Demo mode: bypass the licence gate entirely. The demo install is
+        # public by design; there's nothing to activate.
+        try:
+            from drevalis.core.deps import get_settings
+
+            if get_settings().demo_mode:
+                return await call_next(request)
+        except Exception:
+            pass
+
         # Pull fresh state if another uvicorn worker bumped the version.
         # Cheap: one Redis GET, only rebootstraps when the counter moved.
         try:

@@ -159,16 +159,23 @@ async def whoami(user: User | None = Depends(_current_user)) -> UserResponse | N
 
 
 @router.get("/api/v1/auth/mode")
-async def auth_mode(db: AsyncSession = Depends(get_db)) -> dict[str, bool]:
-    """Public endpoint — reports whether team mode is active.
+async def auth_mode(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, bool]:
+    """Public endpoint — reports whether team mode and/or demo mode are active.
 
     The frontend's login gate calls this when ``/auth/me`` returns null:
     if ``team_mode`` is true, redirect to ``/login``; otherwise keep
-    the single-user no-auth path.
+    the single-user no-auth path. ``demo_mode`` is surfaced separately
+    so the UI can render the banner and disable destructive actions.
     """
     count = (await db.execute(select(func.count()).select_from(User))).scalar_one() or 0
     owner_env = bool((os.environ.get("OWNER_EMAIL") or "").strip())
-    return {"team_mode": count > 0 or owner_env}
+    return {
+        "team_mode": count > 0 or owner_env,
+        "demo_mode": bool(settings.demo_mode),
+    }
 
 
 # ── User management ───────────────────────────────────────────────────
