@@ -95,6 +95,11 @@ function EpisodeDetail() {
   const [youtubeConnected, setYoutubeConnected] = useState(false);
   const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
   const [thumbEditorOpen, setThumbEditorOpen] = useState(false);
+  const [publishAllOpen, setPublishAllOpen] = useState(false);
+  const [publishAllPlatforms, setPublishAllPlatforms] = useState<
+    Record<'youtube' | 'tiktok' | 'instagram', boolean>
+  >({ youtube: true, tiktok: true, instagram: true });
+  const [publishAllLoading, setPublishAllLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [ytTitle, setYtTitle] = useState('');
   const [ytDescription, setYtDescription] = useState('');
@@ -703,12 +708,20 @@ function EpisodeDetail() {
                     <Popover.Close asChild>
                       <button
                         onClick={() => setUploadDialogOpen(true)}
-                        className="flex items-center gap-2 w-full text-left px-3 py-2.5 text-sm text-red-400 hover:bg-bg-hover border-t border-border rounded-b-lg"
+                        className="flex items-center gap-2 w-full text-left px-3 py-2.5 text-sm text-red-400 hover:bg-bg-hover border-t border-border"
                       >
                         <Upload size={14} /> Upload to YouTube
                       </button>
                     </Popover.Close>
                   )}
+                  <Popover.Close asChild>
+                    <button
+                      onClick={() => setPublishAllOpen(true)}
+                      className="flex items-center gap-2 w-full text-left px-3 py-2.5 text-sm text-accent hover:bg-bg-hover border-t border-border rounded-b-lg"
+                    >
+                      <Upload size={14} /> Publish everywhere…
+                    </button>
+                  </Popover.Close>
                 </Popover.Content>
               </Popover.Portal>
             </Popover.Root>
@@ -1088,6 +1101,85 @@ function EpisodeDetail() {
             onClick={() => void handleYouTubeUpload()}
           >
             <Upload size={14} /> Upload
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Publish-everywhere dialog */}
+      <Dialog
+        open={publishAllOpen}
+        onClose={() => setPublishAllOpen(false)}
+        title="Publish everywhere"
+        description="Fan out this episode to every platform you've connected. Platforms without a connected account will be skipped with a clear reason."
+      >
+        <div className="space-y-3 text-sm">
+          {(['youtube', 'tiktok', 'instagram'] as const).map((p) => (
+            <label
+              key={p}
+              className="flex items-center gap-3 rounded-md border border-border p-3 cursor-pointer hover:bg-bg-hover"
+            >
+              <input
+                type="checkbox"
+                checked={publishAllPlatforms[p]}
+                onChange={(e) =>
+                  setPublishAllPlatforms((prev) => ({ ...prev, [p]: e.target.checked }))
+                }
+                className="accent-accent"
+              />
+              <span className="flex-1 capitalize text-txt-primary">{p}</span>
+              {p === 'youtube' && (
+                <span className="text-[11px] text-txt-muted">all tiers</span>
+              )}
+              {(p === 'tiktok' || p === 'instagram') && (
+                <span className="text-[11px] text-amber-300">Studio tier</span>
+              )}
+            </label>
+          ))}
+          <p className="text-[11px] text-txt-muted">
+            Uses the episode's SEO title + description when available. Uploads go to the
+            Activity Monitor — you can cancel individual uploads from there.
+          </p>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setPublishAllOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            loading={publishAllLoading}
+            disabled={!Object.values(publishAllPlatforms).some(Boolean)}
+            onClick={async () => {
+              const platforms = (Object.entries(publishAllPlatforms) as [
+                'youtube' | 'tiktok' | 'instagram',
+                boolean,
+              ][])
+                .filter(([, v]) => v)
+                .map(([k]) => k);
+              setPublishAllLoading(true);
+              try {
+                const result = await episodesApi.publishAll(episodeId!, { platforms });
+                const accepted = result.accepted.map((a) => a.platform);
+                const skipped = result.skipped;
+                if (accepted.length > 0) {
+                  toast.success(`Publishing to ${accepted.join(', ')}`, {
+                    description: skipped.length
+                      ? `Skipped: ${skipped.map((s) => `${s.platform} (${s.reason})`).join('; ')}`
+                      : 'Watch progress in the Activity Monitor.',
+                  });
+                } else if (skipped.length > 0) {
+                  toast.error('Nothing to publish', {
+                    description: skipped.map((s) => `${s.platform}: ${s.reason}`).join('; '),
+                  });
+                }
+                setPublishAllOpen(false);
+              } catch (err) {
+                toast.error('Publish-all failed', { description: String(err) });
+              } finally {
+                setPublishAllLoading(false);
+              }
+            }}
+          >
+            Publish
           </Button>
         </DialogFooter>
       </Dialog>

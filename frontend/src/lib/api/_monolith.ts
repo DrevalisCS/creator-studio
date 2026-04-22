@@ -320,6 +320,21 @@ export const episodes = {
   seoScore: (episodeId: string) =>
     get<SEOScore>(`/api/v1/episodes/${episodeId}/seo-score`),
 
+  publishAll: (
+    episodeId: string,
+    data: {
+      platforms: ('youtube' | 'tiktok' | 'instagram')[];
+      title?: string;
+      description?: string;
+      privacy?: 'public' | 'unlisted' | 'private';
+    },
+  ) =>
+    post<{
+      episode_id: string;
+      accepted: { platform: string; upload_id: string }[];
+      skipped: { platform: string; reason: string }[];
+    }>(`/api/v1/episodes/${episodeId}/publish-all`, data),
+
   regenerateCaptions: (episodeId: string, captionStyle: string) =>
     post<{ message: string; episode_id: string; job_ids: string[] }>(
       `/api/v1/episodes/${episodeId}/regenerate-captions?caption_style=${encodeURIComponent(captionStyle)}`,

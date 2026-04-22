@@ -110,18 +110,36 @@ function formatDate(isoString: string): string {
 interface PostPillProps {
   post: ScheduledPost;
   onCancel: (id: string) => void;
+  onDragStart?: (e: React.DragEvent, post: ScheduledPost) => void;
+  onDragEnd?: (e: React.DragEvent) => void;
 }
 
-function PostPill({ post, onCancel }: PostPillProps) {
+function PostPill({ post, onCancel, onDragStart, onDragEnd }: PostPillProps) {
   const colorClass = PLATFORM_COLORS[post.platform] ?? 'bg-gray-500';
+  const draggable = post.status === 'scheduled';
   return (
     <div
+      draggable={draggable}
+      onDragStart={(e) => {
+        if (!draggable) return;
+        e.stopPropagation();
+        onDragStart?.(e, post);
+      }}
+      onDragEnd={(e) => {
+        e.stopPropagation();
+        onDragEnd?.(e);
+      }}
       className={[
         'group flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] font-medium text-white',
-        'truncate max-w-full cursor-default',
+        'truncate max-w-full',
+        draggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-default',
         colorClass,
       ].join(' ')}
-      title={`${post.title} — ${formatTime(post.scheduled_at)}`}
+      title={
+        draggable
+          ? `${post.title} — ${formatTime(post.scheduled_at)} · drag to reschedule`
+          : `${post.title} — ${formatTime(post.scheduled_at)}`
+      }
     >
       <span className="truncate flex-1">{post.title}</span>
       <button
@@ -498,6 +516,95 @@ function Calendar() {
     }
   };
 
+  // ── Drag-and-drop rescheduling ─────────────────────────────────────
+  // Users drag a PostPill from one day cell to another. The target
+  // day's date replaces the post's date component; the time-of-day
+  // is preserved so a user who carefully picked 14:00 doesn't lose it.
+  const [draggedPost, setDraggedPost] = useState<ScheduledPost | null>(null);
+  const [dragOverDay, setDragOverDay] = useState<string | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, post: ScheduledPost) => {
+    setDraggedPost(post);
+    // Needed in Firefox — any data, value is irrelevant (we track the
+    // dragged post in React state).
+    try {
+      e.dataTransfer.setData('text/plain', post.id);
+      e.dataTransfer.effectAllowed = 'move';
+    } catch {
+      /* older browsers */
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedPost(null);
+    setDragOverDay(null);
+  };
+
+  const handleDayDragOver = (e: React.DragEvent, day: Date) => {
+    if (!draggedPost) return;
+    if (day.getMonth() !== currentMonth) return;
+    e.preventDefault(); // required to allow drop
+    e.dataTransfer.dropEffect = 'move';
+    const key = day.toISOString().slice(0, 10);
+    if (dragOverDay !== key) setDragOverDay(key);
+  };
+
+  const handleDayDragLeave = (e: React.DragEvent, day: Date) => {
+    // Only clear if leaving the cell itself, not a child.
+    if (e.currentTarget === e.target) {
+      const key = day.toISOString().slice(0, 10);
+      if (dragOverDay === key) setDragOverDay(null);
+    }
+  };
+
+  const handleDayDrop = async (e: React.DragEvent, day: Date) => {
+    e.preventDefault();
+    const post = draggedPost;
+    setDraggedPost(null);
+    setDragOverDay(null);
+    if (!post) return;
+    if (day.getMonth() !== currentMonth) return;
+
+    // Preserve the original time-of-day; only the date changes.
+    const original = new Date(post.scheduled_at);
+    const nextDate = new Date(
+      day.getFullYear(),
+      day.getMonth(),
+      day.getDate(),
+      original.getHours(),
+      original.getMinutes(),
+      original.getSeconds(),
+    );
+    // No-op if user dropped on the same date.
+    if (
+      nextDate.getFullYear() === original.getFullYear() &&
+      nextDate.getMonth() === original.getMonth() &&
+      nextDate.getDate() === original.getDate()
+    ) {
+      return;
+    }
+
+    // Optimistic update.
+    const nextIso = nextDate.toISOString();
+    setPosts((prev) =>
+      prev.map((p) => (p.id === post.id ? { ...p, scheduled_at: nextIso } : p)),
+    );
+    try {
+      await scheduleApi.update(post.id, { scheduled_at: nextIso });
+      toast.success('Rescheduled', {
+        description: `${post.title} → ${formatDate(nextIso)} at ${formatTime(nextIso)}`,
+      });
+    } catch (err) {
+      // Roll back on failure.
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id ? { ...p, scheduled_at: post.scheduled_at } : p,
+        ),
+      );
+      toast.error('Failed to reschedule', { description: String(err) });
+    }
+  };
+
   const handleCreated = () => {
     void fetchPosts();
   };
@@ -580,12 +687,17 @@ function Calendar() {
                   const isLastInRow = (idx + 1) % 7 === 0;
                   const isLastRow = idx >= days.length - 7;
 
+                  const dayKey = day.toISOString().slice(0, 10);
+                  const isDropTarget = dragOverDay === dayKey;
                   return (
                     <div
                       key={day.toISOString()}
                       role="gridcell"
                       aria-label={`${day.toLocaleDateString()}${dayPosts.length > 0 ? `, ${dayPosts.length} post${dayPosts.length !== 1 ? 's' : ''}` : ''}`}
                       onClick={() => handleDayClick(day)}
+                      onDragOver={(e) => handleDayDragOver(e, day)}
+                      onDragLeave={(e) => handleDayDragLeave(e, day)}
+                      onDrop={(e) => void handleDayDrop(e, day)}
                       className={[
                         'min-h-[100px] p-1.5 border-border flex flex-col gap-1 transition-colors',
                         !isLastInRow && 'border-r',
@@ -593,6 +705,9 @@ function Calendar() {
                         inMonth
                           ? 'cursor-pointer hover:bg-bg-hover'
                           : 'bg-bg-elevated/30 cursor-default',
+                        isDropTarget
+                          ? 'bg-accent/10 outline outline-2 outline-accent/40 -outline-offset-2'
+                          : '',
                       ].join(' ')}
                     >
                       {/* Day number */}
@@ -619,6 +734,8 @@ function Calendar() {
                             key={post.id}
                             post={post}
                             onCancel={handleCancel}
+                            onDragStart={handleDragStart}
+                            onDragEnd={handleDragEnd}
                           />
                         ))}
                         {dayPosts.length > 3 && (

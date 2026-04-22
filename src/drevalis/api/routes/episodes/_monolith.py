@@ -2983,3 +2983,186 @@ async def generate_seo(
     await redis.enqueue_job("generate_seo_async", str(episode_id))
 
     return {"status": "queued", "message": "SEO generation started in background"}
+
+
+# ── Cross-platform bulk publish ─────────────────────────────────────────
+
+
+class PublishAllRequest(BaseModel):
+    """Fan-out publish to every selected platform."""
+
+    platforms: list[Literal["youtube", "tiktok", "instagram"]] = Field(
+        ...,
+        min_length=1,
+        description="Platforms to publish to. Only platforms the episode's series + connected "
+        "accounts cover will actually be enqueued; the rest are returned as skipped.",
+    )
+    title: str | None = Field(
+        default=None,
+        description="Override title. Defaults to the episode's SEO title or raw title.",
+    )
+    description: str | None = Field(
+        default=None,
+        description="Override description. Defaults to episode.metadata.seo.description or topic.",
+    )
+    privacy: Literal["public", "unlisted", "private"] = "public"
+
+
+class PublishAllResponse(BaseModel):
+    episode_id: str
+    accepted: list[dict[str, Any]]
+    skipped: list[dict[str, Any]]
+
+
+@router.post(
+    "/{episode_id}/publish-all",
+    response_model=PublishAllResponse,
+    summary="Publish the finished episode to YouTube, TikTok, and Instagram in one shot",
+    tags=["publishing"],
+)
+async def publish_all(
+    episode_id: UUID,
+    body: PublishAllRequest,
+    db: AsyncSession = Depends(get_db),
+) -> PublishAllResponse:
+    """Cross-platform bulk publish.
+
+    Iterates the platforms the caller selected. For each:
+
+    - **youtube**: requires the episode's series to have ``youtube_channel_id``
+      set. Creates a YouTubeUpload row; the worker's upload cron picks it up.
+    - **tiktok** / **instagram**: requires a connected SocialPlatform row
+      for that platform. Creates a SocialUpload row; the social worker
+      picks it up.
+
+    Each platform that can't be fulfilled (no connection, missing video,
+    tier gate, etc.) is returned in ``skipped`` with a human-readable
+    reason rather than aborting the whole request. That way a Pro-tier
+    customer who hits Publish-All gets YouTube through and sees a
+    friendly "TikTok requires Studio tier" note for the other two.
+    """
+    from drevalis.models.social_platform import SocialPlatform, SocialUpload
+    from drevalis.models.youtube_channel import YouTubeUpload
+
+    ep_repo = EpisodeRepository(db)
+    episode = await ep_repo.get(episode_id)
+    if not episode:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
+    if episode.status not in ("review", "exported", "editing"):
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            f"Episode must be in review/exported/editing; current status is '{episode.status}'.",
+        )
+
+    asset_repo = MediaAssetRepository(db)
+    video_assets = await asset_repo.get_by_episode_and_type(episode_id, "video")
+    if not video_assets:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Episode has no finished video yet. Generate / reassemble first.",
+        )
+
+    seo = (episode.metadata_ or {}).get("seo") if isinstance(episode.metadata_, dict) else None
+    effective_title = body.title or (seo or {}).get("title") or episode.title
+    effective_description = (
+        body.description or (seo or {}).get("description") or (episode.topic or "")
+    )
+    effective_tags = (seo or {}).get("tags") or []
+    effective_hashtags = (seo or {}).get("hashtags") or []
+
+    accepted: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+
+    # ── YouTube ─────────────────────────────────────────────────────────
+    if "youtube" in body.platforms:
+        # Load series to resolve the assigned channel.
+        await db.refresh(episode, attribute_names=["series"])
+        yt_channel_id = (
+            getattr(episode.series, "youtube_channel_id", None) if episode.series else None
+        )
+        if not yt_channel_id:
+            skipped.append(
+                {
+                    "platform": "youtube",
+                    "reason": "The episode's series has no assigned YouTube channel. "
+                    "Set one in Settings → YouTube or on the series.",
+                }
+            )
+        else:
+            upload = YouTubeUpload(
+                episode_id=episode.id,
+                channel_id=yt_channel_id,
+                title=effective_title,
+                description=effective_description,
+                privacy_status=body.privacy,
+                upload_status="pending",
+            )
+            db.add(upload)
+            await db.flush()
+            accepted.append(
+                {
+                    "platform": "youtube",
+                    "upload_id": str(upload.id),
+                    "channel_id": str(yt_channel_id),
+                }
+            )
+
+    # ── TikTok / Instagram ──────────────────────────────────────────────
+    for plat_name in ("tiktok", "instagram"):
+        if plat_name not in body.platforms:
+            continue
+
+        from sqlalchemy import select as _select
+
+        row = await db.execute(
+            _select(SocialPlatform).where(
+                SocialPlatform.platform == plat_name,
+                SocialPlatform.is_active.is_(True),
+            )
+        )
+        plat = row.scalar_one_or_none()
+        if not plat:
+            skipped.append(
+                {
+                    "platform": plat_name,
+                    "reason": f"No active {plat_name} account connected. Connect one in "
+                    "Settings → Social Platforms (Studio tier).",
+                }
+            )
+            continue
+
+        hashtags_str = " ".join(effective_hashtags) if effective_hashtags else None
+        su = SocialUpload(
+            platform_id=plat.id,
+            episode_id=episode.id,
+            content_type="episode",
+            title=effective_title,
+            description=effective_description,
+            hashtags=hashtags_str,
+            upload_status="pending",
+        )
+        db.add(su)
+        await db.flush()
+        accepted.append(
+            {
+                "platform": plat_name,
+                "upload_id": str(su.id),
+                "platform_account_id": str(plat.id),
+            }
+        )
+
+    await db.commit()
+
+    logger.info(
+        "episode_publish_all",
+        episode_id=str(episode_id),
+        accepted=[a["platform"] for a in accepted],
+        skipped=[s["platform"] for s in skipped],
+    )
+
+    _ = effective_tags  # reserved for future YouTube Data-API tag upload
+    return PublishAllResponse(
+        episode_id=str(episode_id),
+        accepted=accepted,
+        skipped=skipped,
+    )
