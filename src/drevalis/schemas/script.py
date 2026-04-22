@@ -47,6 +47,14 @@ class SceneScript(BaseModel):
         default=None, ge=0, description="Trim end within the source asset (seconds)."
     )
 
+    # Phase E: optional video asset that drives motion for this scene
+    # when using a video-to-video workflow (Wan 2.6, AnimateDiff, etc).
+    # Workflows without a motion-reference input ignore it.
+    motion_reference_asset_id: str | None = Field(
+        default=None,
+        description="UUID of a video Asset used as motion reference.",
+    )
+
     # Phase C: per-scene generation overrides. Any of these set means
     # "differ from the series default for this scene only". The pipeline
     # treats missing fields as "use series-level defaults".

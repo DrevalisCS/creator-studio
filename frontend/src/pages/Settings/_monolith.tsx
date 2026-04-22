@@ -1019,6 +1019,14 @@ function VoiceCloneDialog({
   const [provider, setProvider] = useState<'elevenlabs' | 'piper' | 'kokoro'>('elevenlabs');
   const [busy, setBusy] = useState(false);
 
+  // Mic recording state
+  const [recording, setRecording] = useState(false);
+  const [recordedBlob, setRecordedBlob] = useState<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [recStart, setRecStart] = useState<number | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaChunksRef = useRef<BlobPart[]>([]);
+
   useEffect(() => {
     void apiAssets.list({ kind: 'audio' }).then((rows) =>
       setAssetsList(
@@ -1031,15 +1039,76 @@ function VoiceCloneDialog({
     );
   }, []);
 
+  useEffect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  }, [previewUrl]);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+      mediaChunksRef.current = [];
+      mr.ondataavailable = (e) => {
+        if (e.data.size > 0) mediaChunksRef.current.push(e.data);
+      };
+      mr.onstop = () => {
+        const blob = new Blob(mediaChunksRef.current, { type: 'audio/webm' });
+        setRecordedBlob(blob);
+        setPreviewUrl(URL.createObjectURL(blob));
+        stream.getTracks().forEach((t) => t.stop());
+      };
+      mr.start();
+      mediaRecorderRef.current = mr;
+      setRecording(true);
+      setRecStart(Date.now());
+    } catch (err) {
+      toast.error('Mic access denied', {
+        description: 'Fall back to picking an existing audio asset.',
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    mediaRecorderRef.current?.stop();
+    setRecording(false);
+    setRecStart(null);
+  };
+
+  const uploadRecording = async (): Promise<string | null> => {
+    if (!recordedBlob) return null;
+    try {
+      const file = new File([recordedBlob], `voice-sample-${Date.now()}.webm`, {
+        type: 'audio/webm',
+      });
+      const a = await apiAssets.upload(file, { tags: ['voice-sample'] });
+      return a.id;
+    } catch (err) {
+      toast.error('Sample upload failed', { description: String(err) });
+      return null;
+    }
+  };
+
   const submit = async () => {
-    if (!displayName.trim() || !selectedAssetId) {
-      toast.error('Pick a sample and give the voice a name');
+    if (!displayName.trim()) {
+      toast.error('Give the voice a name');
+      return;
+    }
+    let assetId = selectedAssetId;
+    if (!assetId && recordedBlob) {
+      const id = await uploadRecording();
+      if (!id) return;
+      assetId = id;
+    }
+    if (!assetId) {
+      toast.error('Pick an existing audio asset or record a sample');
       return;
     }
     setBusy(true);
     try {
       const res = await voiceProfiles.clone({
-        asset_id: selectedAssetId,
+        asset_id: assetId,
         display_name: displayName.trim(),
         provider,
       });
@@ -1058,11 +1127,56 @@ function VoiceCloneDialog({
     <Dialog open onClose={onClose} title="Clone voice from sample">
       <div className="space-y-3">
         <p className="text-xs text-txt-secondary">
-          Upload a 30-60 second clean recording on the Assets page first
-          (kind=audio), then pick it here. ElevenLabs IVC uploads on the
-          first voice test; Piper / Kokoro clones require offline model
-          fine-tuning.
+          Record a 30-60 second clean take right here, OR pick an existing
+          audio asset. ElevenLabs IVC uploads on the first voice test;
+          Piper / Kokoro clones require offline fine-tuning.
         </p>
+
+        {/* Mic capture */}
+        <div className="p-3 rounded border border-white/[0.06] bg-bg-elevated space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="text-xs font-medium text-txt-primary">Browser mic</div>
+            {recording && recStart && (
+              <RecordingTimer startedAt={recStart} />
+            )}
+          </div>
+          <div className="flex gap-2">
+            {!recording ? (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => void startRecording()}
+                disabled={!!recordedBlob}
+              >
+                {recordedBlob ? 'Recorded' : 'Record'}
+              </Button>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={stopRecording}>
+                Stop
+              </Button>
+            )}
+            {recordedBlob && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setRecordedBlob(null);
+                  if (previewUrl) URL.revokeObjectURL(previewUrl);
+                  setPreviewUrl(null);
+                }}
+              >
+                Discard
+              </Button>
+            )}
+          </div>
+          {previewUrl && (
+            <audio src={previewUrl} controls className="w-full h-8" />
+          )}
+          <div className="text-[10px] text-txt-muted">
+            Tip: speak at conversational volume, no background music, 30s+.
+          </div>
+        </div>
+        <div className="text-[11px] text-txt-muted text-center">— or —</div>
         <label className="block text-xs">
           <span className="text-txt-secondary mb-1 block">Display name</span>
           <Input
@@ -1110,6 +1224,16 @@ function VoiceCloneDialog({
       </DialogFooter>
     </Dialog>
   );
+}
+
+function RecordingTimer({ startedAt }: { startedAt: number }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 250);
+    return () => clearInterval(t);
+  }, []);
+  const s = Math.floor((now - startedAt) / 1000);
+  return <span className="text-xs font-mono text-error">● {s}s</span>;
 }
 
 // ---------------------------------------------------------------------------

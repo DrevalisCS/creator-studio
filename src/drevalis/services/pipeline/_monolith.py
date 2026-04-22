@@ -931,6 +931,20 @@ class PipelineOrchestrator:
             if image_wf and image_wf.input_mappings:
                 image_mappings = WorkflowInputMapping.model_validate(image_wf.input_mappings)
 
+            # Phase E: resolve per-scene motion-reference video assets
+            # (workflows without a matching input slot ignore this).
+            motion_ref_paths: dict[int, str] = {}
+            for s in scenes_to_generate:
+                ref_id = getattr(s, "motion_reference_asset_id", None)
+                if not ref_id:
+                    continue
+                try:
+                    paths = await self._resolve_reference_asset_paths([ref_id], kinds=("video",))
+                except Exception:
+                    paths = []
+                if paths:
+                    motion_ref_paths[s.scene_number] = paths[0]
+
             generated_videos = await self.comfyui_service.generate_scene_videos(
                 server_id=None,  # Let the pool distribute across all servers
                 workflow_path=comfyui_workflow.workflow_json_path,
@@ -944,6 +958,7 @@ class PipelineOrchestrator:
                 image_input_mappings=image_mappings,
                 progress_callback=_scene_progress,
                 base_seed=base_seed,
+                motion_reference_paths_by_scene=motion_ref_paths or None,
             )
 
             for vid in generated_videos:
@@ -1131,13 +1146,16 @@ class PipelineOrchestrator:
         await self.db.commit()
 
     async def _resolve_reference_asset_paths(
-        self, reference_asset_ids: list[str] | None
+        self,
+        reference_asset_ids: list[str] | None,
+        *,
+        kinds: tuple[str, ...] = ("image",),
     ) -> list[str]:
-        """Resolve asset UUIDs → absolute filesystem paths (image files only).
+        """Resolve asset UUIDs → absolute filesystem paths.
 
-        Workflows that declare an ``ipadapter_reference`` input slot read
-        from this list; workflows without the slot simply ignore it.
-        Returns absolute paths so ComfyUI can load them directly.
+        By default returns image assets only — suitable for IPAdapter-style
+        reference inputs. Pass ``kinds=("video",)`` to resolve motion
+        references for video-to-video workflows, etc.
         """
         from pathlib import Path as _Path
         from uuid import UUID as _UUID
@@ -1154,7 +1172,7 @@ class PipelineOrchestrator:
             except ValueError:
                 continue
             asset = await asset_repo.get_by_id(asset_uuid)
-            if asset is None or asset.kind != "image":
+            if asset is None or asset.kind not in kinds:
                 continue
             abs_path = _Path(self.storage.base_path) / asset.file_path
             if abs_path.exists():

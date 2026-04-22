@@ -1108,6 +1108,7 @@ class ComfyUIService:
         image_input_mappings: WorkflowInputMapping | None = None,
         progress_callback: SceneProgressCallback | None = None,
         base_seed: int | None = None,
+        motion_reference_paths_by_scene: dict[int, str] | None = None,
     ) -> list[GeneratedVideo]:
         """Generate video clips for all scenes in an episode.
 

@@ -28,6 +28,7 @@ import { Dialog, DialogFooter } from '@/components/ui/Dialog';
 import { Spinner } from '@/components/ui/Spinner';
 import { EpisodeCard } from '@/components/episodes/EpisodeCard';
 import { ABTestsPanel } from '@/components/series/ABTestsPanel';
+import { AssetPicker } from '@/components/assets/AssetPicker';
 import {
   CaptionStyleEditor,
   DEFAULT_CAPTION_STYLE,
@@ -925,12 +926,10 @@ function SeriesDetail() {
                     Workflows with IPAdapter-FaceID slots consume these;
                     others ignore them.
                   </p>
-                  <input
-                    type="text"
-                    value={editCharacterAssetIds}
-                    onChange={(e) => setEditCharacterAssetIds(e.target.value)}
-                    placeholder="asset-uuid-1, asset-uuid-2"
-                    className="w-full px-3 py-2 text-xs font-mono bg-bg-elevated border border-border rounded-lg text-txt-primary"
+                  <AssetLockPicker
+                    ids={editCharacterAssetIds}
+                    onChange={setEditCharacterAssetIds}
+                    title="Pick character reference images"
                   />
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     <label className="text-[11px] text-txt-secondary">
@@ -967,12 +966,10 @@ function SeriesDetail() {
                   <p className="text-[11px] text-txt-muted mb-2">
                     Pin a look (lighting, palette, film grain). Same asset-UUIDs-plus-strength pattern.
                   </p>
-                  <input
-                    type="text"
-                    value={editStyleAssetIds}
-                    onChange={(e) => setEditStyleAssetIds(e.target.value)}
-                    placeholder="asset-uuid-1, asset-uuid-2"
-                    className="w-full px-3 py-2 text-xs font-mono bg-bg-elevated border border-border rounded-lg text-txt-primary"
+                  <AssetLockPicker
+                    ids={editStyleAssetIds}
+                    onChange={setEditStyleAssetIds}
+                    title="Pick style reference images"
                   />
                   <div className="grid grid-cols-2 gap-2 mt-2">
                     <label className="text-[11px] text-txt-secondary">
@@ -1416,6 +1413,81 @@ function SeriesDetail() {
           </Button>
         </DialogFooter>
       </Dialog>
+    </div>
+  );
+}
+
+// ─── AssetLockPicker ──────────────────────────────────────────────
+//
+// Small helper that renders selected asset thumbnails + a "Pick
+// assets" button. ``ids`` is the comma-separated string the save
+// payload already uses, so plugging this in didn't require the
+// parent to track an array separately.
+
+function AssetLockPicker({
+  ids,
+  onChange,
+  title,
+}: {
+  ids: string;
+  onChange: (next: string) => void;
+  title: string;
+}) {
+  const parsed = ids
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="space-y-2">
+      {parsed.length > 0 ? (
+        <div className="flex flex-wrap gap-1.5">
+          {parsed.map((id) => (
+            <div
+              key={id}
+              className="relative w-14 h-14 rounded border border-white/[0.06] overflow-hidden group"
+              title={id}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={`/api/v1/assets/${id}/file`}
+                alt=""
+                className="w-full h-full object-cover"
+              />
+              <button
+                onClick={() => {
+                  const next = parsed.filter((x) => x !== id).join(', ');
+                  onChange(next);
+                }}
+                className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-[10px] transition-opacity"
+                title="Remove"
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-[11px] text-txt-muted">No reference assets selected.</div>
+      )}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="text-xs text-accent hover:underline"
+      >
+        {parsed.length > 0 ? 'Change reference assets…' : 'Pick reference assets…'}
+      </button>
+      {open && (
+        <AssetPicker
+          open
+          onClose={() => setOpen(false)}
+          onSelect={(next) => onChange(next.join(', '))}
+          kind="image"
+          initialSelectedIds={parsed}
+          title={title}
+        />
+      )}
     </div>
   );
 }

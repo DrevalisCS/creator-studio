@@ -15,6 +15,7 @@ from arq.connections import ArqRedis
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -3349,3 +3350,82 @@ async def seo_variants(
         thumbnail_prompts=[str(t)[:400] for t in (data.get("thumbnail_prompts") or [])][:5],
         descriptions=[str(t)[:500] for t in (data.get("descriptions") or [])][:5],
     )
+
+
+# ── Inpaint a single scene (Phase E) ────────────────────────────────
+
+
+class InpaintRequest(BaseModel):
+    """Payload for scene inpainting.
+
+    ``mask_png_base64`` is a base64-encoded PNG where white = redraw,
+    black = keep. Dimensions must match the scene image. ``prompt``
+    is what the model should paint inside the masked region.
+    """
+
+    mask_png_base64: str
+    prompt: str = Field(..., min_length=1, max_length=2000)
+
+
+@router.post(
+    "/{episode_id}/scenes/{scene_number}/inpaint",
+    status_code=status.HTTP_202_ACCEPTED,
+    tags=["scenes"],
+    summary="Inpaint a region of a scene image",
+)
+async def inpaint_scene(
+    episode_id: UUID,
+    scene_number: int,
+    body: InpaintRequest,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    redis: Redis = Depends(get_redis),
+) -> dict[str, str]:
+    """Store the mask and enqueue a ``regenerate_scene`` run tagged
+    with an inpaint flag in Redis so the scenes worker invokes the
+    inpaint workflow instead of full regeneration.
+
+    The mask is written next to the scene image as
+    ``scene_{NN}.mask.png`` — the ComfyUI inpaint workflow reads it
+    from that path. Workflows without an inpaint slot fall back to a
+    normal regenerate.
+    """
+    import base64
+
+    repo = EpisodeRepository(db)
+    episode = await repo.get(episode_id)
+    if not episode:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
+
+    try:
+        mask_bytes = base64.b64decode(body.mask_png_base64, validate=True)
+    except Exception as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, f"mask_png_base64 invalid: {exc}") from exc
+
+    scenes_dir = Path(settings.storage_base_path) / "episodes" / str(episode_id) / "scenes"
+    scenes_dir.mkdir(parents=True, exist_ok=True)
+    mask_path = scenes_dir / f"scene_{scene_number:02d}.mask.png"
+    mask_path.write_bytes(mask_bytes)
+
+    # Surface the inpaint hint via Redis so the worker can pick it up
+    # without a schema change. Key expires with the typical gen window.
+    await redis.setex(
+        f"inpaint:{episode_id}:{scene_number}",
+        3600,
+        body.prompt,
+    )
+
+    arq = get_arq_pool()
+    await arq.enqueue_job(
+        "regenerate_scene",
+        str(episode_id),
+        scene_number,
+        body.prompt,
+    )
+    logger.info(
+        "scene_inpaint_enqueued",
+        episode_id=str(episode_id),
+        scene_number=scene_number,
+        mask_bytes=len(mask_bytes),
+    )
+    return {"status": "enqueued", "mask_path": str(mask_path.name)}
