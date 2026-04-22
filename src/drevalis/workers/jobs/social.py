@@ -4,6 +4,7 @@ Dispatches per ``SocialPlatform.platform``:
 
 * ``tiktok``    — Direct Post v2 (init + single-shot PUT + status poll).
 * ``instagram`` — Graph API v21 Reels container → publish flow.
+* ``facebook``  — Graph API v21 resumable video upload to Page /videos.
 * ``x``         — v1.1 chunked media/upload + v2 tweet creation.
 
 All three record success/failure into ``SocialUpload`` so the UI can
@@ -72,7 +73,7 @@ async def publish_pending_social_uploads(ctx: dict[str, Any]) -> dict[str, int]:
                 failed += 1
                 continue
 
-            if platform.platform not in ("tiktok", "instagram", "x"):
+            if platform.platform not in ("tiktok", "instagram", "facebook", "x"):
                 skipped += 1
                 continue
 
@@ -125,6 +126,18 @@ async def publish_pending_social_uploads(ctx: dict[str, Any]) -> dict[str, int]:
                         description=upload.description or "",
                         hashtags=upload.hashtags or "",
                         public_video_url_override=meta.get("public_video_base_url"),
+                    )
+                    upload.platform_content_id = content_id
+                    upload.platform_url = url
+                elif platform.platform == "facebook":
+                    page_id = platform.account_id or ""
+                    content_id, url = await _facebook_video_upload(
+                        token=token,
+                        page_id=page_id,
+                        video_path=video_path,
+                        title=upload.title,
+                        description=upload.description or "",
+                        hashtags=upload.hashtags or "",
                     )
                     upload.platform_content_id = content_id
                     upload.platform_url = url
@@ -378,6 +391,112 @@ async def _instagram_reels_upload(
             permalink = (perm_resp.json() or {}).get("permalink") or ""
 
     return str(media_id), permalink
+
+
+# ── Facebook Page video upload ──────────────────────────────────────
+#
+# Graph API v21 resumable upload against ``/{page_id}/videos``:
+#   1. POST upload_phase=start with file_size → returns upload_session_id
+#      and a list of (start_offset, end_offset) chunks to send.
+#   2. POST upload_phase=transfer for each chunk, Graph returns the next
+#      offsets to send until start == end (done).
+#   3. POST upload_phase=finish with title/description → publishes.
+#
+# The token we store on SocialPlatform is a Page Access Token (long-lived,
+# issued by exchanging the user's short-lived token via Graph). The
+# Page ID lives on ``SocialPlatform.account_id``.
+
+
+async def _facebook_video_upload(
+    *,
+    token: str,
+    page_id: str,
+    video_path: Path,
+    title: str,
+    description: str,
+    hashtags: str,
+) -> tuple[str, str]:
+    """Resumable video upload to a Facebook Page. Returns (video_id, url)."""
+    if not page_id:
+        raise RuntimeError(
+            "Facebook Page ID missing on the SocialPlatform "
+            "(account_id). Re-authorize the channel."
+        )
+
+    size = video_path.stat().st_size
+    endpoint = f"{_IG_GRAPH_BASE}/{page_id}/videos"
+    caption = _compose_caption_multiline(title, description, hashtags, limit=5000)
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        # 1. START — declare file size, receive session + first chunk offsets.
+        start_resp = await client.post(
+            endpoint,
+            data={
+                "upload_phase": "start",
+                "file_size": size,
+                "access_token": token,
+            },
+        )
+        if start_resp.status_code >= 400:
+            raise RuntimeError(
+                f"Facebook start failed ({start_resp.status_code}): {start_resp.text[:300]}"
+            )
+        start_data = start_resp.json() or {}
+        session_id = start_data.get("upload_session_id")
+        video_id = start_data.get("video_id")
+        start_offset = int(start_data.get("start_offset", 0))
+        end_offset = int(start_data.get("end_offset", 0))
+        if not session_id or not video_id:
+            raise RuntimeError(f"Facebook start malformed: {start_resp.text[:300]}")
+
+        # 2. TRANSFER — push chunks until Graph signals start == end.
+        with video_path.open("rb") as fh:
+            while start_offset < end_offset:
+                fh.seek(start_offset)
+                chunk = fh.read(end_offset - start_offset)
+                transfer_resp = await client.post(
+                    endpoint,
+                    data={
+                        "upload_phase": "transfer",
+                        "upload_session_id": session_id,
+                        "start_offset": start_offset,
+                        "access_token": token,
+                    },
+                    files={"video_file_chunk": ("chunk", chunk, "application/octet-stream")},
+                )
+                if transfer_resp.status_code >= 400:
+                    raise RuntimeError(
+                        f"Facebook transfer failed at offset {start_offset} "
+                        f"({transfer_resp.status_code}): {transfer_resp.text[:300]}"
+                    )
+                transfer_data = transfer_resp.json() or {}
+                next_start = int(transfer_data.get("start_offset", end_offset))
+                next_end = int(transfer_data.get("end_offset", end_offset))
+                if next_start == next_end:
+                    break
+                start_offset, end_offset = next_start, next_end
+
+        # 3. FINISH — attach metadata and publish.
+        finish_resp = await client.post(
+            endpoint,
+            data={
+                "upload_phase": "finish",
+                "upload_session_id": session_id,
+                "title": title[:255],
+                "description": caption,
+                "access_token": token,
+            },
+        )
+        if finish_resp.status_code >= 400:
+            raise RuntimeError(
+                f"Facebook finish failed ({finish_resp.status_code}): {finish_resp.text[:300]}"
+            )
+        success = bool((finish_resp.json() or {}).get("success"))
+        if not success:
+            raise RuntimeError(f"Facebook finish returned success=false: {finish_resp.text[:300]}")
+
+    permalink = f"https://www.facebook.com/{page_id}/videos/{video_id}"
+    return str(video_id), permalink
 
 
 # ── X (Twitter) video upload ────────────────────────────────────────
