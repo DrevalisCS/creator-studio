@@ -67,7 +67,7 @@ export interface SeriesUpdate {
   music_enabled?: boolean | null;
   video_comfyui_workflow_id?: string | null;
   youtube_channel_id?: string | null;
-  content_format?: 'shorts' | 'longform' | null;
+  content_format?: 'shorts' | 'longform' | 'music_video' | 'animation' | null;
   target_duration_minutes?: number | null;
   chapter_enabled?: boolean | null;
   scenes_per_chapter?: number | null;
@@ -100,7 +100,7 @@ export interface Series {
   music_enabled: boolean;
   video_comfyui_workflow_id: string | null;
   youtube_channel_id: string | null;
-  content_format: 'shorts' | 'longform';
+  content_format: 'shorts' | 'longform' | 'music_video' | 'animation';
   target_duration_minutes: number | null;
   chapter_enabled: boolean;
   scenes_per_chapter: number;

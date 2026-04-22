@@ -240,7 +240,9 @@ function SeriesDetail() {
   const [youtubeChannels, setYoutubeChannels] = useState<Array<{ id: string; channel_name: string }>>([]);
 
   // Edit state — longform
-  const [editContentFormat, setEditContentFormat] = useState<'shorts' | 'longform'>('shorts');
+  const [editContentFormat, setEditContentFormat] = useState<
+    'shorts' | 'longform' | 'music_video' | 'animation'
+  >('shorts');
   const [editTargetMinutes, setEditTargetMinutes] = useState(30);
   const [editScenesPerChapter, setEditScenesPerChapter] = useState(8);
   const [editVisualConsistency, setEditVisualConsistency] = useState('');
@@ -826,27 +828,45 @@ function SeriesDetail() {
         <div className="mt-3 space-y-4">
           <div>
             <label className="text-xs font-medium text-txt-secondary block mb-2">Format</label>
-            <div className="flex gap-2">
-              {(['shorts', 'longform'] as const).map((fmt) => (
+            <div className="grid grid-cols-2 gap-2">
+              {(
+                [
+                  { id: 'shorts',      label: 'Shorts (9:16)',     aspect: '9:16' },
+                  { id: 'longform',    label: 'Long-Form (16:9)',  aspect: '16:9' },
+                  { id: 'music_video', label: 'Music Video',       aspect: '9:16' },
+                  { id: 'animation',   label: 'Animation',         aspect: '16:9' },
+                ] as const
+              ).map((fmt) => (
                 <button
-                  key={fmt}
+                  key={fmt.id}
                   type="button"
                   onClick={() => {
-                    setEditContentFormat(fmt);
-                    if (fmt === 'longform') setEditAspectRatio('16:9');
-                    else setEditAspectRatio('9:16');
+                    setEditContentFormat(fmt.id);
+                    setEditAspectRatio(fmt.aspect);
                   }}
                   className={[
-                    'flex-1 px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors duration-fast text-center',
-                    editContentFormat === fmt
+                    'px-4 py-2.5 rounded-lg border text-sm font-medium transition-colors duration-fast text-center',
+                    editContentFormat === fmt.id
                       ? 'border-accent bg-accent/10 text-accent'
                       : 'border-border bg-bg-elevated text-txt-secondary hover:bg-bg-hover',
                   ].join(' ')}
                 >
-                  {fmt === 'shorts' ? 'Shorts (9:16)' : 'Long-Form (16:9)'}
+                  {fmt.label}
                 </button>
               ))}
             </div>
+            {editContentFormat === 'music_video' && (
+              <p className="mt-2 text-[11px] text-txt-tertiary">
+                Music videos use an AI lyric + song generator (ACE Step / lyric-aware)
+                for the backing track, then beat-match scene cuts to the song.
+              </p>
+            )}
+            {editContentFormat === 'animation' && (
+              <p className="mt-2 text-[11px] text-txt-tertiary">
+                Animation routes scenes through the animation-tagged ComfyUI workflow
+                (e.g. AnimateDiff / anime-style Wan) with voice + music composited in.
+              </p>
+            )}
           </div>
 
           {editContentFormat === 'longform' && (

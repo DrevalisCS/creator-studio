@@ -419,11 +419,19 @@ class PipelineOrchestrator:
         # Use series content_format as the source of truth — episodes inherit it
         content_format = getattr(series, "content_format", "shorts") or "shorts"
 
+        # music_video / animation are a superset of the longform path:
+        # same chunked script, chapter metadata, and assembly. The
+        # format-specific behaviour happens later (lyric-aware audio
+        # for music_video, animation style-directors for animation).
+        # Until those modules are fully wired we fall back to the
+        # long-form path so users see valid output instead of an error.
+        effective_longform = content_format in ("longform", "music_video", "animation")
+
         await self._broadcast_progress(
             PipelineStep.SCRIPT, 10, "running", "Generating episode script..."
         )
 
-        if content_format == "longform":
+        if effective_longform:
             # Long-form: chunked multi-chapter generation
             from drevalis.services.llm import LLMPool as _LLMPool
             from drevalis.services.longform_script import LongFormScriptService
