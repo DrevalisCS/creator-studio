@@ -369,4 +369,4 @@ class LongFormScriptService:
                     except json.JSONDecodeError:
                         continue
             log.warning("longform_script.json_parse_failed", text=text[:200])
-            raise ValueError("LLM did not return parseable JSON")
+            raise ValueError("LLM did not return parseable JSON") from None
