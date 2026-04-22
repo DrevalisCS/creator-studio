@@ -3429,3 +3429,56 @@ async def inpaint_scene(
         mask_bytes=len(mask_bytes),
     )
     return {"status": "enqueued", "mask_path": str(mask_path.name)}
+
+
+# ── Continuity checker (Phase E) ────────────────────────────────────
+
+
+class ContinuityIssueResponse(BaseModel):
+    from_scene: int
+    to_scene: int
+    severity: str
+    issue: str
+    suggestion: str
+
+
+class ContinuityResponse(BaseModel):
+    issues: list[ContinuityIssueResponse]
+
+
+@router.post(
+    "/{episode_id}/continuity",
+    response_model=ContinuityResponse,
+    tags=["scenes"],
+    summary="Flag jarring transitions in the script before generation",
+)
+async def check_script_continuity(
+    episode_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> ContinuityResponse:
+    """Run the LLM-driven continuity check over the current script.
+
+    No-op (returns issues=[]) when no LLM config exists. Non-destructive —
+    the caller decides whether to act on the warnings.
+    """
+    from drevalis.repositories.llm_config import LLMConfigRepository
+    from drevalis.schemas.script import EpisodeScript as _EpisodeScript
+    from drevalis.services.continuity import check_continuity
+    from drevalis.services.llm import LLMService
+
+    repo = EpisodeRepository(db)
+    episode = await repo.get(episode_id)
+    if not episode or not episode.script:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode or script missing")
+
+    configs = await LLMConfigRepository(db).get_all(limit=1)
+    if not configs:
+        return ContinuityResponse(issues=[])
+
+    script = _EpisodeScript.model_validate(episode.script)
+    llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+    issues = await check_continuity(script=script, llm_service=llm_service, llm_config=configs[0])
+    return ContinuityResponse(
+        issues=[ContinuityIssueResponse.model_validate(i.to_dict()) for i in issues]
+    )
