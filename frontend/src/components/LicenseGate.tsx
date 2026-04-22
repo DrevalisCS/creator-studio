@@ -1,6 +1,7 @@
 import { type ReactNode } from 'react';
 import { Spinner } from '@/components/ui/Spinner';
 import { useLicense } from '@/lib/useLicense';
+import { useAuthMode } from '@/lib/useAuth';
 import { ActivationWizard } from '@/pages/Activation/ActivationWizard';
 
 interface Props {
@@ -16,11 +17,20 @@ interface Props {
  * - invalid      → <ActivationWizard state="invalid">
  * - grace        → render children with a banner prepended
  * - active       → render children
+ *
+ * Demo mode (``/auth/mode.demo_mode === true``) bypasses the gate
+ * entirely — the demo install is public by design and has no licence
+ * to activate. The backend licence middleware also skips in demo mode.
  */
 export function LicenseGate({ children }: Props) {
   const { status, loading, error, refresh } = useLicense();
+  const { demoMode, ready: modeReady } = useAuthMode();
 
-  if (loading && !status) {
+  if (modeReady && demoMode) {
+    return <>{children}</>;
+  }
+
+  if ((loading && !status) || !modeReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg-base">
         <Spinner size="lg" />

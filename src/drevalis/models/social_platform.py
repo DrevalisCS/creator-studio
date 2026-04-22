@@ -10,6 +10,7 @@ from sqlalchemy import (
     BIGINT,
     BOOLEAN,
     INTEGER,
+    JSON,
     TEXT,
     TIMESTAMP,
     CheckConstraint,
@@ -60,6 +61,9 @@ class SocialPlatform(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
 
     is_active: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, server_default=text("true"))
+
+    # Platform-specific config (public_video_base_url for IG, etc).
+    account_metadata: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
     # ── Relationships ──────────────────────────────────────────────────
     uploads: Mapped[list[SocialUpload]] = relationship(

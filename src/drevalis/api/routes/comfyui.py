@@ -389,3 +389,97 @@ async def delete_workflow(
             detail=f"ComfyUI workflow {workflow_id} not found",
         )
     await db.commit()
+
+
+# ── Bundled workflow templates ──────────────────────────────────────
+
+
+from pydantic import BaseModel as _TplBase  # noqa: E402
+
+
+class WorkflowTemplateResponse(_TplBase):
+    slug: str
+    name: str
+    description: str
+    content_format: str
+    scene_mode: str
+
+
+class InstallTemplateResponse(_TplBase):
+    workflow_id: str
+    workflow_json_path: str
+
+
+@router.get(
+    "/templates",
+    response_model=list[WorkflowTemplateResponse],
+    summary="List bundled ComfyUI workflow templates",
+)
+async def list_templates() -> list[WorkflowTemplateResponse]:
+    from drevalis.services.comfyui.templates import TEMPLATES
+
+    return [
+        WorkflowTemplateResponse(
+            slug=t.slug,
+            name=t.name,
+            description=t.description,
+            content_format=t.content_format,
+            scene_mode=t.scene_mode,
+        )
+        for t in TEMPLATES.values()
+    ]
+
+
+@router.post(
+    "/templates/{slug}/install",
+    response_model=InstallTemplateResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Install a bundled workflow — copies the JSON + registers a ComfyUIWorkflow row",
+)
+async def install_template(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> InstallTemplateResponse:
+    """Copy the bundled workflow JSON into
+    ``storage/comfyui_workflows/drevalis/<slug>-<epoch>.json`` and create
+    a ``ComfyUIWorkflow`` row with the template's input_mappings.
+    """
+    import shutil as _shutil
+    import time
+    from pathlib import Path
+
+    from drevalis.services.comfyui.templates import TEMPLATES, template_json_path
+
+    tpl = TEMPLATES.get(slug)
+    if tpl is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, f"template {slug} not found")
+
+    src_json = template_json_path(slug)
+    if not src_json.exists():
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            f"template file missing on disk: {src_json.name}",
+        )
+
+    target_dir = Path(settings.storage_base_path) / "comfyui_workflows" / "drevalis"
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / f"{slug}-{int(time.time())}.json"
+    _shutil.copyfile(src_json, target_path)
+
+    rel_path = target_path.relative_to(Path(settings.storage_base_path)).as_posix()
+
+    repo = ComfyUIWorkflowRepository(db)
+    wf = await repo.create(
+        name=tpl.name,
+        description=tpl.description,
+        workflow_json_path=rel_path,
+        input_mappings=tpl.input_mappings,
+        content_format=tpl.content_format,
+        scene_mode=tpl.scene_mode,
+    )
+    await db.commit()
+    return InstallTemplateResponse(
+        workflow_id=str(wf.id),
+        workflow_json_path=rel_path,
+    )

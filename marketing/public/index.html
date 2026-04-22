@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Drevalis Creator Studio — Self-hosted AI video &amp; audiobook production</title>
-  <meta name="description" content="A full AI content pipeline you run on your own hardware. Scripts, voices, scenes, captions, assembly, upload — from one topic to a finished video. Swiss-made, no cloud lock-in." />
+  <meta name="description" content="A full AI content pipeline you run on your own hardware. Scripts, voices, scenes, captions, assembly, upload — from one topic to a finished video. Self-hosted, no cloud lock-in." />
   <meta name="theme-color" content="#0A0B0E" />
 
   <meta property="og:title" content="Drevalis Creator Studio" />
@@ -56,13 +56,13 @@
 
     <div class="container-xl pt-20 pb-12 relative z-10">
       <div class="text-center max-w-3xl mx-auto reveal">
-        <span class="eyebrow mb-6"><span class="eyebrow-dot"></span>Swiss-made · Self-hosted · No cloud lock-in</span>
+        <span class="eyebrow mb-6"><span class="eyebrow-dot"></span>Self-hosted · Your GPU · No cloud lock-in</span>
         <h1 class="display-hero mt-6 mb-5">
           One topic in.<br/>
           A finished, captioned, <span class="accent-gradient">uploaded video</span> out.
         </h1>
         <p class="lead max-w-2xl mx-auto mb-9">
-          Drevalis Creator Studio is an AI content pipeline you run on your own hardware. LLM scripts, TTS voiceover, ComfyUI scenes, word-level captions, FFmpeg assembly, YouTube upload — all orchestrated, all on your machine.
+          Drevalis Creator Studio is an AI content pipeline you run on your own hardware. LLM scripts, TTS voiceover, ComfyUI scenes, word-level captions, FFmpeg assembly, YouTube upload — all orchestrated, all on your machine. Plus a real in-browser video editor, asset library, and live upload to YouTube / TikTok / Instagram / X.
         </p>
         <div class="flex flex-wrap items-center justify-center gap-3 mb-4">
           <a href="https://demo.drevalis.com" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Try the live demo — no signup →</a>
@@ -230,6 +230,34 @@
         <div class="card card-hover p-6">
           <h4 class="mb-2">API access (Studio)</h4>
           <p class="text-sm">The same REST endpoints the UI uses are available for your own scripts. Bring-your-own API token via the <code class="inline">API_AUTH_TOKEN</code> env var.</p>
+        </div>
+        <div class="card card-hover p-6">
+          <h4 class="mb-2">Central asset library</h4>
+          <p class="text-sm">Upload reference images, B-roll clips, custom music, logos. SHA-256 dedup, tag search, ffprobe metadata. Anywhere you pick an asset, it's the same library.</p>
+        </div>
+        <div class="card card-hover p-6">
+          <h4 class="mb-2">Video-in pipeline</h4>
+          <p class="text-sm">Drop a raw recording (podcast, webinar, vlog). faster-whisper transcribes it and the LLM picks the best 30–60s moments. One click turns a clip into an episode.</p>
+        </div>
+        <div class="card card-hover p-6">
+          <h4 class="mb-2">In-browser video editor</h4>
+          <p class="text-sm">Multi-track timeline (video / voice / music / overlays / captions). Trim / split / ripple-delete / drag-reorder. Keyframed text overlays, per-word caption emphasis, drag-draw volume envelope. 480p proxy preview.</p>
+        </div>
+        <div class="card card-hover p-6">
+          <h4 class="mb-2">Character + style locks</h4>
+          <p class="text-sm">Pin a face across every scene with IPAdapter-FaceID references. Pin a look (lighting, palette, grain) with style-reference assets. Per-scene override if you need it.</p>
+        </div>
+        <div class="card card-hover p-6">
+          <h4 class="mb-2">Voice cloning</h4>
+          <p class="text-sm">Record a 30-second take in your browser or upload an audio asset. ElevenLabs Instant Voice Cloning creates a profile usable across every series.</p>
+        </div>
+        <div class="card card-hover p-6">
+          <h4 class="mb-2">SEO pre-flight</h4>
+          <p class="text-sm">Before you upload: traffic-light scoring of title, description, hashtags, thumbnail, opening hook. LLM-generated A/B title and thumbnail variants one click away.</p>
+        </div>
+        <div class="card card-hover p-6">
+          <h4 class="mb-2">Team mode</h4>
+          <p class="text-sm">Invite collaborators with owner / editor / viewer roles. Opt-in: single-user installs run with no login at all.</p>
         </div>
       </div>
     </div>

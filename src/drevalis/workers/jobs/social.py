@@ -1,30 +1,17 @@
 """Social platform upload workers.
 
-Today ships the TikTok Direct Post v2 upload path. Instagram and X are
-deliberately not included — their OAuth flows aren't implemented, so a
-worker for them would always fail.
+Dispatches per ``SocialPlatform.platform``:
 
-Cron schedule:
-- ``publish_pending_social_uploads`` runs every 5 minutes (mirrors the
-  YouTube cron). Picks up SocialUpload rows with ``upload_status='pending'``,
-  attempts the per-platform upload, flips them to ``'done'`` or
-  ``'failed'`` with ``error_message`` set.
+* ``tiktok``    — Direct Post v2 (init + single-shot PUT + status poll).
+* ``instagram`` — Graph API v21 Reels container → publish flow.
+* ``x``         — v1.1 chunked media/upload + v2 tweet creation.
 
-Per-upload flow (TikTok):
-
-1.  POST ``/v2/post/publish/video/init/`` with the channel token. Body
-    carries post metadata (title, privacy, hashtags). Response gives
-    ``publish_id`` + ``upload_url`` + chunking hints.
-2.  PUT the MP4 bytes to ``upload_url`` in one shot (we cap our videos
-    at 64 MB via the pipeline anyway, well under TikTok's single-shot
-    limit).
-3.  Poll ``/v2/post/publish/status/fetch/`` until the job leaves
-    ``PROCESSING_UPLOAD`` / ``PROCESSING_DOWNLOAD``.
-4.  On ``PUBLISH_COMPLETE``, store the resulting video URL on the
-    ``SocialUpload`` row.
-
-Errors are captured into ``SocialUpload.error_message`` so the UI can
+All three record success/failure into ``SocialUpload`` so the UI can
 show the operator exactly why an upload didn't make it.
+
+Cron schedule: ``publish_pending_social_uploads`` runs every 5 minutes.
+Picks up ``SocialUpload`` rows with ``upload_status='pending'``, routes
+them to the right adapter, flips them to ``'done'`` or ``'failed'``.
 """
 
 from __future__ import annotations
@@ -85,9 +72,7 @@ async def publish_pending_social_uploads(ctx: dict[str, Any]) -> dict[str, int]:
                 failed += 1
                 continue
 
-            if platform.platform != "tiktok":
-                # Non-TikTok rows are skipped — no worker for them yet.
-                # Leave pending so a future release can pick them up.
+            if platform.platform not in ("tiktok", "instagram", "x"):
                 skipped += 1
                 continue
 
@@ -118,31 +103,61 @@ async def publish_pending_social_uploads(ctx: dict[str, Any]) -> dict[str, int]:
                     platform.access_token_encrypted or "",
                     settings.encryption_key,
                 )
-                publish_id = await _tiktok_upload(
-                    token=token,
-                    video_path=video_path,
-                    title=upload.title,
-                    description=upload.description or "",
-                    hashtags=upload.hashtags or "",
-                )
-                video_url = await _tiktok_wait_for_publish(token, publish_id)
+                if platform.platform == "tiktok":
+                    publish_id = await _tiktok_upload(
+                        token=token,
+                        video_path=video_path,
+                        title=upload.title,
+                        description=upload.description or "",
+                        hashtags=upload.hashtags or "",
+                    )
+                    video_url = await _tiktok_wait_for_publish(token, publish_id)
+                    upload.platform_content_id = publish_id
+                    upload.platform_url = video_url
+                elif platform.platform == "instagram":
+                    ig_user_id = platform.account_id or ""
+                    meta = platform.account_metadata or {}
+                    content_id, url = await _instagram_reels_upload(
+                        token=token,
+                        ig_user_id=ig_user_id,
+                        video_path=video_path,
+                        title=upload.title,
+                        description=upload.description or "",
+                        hashtags=upload.hashtags or "",
+                        public_video_url_override=meta.get("public_video_base_url"),
+                    )
+                    upload.platform_content_id = content_id
+                    upload.platform_url = url
+                elif platform.platform == "x":
+                    content_id, url = await _x_video_upload(
+                        token=token,
+                        video_path=video_path,
+                        title=upload.title,
+                        description=upload.description or "",
+                        hashtags=upload.hashtags or "",
+                    )
+                    upload.platform_content_id = content_id
+                    upload.platform_url = url
+                else:
+                    raise RuntimeError(f"no uploader for {platform.platform}")
+
                 upload.upload_status = "done"
-                upload.platform_content_id = publish_id
-                upload.platform_url = video_url
                 upload.error_message = None
                 succeeded += 1
                 logger.info(
-                    "tiktok_upload_done",
+                    "social_upload_done",
+                    platform=platform.platform,
                     upload_id=str(upload.id),
-                    publish_id=publish_id,
-                    url=video_url,
+                    content_id=upload.platform_content_id,
+                    url=upload.platform_url,
                 )
             except Exception as exc:  # noqa: BLE001 — any failure → show reason in UI
                 upload.upload_status = "failed"
                 upload.error_message = str(exc)[:500]
                 failed += 1
                 logger.warning(
-                    "tiktok_upload_failed",
+                    "social_upload_failed",
+                    platform=platform.platform,
                     upload_id=str(upload.id),
                     error=str(exc)[:300],
                 )
@@ -259,3 +274,252 @@ def _compose_caption(title: str, description: str, hashtags: str) -> str:
         parts.append(description.strip())
     joined = " ".join(p for p in parts if p)
     return joined[:150]
+
+
+# ── Instagram Reels ─────────────────────────────────────────────────
+#
+# Instagram's Content Publishing API requires the video to be
+# reachable via a public HTTPS URL. The operator configures a public
+# base URL (e.g. their reverse-proxy-fronted /storage/ path) via
+# ``SocialPlatform.metadata_json.public_video_base_url``. We compose
+# ``{public_video_base_url}/{relative_video_path}`` and pass that to
+# the ``/media`` container endpoint.
+
+_IG_GRAPH_BASE = "https://graph.facebook.com/v21.0"
+
+
+async def _instagram_reels_upload(
+    *,
+    token: str,
+    ig_user_id: str,
+    video_path: Path,
+    title: str,
+    description: str,
+    hashtags: str,
+    public_video_url_override: str | None,
+) -> tuple[str, str]:
+    """Create a Reels container then publish it. Returns (media_id, permalink)."""
+    if not ig_user_id:
+        raise RuntimeError(
+            "Instagram Business account ID missing on the SocialPlatform "
+            "(platform_account_id). Re-authorize the channel."
+        )
+    if not public_video_url_override:
+        raise RuntimeError(
+            "Instagram Reels requires the video to be reachable via HTTPS. "
+            "Set SocialPlatform.metadata_json.public_video_base_url "
+            "(e.g. https://cdn.example.com/storage) before uploading."
+        )
+
+    # Build the publicly-accessible URL from the storage path.
+    # ``video_path`` is absolute — we need the relative-to-storage suffix.
+    # Simpler: the caller knows the storage base; here we treat
+    # public_video_url_override as "the base that replaces the local
+    # storage prefix" — the SocialPlatform row tracks the mapping.
+    rel = _relative_storage_url(video_path)
+    public_url = f"{public_video_url_override.rstrip('/')}/{rel.lstrip('/')}"
+
+    caption = _compose_caption_multiline(title, description, hashtags, limit=2200)
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # 1. Create Reels container.
+        create_resp = await client.post(
+            f"{_IG_GRAPH_BASE}/{ig_user_id}/media",
+            data={
+                "media_type": "REELS",
+                "video_url": public_url,
+                "caption": caption,
+                "access_token": token,
+            },
+        )
+        if create_resp.status_code >= 400:
+            raise RuntimeError(
+                f"Instagram container create failed ({create_resp.status_code}): "
+                f"{create_resp.text[:300]}"
+            )
+        container_id = (create_resp.json() or {}).get("id")
+        if not container_id:
+            raise RuntimeError(f"Instagram container missing id: {create_resp.text[:300]}")
+
+        # 2. Poll container status until FINISHED.
+        for _ in range(_MAX_POLLS):
+            await asyncio.sleep(_POLL_INTERVAL_S)
+            status_resp = await client.get(
+                f"{_IG_GRAPH_BASE}/{container_id}",
+                params={"fields": "status_code", "access_token": token},
+            )
+            status_resp.raise_for_status()
+            code = (status_resp.json() or {}).get("status_code") or ""
+            if code == "FINISHED":
+                break
+            if code in ("ERROR", "EXPIRED"):
+                raise RuntimeError(f"Instagram container {code}")
+        else:
+            raise TimeoutError("Instagram container did not finish in time")
+
+        # 3. Publish.
+        publish_resp = await client.post(
+            f"{_IG_GRAPH_BASE}/{ig_user_id}/media_publish",
+            data={"creation_id": container_id, "access_token": token},
+        )
+        if publish_resp.status_code >= 400:
+            raise RuntimeError(
+                f"Instagram publish failed ({publish_resp.status_code}): {publish_resp.text[:300]}"
+            )
+        media_id = (publish_resp.json() or {}).get("id") or container_id
+
+        # 4. Fetch permalink.
+        perm_resp = await client.get(
+            f"{_IG_GRAPH_BASE}/{media_id}",
+            params={"fields": "permalink", "access_token": token},
+        )
+        permalink = ""
+        if perm_resp.status_code < 400:
+            permalink = (perm_resp.json() or {}).get("permalink") or ""
+
+    return str(media_id), permalink
+
+
+# ── X (Twitter) video upload ────────────────────────────────────────
+#
+# Uses v1.1 media/upload (chunked INIT/APPEND/FINALIZE) for the video,
+# then v2 /2/tweets to post. Both require OAuth 2.0 user context with
+# appropriate scopes (media.write, tweet.write). The token we store on
+# SocialPlatform is the OAuth 2.0 access token — X accepts it on the
+# v1.1 media endpoint as of late 2025.
+
+_X_MEDIA_UPLOAD = "https://upload.twitter.com/1.1/media/upload.json"
+_X_TWEETS = "https://api.twitter.com/2/tweets"
+_X_CHUNK_BYTES = 4 * 1024 * 1024
+
+
+async def _x_video_upload(
+    *,
+    token: str,
+    video_path: Path,
+    title: str,
+    description: str,
+    hashtags: str,
+) -> tuple[str, str]:
+    """Chunked INIT → APPEND → FINALIZE → tweet. Returns (tweet_id, url)."""
+    size = video_path.stat().st_size
+    headers = {"Authorization": f"Bearer {token}"}
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        # INIT
+        init_resp = await client.post(
+            _X_MEDIA_UPLOAD,
+            data={
+                "command": "INIT",
+                "media_type": "video/mp4",
+                "media_category": "tweet_video",
+                "total_bytes": size,
+            },
+            headers=headers,
+        )
+        if init_resp.status_code >= 400:
+            raise RuntimeError(f"X INIT failed ({init_resp.status_code}): {init_resp.text[:300]}")
+        media_id = (init_resp.json() or {}).get("media_id_string")
+        if not media_id:
+            raise RuntimeError(f"X INIT missing media_id: {init_resp.text[:300]}")
+
+        # APPEND (chunked)
+        with video_path.open("rb") as fh:
+            segment_index = 0
+            while True:
+                chunk = fh.read(_X_CHUNK_BYTES)
+                if not chunk:
+                    break
+                append_resp = await client.post(
+                    _X_MEDIA_UPLOAD,
+                    data={
+                        "command": "APPEND",
+                        "media_id": media_id,
+                        "segment_index": segment_index,
+                    },
+                    files={"media": ("chunk", chunk, "application/octet-stream")},
+                    headers=headers,
+                )
+                if append_resp.status_code >= 400:
+                    raise RuntimeError(
+                        f"X APPEND seg={segment_index} failed "
+                        f"({append_resp.status_code}): {append_resp.text[:300]}"
+                    )
+                segment_index += 1
+
+        # FINALIZE
+        finalize_resp = await client.post(
+            _X_MEDIA_UPLOAD,
+            data={"command": "FINALIZE", "media_id": media_id},
+            headers=headers,
+        )
+        if finalize_resp.status_code >= 400:
+            raise RuntimeError(
+                f"X FINALIZE failed ({finalize_resp.status_code}): {finalize_resp.text[:300]}"
+            )
+        processing = (finalize_resp.json() or {}).get("processing_info") or {}
+
+        # If processing, poll STATUS until succeeded.
+        while (processing.get("state") or "") in ("pending", "in_progress"):
+            await asyncio.sleep(max(1.0, float(processing.get("check_after_secs") or 4)))
+            status_resp = await client.get(
+                _X_MEDIA_UPLOAD,
+                params={"command": "STATUS", "media_id": media_id},
+                headers=headers,
+            )
+            status_resp.raise_for_status()
+            processing = (status_resp.json() or {}).get("processing_info") or {}
+            if processing.get("state") == "failed":
+                err = processing.get("error") or {}
+                raise RuntimeError(f"X media processing failed: {err}")
+
+        # Post the tweet referencing the media_id.
+        text = _compose_caption_multiline(title, description, hashtags, limit=280)
+        tweet_resp = await client.post(
+            _X_TWEETS,
+            json={"text": text, "media": {"media_ids": [media_id]}},
+            headers={**headers, "Content-Type": "application/json"},
+        )
+        if tweet_resp.status_code >= 400:
+            raise RuntimeError(
+                f"X tweet create failed ({tweet_resp.status_code}): {tweet_resp.text[:300]}"
+            )
+        data = (tweet_resp.json() or {}).get("data") or {}
+        tweet_id = str(data.get("id") or "")
+        url = f"https://x.com/i/web/status/{tweet_id}" if tweet_id else ""
+        return tweet_id, url
+
+
+# ── Shared helpers ──────────────────────────────────────────────────
+
+
+def _compose_caption_multiline(title: str, description: str, hashtags: str, *, limit: int) -> str:
+    """Multi-line caption: title, blank, description, blank, hashtags.
+
+    Suitable for Instagram / X where newlines render. Truncated to *limit*.
+    """
+    parts: list[str] = []
+    if title:
+        parts.append(title.strip())
+    if description:
+        parts.append(description.strip())
+    if hashtags:
+        parts.append(hashtags.strip())
+    joined = "\n\n".join(p for p in parts if p)
+    return joined[:limit]
+
+
+def _relative_storage_url(video_path: Path) -> str:
+    """Return the video path relative to ``storage/``.
+
+    The ``storage`` directory is served at ``/storage/`` on our frontend;
+    combined with ``public_video_base_url`` the caller can derive a URL
+    that Instagram / X can reach.
+    """
+    parts = video_path.parts
+    try:
+        idx = parts.index("storage")
+    except ValueError:
+        # Fallback: use last three components.
+        idx = max(0, len(parts) - 3)
+    return "/".join(parts[idx + 1 :])
