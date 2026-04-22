@@ -466,10 +466,10 @@ def _fake_script(title: str, n_scenes: int) -> dict[str, Any]:
 
 
 def _discover_real_content() -> list[Path]:
-    """Return directories under ``storage/episodes/`` that contain
-    user-provided real content (at least an output/final.mp4 or one
-    scene image). Demo seeds link a copy of these assets to each
-    generated episode row so the UI shows real media.
+    """Return directories under ``storage/episodes/`` that contain a
+    **complete** set of demo-worthy media: scenes + voice + thumbnail
+    + final video. Incomplete dirs are skipped so the UI never lands
+    on an episode with a missing video row.
     """
     out: list[Path] = []
     base = STORAGE_ROOT / "episodes"
@@ -479,8 +479,12 @@ def _discover_real_content() -> list[Path]:
         if not child.is_dir():
             continue
         has_final = (child / "output" / "final.mp4").exists()
-        has_scene = (child / "scenes").exists() and any((child / "scenes").glob("scene_*.png"))
-        if has_final or has_scene:
+        has_thumb = (child / "output" / "thumbnail.jpg").exists()
+        has_voice = (child / "voice" / "full.wav").exists()
+        has_scenes = (child / "scenes").exists() and any(
+            (child / "scenes").glob("scene_*.png")
+        )
+        if has_final and has_scenes and has_voice and has_thumb:
             out.append(child)
     return out
 
