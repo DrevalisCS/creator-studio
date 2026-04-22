@@ -22,7 +22,7 @@ class ScheduledPost(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="sched_content_type_valid",
         ),
         CheckConstraint(
-            "platform IN ('youtube', 'tiktok', 'instagram', 'x')",
+            "platform IN ('youtube', 'tiktok', 'instagram', 'x', 'facebook')",
             name="sched_platform_valid",
         ),
         CheckConstraint(

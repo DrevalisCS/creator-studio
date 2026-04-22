@@ -25,6 +25,7 @@ const PLATFORM_COLORS: Record<string, string> = {
   youtube: 'bg-red-500',
   tiktok: 'bg-cyan-500',
   instagram: 'bg-pink-500',
+  facebook: 'bg-blue-500',
   x: 'bg-gray-400',
 };
 
@@ -32,6 +33,7 @@ const PLATFORM_TEXT_COLORS: Record<string, string> = {
   youtube: 'text-red-400',
   tiktok: 'text-cyan-400',
   instagram: 'text-pink-400',
+  facebook: 'text-blue-400',
   x: 'text-gray-400',
 };
 
@@ -39,6 +41,7 @@ const PLATFORM_OPTIONS = [
   { value: 'youtube', label: 'YouTube' },
   { value: 'tiktok', label: 'TikTok' },
   { value: 'instagram', label: 'Instagram' },
+  { value: 'facebook', label: 'Facebook' },
   { value: 'x', label: 'X (Twitter)' },
 ];
 

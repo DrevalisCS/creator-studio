@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 class SocialPlatform(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A connected social media platform account with encrypted credentials.
 
-    Supported platforms: tiktok, instagram, x (Twitter/X).
+    Supported platforms: tiktok, instagram, x (Twitter/X), facebook.
     Only one account per platform can be active at a time.
     Tokens are Fernet-encrypted at rest using the application's ENCRYPTION_KEY.
     """
@@ -38,7 +38,7 @@ class SocialPlatform(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     __tablename__ = "social_platforms"
     __table_args__ = (
         CheckConstraint(
-            "platform IN ('tiktok', 'instagram', 'x')",
+            "platform IN ('tiktok', 'instagram', 'x', 'facebook')",
             name="platform_valid",
         ),
         Index("ix_social_platforms_platform", "platform"),

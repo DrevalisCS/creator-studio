@@ -14,7 +14,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class PlatformConnect(BaseModel):
     """Payload for connecting a new social platform account."""
 
-    platform: Literal["tiktok", "instagram", "x"]
+    platform: Literal["tiktok", "instagram", "x", "facebook"]
     account_name: str = Field(..., min_length=1, max_length=255)
     access_token: str = Field(..., min_length=1)
     refresh_token: str | None = None

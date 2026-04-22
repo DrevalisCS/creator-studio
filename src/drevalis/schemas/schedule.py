@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ScheduleCreate(BaseModel):
     content_type: Literal["episode", "audiobook"]
     content_id: UUID
-    platform: Literal["youtube", "tiktok", "instagram", "x"]
+    platform: Literal["youtube", "tiktok", "instagram", "x", "facebook"]
     scheduled_at: datetime
     title: str = Field(..., min_length=1, max_length=500)
     description: str = ""

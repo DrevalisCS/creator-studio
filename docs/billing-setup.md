@@ -28,9 +28,13 @@ Price:
 
 | Product name | Monthly (CHF) | Yearly (CHF) |
 |---|---:|---:|
-| Drevalis Creator | 19 | 190 |
-| Drevalis Pro | 49 | 490 |
-| Drevalis Studio | 99 | 990 |
+| Drevalis Creator | 19 | 209 |
+| Drevalis Pro | 49 | 539 |
+| Drevalis Studio | 99 | 1089 |
+
+Yearly = monthly × 11 (one free month on annual plans). If you change the
+multiplier, update the `data-price-yearly` attrs in `marketing/public/index.html`
+and `pricing.html` too.
 
 Steps (same for each Product):
 
@@ -39,7 +43,7 @@ Steps (same for each Product):
 3. **Pricing model:** Recurring.
 4. **Price:** 19 (for Creator monthly). **Currency:** CHF. **Billing period:**
    Monthly. Save.
-5. **+ Add another price** → 190, CHF, Yearly. Save.
+5. **+ Add another price** → 209 (Creator) / 539 (Pro) / 1089 (Studio), CHF, Yearly. Save.
 6. Copy the six **price IDs** (they look like `price_1P…`). You need
    them in A3.
 
@@ -119,7 +123,8 @@ test card `4242 4242 4242 4242`, any future expiry, any CVC.
 For **each** of the three products create two Plans (monthly + yearly):
 
 1. **Pricing:** Regular. **Cycle:** 1 month / 1 year. **Price:** CHF 19
-   / 49 / 99 (monthly) or 190 / 490 / 990 (yearly). **Currency:** CHF.
+   / 49 / 99 (monthly) or 209 / 539 / 1089 (yearly — monthly × 11, one month
+   free). **Currency:** CHF.
 2. **Setup fee:** 0. **Taxes:** inclusive. **Trial:** none.
 3. Activate the plan → copy the **Plan ID** (looks like `P-xxx`).
 

@@ -1851,6 +1851,7 @@ interface SocialPlatformDef {
 const SOCIAL_PLATFORMS: SocialPlatformDef[] = [
   { id: 'tiktok', name: 'TikTok', colorClass: 'text-cyan-400', bgClass: 'bg-cyan-500/10', dotClass: 'bg-cyan-400', oauth: true },
   { id: 'instagram', name: 'Instagram', colorClass: 'text-pink-400', bgClass: 'bg-pink-500/10', dotClass: 'bg-pink-400' },
+  { id: 'facebook', name: 'Facebook', colorClass: 'text-blue-400', bgClass: 'bg-blue-500/10', dotClass: 'bg-blue-400' },
   { id: 'x', name: 'X (Twitter)', colorClass: 'text-gray-300', bgClass: 'bg-gray-500/10', dotClass: 'bg-gray-300' },
 ];
 
@@ -2245,6 +2246,8 @@ const KEY_NAME_OPTIONS = [
   { value: 'tiktok_client_secret', label: 'TikTok Client Secret' },
   { value: 'tiktok_redirect_uri', label: 'TikTok Redirect URI' },
   { value: 'instagram', label: 'Instagram API Key' },
+  { value: 'facebook_page_access_token', label: 'Facebook Page Access Token' },
+  { value: 'facebook_page_id', label: 'Facebook Page ID' },
   { value: 'youtube_client_id', label: 'YouTube Client ID' },
   { value: 'youtube_client_secret', label: 'YouTube Client Secret' },
   { value: 'hf_token', label: 'HuggingFace Token' },
