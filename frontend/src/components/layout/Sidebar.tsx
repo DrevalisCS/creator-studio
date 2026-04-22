@@ -12,6 +12,7 @@ import {
   Clapperboard,
   Terminal,
   ListChecks,
+  Activity,
   Settings,
   HelpCircle,
   ChevronLeft,
@@ -48,6 +49,7 @@ const NAV_PUBLISH = [
 const NAV_SYSTEM = [
   { to: '/settings', icon: Settings, label: 'Settings' },
   { to: '/jobs', icon: ListChecks, label: 'Jobs' },
+  { to: '/usage', icon: Activity, label: 'Usage' },
   { to: '/logs', icon: Terminal, label: 'Event Log' },
 ] as const;
 
