@@ -11,7 +11,6 @@ import { useEffect, useState } from 'react';
  */
 const BOOT_DURATION_MS = 2800;
 const FADE_MS = 400;
-const SESSION_KEY = 'drevalis_boot_seen';
 
 const LINES: Array<{ text: string; at: number }> = [
   { text: 'DREVALIS CREATOR STUDIO   v0.19', at: 0 },
@@ -33,10 +32,6 @@ export function BootIntro({ onDone }: { onDone: () => void }) {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (sessionStorage.getItem(SESSION_KEY)) {
-      onDone();
-      return;
-    }
 
     const start = performance.now();
     let raf = 0;
@@ -48,7 +43,6 @@ export function BootIntro({ onDone }: { onDone: () => void }) {
       } else {
         setFading(true);
         setTimeout(() => {
-          sessionStorage.setItem(SESSION_KEY, '1');
           onDone();
         }, FADE_MS);
       }

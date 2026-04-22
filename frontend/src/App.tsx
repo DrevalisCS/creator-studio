@@ -70,10 +70,7 @@ function YouTubeCallback() {
 // ---------------------------------------------------------------------------
 
 function App() {
-  const [booted, setBooted] = useState(() => {
-    if (typeof window === 'undefined') return true;
-    return sessionStorage.getItem('drevalis_boot_seen') === '1';
-  });
+  const [booted, setBooted] = useState(false);
 
   return (
     <ThemeProvider>
