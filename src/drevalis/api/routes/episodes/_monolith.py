@@ -877,6 +877,139 @@ async def reorder_scenes(
     }
 
 
+# ── Split / merge scenes (script-only edits, no re-run) ────────────────────
+
+
+@router.post(
+    "/{episode_id}/scenes/{scene_number}/split",
+    response_model=dict[str, Any],
+    status_code=status.HTTP_200_OK,
+    summary="Split one scene into two at a narration character offset",
+)
+async def split_scene(
+    episode_id: UUID,
+    scene_number: int,
+    payload: dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Split scene ``scene_number`` at ``char_offset`` inside its narration.
+
+    Payload: ``{"char_offset": 120}`` — if omitted, splits at the midpoint.
+
+    Script-only mutation: the two halves inherit the original visual
+    prompt, keywords, and style; existing voice / scene media for the
+    episode are **not** regenerated here. The user can kick off a
+    regenerate-voice or regenerate-scene afterwards if needed.
+    """
+    ep_repo = EpisodeRepository(db)
+    episode = await ep_repo.get_by_id(episode_id)
+    if not episode or not episode.script:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Episode {episode_id} not found or has no script",
+        )
+
+    script = EpisodeScript.model_validate(episode.script)
+    idx = next(
+        (i for i, s in enumerate(script.scenes) if s.scene_number == scene_number),
+        None,
+    )
+    if idx is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Scene {scene_number} not found",
+        )
+
+    scene = script.scenes[idx]
+    narration = scene.narration or ""
+    char_offset = int(payload.get("char_offset", len(narration) // 2))
+    if char_offset <= 0 or char_offset >= len(narration):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="char_offset must be a positive index strictly inside the narration",
+        )
+
+    # Snap the cut to the nearest whitespace so we don't slice a word.
+    left = narration[:char_offset]
+    right = narration[char_offset:]
+    last_space = left.rfind(" ")
+    if last_space > len(left) * 0.5:
+        left = left[:last_space]
+        right = narration[last_space + 1 :]
+
+    left_scene = scene.model_copy(update={"narration": left.rstrip()})
+    right_scene = scene.model_copy(update={"narration": right.lstrip()})
+
+    # Rebuild the list with the split pair in place and renumber everyone.
+    new_scenes = [*script.scenes[:idx], left_scene, right_scene, *script.scenes[idx + 1 :]]
+    for i, s in enumerate(new_scenes):
+        s.scene_number = i + 1
+    script.scenes = new_scenes
+    episode.script = script.model_dump()
+    await db.commit()
+
+    logger.info("scene_split", episode_id=str(episode_id), scene_number=scene_number)
+    return {
+        "message": f"Scene {scene_number} split",
+        "total_scenes": len(script.scenes),
+    }
+
+
+@router.post(
+    "/{episode_id}/scenes/merge",
+    response_model=dict[str, Any],
+    status_code=status.HTTP_200_OK,
+    summary="Merge two adjacent scenes into one",
+)
+async def merge_scenes(
+    episode_id: UUID,
+    payload: dict[str, Any],
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Merge scene ``scene_number`` with the scene immediately after it.
+
+    Payload: ``{"scene_number": 3}`` — merges scenes 3 and 4. Narrations
+    concatenate with a space; the visual prompt of the first scene wins,
+    keywords are unioned.
+    """
+    ep_repo = EpisodeRepository(db)
+    episode = await ep_repo.get_by_id(episode_id)
+    if not episode or not episode.script:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Episode {episode_id} not found or has no script",
+        )
+
+    target = int(payload.get("scene_number") or 0)
+    script = EpisodeScript.model_validate(episode.script)
+    idx = next((i for i, s in enumerate(script.scenes) if s.scene_number == target), None)
+    if idx is None or idx + 1 >= len(script.scenes):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="scene_number must refer to a scene that has a successor to merge with",
+        )
+
+    a, b = script.scenes[idx], script.scenes[idx + 1]
+    merged = a.model_copy(
+        update={
+            "narration": f"{(a.narration or '').rstrip()} {(b.narration or '').lstrip()}".strip(),
+            "keywords": sorted(set((a.keywords or []) + (b.keywords or []))),
+        }
+    )
+    new_scenes = [*script.scenes[:idx], merged, *script.scenes[idx + 2 :]]
+    for i, s in enumerate(new_scenes):
+        s.scene_number = i + 1
+    script.scenes = new_scenes
+    episode.script = script.model_dump()
+    await db.commit()
+
+    logger.info("scenes_merged", episode_id=str(episode_id), kept=target, removed=target + 1)
+    return {
+        "message": f"Scenes {target} and {target + 1} merged",
+        "total_scenes": len(script.scenes),
+    }
+
+
 # ── Regenerate a single scene's image ────────────────────────────────
 
 

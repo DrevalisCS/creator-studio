@@ -581,26 +581,51 @@ class AudiobookService:
     # Chapter parsing
     # ══════════════════════════════════════════════════════════════════════
 
+    # Chapter heading patterns accepted by ``_parse_chapters``. Each
+    # pattern must expose a ``title`` named group (or nothing, in which
+    # case the match text itself is used). They run in priority order.
+    _CHAPTER_PATTERNS: tuple[str, ...] = (
+        # "## Chapter One" / "## 1. Title"
+        r"^##\s+(?P<title>.+?)\s*$",
+        # "Chapter 1", "Chapter One", "CHAPTER III:", "Chapter 2 — Title"
+        r"^\s*(?P<title>(?:CHAPTER|Chapter)\s+(?:\d+|[IVXLCDM]+|[A-Z][a-z]+)\b[^\n]{0,120})$",
+        # Roman numeral chapter prefix on its own line ("I.", "IV —")
+        r"^\s*(?P<title>[IVXLCDM]{1,4}[\.\)\s—-][^\n]{0,120})$",
+        # All-caps heading on its own line (at least 3 letters)
+        r"^\s*(?P<title>[A-Z][A-Z0-9 \-'!?]{2,80})\s*$",
+    )
+
     def _parse_chapters(self, text: str) -> list[dict[str, Any]]:
-        """Split text by ``## headers`` or ``---`` separators into chapters.
+        """Split text into chapters by heading, --- separator, or fallback.
 
-        Returns a list of ``{"title": ..., "text": ...}`` dicts.  Falls back
-        to a single chapter containing the full text when no markers are found.
+        Matching order:
+          1. Markdown ``## Title`` headings
+          2. Prose-style ``Chapter 1`` / ``CHAPTER IV`` / Roman numerals
+          3. All-caps single-line headings (``THE FIRST ENCOUNTER``)
+          4. ``---`` horizontal-rule separators → unnamed "Part N"
+          5. No markers → single chapter
         """
-        # Try ## headers first
-        parts = re.split(r"^##\s+(.+)$", text, flags=re.MULTILINE)
-        if len(parts) > 1:
+        # 1-3 — heading regexes; try each and return on the first that
+        # yields ≥ 2 parts so we don't over-split on false positives.
+        for pattern in self._CHAPTER_PATTERNS:
+            compiled = re.compile(pattern, flags=re.MULTILINE)
+            matches = list(compiled.finditer(text))
+            if len(matches) < 2:
+                continue
             chapters: list[dict[str, Any]] = []
-            if parts[0].strip():
-                chapters.append({"title": "Introduction", "text": parts[0].strip()})
-            for i in range(1, len(parts), 2):
-                title = parts[i].strip()
-                body = parts[i + 1].strip() if i + 1 < len(parts) else ""
+            prologue = text[: matches[0].start()].strip()
+            if prologue:
+                chapters.append({"title": "Introduction", "text": prologue})
+            for i, m in enumerate(matches):
+                start = m.end()
+                end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+                body = text[start:end].strip()
                 if body:
-                    chapters.append({"title": title, "text": body})
-            return chapters or [{"title": "Full Text", "text": text}]
+                    chapters.append({"title": (m.group("title") or "").strip()[:120], "text": body})
+            if chapters:
+                return chapters
 
-        # Try --- separators
+        # 4 — horizontal-rule separators
         sections = re.split(r"^---+$", text, flags=re.MULTILINE)
         if len(sections) > 1:
             return [
@@ -609,7 +634,7 @@ class AudiobookService:
                 if s.strip()
             ]
 
-        # No markers found -- single chapter
+        # 5 — single chapter fallback
         return [{"title": "Full Text", "text": text}]
 
     # ══════════════════════════════════════════════════════════════════════
@@ -758,24 +783,31 @@ class AudiobookService:
         """
         result: list[AudioChunk] = []
 
+        def _normalise_speaker(name: str) -> str:
+            """Lower-case + strip + drop non-alphanumerics.
+
+            This is what a human reader would think of as "the same name
+            without punctuation" — it lets ``Narrator``, ``narrator.``
+            and ``NARRATOR`` match each other, but does **not** match
+            ``Narrator`` to ``Nate`` (the old substring fallback did).
+            """
+            import re as _re
+
+            return _re.sub(r"[^a-z0-9]+", "", name.strip().lower())
+
+        # Pre-compute the normalised casting keys so we're not doing
+        # this inside the block loop.
+        normalised_cast: dict[str, str] = {
+            _normalise_speaker(k): v for k, v in voice_casting.items() if k
+        }
+
         for i, block in enumerate(blocks):
             speaker = block["speaker"]
-            # Match speaker to voice casting: try exact, stripped, then partial
-            voice_profile_id = voice_casting.get(speaker)
-            if not voice_profile_id:
-                stripped = speaker.strip()
-                voice_profile_id = voice_casting.get(stripped)
-            if not voice_profile_id:
-                stripped_lower = speaker.strip().lower()
-                for cast_name, cast_id in voice_casting.items():
-                    if (
-                        cast_name.lower().startswith(stripped_lower)
-                        or stripped_lower.startswith(cast_name.lower())
-                        or stripped_lower in cast_name.lower()
-                        or cast_name.lower() in stripped_lower
-                    ):
-                        voice_profile_id = cast_id
-                        break
+            voice_profile_id = (
+                voice_casting.get(speaker)
+                or voice_casting.get(speaker.strip())
+                or normalised_cast.get(_normalise_speaker(speaker))
+            )
 
             if voice_profile_id:
                 voice_profile = await self._get_voice_profile(voice_profile_id)
