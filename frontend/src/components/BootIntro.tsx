@@ -112,7 +112,8 @@ export function BootIntro({ onDone }: { onDone: () => void }) {
 
   const visible = LINES.filter((l) => l.at <= elapsed);
   const pct = Math.min(100, Math.round((elapsed / BOOT_DURATION_MS) * 100));
-  const showCursor = elapsed >= LINES[LINES.length - 1].at + 200;
+  const lastAt = LINES.reduce((acc, l) => Math.max(acc, l.at), 0);
+  const showCursor = elapsed >= lastAt + 200;
 
   return (
     <div

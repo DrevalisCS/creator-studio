@@ -357,6 +357,188 @@ _BLOCKED: list[tuple[str, re.Pattern[str], str]] = [
         re.compile(r"^/api/v1/episodes/[^/]+/editor/render"),
         "Rendering from the editor is disabled in the demo.",
     ),
+    # Extra content-creation + mutation endpoints that hadn't been
+    # covered yet. The rule of thumb: in the demo, everything a visitor
+    # can do must be a read or a no-op simulation. Creating new rows,
+    # flipping statuses, or triggering pipelines against seeded content
+    # all fall under "modification".
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes$"),
+        "Creating episodes is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/generate$"),
+        "Generating episodes is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/retry(/|$)"),
+        "Retrying generation is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/cancel$"),
+        "Cancelling generation is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/voice-profiles$"),
+        "Creating voice profiles is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/comfyui/servers$"),
+        "Adding ComfyUI servers is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/comfyui/workflows$"),
+        "Adding ComfyUI workflows is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/llm$"),
+        "Adding LLM configs is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/prompt-templates$"),
+        "Adding prompt templates is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/schedule$"),
+        "Scheduling posts is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/video-templates$"),
+        "Creating video templates is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/video-templates/[^/]+$"),
+        "Editing video templates is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/video-templates/[^/]+$"),
+        "Deleting video templates is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/character-packs$"),
+        "Creating character packs is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/character-packs/[^/]+$"),
+        "Editing character packs is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/character-packs/[^/]+$"),
+        "Deleting character packs is disabled in the demo.",
+    ),
+    # Social platform management (OAuth start was already blocked above,
+    # but direct CRUD + disconnect hadn't been).
+    (
+        "POST",
+        re.compile(r"^/api/v1/social/platforms$"),
+        "Connecting social platforms is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/social/platforms/[^/]+$"),
+        "Editing social platform accounts is disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/social/platforms/[^/]+$"),
+        "Disconnecting social platforms is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/social/uploads$"),
+        "Uploading to social platforms is disabled in the demo.",
+    ),
+    # Jobs control — pausing the queue / changing priority would affect
+    # the next visitor's experience.
+    (
+        "POST",
+        re.compile(r"^/api/v1/jobs/(cancel-all|pause-all|retry-all-failed|set-priority)$"),
+        "Job control actions are disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/jobs/worker/restart$"),
+        "Restarting the worker is disabled in the demo.",
+    ),
+    # YouTube upload — already simulated elsewhere, but belt-and-braces.
+    (
+        "POST",
+        re.compile(r"^/api/v1/youtube/upload$"),
+        "Uploading to YouTube is disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/episodes/[^/]+/upload"),
+        "Uploading is disabled in the demo.",
+    ),
+    # Team / workspace management, user/auth admin surface.
+    (
+        "POST",
+        re.compile(r"^/api/v1/team"),
+        "Team changes are disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/team"),
+        "Team changes are disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/team"),
+        "Team changes are disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/auth/register$"),
+        "Registration is disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/auth/password"),
+        "Password changes are disabled in the demo.",
+    ),
+    (
+        "POST",
+        re.compile(r"^/api/v1/auth/password"),
+        "Password changes are disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/auth/"),
+        "Account deletion is disabled in the demo.",
+    ),
+    # Editor autosave / timeline writes on any episode.
+    (
+        "POST",
+        re.compile(r"^/api/v1/editor/"),
+        "Editor mutations are disabled in the demo.",
+    ),
+    (
+        "PUT",
+        re.compile(r"^/api/v1/editor/"),
+        "Editor mutations are disabled in the demo.",
+    ),
+    (
+        "DELETE",
+        re.compile(r"^/api/v1/editor/"),
+        "Editor mutations are disabled in the demo.",
+    ),
 ]
 
 
