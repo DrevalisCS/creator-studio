@@ -1373,6 +1373,20 @@ export interface EditTimelineClip {
   speed?: number;
   gain_db?: number;
   duck_to_voice?: boolean;
+  // Overlay-track fields (kind=overlay clips only)
+  kind?: 'text' | 'shape' | 'image';
+  text?: string;
+  font_size?: number;
+  color?: string;
+  box?: boolean;
+  box_color?: string;
+  shape?: 'rect' | 'circle';
+  w?: number;
+  h?: number;
+  x?: string | number;
+  y?: string | number;
+  // Audio envelope points [(t, gain_db), ...]
+  envelope?: Array<[number, number]>;
 }
 
 export interface EditTimelineTrack {
@@ -1395,10 +1409,26 @@ export interface EditSession {
   last_rendered_at: string | null;
 }
 
+export interface CaptionWord {
+  word: string;
+  start_seconds: number;
+  end_seconds: number;
+  emphasis?: boolean;
+  color?: string | null;
+}
+
 export const editor = {
   get: (episodeId: string) => get<EditSession>(`/api/v1/episodes/${episodeId}/editor`),
   save: (episodeId: string, timeline: EditTimeline) =>
     put<EditSession>(`/api/v1/episodes/${episodeId}/editor`, { timeline }),
   render: (episodeId: string) =>
     post<{ status: string }>(`/api/v1/episodes/${episodeId}/editor/render`),
+  preview: (episodeId: string) =>
+    post<{ status: string }>(`/api/v1/episodes/${episodeId}/editor/preview`),
+  getCaptions: (episodeId: string) =>
+    get<{ words: CaptionWord[] }>(`/api/v1/episodes/${episodeId}/editor/captions`),
+  putCaptions: (episodeId: string, words: CaptionWord[]) =>
+    put<{ words: CaptionWord[] }>(`/api/v1/episodes/${episodeId}/editor/captions`, { words }),
+  waveformUrl: (episodeId: string, track: 'voice' | 'music') =>
+    `/api/v1/episodes/${episodeId}/editor/waveform?track=${track}`,
 };

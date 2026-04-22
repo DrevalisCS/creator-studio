@@ -61,4 +61,5 @@ export type {
   EditTimeline,
   EditTimelineTrack,
   EditTimelineClip,
+  CaptionWord,
 } from './_monolith';

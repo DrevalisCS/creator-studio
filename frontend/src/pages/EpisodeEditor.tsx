@@ -15,6 +15,8 @@ import {
   Mic,
   Music2,
   Type,
+  Image as ImageIcon,
+  Square,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
@@ -29,6 +31,12 @@ import {
   type EditTimelineTrack,
 } from '@/lib/api';
 
+function waveformUrlFor(episodeId: string, trackId: string): string | null {
+  if (trackId === 'voice') return `/api/v1/episodes/${episodeId}/editor/waveform?track=voice`;
+  if (trackId === 'music') return `/api/v1/episodes/${episodeId}/editor/waveform?track=music`;
+  return null;
+}
+
 // ─── Reducer for undo/redo ─────────────────────────────────────────
 
 type Action =
@@ -37,6 +45,8 @@ type Action =
   | { type: 'split'; clipId: string; at_s: number }
   | { type: 'delete'; clipId: string }
   | { type: 'reorder'; trackId: string; fromIndex: number; toIndex: number }
+  | { type: 'add_overlay'; clip: EditTimelineClip }
+  | { type: 'update_overlay'; clipId: string; patch: Partial<EditTimelineClip> }
   | { type: 'undo' }
   | { type: 'redo' };
 
@@ -122,6 +132,25 @@ function applyAction(timeline: EditTimeline, action: Action): EditTimeline {
         return { ...t, clips };
       });
       return reflow({ ...timeline, tracks });
+    }
+    case 'add_overlay': {
+      const tracks = timeline.tracks.map((t) =>
+        t.id === 'overlay' ? { ...t, clips: [...t.clips, action.clip] } : t,
+      );
+      return { ...timeline, tracks };
+    }
+    case 'update_overlay': {
+      const tracks = timeline.tracks.map((t) =>
+        t.id === 'overlay'
+          ? {
+              ...t,
+              clips: t.clips.map((c) =>
+                c.id === action.clipId ? { ...c, ...action.patch } : c,
+              ),
+            }
+          : t,
+      );
+      return { ...timeline, tracks };
     }
     default:
       return timeline;
@@ -327,16 +356,29 @@ export default function EpisodeEditor() {
         <Card className="col-span-4 p-4 space-y-3">
           <div className="text-xs uppercase tracking-wider text-txt-muted">Inspector</div>
           {selectedClip ? (
-            <ClipInspector
-              clip={selectedClip}
-              onTrim={(in_s, out_s) =>
-                dispatch({ type: 'trim', clipId: selectedClip.id, in_s, out_s })
-              }
-              onDelete={() => {
-                dispatch({ type: 'delete', clipId: selectedClip.id });
-                setSelectedClipId(null);
-              }}
-            />
+            selectedClip.kind ? (
+              <OverlayInspector
+                clip={selectedClip}
+                onUpdate={(patch) =>
+                  dispatch({ type: 'update_overlay', clipId: selectedClip.id, patch })
+                }
+                onDelete={() => {
+                  dispatch({ type: 'delete', clipId: selectedClip.id });
+                  setSelectedClipId(null);
+                }}
+              />
+            ) : (
+              <ClipInspector
+                clip={selectedClip}
+                onTrim={(in_s, out_s) =>
+                  dispatch({ type: 'trim', clipId: selectedClip.id, in_s, out_s })
+                }
+                onDelete={() => {
+                  dispatch({ type: 'delete', clipId: selectedClip.id });
+                  setSelectedClipId(null);
+                }}
+              />
+            )
           ) : (
             <div className="text-xs text-txt-muted">
               Select a clip in the timeline. Shortcuts: <kbd>Space</kbd> play ·{' '}
@@ -359,6 +401,90 @@ export default function EpisodeEditor() {
           {playhead.toFixed(2)}s / {timeline.duration_s.toFixed(2)}s
         </div>
         <div className="flex-1" />
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            const id = `t-${Date.now()}`;
+            dispatch({
+              type: 'add_overlay',
+              clip: {
+                id,
+                kind: 'text',
+                text: 'New text',
+                font_size: 56,
+                color: '#ffffff',
+                box: true,
+                box_color: '#000000',
+                x: '(w-text_w)/2',
+                y: 'h-240',
+                in_s: 0,
+                out_s: Math.min(3, timeline.duration_s),
+                start_s: playhead,
+                end_s: Math.min(playhead + 3, timeline.duration_s),
+              },
+            });
+            setSelectedClipId(id);
+          }}
+          title="Add text overlay"
+        >
+          <Type className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            const id = `s-${Date.now()}`;
+            dispatch({
+              type: 'add_overlay',
+              clip: {
+                id,
+                kind: 'shape',
+                shape: 'rect',
+                color: '#ffffff',
+                w: 600,
+                h: 6,
+                x: '(w-w)/2',
+                y: 'h-320',
+                in_s: 0,
+                out_s: 3,
+                start_s: playhead,
+                end_s: Math.min(playhead + 3, timeline.duration_s),
+              },
+            });
+            setSelectedClipId(id);
+          }}
+          title="Add shape overlay"
+        >
+          <Square className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => {
+            const path = window.prompt('Paste an asset path (storage-relative, e.g. assets/images/<uuid>/logo.png):');
+            if (!path) return;
+            const id = `i-${Date.now()}`;
+            dispatch({
+              type: 'add_overlay',
+              clip: {
+                id,
+                kind: 'image',
+                asset_path: path,
+                x: '(W-w)/2',
+                y: 'H-h-80',
+                in_s: 0,
+                out_s: 3,
+                start_s: playhead,
+                end_s: Math.min(playhead + 3, timeline.duration_s),
+              },
+            });
+            setSelectedClipId(id);
+          }}
+          title="Add image overlay"
+        >
+          <ImageIcon className="w-4 h-4" />
+        </Button>
         <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.max(20, z - 20))}>
           <ZoomOut className="w-4 h-4" />
         </Button>
@@ -384,6 +510,7 @@ export default function EpisodeEditor() {
                 dispatch({ type: 'reorder', trackId: track.id, fromIndex: from, toIndex: to })
               }
               onTrim={(id, in_s, out_s) => dispatch({ type: 'trim', clipId: id, in_s, out_s })}
+              waveformUrl={waveformUrlFor(episodeId, track.id)}
             />
           ))}
         </div>
@@ -474,6 +601,7 @@ function TrackRow({
   onSelectClip,
   onReorder,
   onTrim,
+  waveformUrl,
 }: {
   track: EditTimelineTrack;
   zoom: number;
@@ -484,6 +612,7 @@ function TrackRow({
   onSelectClip: (id: string | null) => void;
   onReorder: (from: number, to: number) => void;
   onTrim: (id: string, in_s?: number, out_s?: number) => void;
+  waveformUrl: string | null;
 }) {
   const dragFrom = useRef<number | null>(null);
   const trackIcon = {
@@ -502,7 +631,12 @@ function TrackRow({
       </div>
       <div
         className="relative flex-1 h-12 bg-bg-elevated rounded overflow-hidden"
-        style={{ width: Math.max(duration * zoom, 400) }}
+        style={{
+          width: Math.max(duration * zoom, 400),
+          backgroundImage: waveformUrl ? `url("${waveformUrl}")` : undefined,
+          backgroundSize: '100% 100%',
+          backgroundRepeat: 'no-repeat',
+        }}
         onClick={(e) => {
           const rect = e.currentTarget.getBoundingClientRect();
           onScrub((e.clientX - rect.left) / zoom);
@@ -655,6 +789,165 @@ function ClipInspector({
         <Trash2 className="w-3.5 h-3.5 mr-1" />
         Delete clip
       </Button>
+    </div>
+  );
+}
+
+// ─── Overlay inspector ────────────────────────────────────────────
+
+function OverlayInspector({
+  clip,
+  onUpdate,
+  onDelete,
+}: {
+  clip: EditTimelineClip;
+  onUpdate: (patch: Partial<EditTimelineClip>) => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="space-y-3 text-xs">
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-txt-muted uppercase text-[10px] tracking-wider">Overlay</div>
+          <div className="capitalize">{clip.kind}</div>
+        </div>
+        <Button variant="ghost" size="sm" className="text-error" onClick={onDelete}>
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+
+      {clip.kind === 'text' && (
+        <>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-txt-muted uppercase text-[10px] tracking-wider">Text</span>
+            <input
+              value={clip.text ?? ''}
+              onChange={(e) => onUpdate({ text: e.target.value })}
+              className="px-2 py-1 bg-bg-base border border-white/[0.08] rounded text-sm"
+            />
+          </label>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex flex-col gap-0.5">
+              <span className="text-txt-muted uppercase text-[10px] tracking-wider">Size</span>
+              <input
+                type="number"
+                value={clip.font_size ?? 56}
+                onChange={(e) => onUpdate({ font_size: parseInt(e.target.value, 10) || 56 })}
+                className="px-2 py-1 bg-bg-base border border-white/[0.08] rounded text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-0.5">
+              <span className="text-txt-muted uppercase text-[10px] tracking-wider">Color</span>
+              <input
+                type="color"
+                value={clip.color ?? '#ffffff'}
+                onChange={(e) => onUpdate({ color: e.target.value })}
+                className="px-1 py-0.5 bg-bg-base border border-white/[0.08] rounded text-sm h-8"
+              />
+            </label>
+          </div>
+          <label className="flex items-center gap-2 text-xs">
+            <input
+              type="checkbox"
+              checked={!!clip.box}
+              onChange={(e) => onUpdate({ box: e.target.checked })}
+            />
+            Background box
+          </label>
+        </>
+      )}
+
+      {clip.kind === 'shape' && (
+        <div className="grid grid-cols-2 gap-2">
+          <label className="flex flex-col gap-0.5">
+            <span className="text-txt-muted uppercase text-[10px] tracking-wider">Color</span>
+            <input
+              type="color"
+              value={clip.color ?? '#ffffff'}
+              onChange={(e) => onUpdate({ color: e.target.value })}
+              className="px-1 py-0.5 bg-bg-base border border-white/[0.08] rounded h-8"
+            />
+          </label>
+          <label className="flex flex-col gap-0.5">
+            <span className="text-txt-muted uppercase text-[10px] tracking-wider">W × H</span>
+            <div className="flex gap-1">
+              <input
+                type="number"
+                value={clip.w ?? 200}
+                onChange={(e) => onUpdate({ w: parseInt(e.target.value, 10) || 200 })}
+                className="flex-1 px-2 py-1 bg-bg-base border border-white/[0.08] rounded text-sm"
+              />
+              <input
+                type="number"
+                value={clip.h ?? 60}
+                onChange={(e) => onUpdate({ h: parseInt(e.target.value, 10) || 60 })}
+                className="flex-1 px-2 py-1 bg-bg-base border border-white/[0.08] rounded text-sm"
+              />
+            </div>
+          </label>
+        </div>
+      )}
+
+      {clip.kind === 'image' && (
+        <label className="flex flex-col gap-0.5">
+          <span className="text-txt-muted uppercase text-[10px] tracking-wider">Asset path</span>
+          <input
+            value={clip.asset_path ?? ''}
+            onChange={(e) => onUpdate({ asset_path: e.target.value })}
+            className="px-2 py-1 bg-bg-base border border-white/[0.08] rounded text-sm"
+          />
+        </label>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-txt-muted uppercase text-[10px] tracking-wider">X</span>
+          <input
+            value={String(clip.x ?? '')}
+            onChange={(e) => onUpdate({ x: e.target.value })}
+            className="px-2 py-1 bg-bg-base border border-white/[0.08] rounded text-sm font-mono"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-txt-muted uppercase text-[10px] tracking-wider">Y</span>
+          <input
+            value={String(clip.y ?? '')}
+            onChange={(e) => onUpdate({ y: e.target.value })}
+            className="px-2 py-1 bg-bg-base border border-white/[0.08] rounded text-sm font-mono"
+          />
+        </label>
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        <label className="flex flex-col gap-0.5">
+          <span className="text-txt-muted uppercase text-[10px] tracking-wider">Start (s)</span>
+          <input
+            type="number"
+            step={0.1}
+            value={clip.start_s}
+            onChange={(e) =>
+              onUpdate({ start_s: parseFloat(e.target.value) || 0 })
+            }
+            className="px-2 py-1 bg-bg-base border border-white/[0.08] rounded text-sm"
+          />
+        </label>
+        <label className="flex flex-col gap-0.5">
+          <span className="text-txt-muted uppercase text-[10px] tracking-wider">End (s)</span>
+          <input
+            type="number"
+            step={0.1}
+            value={clip.end_s}
+            onChange={(e) =>
+              onUpdate({ end_s: parseFloat(e.target.value) || clip.start_s + 0.1 })
+            }
+            className="px-2 py-1 bg-bg-base border border-white/[0.08] rounded text-sm"
+          />
+        </label>
+      </div>
+
+      <div className="text-[10px] text-txt-muted">
+        X / Y accept FFmpeg expressions like <code>(w-text_w)/2</code>, <code>h-200</code>, etc.
+      </div>
     </div>
   );
 }
