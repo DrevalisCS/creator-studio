@@ -23,12 +23,11 @@ so adding a new block takes one line.
 
 from __future__ import annotations
 
+import json
 import re
 
 import structlog
-from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoint
-from starlette.requests import Request
-from starlette.responses import JSONResponse, Response
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -106,37 +105,58 @@ _BLOCKED: list[tuple[str, re.Pattern[str], str]] = [
 ]
 
 
-class DemoGuardMiddleware(BaseHTTPMiddleware):
-    """Returns 403 with a friendly detail when a route on the block list
-    is hit while ``settings.demo_mode`` is True. No-op otherwise.
+class DemoGuardMiddleware:
+    """Pure-ASGI demo guard. Returns 403 with a friendly detail when a
+    request matches the block list in demo_mode; otherwise no-op.
+
+    Written as raw ASGI (not ``BaseHTTPMiddleware``) so it doesn't
+    interfere with the SQLAlchemy asyncpg connection pool's task-scope
+    lifecycle — ``BaseHTTPMiddleware`` wraps the inner app in an
+    ``anyio`` task group that has been known to close DB connections
+    mid-query.
     """
 
-    async def dispatch(self, request: Request, call_next: RequestResponseEndpoint) -> Response:
-        from drevalis.core.deps import get_settings
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
 
         try:
+            from drevalis.core.deps import get_settings
+
             demo_mode = get_settings().demo_mode
         except Exception:
             demo_mode = False
 
         if not demo_mode:
-            return await call_next(request)
+            await self.app(scope, receive, send)
+            return
 
-        path = request.url.path
-        method = request.method.upper()
+        path = scope.get("path", "")
+        method = (scope.get("method") or "").upper()
         for blocked_method, pat, reason in _BLOCKED:
             if blocked_method == method and pat.match(path):
                 logger.info("demo_guard_blocked", method=method, path=path, reason=reason)
-                return JSONResponse(
-                    status_code=403,
-                    content={
-                        "detail": {
-                            "error": "disabled_in_demo",
-                            "message": reason,
-                        }
-                    },
+                body = json.dumps(
+                    {"detail": {"error": "disabled_in_demo", "message": reason}}
+                ).encode()
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 403,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                            (b"content-length", str(len(body)).encode()),
+                        ],
+                    }
                 )
-        return await call_next(request)
+                await send({"type": "http.response.body", "body": body})
+                return
+
+        await self.app(scope, receive, send)
 
 
 __all__ = ["DemoGuardMiddleware"]

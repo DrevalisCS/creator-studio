@@ -37,11 +37,20 @@ class Base(DeclarativeBase):
 
 
 class UUIDPrimaryKeyMixin:
-    """Mixin: UUID primary key with server-side gen_random_uuid() default."""
+    """Mixin: UUID primary key with server-side ``gen_random_uuid()`` AND
+    Python-side ``uuid.uuid4`` defaults.
+
+    The Python default is a belt-and-braces fallback for installs where
+    the DB column was created without the server_default (early
+    migrations that ran before the convention was applied). Without it,
+    an INSERT that relies on the server default will 500 with
+    ``NotNullViolationError`` on the ``id`` column.
+    """
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
+        default=uuid.uuid4,
         server_default=text("gen_random_uuid()"),
     )
 
