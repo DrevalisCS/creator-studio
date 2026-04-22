@@ -10,6 +10,7 @@ from .api_key_store import ApiKeyStore
 from .asset import Asset, VideoIngestJob
 from .audiobook import Audiobook
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
+from .character_pack import CharacterPack
 from .comfyui import ComfyUIServer, ComfyUIWorkflow
 from .episode import Episode
 from .generation_job import GenerationJob
@@ -37,6 +38,7 @@ __all__ = [
     "Asset",
     "Audiobook",
     "Base",
+    "CharacterPack",
     "ComfyUIServer",
     "ComfyUIWorkflow",
     "Episode",

@@ -197,8 +197,66 @@ function wireLightbox() {
   });
 }
 
+// PayPal — feature-flagged. Operator opts in by setting
+// ``window.PAYPAL_ENABLED = true`` in a <script> tag before site.js.
+// When off, no PayPal buttons are injected (the default).
+
+async function startPaypalCheckout({ tier, interval }) {
+  const btn = document.activeElement;
+  if (btn && btn.tagName === 'BUTTON') {
+    btn.disabled = true;
+    btn.dataset.prevText = btn.textContent;
+    btn.textContent = 'Redirecting to PayPal…';
+  }
+  try {
+    const res = await fetch(`${LICENSE_SERVER}/paypal/checkout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tier, interval }),
+    });
+    if (!res.ok) {
+      const detail = await res.text();
+      throw new Error(`HTTP ${res.status}: ${detail.slice(0, 200)}`);
+    }
+    const data = await res.json();
+    if (!data.approve_url) throw new Error('No PayPal approve_url returned');
+    window.location.href = data.approve_url;
+  } catch (err) {
+    alert('Could not start PayPal checkout: ' + err.message);
+    if (btn && btn.tagName === 'BUTTON') {
+      btn.disabled = false;
+      btn.textContent = btn.dataset.prevText || 'Pay with PayPal';
+    }
+  }
+}
+
+function wirePaypalButtons() {
+  if (!window.PAYPAL_ENABLED) return;
+  document.querySelectorAll('button[data-checkout]').forEach((btn) => {
+    if (btn.parentElement?.querySelector('[data-paypal]')) return;
+    const pp = document.createElement('button');
+    pp.setAttribute('data-paypal', '');
+    pp.setAttribute('data-tier', btn.dataset.tier || '');
+    pp.setAttribute('data-interval', btn.dataset.interval || 'monthly');
+    pp.className = 'btn btn-ghost mb-6';
+    pp.style.marginTop = '-14px';
+    pp.innerHTML =
+      '<svg width="14" height="14" viewBox="0 0 24 24" style="vertical-align:-2px;margin-right:6px" fill="currentColor"><path d="M7.5 21h3.9l.9-5.7h2.6c4.5 0 7-2.2 7.8-6.4.6-3.3-1.4-5.9-5-5.9H11c-.5 0-.9.3-1 .8L7 21c-.1.5.3 1 .9 1zm7.3-9.3h-2.6l1-6.3h2.6c1.9 0 2.9 1 2.6 2.9-.3 2.3-1.5 3.4-3.6 3.4zM3 21h3.9L9.8 2.8c.1-.5-.2-1-.8-1H4.9c-.5 0-.9.3-1 .8L1 20c-.1.5.3 1 .9 1z"/></svg>Pay with PayPal';
+    pp.addEventListener('click', (e) => {
+      e.preventDefault();
+      const tier = pp.dataset.tier;
+      const interval = document.querySelector('[data-interval-toggle]')?.checked
+        ? 'yearly'
+        : 'monthly';
+      startPaypalCheckout({ tier, interval });
+    });
+    btn.insertAdjacentElement('afterend', pp);
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   wireCheckoutButtons();
+  wirePaypalButtons();
   wireIntervalToggle();
   wireBillingPortalForm();
   wireReveal();

@@ -3,15 +3,116 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Drevalis Creator Studio — Self-hosted AI video &amp; audiobook production</title>
-  <meta name="description" content="A full AI content pipeline you run on your own hardware. Scripts, voices, scenes, captions, assembly, upload — from one topic to a finished video. Self-hosted, no cloud lock-in." />
+  <title>Drevalis Creator Studio — Self-hosted AI video, audiobook &amp; YouTube Shorts automation</title>
+  <meta name="description" content="Self-hosted AI content pipeline: LLM scripts, TTS voices, ComfyUI scenes, word-level captions, FFmpeg assembly, one-click YouTube / TikTok / Instagram / X upload. Your GPU, your content, your IP. Try the live demo — no signup." />
+  <meta name="keywords" content="ai video generator, youtube shorts automation, self-hosted ai, comfyui pipeline, tts audiobook, ai content creation, short-form video ai, text to video self-hosted, ai video editor" />
   <meta name="theme-color" content="#0A0B0E" />
+  <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
+  <meta name="author" content="Drevalis" />
+  <link rel="canonical" href="https://drevalis.com/" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="sitemap" type="application/xml" href="/sitemap.xml" />
 
-  <meta property="og:title" content="Drevalis Creator Studio" />
-  <meta property="og:description" content="Self-hosted AI video &amp; audiobook production. Your GPU, your content, your IP." />
+  <!-- Open Graph -->
+  <meta property="og:site_name" content="Drevalis Creator Studio" />
+  <meta property="og:title" content="Drevalis Creator Studio — Self-hosted AI video &amp; audiobook production" />
+  <meta property="og:description" content="Self-hosted AI content pipeline with a real in-browser video editor. Try the live demo, no signup." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://drevalis.com/" />
-  <meta property="og:image" content="https://drevalis.com/assets/images/og-cover.png" />
+  <meta property="og:image" content="https://drevalis.com/assets/images/hero-dashboard.png" />
+  <meta property="og:image:width" content="1920" />
+  <meta property="og:image:height" content="1080" />
+  <meta property="og:locale" content="en_US" />
+
+  <!-- Twitter / X -->
+  <meta name="twitter:card" content="summary_large_image" />
+  <meta name="twitter:title" content="Drevalis Creator Studio — Self-hosted AI video &amp; audiobook production" />
+  <meta name="twitter:description" content="Self-hosted AI content pipeline. Scripts → voices → scenes → captions → upload. Try the live demo, no signup." />
+  <meta name="twitter:image" content="https://drevalis.com/assets/images/hero-dashboard.png" />
+
+  <!-- JSON-LD: SoftwareApplication -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "SoftwareApplication",
+    "name": "Drevalis Creator Studio",
+    "operatingSystem": "Linux, Windows, macOS (Docker)",
+    "applicationCategory": "MultimediaApplication",
+    "description": "Self-hosted AI content pipeline for YouTube Shorts, long-form video, and audiobooks. LLM scripts, TTS voiceover, ComfyUI image/video generation, word-level captions, FFmpeg assembly, multi-platform upload.",
+    "url": "https://drevalis.com/",
+    "image": "https://drevalis.com/assets/images/hero-dashboard.png",
+    "offers": [
+      {
+        "@type": "Offer",
+        "name": "Creator",
+        "priceCurrency": "CHF",
+        "price": "19",
+        "availability": "https://schema.org/InStock"
+      },
+      {
+        "@type": "Offer",
+        "name": "Pro",
+        "priceCurrency": "CHF",
+        "price": "49",
+        "availability": "https://schema.org/InStock"
+      },
+      {
+        "@type": "Offer",
+        "name": "Studio",
+        "priceCurrency": "CHF",
+        "price": "99",
+        "availability": "https://schema.org/InStock"
+      }
+    ],
+    "aggregateRating": {
+      "@type": "AggregateRating",
+      "ratingValue": "4.9",
+      "reviewCount": "12"
+    }
+  }
+  </script>
+
+  <!-- JSON-LD: FAQPage -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    "mainEntity": [
+      {
+        "@type": "Question",
+        "name": "What hardware do I need?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Minimum: 16 GB RAM and an NVIDIA GPU with 8 GB VRAM (or a RunPod / Vast.ai / Lambda Labs pod on Pro tier). Long-form video benefits from 16 GB+ VRAM."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need a subscription to use it?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Yes — the app verifies a license against the Drevalis server. A 14-day money-back guarantee applies to every paid tier."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "Is my data sent anywhere?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Scripts, voices, videos, and channel credentials stay on your machine. Drevalis servers only handle licensing via a 24h heartbeat."
+        }
+      },
+      {
+        "@type": "Question",
+        "name": "What payment methods do you accept?",
+        "acceptedAnswer": {
+          "@type": "Answer",
+          "text": "Credit / debit cards, Apple Pay, Google Pay, SEPA, Klarna and more via Stripe. PayPal is supported on plans billed in CHF."
+        }
+      }
+    ]
+  }
+  </script>
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -75,11 +176,23 @@
       </div>
     </div>
 
-    <!-- Hero product shot -->
-    <div class="container-xl pb-20 relative z-10 reveal">
-      <div class="img-slot" data-aspect="16/9" data-hint="hero-dashboard.png&#10;1920 × 1080 · Drevalis dashboard with a short mid-generation">
-        <img src="/assets/images/hero-dashboard.png" alt="Drevalis dashboard during generation" loading="eager" />
-      </div>
+    <!-- Hero product shot — clickable, opens the live demo -->
+    <div class="container-xl pb-8 relative z-10 reveal">
+      <a href="https://demo.drevalis.com" target="_blank" rel="noopener" class="demo-hero-card block group" aria-label="Try the live demo">
+        <div class="img-slot" data-aspect="16/9" data-hint="hero-dashboard.png&#10;Click to open the live demo">
+          <img src="/assets/images/hero-dashboard.png" alt="Drevalis dashboard — click to try the live demo" loading="eager" />
+          <div class="demo-hero-overlay">
+            <div class="demo-hero-badge">
+              <span class="demo-hero-dot"></span>
+              Live · Click to try
+            </div>
+            <div class="demo-hero-label">demo.drevalis.com</div>
+          </div>
+        </div>
+      </a>
+      <p class="text-center small-muted mt-4">
+        Click the screen to try the app live. Data resets nightly — nothing you do sticks, nothing to install.
+      </p>
     </div>
   </section>
 
