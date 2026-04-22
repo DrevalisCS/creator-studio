@@ -33,12 +33,16 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def _find_check_constraint(table: str, needle: str) -> str | None:
     """Return the actual name of a check constraint whose name *contains*
-    ``needle`` on ``table``; None if no such constraint exists."""
+    ``needle`` on ``table``; None if no such constraint exists.
+
+    ``::regclass`` confuses SQLAlchemy's ``:param`` parser, so we use the
+    ``CAST(... AS regclass)`` form and only parametrise values.
+    """
     bind = op.get_bind()
     row = bind.execute(
         text(
             "SELECT conname FROM pg_constraint "
-            "WHERE conrelid = :t::regclass "
+            "WHERE conrelid = CAST(:t AS regclass) "
             "AND contype = 'c' "
             "AND conname LIKE :pat "
             "LIMIT 1"
