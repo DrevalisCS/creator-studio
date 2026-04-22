@@ -28,6 +28,7 @@ import {
   CheckCircle2,
   CalendarDays,
   Search,
+  Scissors,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -551,6 +552,15 @@ function EpisodeDetail() {
 
         {episode.status === 'review' && (
           <>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => navigate(`/episodes/${episode.id}/edit`)}
+              aria-label="Open the video editor"
+            >
+              <Scissors size={14} />
+              Edit
+            </Button>
             <Button
               variant="secondary"
               size="sm"

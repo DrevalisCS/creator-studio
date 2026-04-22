@@ -28,6 +28,7 @@ const YouTube = lazy(() => import('@/pages/YouTube'));
 const Usage = lazy(() => import('@/pages/Usage'));
 const CloudGPU = lazy(() => import('@/pages/CloudGPU'));
 const Assets = lazy(() => import('@/pages/Assets'));
+const EpisodeEditor = lazy(() => import('@/pages/EpisodeEditor'));
 const Login = lazy(() => import('@/pages/Login'));
 
 // ---------------------------------------------------------------------------
@@ -87,6 +88,7 @@ function App() {
         <Route path="/series/:seriesId" element={<SeriesDetail />} />
         <Route path="/episodes" element={<EpisodesList />} />
         <Route path="/episodes/:episodeId" element={<EpisodeDetail />} />
+        <Route path="/episodes/:episodeId/edit" element={<EpisodeEditor />} />
         <Route path="/audiobooks" element={<Audiobooks />} />
         <Route path="/audiobooks/:audiobookId" element={<AudiobookDetail />} />
         <Route path="/calendar" element={<Calendar />} />

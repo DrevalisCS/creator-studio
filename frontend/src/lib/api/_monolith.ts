@@ -261,6 +261,27 @@ export const episodes = {
   retry: (id: string) =>
     post<RetryResponse>(`/api/v1/episodes/${id}/retry`),
 
+  seoPreflight: (id: string) =>
+    post<{
+      score: number;
+      grade: string;
+      blocking: boolean;
+      checks: Array<{
+        id: string;
+        severity: 'pass' | 'warn' | 'fail' | 'info';
+        title: string;
+        message: string;
+        suggestion: string | null;
+      }>;
+    }>(`/api/v1/episodes/${id}/seo-preflight`),
+
+  seoVariants: (id: string) =>
+    post<{
+      titles: string[];
+      thumbnail_prompts: string[];
+      descriptions: string[];
+    }>(`/api/v1/episodes/${id}/seo-variants`),
+
   retryStep: (id: string, step: string) =>
     post<RetryResponse>(`/api/v1/episodes/${id}/retry/${step}`),
 
@@ -1333,4 +1354,51 @@ export const videoIngest = {
       clip_index: clipIndex,
       series_id: seriesId,
     }),
+};
+
+// ---------------------------------------------------------------------------
+// Video editor sessions (Phase D)
+// ---------------------------------------------------------------------------
+
+export interface EditTimelineClip {
+  id: string;
+  scene_number?: number;
+  source?: string;
+  asset_path?: string | null;
+  asset_id?: string | null;
+  in_s: number;
+  out_s: number;
+  start_s: number;
+  end_s: number;
+  speed?: number;
+  gain_db?: number;
+  duck_to_voice?: boolean;
+}
+
+export interface EditTimelineTrack {
+  id: string;
+  kind: 'video' | 'audio' | 'overlay' | 'captions';
+  clips: EditTimelineClip[];
+}
+
+export interface EditTimeline {
+  duration_s: number;
+  tracks: EditTimelineTrack[];
+}
+
+export interface EditSession {
+  id: string;
+  episode_id: string;
+  version: number;
+  timeline: EditTimeline;
+  last_render_job_id: string | null;
+  last_rendered_at: string | null;
+}
+
+export const editor = {
+  get: (episodeId: string) => get<EditSession>(`/api/v1/episodes/${episodeId}/editor`),
+  save: (episodeId: string, timeline: EditTimeline) =>
+    put<EditSession>(`/api/v1/episodes/${episodeId}/editor`, { timeline }),
+  render: (episodeId: string) =>
+    post<{ status: string }>(`/api/v1/episodes/${episodeId}/editor/render`),
 };

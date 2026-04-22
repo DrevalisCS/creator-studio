@@ -28,6 +28,7 @@ export {
   users,
   assets,
   videoIngest,
+  editor,
   ApiError,
   formatError,
 } from './_monolith';
@@ -56,4 +57,8 @@ export type {
   AssetKind,
   CandidateClip,
   VideoIngestJob,
+  EditSession,
+  EditTimeline,
+  EditTimelineTrack,
+  EditTimelineClip,
 } from './_monolith';

@@ -13,6 +13,7 @@ from drevalis.api.routes.auth import router as auth_router
 from drevalis.api.routes.backup import router as backup_router
 from drevalis.api.routes.cloud_gpu import router as cloud_gpu_router
 from drevalis.api.routes.comfyui import router as comfyui_router
+from drevalis.api.routes.editor import router as editor_router
 from drevalis.api.routes.episodes import router as episodes_router
 from drevalis.api.routes.jobs import router as jobs_router
 from drevalis.api.routes.license import router as license_router
@@ -81,3 +82,4 @@ router.include_router(cloud_gpu_router)
 router.include_router(auth_router)
 router.include_router(assets_router)
 router.include_router(video_ingest_router)
+router.include_router(editor_router)

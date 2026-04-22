@@ -3185,3 +3185,167 @@ async def publish_all(
         accepted=accepted,
         skipped=skipped,
     )
+
+
+# ── SEO Pre-flight (Phase C) ──────────────────────────────────────────
+
+
+class PreflightCheck(BaseModel):
+    id: str
+    severity: str  # "pass" | "warn" | "fail" | "info"
+    title: str
+    message: str
+    suggestion: str | None = None
+
+
+class PreflightResponse(BaseModel):
+    score: int
+    grade: str
+    blocking: bool
+    checks: list[PreflightCheck]
+
+
+@router.post(
+    "/{episode_id}/seo-preflight",
+    response_model=PreflightResponse,
+    tags=["seo"],
+    summary="Pre-upload SEO pre-flight scoring",
+)
+async def seo_preflight(
+    episode_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> PreflightResponse:
+    """Run the richer pre-upload checks on the current episode state.
+
+    Does NOT hit the LLM. Combines stored SEO metadata (from
+    ``generate_seo_async``) with the live script fields. Frontend
+    calls this on the upload dialog every time the user edits the
+    title/description.
+    """
+    from drevalis.services.seo_preflight import preflight as run_preflight
+
+    repo = EpisodeRepository(db)
+    episode = await repo.get(episode_id)
+    if not episode:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
+
+    meta = episode.metadata_ or {}
+    seo = meta.get("seo") if isinstance(meta, dict) else None
+    seo = seo or {}
+
+    script_payload = episode.script or {}
+    hook_text: str = str((seo.get("hook") or script_payload.get("hook") or "") or "")
+
+    # Derive content-format for platform mapping. Long-form episodes use
+    # the long-form YouTube rule set; everything else defaults to shorts.
+    content_format = getattr(episode, "content_format", "shorts") or "shorts"
+    platform = "youtube_longform" if content_format == "longform" else "youtube_shorts"
+
+    # Thumbnail asset (if any)
+    from drevalis.repositories.media_asset import MediaAssetRepository
+
+    asset_repo = MediaAssetRepository(db)
+    thumbs = await asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
+    thumb_path = None
+    if thumbs:
+        from pathlib import Path as _Path
+
+        thumb_path = _Path(settings.storage_base_path) / thumbs[-1].file_path
+
+    result = run_preflight(
+        title=str(seo.get("title") or episode.title or ""),
+        description=str(seo.get("description") or episode.topic or ""),
+        hashtags=list(seo.get("hashtags") or []),
+        tags=list(seo.get("tags") or []),
+        hook_text=hook_text,
+        hook_duration_seconds=None,  # could derive from caption timestamps later
+        thumbnail_path=thumb_path,
+        platform=platform,  # type: ignore[arg-type]
+    )
+    return PreflightResponse.model_validate(result.to_dict())
+
+
+class VariantResponse(BaseModel):
+    titles: list[str]
+    thumbnail_prompts: list[str]
+    descriptions: list[str]
+
+
+@router.post(
+    "/{episode_id}/seo-variants",
+    response_model=VariantResponse,
+    tags=["seo"],
+    summary="Ask the LLM for alternate titles / thumbnails / descriptions",
+)
+async def seo_variants(
+    episode_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> VariantResponse:
+    """Quick A/B options without mutating the episode. The frontend's
+    pre-flight dialog offers one-click "Apply" for each suggestion.
+    """
+    import json as _json
+
+    from drevalis.repositories.llm_config import LLMConfigRepository
+    from drevalis.services.llm import LLMService, _extract_json
+
+    repo = EpisodeRepository(db)
+    episode = await repo.get(episode_id)
+    if not episode or not episode.script:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
+
+    configs = await LLMConfigRepository(db).get_all(limit=1)
+    if not configs:
+        # No LLM configured — degrade gracefully with template variants
+        # derived from the existing title.
+        base_title = episode.title or "Untitled"
+        return VariantResponse(
+            titles=[
+                base_title,
+                f"{base_title} (you won't believe it)",
+                f"I tried {base_title.lower()} — here's what happened",
+                f"The real reason {base_title.lower()}",
+                f"{base_title} explained in 60 seconds",
+            ],
+            thumbnail_prompts=[
+                f"{base_title}, close-up, high contrast, 3-point lighting",
+                f"{base_title}, split-screen before/after, bold text overlay",
+                f"{base_title}, face-forward with shocked expression, bright colors",
+            ],
+            descriptions=[
+                (episode.topic or base_title)[:200],
+            ],
+        )
+
+    llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+    provider = llm_service.get_provider(configs[0])
+    narration = " ".join((s.get("narration") or "") for s in episode.script.get("scenes") or [])
+
+    system = (
+        "You are a short-form video SEO editor. Return ONLY valid JSON in this shape:\n"
+        '{"titles": ["...","...","...","...","..."],'
+        '"thumbnail_prompts": ["...","...","..."],'
+        '"descriptions": ["...","...","..."]}\n'
+        "Titles: 5 alternates, ≤60 chars each, each with a different psychological angle "
+        "(curiosity, outcome, contradiction, specificity, direct-benefit). "
+        "Thumbnail prompts: 3 stills, each visually distinct, describe the shot not the title. "
+        "Descriptions: 3 alternates ≤500 chars, first sentence is the hook."
+    )
+    user = (
+        f"Original title: {episode.title}\n"
+        f"Narration excerpt: {narration[:900]}\n\n"
+        "Return the JSON now."
+    )
+    result = await provider.generate(system, user, temperature=0.8, max_tokens=1200, json_mode=True)
+    try:
+        data = _json.loads(_extract_json(result.content))
+    except Exception:
+        data = {"titles": [], "thumbnail_prompts": [], "descriptions": []}
+
+    return VariantResponse(
+        titles=[str(t)[:100] for t in (data.get("titles") or [])][:5],
+        thumbnail_prompts=[str(t)[:400] for t in (data.get("thumbnail_prompts") or [])][:5],
+        descriptions=[str(t)[:500] for t in (data.get("descriptions") or [])][:5],
+    )

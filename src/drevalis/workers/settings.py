@@ -22,6 +22,7 @@ from drevalis.workers.jobs.audiobook import (
     regenerate_audiobook_chapter,
 )
 from drevalis.workers.jobs.backup import scheduled_backup
+from drevalis.workers.jobs.edit_render import render_from_edit
 
 # ---------------------------------------------------------------------------
 # Job function imports
@@ -120,6 +121,7 @@ class WorkerSettings:
         scheduled_backup,
         analyze_video_ingest,
         commit_video_ingest_clip,
+        render_from_edit,
     ]
     cron_jobs = [
         # Check for due scheduled posts every 15 minutes

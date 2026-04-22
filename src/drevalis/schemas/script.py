@@ -38,6 +38,45 @@ class SceneScript(BaseModel):
         default=None,
         description="UUID of an Asset to use directly as this scene's visual.",
     )
+    # If ``source_asset_id`` points at a video, these trim the source
+    # to a specific window (seconds from the start of the source clip).
+    clip_start_s: float | None = Field(
+        default=None, ge=0, description="Trim start within the source asset (seconds)."
+    )
+    clip_end_s: float | None = Field(
+        default=None, ge=0, description="Trim end within the source asset (seconds)."
+    )
+
+    # Phase C: per-scene generation overrides. Any of these set means
+    # "differ from the series default for this scene only". The pipeline
+    # treats missing fields as "use series-level defaults".
+    style_override: str | None = Field(
+        default=None,
+        description="Prompt fragment prepended to ``visual_prompt`` for this scene only.",
+    )
+    negative_prompt_override: str | None = Field(
+        default=None,
+        description="Per-scene negative prompt that replaces the series default.",
+    )
+    seed: int | None = Field(
+        default=None,
+        description="ComfyUI seed for deterministic regeneration of this scene.",
+    )
+    voice_emotion: str | None = Field(
+        default=None,
+        description="Tag for TTS engines that support style conditioning "
+        "(e.g. 'excited', 'calm', 'sad').",
+    )
+    voice_profile_id_override: str | None = Field(
+        default=None,
+        description="UUID of a VoiceProfile to use for this scene only "
+        "(overrides series + episode voice).",
+    )
+    aspect_crop: str | None = Field(
+        default=None,
+        description='Per-scene crop hint for multi-aspect workflows: "center", '
+        '"top", "bottom", or "face".',
+    )
 
     @model_validator(mode="before")
     @classmethod

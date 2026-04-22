@@ -860,12 +860,23 @@ class ComfyUIService:
             # the diffusion model, avoiding doubled characters when the
             # character description was previously placed before the scene.
             full_prompt_parts: list[str] = []
+            # Phase C: per-scene style override prepended so it dominates.
+            scene_style = getattr(scene, "style_override", None)
+            if scene_style:
+                full_prompt_parts.append(scene_style)
             full_prompt_parts.append(scene.visual_prompt)
             # Use a seeded RNG so angle/variety are deterministic per scene but
             # distributed across the full expanded pools rather than round-robin.
-            rng = random.Random(scene.scene_number + (base_seed or 42))
+            # Per-scene ``seed`` override wins over base_seed when provided.
+            scene_seed_override = getattr(scene, "seed", None)
+            rng_seed = (
+                scene_seed_override
+                if scene_seed_override is not None
+                else (scene.scene_number + (base_seed or 42))
+            )
+            rng = random.Random(rng_seed)
             angle = rng.choice(self.CAMERA_ANGLES)
-            full_prompt_parts.insert(1, angle)
+            full_prompt_parts.insert(-0 if not scene_style else 1, angle)
             if character_description:
                 full_prompt_parts.append(f"featuring {character_description}")
             else:
@@ -883,6 +894,10 @@ class ComfyUIService:
             full_prompt_parts.append(variety)
             full_prompt = ", ".join(full_prompt_parts)
 
+            # Phase C: per-scene negative prompt override.
+            scene_negative = getattr(scene, "negative_prompt_override", None)
+            scene_effective_negative = scene_negative if scene_negative else effective_negative
+
             async with semaphore:
                 # Broadcast: starting this scene
                 if progress_callback:
@@ -895,13 +910,14 @@ class ComfyUIService:
                     "scene_image_generation_start",
                     episode_id=str(episode_id),
                     scene_number=scene.scene_number,
+                    per_scene_override=bool(scene_style or scene_negative or scene_seed_override),
                 )
                 result = await self.generate_image(
                     server_id=server_id,
                     workflow_path=workflow_path,
                     input_mappings=input_mappings,
                     prompt=full_prompt,
-                    negative_prompt=effective_negative,
+                    negative_prompt=scene_effective_negative,
                     width=1080,
                     height=1920,
                     save_relative_dir=save_dir,
