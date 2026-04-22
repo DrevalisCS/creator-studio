@@ -1,25 +1,14 @@
-/* Drevalis marketing boot intro — shows once per visitor on the first
- * arrival at the site. Matches the in-app retro CRT boot sequence.
- *
- * Gate: ``localStorage.drevalis_marketing_boot_seen``. Cleared by
- * visitors wiping cookies/localStorage; set permanently after the
- * first run so repeat visitors go straight to the content.
+/* Drevalis marketing boot intro — plays the retro CRT sequence on
+ * every page load (reload, reopen, hard-refresh all trigger it).
+ * Matches the in-app intro. Respects prefers-reduced-motion.
  */
 (function () {
   if (typeof window === 'undefined' || typeof document === 'undefined') return;
-
-  var KEY = 'drevalis_marketing_boot_seen';
-  try {
-    if (window.localStorage.getItem(KEY)) return;
-  } catch (_) {
-    // Private mode — still run, just skip persistence.
-  }
 
   // Respect reduced motion — a full-screen flashing terminal isn't kind
   // to folks who opt out of animation.
   try {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      try { window.localStorage.setItem(KEY, '1'); } catch (_) {}
       return;
     }
   } catch (_) {}
@@ -86,7 +75,6 @@
       setTimeout(function () {
         if (host.parentNode) host.parentNode.removeChild(host);
         if (document.body) document.body.style.overflow = lockedScroll;
-        try { window.localStorage.setItem(KEY, '1'); } catch (_) {}
       }, FADE_MS);
       return;
     }
