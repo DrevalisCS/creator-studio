@@ -13,19 +13,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Google tag (gtag.js) with Consent Mode v2 defaults -->
   <script async src="https://www.googletagmanager.com/gtag/js?id=G-FJ3ZBMTLCF"></script>
-  <script>
-    window.dataLayer = window.dataLayer || [];
-    function gtag(){dataLayer.push(arguments);}
-    gtag("consent", "default", {
-      ad_storage: "denied",
-      analytics_storage: "denied",
-      ad_user_data: "denied",
-      ad_personalization: "denied",
-      wait_for_update: 500
-    });
-    gtag("js", new Date());
-    gtag("config", "G-FJ3ZBMTLCF", { anonymize_ip: true });
-  </script>
+  <script src="/assets/gtag-init.js" defer></script>
   <script src="/assets/consent.js" defer></script>
 </head>
 
@@ -39,7 +27,7 @@
         <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
         Drevalis
       </a>
-      <button type="button" class="site-menu-btn" aria-label="Open menu" onclick="document.documentElement.classList.toggle('nav-open')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button><div class="site-nav-links">
+      <button type="button" class="site-menu-btn" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button><div class="site-nav-links">
         <a href="/#features" class="site-nav-link hide-xs">Features</a>
         <a href="/pricing" class="site-nav-link">Pricing</a>
         <a href="/download" class="site-nav-link">Download</a>
@@ -121,6 +109,7 @@
     </div>
   </footer>
 
-  <script src="/assets/site.js"></script>
+  <script src="/assets/menu-toggle.js" defer></script>
+  <script src="/assets/site.js" defer></script>
 </body>
 </html>

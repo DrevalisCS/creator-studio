@@ -147,4 +147,20 @@
   if (!applyStoredChoice()) {
     renderBanner();
   }
+
+  // Wire any ``<a data-consent-revoke>`` links on the page so the
+  // privacy policy can offer a CSP-safe revoke action without inline
+  // ``onclick``. Uses delegation to survive late DOM insertions.
+  function handleRevokeClick(ev) {
+    var t = ev.target;
+    while (t && t !== document) {
+      if (t.hasAttribute && t.hasAttribute('data-consent-revoke')) {
+        ev.preventDefault();
+        if (window.drevalisConsent) window.drevalisConsent.revoke();
+        return;
+      }
+      t = t.parentNode;
+    }
+  }
+  document.addEventListener('click', handleRevokeClick);
 })();
