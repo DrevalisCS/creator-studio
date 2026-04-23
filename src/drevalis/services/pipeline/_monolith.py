@@ -1758,8 +1758,17 @@ class PipelineOrchestrator:
                         stdout=_asyncio.subprocess.PIPE,
                         stderr=_asyncio.subprocess.PIPE,
                     )
-                    await proc.communicate()
-                    chapter_music_paths.append(trimmed if trimmed.exists() else None)
+                    _, stderr_b = await proc.communicate()
+                    if proc.returncode != 0:
+                        self.log.warning(
+                            "chapter_music_trim_ffmpeg_failed",
+                            chapter=i,
+                            rc=proc.returncode,
+                            error=stderr_b.decode("utf-8", errors="replace")[:200],
+                        )
+                        chapter_music_paths.append(None)
+                    else:
+                        chapter_music_paths.append(trimmed if trimmed.exists() else None)
                 else:
                     chapter_music_paths.append(None)
             except Exception as exc:
@@ -1794,8 +1803,15 @@ class PipelineOrchestrator:
             stdout=_asyncio.subprocess.PIPE,
             stderr=_asyncio.subprocess.PIPE,
         )
-        await proc.communicate()
+        _, stderr_b = await proc.communicate()
         concat_list.unlink(missing_ok=True)
+        if proc.returncode != 0:
+            self.log.warning(
+                "chapter_music_concat_ffmpeg_failed",
+                rc=proc.returncode,
+                error=stderr_b.decode("utf-8", errors="replace")[:200],
+            )
+            return None
 
         if combined.exists():
             self.log.info(

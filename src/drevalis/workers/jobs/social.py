@@ -246,9 +246,10 @@ async def _tiktok_upload(
         if not publish_id or not upload_url:
             raise RuntimeError(f"TikTok init malformed: {init_resp.text[:300]}")
 
-    # Single-shot PUT of the whole MP4.
-    with video_path.open("rb") as f:
-        body = f.read()
+    # Single-shot PUT of the whole MP4. Read off the event loop so a
+    # multi-GB file doesn't stall every other worker task — ``f.read()``
+    # on a big video is sync I/O in an ``async def``.
+    body = await asyncio.to_thread(video_path.read_bytes)
     async with httpx.AsyncClient(timeout=300.0) as client:
         put_resp = await client.put(
             upload_url,
