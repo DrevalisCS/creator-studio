@@ -46,12 +46,14 @@ import {
   ArrowUpCircle,
   Archive,
   Users,
+  Palette,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { LicenseSection } from '@/pages/Settings/sections/LicenseSection';
 import { UpdatesSection } from '@/pages/Settings/sections/UpdatesSection';
 import { BackupSection } from '@/pages/Settings/sections/BackupSection';
 import { TeamSection } from '@/pages/Settings/sections/TeamSection';
+import { AppearanceSection } from '@/pages/Settings/sections/AppearanceSection';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -87,6 +89,7 @@ import type {
 
 const SECTIONS = [
   { id: 'license', label: 'License', icon: KeyRound },
+  { id: 'appearance', label: 'Appearance', icon: Palette },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'updates', label: 'Updates', icon: ArrowUpCircle },
   { id: 'backup', label: 'Backup', icon: Archive },
@@ -148,6 +151,7 @@ function Settings() {
         {/* Right content */}
         <div className="md:col-span-9">
           {activeSection === 'license' && <LicenseSection />}
+          {activeSection === 'appearance' && <AppearanceSection />}
           {activeSection === 'team' && <TeamSection />}
           {activeSection === 'updates' && <UpdatesSection />}
           {activeSection === 'backup' && <BackupSection />}

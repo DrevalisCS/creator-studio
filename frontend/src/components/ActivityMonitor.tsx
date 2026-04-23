@@ -20,6 +20,7 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { useToast } from '@/components/ui/Toast';
 import { jobs as jobsApi, episodes as episodesApi } from '@/lib/api';
 import { useActiveJobsProgress } from '@/lib/websocket';
+import { useTheme } from '@/lib/theme';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -108,7 +109,16 @@ interface WorkerHealth {
 export function ActivityMonitor() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [expanded, setExpanded] = useState(false);
+  const { activityDock } = useTheme();
+  const isVerticalDock = activityDock === 'left' || activityDock === 'right';
+  const [userExpanded, setUserExpanded] = useState(false);
+  // Vertical docks (left/right rails) are always fully visible — they're
+  // a sidebar, not a collapsible tray. Horizontal docks (top/bottom) keep
+  // the collapsed-by-default tray behavior the user can pop open.
+  const expanded = isVerticalDock ? true : userExpanded;
+  const setExpanded = (v: boolean) => {
+    if (!isVerticalDock) setUserExpanded(v);
+  };
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [cancelling, setCancelling] = useState<Set<string>>(new Set());
@@ -276,8 +286,28 @@ export function ActivityMonitor() {
         </button>
       )}
 
-    {/* ── Desktop: docked bottom bar (hidden on mobile) ────────────── */}
-    <div className="hidden md:block fixed bottom-0 left-0 right-0 z-40 border-t border-white/[0.06] bg-bg-surface/70 backdrop-blur-xl">
+    {/* ── Desktop: position-aware docked bar (hidden on mobile) ─────
+         Position is driven by the theme-level ``activityDock`` setting
+         (Settings → Appearance). Four concrete docks:
+           bottom — classic task-bar style, full-width bottom strip
+           top    — above the page content, sticks to viewport top
+           left / right — vertical rail, slim width, collapses to icons
+
+         Styling rules are flipped per-position so the "expanded" drawer
+         opens the correct way (upward from bottom, downward from top,
+         out-to-side for vertical rails). Default stays bottom for
+         users who haven't changed the setting. */}
+    <div
+      className={[
+        'hidden md:block fixed z-40 bg-bg-surface/85 backdrop-blur-xl',
+        'border-white/[0.06] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.5)]',
+        activityDock === 'bottom' ? 'bottom-0 left-0 right-0 border-t' : '',
+        activityDock === 'top' ? 'top-0 left-0 right-0 border-b' : '',
+        activityDock === 'left' ? 'top-0 bottom-0 left-0 w-[320px] border-r flex flex-col' : '',
+        activityDock === 'right' ? 'top-0 bottom-0 right-0 w-[320px] border-l flex flex-col' : '',
+      ].join(' ')}
+      data-dock={activityDock}
+    >
       {/* Expanded panel */}
       {expanded && (
         <div className="border-b border-border">
@@ -522,18 +552,32 @@ export function ActivityMonitor() {
         </div>
       )}
 
-      {/* Status strip (always visible) */}
+      {/* Status strip (always visible on horizontal docks; hidden on
+          vertical rails since those are always-expanded). v0.20.3:
+          taller + higher-contrast so it stops reading as a faint line
+          at the edge of the screen. */}
       <div
-        className="flex items-center justify-between px-4 h-8 cursor-pointer select-none"
-        onClick={() => setExpanded(!expanded)}
-        role="button"
-        aria-expanded={expanded}
-        aria-label="Toggle activity monitor"
+        className={[
+          'flex items-center justify-between px-4 select-none',
+          isVerticalDock ? 'h-11 border-b border-border/60' : 'h-10 cursor-pointer',
+          !isVerticalDock && totalActive > 0 ? 'bg-accent-muted/20' : '',
+        ].join(' ')}
+        onClick={() => !isVerticalDock && setExpanded(!expanded)}
+        role={isVerticalDock ? undefined : 'button'}
+        aria-expanded={isVerticalDock ? undefined : expanded}
+        aria-label={isVerticalDock ? undefined : 'Toggle activity monitor'}
       >
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1.5">
-            <Activity size={12} className="text-accent" />
-            <span className="text-[11px] font-display font-medium text-txt-primary">Activity</span>
+          <div className="flex items-center gap-2">
+            <Activity size={14} className="text-accent" />
+            <span className="text-xs font-display font-semibold text-txt-primary">
+              Activity
+            </span>
+            {totalActive > 0 && (
+              <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-accent text-[10px] font-bold text-bg-base">
+                {totalActive}
+              </span>
+            )}
           </div>
 
           {/* Worker status dot */}

@@ -18,7 +18,6 @@ from drevalis.schemas.settings import (
     ServiceHealth,
     StorageUsageResponse,
 )
-from drevalis.services.storage import LocalStorage
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
 
@@ -47,44 +46,91 @@ def _human_size(size_bytes: int) -> str:
 async def storage_usage(
     settings: Settings = Depends(get_settings),
 ) -> StorageUsageResponse:
-    """Return total disk usage of the storage directory, the absolute
-    container path, the host-side bind-mount root, and a per-subdir
-    byte breakdown. The breakdown is the useful bit when a user has
-    copied media into a host directory that isn't actually bind-
-    mounted: every subdir shows 0 bytes and the mismatch is obvious.
+    """Return total disk usage + per-subdir breakdown.
+
+    Previously this endpoint walked the tree twice (once via
+    ``storage.get_total_size_bytes`` and once for ``subdir_sizes``)
+    AND the subdir walk ran synchronously on the event loop. For a
+    20 GB install on a Docker Desktop 9P mount that ran for minutes
+    and pinned the worker. Now:
+
+    1. Single ``os.walk`` pass in a thread, skipping noisy dirs
+       (``models``, ``temp``, ``cache``, hidden) so we don't double
+       the work with TTS model weights that aren't "user data".
+    2. Hard wall-clock budget. We return whatever we collected when
+       it expires rather than spinning forever.
     """
-    storage = LocalStorage(settings.storage_base_path)
-    total = await storage.get_total_size_bytes()
     base_abs = Path(settings.storage_base_path).resolve()
 
-    # Subdir breakdown — walk each top-level folder the app ships.
-    subdir_sizes: dict[str, int] = {}
-    for name in (
+    # Subdirs we report on. ``models`` and ``temp`` are deliberately
+    # left out of the per-dir tally — they're system noise that
+    # inflates numbers the user cares about (their content).
+    reported_subdirs = {
         "episodes",
         "audiobooks",
         "voice_previews",
         "backups",
-        "models",
-        "temp",
         "music",
         "workflows",
-    ):
-        sub = base_abs / name
-        if not sub.exists():
-            continue
-        sub_total = 0
-        try:
-            for f in sub.rglob("*"):
-                if f.is_file():
-                    try:
-                        sub_total += f.stat().st_size
-                    except OSError:
-                        pass
-        except OSError:
-            pass
-        subdir_sizes[name] = sub_total
+    }
+    # Walk-skip list: directories we don't recurse into at all. Model
+    # weights alone can easily be 30 GB+; excluding them keeps the
+    # walk fast without hiding anything interesting from the user.
+    skip_prefixes = {
+        str(base_abs / "models"),
+        str(base_abs / "temp"),
+        str(base_abs / "cache"),
+    }
 
-    # Host-side bind-mount root via /proc/self/mountinfo.
+    total_budget_sec = 5.0
+
+    def _walk() -> tuple[int, dict[str, int]]:
+        import os
+        import time as _time
+
+        subdir_totals: dict[str, int] = {name: 0 for name in reported_subdirs}
+        grand_total = 0
+        start = _time.monotonic()
+
+        if not base_abs.exists():
+            return 0, subdir_totals
+
+        for dirpath, dirnames, filenames in os.walk(base_abs, followlinks=False):
+            # Bail if the walk is taking too long. Partial results are
+            # fine — the UI renders them and the user can refresh.
+            if _time.monotonic() - start > total_budget_sec:
+                break
+
+            # Skip the known-huge / non-user dirs outright.
+            dirnames[:] = [
+                d
+                for d in dirnames
+                if not d.startswith(".") and os.path.join(dirpath, d) not in skip_prefixes
+            ]
+
+            # Which top-level subdir are we under? ``.`` means base_abs itself.
+            try:
+                rel = os.path.relpath(dirpath, base_abs)
+            except ValueError:
+                continue
+            top = rel.split(os.sep, 1)[0] if rel != "." else None
+
+            for name in filenames:
+                full = os.path.join(dirpath, name)
+                try:
+                    size = os.path.getsize(full)
+                except OSError:
+                    continue
+                grand_total += size
+                if top and top in subdir_totals:
+                    subdir_totals[top] += size
+
+        return grand_total, subdir_totals
+
+    total, subdir_sizes = await asyncio.to_thread(_walk)
+
+    # Host-side bind-mount root via /proc/self/mountinfo. Quick read,
+    # no I/O bound on storage contents.
     host_source: str | None = None
     try:
         lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()

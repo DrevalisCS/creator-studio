@@ -947,25 +947,15 @@ async def upload_audiobook_to_youtube(
 
     Creates a :class:`YouTubeAudiobookUpload` record to track the upload.
     """
+    from drevalis.api.routes.youtube._monolith import _build_youtube_service
     from drevalis.repositories.youtube import (
         YouTubeAudiobookUploadRepository,
         YouTubeChannelRepository,
     )
-    from drevalis.services.youtube import YouTubeService
 
-    # Validate YouTube is configured
-    if not settings.youtube_client_id or not settings.youtube_client_secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="YouTube integration is not configured.",
-        )
-
-    yt_service = YouTubeService(
-        client_id=settings.youtube_client_id,
-        client_secret=settings.youtube_client_secret,
-        redirect_uri=settings.youtube_redirect_uri,
-        encryption_key=settings.encryption_key,
-    )
+    # Build the YouTube service with env OR db-stored credentials.
+    # Raises 503 with a helpful message if neither source has keys set.
+    yt_service = await _build_youtube_service(settings, db)
 
     # Validate audiobook exists and has a video FIRST so we can use its
     # per-audiobook youtube_channel_id to resolve the channel (respects

@@ -384,7 +384,7 @@ export function LicenseSection() {
             <div>
               <h4 className="text-sm font-semibold text-txt-primary">Upgrade to Lifetime (Pro)</h4>
               <p className="text-xs text-txt-secondary mt-1">
-                One-time CHF 599. Keeps the Pro feature set, never renews. 3 years of updates included.
+                One-time CHF 899. Keeps the Pro feature set, never renews. 3 years of updates included.
                 Limited to the first 100 seats.
               </p>
             </div>

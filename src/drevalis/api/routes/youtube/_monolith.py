@@ -44,13 +44,90 @@ router = APIRouter(prefix="/api/v1/youtube", tags=["youtube"])
 # ── Helpers ──────────────────────────────────────────────────────────────
 
 
+async def _resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> tuple[str, str]:
+    """Resolve the YouTube OAuth client credentials.
+
+    Priority order:
+    1. ``.env`` / environment variables (``YOUTUBE_CLIENT_ID`` /
+       ``YOUTUBE_CLIENT_SECRET``) — fastest, no DB lookup.
+    2. Database ``api_key_store`` table — where the Settings → API Keys
+       UI writes keys after Fernet encryption.
+
+    Before this helper existed, the Settings UI's "Save YouTube key"
+    path persisted to the DB but the YouTube router only read from the
+    Settings object → user saved creds successfully yet every YouTube
+    call returned 503 ``not_configured``. Now both sources merge; the
+    UI is a first-class configuration surface.
+    """
+    from drevalis.core.security import decrypt_value
+    from drevalis.repositories.api_key_store import ApiKeyStoreRepository
+
+    client_id = settings.youtube_client_id
+    client_secret = settings.youtube_client_secret
+
+    # Fall back to the DB store for anything that's blank in settings.
+    if not client_id or not client_secret:
+        repo = ApiKeyStoreRepository(db)
+        if not client_id:
+            row = await repo.get_by_key_name("youtube_client_id")
+            if row and row.encrypted_value:
+                try:
+                    client_id = decrypt_value(
+                        row.encrypted_value,
+                        settings.encryption_key,
+                        row.key_version or 1,
+                    )
+                except Exception:  # noqa: BLE001 — fail closed
+                    client_id = ""
+        if not client_secret:
+            row = await repo.get_by_key_name("youtube_client_secret")
+            if row and row.encrypted_value:
+                try:
+                    client_secret = decrypt_value(
+                        row.encrypted_value,
+                        settings.encryption_key,
+                        row.key_version or 1,
+                    )
+                except Exception:  # noqa: BLE001
+                    client_secret = ""
+
+    return client_id, client_secret
+
+
+async def _build_youtube_service(settings: Settings, db: AsyncSession) -> YouTubeService:
+    """Build a YouTubeService, pulling credentials from env + DB store."""
+    client_id, client_secret = await _resolve_youtube_credentials(settings, db)
+    if not client_id or not client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "YouTube integration is not configured. Set "
+                "YOUTUBE_CLIENT_ID + YOUTUBE_CLIENT_SECRET in your .env "
+                "file, OR add them via Settings → Integrations → YouTube "
+                "(they'll be Fernet-encrypted at rest)."
+            ),
+        )
+    return YouTubeService(
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=settings.youtube_redirect_uri,
+        encryption_key=settings.encryption_key,
+    )
+
+
 def _get_youtube_service(settings: Settings) -> YouTubeService:
-    """Build a YouTubeService from application settings."""
+    """Legacy sync wrapper — kept only for callers that haven't been
+    converted to the async resolver yet. Ignores the DB-stored keys;
+    new code should call ``_build_youtube_service(settings, db)``.
+    """
     if not settings.youtube_client_id or not settings.youtube_client_secret:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="YouTube integration is not configured. "
-            "Set YOUTUBE_CLIENT_ID and YOUTUBE_CLIENT_SECRET environment variables.",
+            detail=(
+                "YouTube integration is not configured. Set "
+                "YOUTUBE_CLIENT_ID + YOUTUBE_CLIENT_SECRET in your .env, "
+                "OR add them via Settings → Integrations → YouTube."
+            ),
         )
     return YouTubeService(
         client_id=settings.youtube_client_id,
@@ -72,6 +149,7 @@ def _get_youtube_service(settings: Settings) -> YouTubeService:
 async def get_auth_url(
     settings: Settings = Depends(get_settings),
     redis: Redis = Depends(get_redis),
+    db: AsyncSession = Depends(get_db),
 ) -> YouTubeAuthURLResponse:
     """Generate and return the Google OAuth consent URL.
 
@@ -80,7 +158,7 @@ async def get_auth_url(
     CSRF attacks where an attacker tricks the operator into binding an
     attacker-controlled YouTube channel to this install.
     """
-    svc = _get_youtube_service(settings)
+    svc = await _build_youtube_service(settings, db)
     url, state = svc.get_auth_url()
     try:
         await redis.setex(f"youtube_oauth_state:{state}", 600, "1")
@@ -131,7 +209,7 @@ async def oauth_callback(
             detail="Invalid or expired OAuth state; retry the connect flow.",
         )
 
-    svc = _get_youtube_service(settings)
+    svc = await _build_youtube_service(settings, db)
 
     try:
         channel_info = await svc.handle_callback(code, state=state)
@@ -345,7 +423,7 @@ async def delete_video(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
     """Delete a video from YouTube using the owning channel's tokens."""
-    svc = _get_youtube_service(settings)
+    svc = await _build_youtube_service(settings, db)
     channel_repo = YouTubeChannelRepository(db)
     channel = await channel_repo.get_by_id(channel_id)
     if channel is None:
@@ -412,7 +490,7 @@ async def upload_episode(
             updated_at=now,
         )
 
-    svc = _get_youtube_service(settings)
+    svc = await _build_youtube_service(settings, db)
 
     # Validate episode exists.
     ep_repo = EpisodeRepository(db)
@@ -821,7 +899,7 @@ async def create_playlist(
     Pass ``?channel_id=<uuid>`` to target a specific channel. When only
     one channel is connected, the parameter is optional.
     """
-    svc = _get_youtube_service(settings)
+    svc = await _build_youtube_service(settings, db)
 
     channel_repo = YouTubeChannelRepository(db)
     channel = await _resolve_channel(channel_repo, channel_id)
@@ -912,7 +990,7 @@ async def add_video_to_playlist(
     from the playlist's ``channel_id`` so operators never have to pass
     it alongside.
     """
-    svc = _get_youtube_service(settings)
+    svc = await _build_youtube_service(settings, db)
 
     playlist_repo = YouTubePlaylistRepository(db)
     playlist = await playlist_repo.get_by_id(playlist_id)
@@ -989,7 +1067,7 @@ async def delete_playlist(
 
     Channel is inferred from the playlist's ``channel_id``.
     """
-    svc = _get_youtube_service(settings)
+    svc = await _build_youtube_service(settings, db)
 
     playlist_repo = YouTubePlaylistRepository(db)
     playlist = await playlist_repo.get_by_id(playlist_id)
@@ -1097,7 +1175,7 @@ async def get_video_analytics(
             for vid in ids[:50]
         ]
 
-    svc = _get_youtube_service(settings)
+    svc = await _build_youtube_service(settings, db)
 
     channel_repo = YouTubeChannelRepository(db)
     channel = await _resolve_channel(channel_repo, channel_id)
@@ -1210,7 +1288,7 @@ async def get_channel_analytics(
             "fetched_at": _dt.now(tz=_UTC).isoformat(),
         }
 
-    svc = _get_youtube_service(settings)
+    svc = await _build_youtube_service(settings, db)
     channel_repo = YouTubeChannelRepository(db)
     channel = await _resolve_channel(channel_repo, channel_id)
 

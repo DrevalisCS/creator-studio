@@ -99,12 +99,16 @@ export const ACCENT_COLORS: AccentColor[] = [
 // Context
 // ---------------------------------------------------------------------------
 
+export type ActivityDockPosition = 'bottom' | 'top' | 'left' | 'right';
+
 interface ThemeContextValue {
   mode: ThemeMode;
   accentId: string;
   accent: AccentColor;
+  activityDock: ActivityDockPosition;
   setMode: (mode: ThemeMode) => void;
   setAccentId: (id: string) => void;
+  setActivityDock: (p: ActivityDockPosition) => void;
   toggleMode: () => void;
 }
 
@@ -116,6 +120,7 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 const STORAGE_MODE_KEY = 'sf_theme_mode';
 const STORAGE_ACCENT_KEY = 'sf_theme_accent';
+const STORAGE_DOCK_KEY = 'sf_activity_dock';
 
 // ---------------------------------------------------------------------------
 // Apply theme to DOM
@@ -179,6 +184,15 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return safeGet(STORAGE_ACCENT_KEY) ?? 'teal';
   });
 
+  const [activityDock, setActivityDockState] = useState<ActivityDockPosition>(() => {
+    const stored = safeGet(STORAGE_DOCK_KEY);
+    return (['bottom', 'top', 'left', 'right'] as const).includes(
+      stored as ActivityDockPosition,
+    )
+      ? (stored as ActivityDockPosition)
+      : 'bottom';
+  });
+
   const accent = ACCENT_COLORS.find((c) => c.id === accentId) ?? ACCENT_COLORS[0]!;
 
   const setMode = useCallback((m: ThemeMode) => {
@@ -191,6 +205,11 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     safeSet(STORAGE_ACCENT_KEY, id);
   }, []);
 
+  const setActivityDock = useCallback((p: ActivityDockPosition) => {
+    setActivityDockState(p);
+    safeSet(STORAGE_DOCK_KEY, p);
+  }, []);
+
   const toggleMode = useCallback(() => {
     setMode(mode === 'dark' ? 'light' : 'dark');
   }, [mode, setMode]);
@@ -200,8 +219,26 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyTheme(mode, accent);
   }, [mode, accent]);
 
+  // Reflect dock position on <html> so both CSS-side layout and components
+  // that need to know (e.g. sidebar, toast stack) can react without
+  // re-rendering via context changes.
+  useEffect(() => {
+    document.documentElement.dataset.activityDock = activityDock;
+  }, [activityDock]);
+
   return (
-    <ThemeContext.Provider value={{ mode, accentId, accent, setMode, setAccentId, toggleMode }}>
+    <ThemeContext.Provider
+      value={{
+        mode,
+        accentId,
+        accent,
+        activityDock,
+        setMode,
+        setAccentId,
+        setActivityDock,
+        toggleMode,
+      }}
+    >
       {children}
     </ThemeContext.Provider>
   );
