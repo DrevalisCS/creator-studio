@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated
+from typing import Annotated
 
 import structlog
 from fastapi import (
@@ -31,14 +31,17 @@ from fastapi import (
     status,
 )
 from fastapi.responses import FileResponse
+from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — required
 
+# for FastAPI to resolve ``Annotated[AsyncSession, Depends(get_db)]``
+# into a dependency instead of a query parameter. ``from __future__
+# import annotations`` turns annotations into strings, so the
+# previous TYPE_CHECKING-only import made FastAPI fall back to
+# treating ``db`` as a query param, producing 422 on every request.
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
 from drevalis.services.backup import BackupError, BackupService
 from drevalis.services.media_repair import repair_media_links
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
