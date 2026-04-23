@@ -193,6 +193,17 @@ services:
       - CHOWN
       - SETUID
       - SETGID
+    # Read-only root filesystem — the frontend container serves a static
+    # bundle, it never writes to its own filesystem. ``tmpfs`` mounts
+    # for the few paths nginx must be able to write to (pid file,
+    # cache dir, log dir) keep the container fully functional while
+    # eliminating any post-compromise persistence / path-traversal
+    # write surface.
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32m
+      - /var/cache/nginx:rw,noexec,nosuid,size=128m
+      - /var/log/nginx:rw,noexec,nosuid,size=32m
 
 # ── Defaults applied to every service via YAML anchors ─────────────────
 # Not every service can use ``read_only: true`` (ffmpeg writes to /tmp,
