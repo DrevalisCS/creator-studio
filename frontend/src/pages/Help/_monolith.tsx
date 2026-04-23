@@ -1316,14 +1316,36 @@ as she reached for the lamp.`}</CodeBlock>
               OAuth tokens are encrypted at rest using Fernet encryption. They are never stored or logged in plaintext. The app automatically refreshes expired tokens using the refresh token.
             </InfoBox>
 
-            <SubHeading id="connect-other" title="Connecting TikTok, Instagram, and X" />
+            <SubHeading id="connect-other" title="Connecting TikTok, Instagram, Facebook, and X" />
             <p className="text-sm text-txt-secondary leading-relaxed mb-3">
-              TikTok, Instagram, and X (Twitter) connections use platform-specific API tokens rather than OAuth.
-              Go to Settings → Social Media and enter your API credentials for each platform. Once connected,
-              videos can be uploaded directly from the episode export menu.
+              TikTok offers a full OAuth flow; Instagram, Facebook, and X (Twitter) use platform-specific
+              API tokens you paste into <strong className="text-txt-primary">Settings → Social Media</strong>.
+              Once connected, videos can be uploaded directly from the episode export menu.
             </p>
+            <ul className="text-sm text-txt-secondary leading-relaxed list-disc pl-5 space-y-1.5 mb-3">
+              <li>
+                <strong className="text-txt-primary">Facebook:</strong> needs a Page Access Token
+                <em> (not a user token)</em> plus the numeric Page ID. Drevalis validates both at
+                connect-time and will refuse to save the credential if either is missing.
+              </li>
+              <li>
+                <strong className="text-txt-primary">Instagram:</strong> needs a Business/Creator
+                Account ID and a public HTTPS URL that maps to your storage folder — Reels require the
+                video to be reachable over the internet. Both fields are enforced at connect-time.
+              </li>
+              <li>
+                <strong className="text-txt-primary">X (Twitter):</strong> paste an OAuth 2.0 user
+                access token with <code>tweet.write</code> + <code>media.write</code> scopes.
+              </li>
+              <li>
+                <strong className="text-txt-primary">TikTok:</strong> click <em>Connect TikTok</em>;
+                Drevalis handles the PKCE OAuth round-trip.
+              </li>
+            </ul>
             <Warning>
-              TikTok and Instagram require developer app approval for upload access. Standard personal accounts do not have API upload permissions without an approved app registration on each platform.
+              TikTok, Instagram, and Facebook require developer app approval for upload access.
+              Standard personal accounts do not have API upload permissions without an approved app
+              registration on each platform. X (Twitter) requires paid API access on current tiers.
             </Warning>
 
             <SubHeading id="uploading" title="Uploading Videos" />
@@ -1438,6 +1460,32 @@ as she reached for the lamp.`}</CodeBlock>
             </p>
             <InfoBox>
               Long-form jobs are assigned lower priority than Shorts in the worker queue. Shorts in the same queue will complete first. You can monitor queue position in the Activity Monitor.
+            </InfoBox>
+
+            <h3 className="font-display text-sm mt-8 mb-2">Music videos & animation</h3>
+            <p className="text-sm text-txt-secondary leading-relaxed mb-4">
+              Two additional formats live alongside Shorts and Long-form:
+            </p>
+            <ul className="text-sm text-txt-secondary leading-relaxed list-disc pl-5 space-y-1.5">
+              <li>
+                <strong className="text-txt-primary">Music video.</strong> The backing track is the content.
+                The LLM writes lyrics, the audio engine renders the full song with vocals, and scenes cut
+                to the beats. Works for both 9:16 and 16:9 delivery. Best on a GPU that can run an
+                AI-music workflow (ACE Step / similar) — without one the pipeline falls back to library
+                music + the standard scene flow, so the episode still ships.
+              </li>
+              <li>
+                <strong className="text-txt-primary">Animation.</strong> Routes every scene through an
+                animation-tagged workflow and prepends a style anchor to every prompt — nine presets
+                ship: anime classic / modern, Studio Ghibli, Cartoon Network, Pixar 3D, Disney 3D,
+                motion comic, stop motion, pixel art. Import an animation workflow once, then pick the
+                style from the series settings.
+              </li>
+            </ul>
+            <InfoBox className="mt-4">
+              Both music video and animation share the long-form chapter-based pipeline under the hood.
+              You get the same chapter structure + cost estimate + assembly hygiene as a regular
+              long-form series — the format only changes how prompts and audio are generated.
             </InfoBox>
           </section>
 
