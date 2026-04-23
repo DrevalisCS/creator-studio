@@ -238,7 +238,17 @@ async def _tiktok_upload(
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        init_resp = await client.post(_TIKTOK_INIT_URL, json=init_body, headers=headers)
+        from drevalis.core.http_retry import request_with_retry
+
+        init_resp = await request_with_retry(
+            client,
+            "POST",
+            _TIKTOK_INIT_URL,
+            json=init_body,
+            headers=headers,
+            label="tiktok.publish.init",
+            max_attempts=3,
+        )
         init_resp.raise_for_status()
         init_data = init_resp.json().get("data") or {}
         publish_id = init_data.get("publish_id")
@@ -357,8 +367,12 @@ async def _instagram_reels_upload(
     caption = _compose_caption_multiline(title, description, hashtags, limit=2200)
 
     async with httpx.AsyncClient(timeout=30.0) as client:
+        from drevalis.core.http_retry import request_with_retry
+
         # 1. Create Reels container.
-        create_resp = await client.post(
+        create_resp = await request_with_retry(
+            client,
+            "POST",
             f"{_IG_GRAPH_BASE}/{ig_user_id}/media",
             data={
                 "media_type": "REELS",
@@ -366,6 +380,8 @@ async def _instagram_reels_upload(
                 "caption": caption,
                 "access_token": token,
             },
+            label="instagram.reels.create",
+            max_attempts=3,
         )
         if create_resp.status_code >= 400:
             raise RuntimeError(
@@ -379,9 +395,13 @@ async def _instagram_reels_upload(
         # 2. Poll container status until FINISHED.
         for _ in range(_MAX_POLLS):
             await asyncio.sleep(_POLL_INTERVAL_S)
-            status_resp = await client.get(
+            status_resp = await request_with_retry(
+                client,
+                "GET",
                 f"{_IG_GRAPH_BASE}/{container_id}",
                 params={"fields": "status_code", "access_token": token},
+                label="instagram.reels.status",
+                max_attempts=2,
             )
             status_resp.raise_for_status()
             code = (status_resp.json() or {}).get("status_code") or ""
@@ -393,9 +413,13 @@ async def _instagram_reels_upload(
             raise TimeoutError("Instagram container did not finish in time")
 
         # 3. Publish.
-        publish_resp = await client.post(
+        publish_resp = await request_with_retry(
+            client,
+            "POST",
             f"{_IG_GRAPH_BASE}/{ig_user_id}/media_publish",
             data={"creation_id": container_id, "access_token": token},
+            label="instagram.reels.publish",
+            max_attempts=3,
         )
         if publish_resp.status_code >= 400:
             raise RuntimeError(
@@ -449,14 +473,20 @@ async def _facebook_video_upload(
     caption = _compose_caption_multiline(title, description, hashtags, limit=5000)
 
     async with httpx.AsyncClient(timeout=300.0) as client:
+        from drevalis.core.http_retry import request_with_retry
+
         # 1. START — declare file size, receive session + first chunk offsets.
-        start_resp = await client.post(
+        start_resp = await request_with_retry(
+            client,
+            "POST",
             endpoint,
             data={
                 "upload_phase": "start",
                 "file_size": size,
                 "access_token": token,
             },
+            label="facebook.video.start",
+            max_attempts=3,
         )
         if start_resp.status_code >= 400:
             raise RuntimeError(
@@ -498,7 +528,9 @@ async def _facebook_video_upload(
                 start_offset, end_offset = next_start, next_end
 
         # 3. FINISH — attach metadata and publish.
-        finish_resp = await client.post(
+        finish_resp = await request_with_retry(
+            client,
+            "POST",
             endpoint,
             data={
                 "upload_phase": "finish",
@@ -507,6 +539,8 @@ async def _facebook_video_upload(
                 "description": caption,
                 "access_token": token,
             },
+            label="facebook.video.finish",
+            max_attempts=3,
         )
         if finish_resp.status_code >= 400:
             raise RuntimeError(
@@ -546,8 +580,12 @@ async def _x_video_upload(
     headers = {"Authorization": f"Bearer {token}"}
 
     async with httpx.AsyncClient(timeout=120.0) as client:
+        from drevalis.core.http_retry import request_with_retry
+
         # INIT
-        init_resp = await client.post(
+        init_resp = await request_with_retry(
+            client,
+            "POST",
             _X_MEDIA_UPLOAD,
             data={
                 "command": "INIT",
@@ -556,6 +594,8 @@ async def _x_video_upload(
                 "total_bytes": size,
             },
             headers=headers,
+            label="x.media.init",
+            max_attempts=3,
         )
         if init_resp.status_code >= 400:
             raise RuntimeError(f"X INIT failed ({init_resp.status_code}): {init_resp.text[:300]}")
@@ -588,10 +628,14 @@ async def _x_video_upload(
                 segment_index += 1
 
         # FINALIZE
-        finalize_resp = await client.post(
+        finalize_resp = await request_with_retry(
+            client,
+            "POST",
             _X_MEDIA_UPLOAD,
             data={"command": "FINALIZE", "media_id": media_id},
             headers=headers,
+            label="x.media.finalize",
+            max_attempts=3,
         )
         if finalize_resp.status_code >= 400:
             raise RuntimeError(
@@ -615,10 +659,14 @@ async def _x_video_upload(
 
         # Post the tweet referencing the media_id.
         text = _compose_caption_multiline(title, description, hashtags, limit=280)
-        tweet_resp = await client.post(
+        tweet_resp = await request_with_retry(
+            client,
+            "POST",
             _X_TWEETS,
             json={"text": text, "media": {"media_ids": [media_id]}},
             headers={**headers, "Content-Type": "application/json"},
+            label="x.tweets.create",
+            max_attempts=3,
         )
         if tweet_resp.status_code >= 400:
             raise RuntimeError(
