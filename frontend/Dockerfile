@@ -3,8 +3,11 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-COPY package.json package-lock.json* ./
-RUN npm install
+COPY package.json package-lock.json ./
+# ``npm ci`` requires a committed lockfile and gives reproducible,
+# vulnerability-pinned installs. Falls back to ``npm install`` only if
+# the lockfile is missing (shouldn't happen in CI / release images).
+RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
 
 COPY . .
 RUN npm run build

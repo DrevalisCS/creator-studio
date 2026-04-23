@@ -25,7 +25,8 @@ dependencies = [
     "google-api-python-client>=2.100.0",
     "google-auth-oauthlib>=1.2.0",
     "google-auth>=2.25.0",
-    "pyjwt[crypto]>=2.10.0",
+    # CVE-2024-53861 audience-bypass fix only lands in 2.10.1+.
+    "pyjwt[crypto]>=2.10.1",
     # Image magic-byte verification on cover uploads.
     "Pillow>=10.0.0",
     # ID3 metadata + chapter markers for audiobook MP3 output.

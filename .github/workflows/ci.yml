@@ -83,10 +83,9 @@ jobs:
           node-version: "20"
       - name: Install dependencies
         working-directory: frontend
-        # ``npm ci`` requires a lockfile; we don't commit one, so use ``npm install``.
-        # Frontend is small enough that reproducibility at this level is acceptable
-        # until we decide to commit package-lock.json.
-        run: npm install
+        # Lockfile is committed as of v0.19.35 — npm ci gives us a
+        # reproducible install gated on package-lock.json.
+        run: npm ci --no-audit --no-fund
       - name: TypeScript
         working-directory: frontend
         run: npx tsc --noEmit

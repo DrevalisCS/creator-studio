@@ -55,7 +55,9 @@ htmlcov/
 
 # ── Node (frontend, if any) ─────────────────────────────────────────────────
 node_modules/
-package-lock.json
+# package-lock.json IS committed — we want reproducible Docker builds via
+# ``npm ci``. Keep this comment to remind future maintainers not to add it
+# back to .gitignore.
 *.tsbuildinfo
 
 # ── OS ────────────────────────────────────────────────────────────────────────
