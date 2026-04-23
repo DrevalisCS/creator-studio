@@ -374,13 +374,12 @@ async def regenerate_audiobook_chapter(
 
     .. note::
 
-        When ``new_chapter_text`` is ``None`` (a pure retry on a
-        flaky chunk) the job short-circuits through the full
-        generator but with the original text, which is effectively a
-        whole-audiobook rebuild. Scheduled for replacement by a real
-        per-chapter fast path once ``AudiobookService`` exposes a
-        ``rebuild_chapter(index, text)`` primitive. Until then this
-        is safe, just slower than the name implies.
+        Fast path: the chunk cache for the target chapter is dropped
+        before calling ``AudiobookService.generate``. The generator
+        reuses every chunk WAV that still exists on disk, so only the
+        invalidated chapter gets re-synthesised; every other chapter's
+        pre-rendered audio is spliced back in. The final concat + post-
+        processing still runs end-to-end.
 
     Parameters
     ----------
@@ -491,13 +490,21 @@ async def regenerate_audiobook_chapter(
                 "error": "voice profile not found",
             }
 
-        # Full regeneration with the (potentially updated) text
         service = AudiobookService(
             tts_service=ctx["tts_service"],
             ffmpeg_service=ctx["ffmpeg_service"],
             storage=ctx["storage"],
             db_session=session,
         )
+
+        # Per-chapter fast path: drop ONLY the target chapter's chunk
+        # cache. AudiobookService.generate re-uses every existing chunk
+        # WAV on disk (``if chunk_path.exists()``) — the regenerated
+        # chapter's chunks are the only ones that will actually be
+        # re-synthesised. Other chapters get re-used, giving the user
+        # a genuinely fast retry instead of re-TTSing everything.
+        deleted = await service.invalidate_chapter_chunks(parsed_id, chapter_index)
+        log.info("per_chapter_fast_path_invalidation", deleted_chunks=deleted)
 
         try:
             result = await service.generate(

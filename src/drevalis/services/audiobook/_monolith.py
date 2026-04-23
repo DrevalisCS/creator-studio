@@ -114,6 +114,48 @@ class AudiobookService:
             pass  # non-critical
 
     # ══════════════════════════════════════════════════════════════════════
+    # Per-chapter fast path — invalidate only the chunk cache for one
+    # chapter so the next ``generate`` call re-TTSes just that chapter
+    # while reusing every other chapter's cached WAVs.
+    # ══════════════════════════════════════════════════════════════════════
+
+    async def invalidate_chapter_chunks(
+        self,
+        audiobook_id: UUID,
+        chapter_index: int,
+    ) -> int:
+        """Delete the on-disk chunk cache for ``chapter_index``.
+
+        Returns the number of WAVs deleted. A subsequent call to
+        :meth:`generate` will re-synthesise only those chunks (the
+        existing per-chunk ``if chunk_path.exists()`` cache skips every
+        unaffected chapter) and re-concatenate the whole audiobook.
+        """
+        from pathlib import Path
+
+        storage_base = Path(self.storage.base_path)
+        output_dir = storage_base / "audiobooks" / str(audiobook_id)
+        if not output_dir.exists():
+            return 0
+
+        deleted = 0
+        prefix = f"ch{int(chapter_index):03d}_chunk_"
+        for child in output_dir.iterdir():
+            if child.name.startswith(prefix) and child.suffix == ".wav":
+                try:
+                    child.unlink()
+                    deleted += 1
+                except OSError:
+                    pass
+        log.info(
+            "audiobook.chapter_chunks_invalidated",
+            audiobook_id=str(audiobook_id),
+            chapter_index=chapter_index,
+            deleted=deleted,
+        )
+        return deleted
+
+    # ══════════════════════════════════════════════════════════════════════
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
