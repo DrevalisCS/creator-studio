@@ -1429,39 +1429,53 @@ class AudiobookService:
             log.info("audiobook.chapter_music.no_music_available")
             return audio_path
 
-        # Concatenate chapter music tracks into one continuous track
+        # Join chapter-music tracks with a real ``acrossfade`` chain
+        # between successive tracks. Previously the code concat-demuxed
+        # pre-faded tracks — each clip had its own fade-out, but the
+        # tracks just touched end-to-end with no overlap, so the mix
+        # dipped to silence briefly at every boundary instead of the
+        # advertised crossfade.
         if len(valid_music) == 1:
             combined_music = valid_music[0][1]
         else:
-            # Use concat to join all music (crossfade already applied via afade)
-            concat_list = music_dir / "_music_concat.txt"
-            lines = []
-            for _, mp in valid_music:
-                safe = str(mp).replace("\\", "/")
-                lines.append(f"file '{safe}'")
-            concat_list.write_text("\n".join(lines), encoding="utf-8")
-
             combined_music = music_dir / "combined_music.wav"
+            inputs: list[str] = []
+            for _, mp in valid_music:
+                inputs.extend(["-i", str(mp)])
+
+            # Filter graph: chain acrossfade between each pair.
+            # For N inputs we need N-1 acrossfade steps.
+            xfd = max(0.05, float(crossfade_duration))
+            filter_parts: list[str] = []
+            prev = "[0:a]"
+            for idx in range(1, len(valid_music)):
+                out_label = f"[x{idx}]" if idx < len(valid_music) - 1 else "[out]"
+                filter_parts.append(
+                    f"{prev}[{idx}:a]acrossfade=d={xfd:.3f}:c1=tri:c2=tri{out_label}"
+                )
+                prev = out_label
+            filter_graph = ";".join(filter_parts)
+
             proc = await asyncio.create_subprocess_exec(
                 "ffmpeg",
                 "-y",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(concat_list),
+                *inputs,
+                "-filter_complex",
+                filter_graph,
+                "-map",
+                "[out]",
                 "-c:a",
                 "pcm_s16le",
                 str(combined_music),
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE,
             )
-            await proc.communicate()
-            concat_list.unlink(missing_ok=True)
-
-            if not combined_music.exists():
-                log.warning("audiobook.chapter_music.concat_failed")
+            _, stderr_b = await proc.communicate()
+            if not combined_music.exists() or proc.returncode != 0:
+                log.warning(
+                    "audiobook.chapter_music.crossfade_failed",
+                    error=stderr_b.decode("utf-8", errors="replace")[:200],
+                )
                 return audio_path
 
         # Mix combined music under voiceover with sidechain compression
