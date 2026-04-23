@@ -66,6 +66,8 @@ interface RepairReport {
   unresolved_paths: Array<{ path: string; basename_on_disk: boolean }>;
   storage_base_abs?: string;
   indexed_files?: number;
+  sample_db_paths?: string[];
+  sample_disk_paths?: string[];
 }
 
 interface StorageProbe {
@@ -674,6 +676,42 @@ export function BackupSection() {
                 )}
               </p>
             )}
+            {(repairReport.sample_db_paths?.length ||
+              repairReport.sample_disk_paths?.length) ? (
+              <div className="mt-3 grid md:grid-cols-2 gap-3">
+                <div className="rounded bg-bg-elevated p-3">
+                  <div className="text-[10px] text-txt-tertiary uppercase tracking-wider mb-2">
+                    Sample DB paths ({repairReport.sample_db_paths?.length ?? 0})
+                  </div>
+                  <div className="font-mono text-[11px] text-txt-primary space-y-1 break-all">
+                    {(repairReport.sample_db_paths || []).length === 0 ? (
+                      <div className="text-txt-muted">No media_assets rows with a file_path.</div>
+                    ) : (
+                      (repairReport.sample_db_paths || []).map((p, i) => (
+                        <div key={i}>{p}</div>
+                      ))
+                    )}
+                  </div>
+                </div>
+                <div className="rounded bg-bg-elevated p-3">
+                  <div className="text-[10px] text-txt-tertiary uppercase tracking-wider mb-2">
+                    Sample disk paths ({repairReport.sample_disk_paths?.length ?? 0})
+                  </div>
+                  <div className="font-mono text-[11px] text-txt-primary space-y-1 break-all">
+                    {(repairReport.sample_disk_paths || []).length === 0 ? (
+                      <div className="text-txt-muted">
+                        Index empty — container sees no files under storage_root. The
+                        bind mount is pointing at the wrong directory.
+                      </div>
+                    ) : (
+                      (repairReport.sample_disk_paths || []).map((p, i) => (
+                        <div key={i}>{p}</div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </Card>

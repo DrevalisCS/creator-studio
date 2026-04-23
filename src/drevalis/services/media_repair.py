@@ -60,6 +60,10 @@ class RepairReport:
     # app is pointed at a different directory than the user populated.
     storage_base_abs: str = ""
     indexed_files: int = 0
+    # v0.20.6 — diagnostic samples surfaced into the UI so "repair
+    # finds nothing" can be diagnosed without grepping server logs.
+    sample_db_paths: list[str] = field(default_factory=list)
+    sample_disk_paths: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -74,6 +78,8 @@ class RepairReport:
             ],
             "storage_base_abs": self.storage_base_abs,
             "indexed_files": self.indexed_files,
+            "sample_db_paths": self.sample_db_paths,
+            "sample_disk_paths": self.sample_disk_paths,
         }
 
 
@@ -285,14 +291,29 @@ async def repair_media_links(
 ) -> RepairReport:
     """Walk every ``media_assets`` row, fix broken ``file_path``s where
     we can locate a matching file on disk, and commit.
+
+    v0.20.6 — the walk runs in a thread so it doesn't block the event
+    loop for the minutes it takes on a 20 GB Docker Desktop 9P mount.
+    Also emits explicit logs so the operator can tell whether "no match"
+    means "the index is empty" or "the index is full but nothing
+    matched".
     """
+    import asyncio
+
     report = RepairReport()
+    storage_abs = storage_base.resolve()
+    report.storage_base_abs = str(storage_abs)
+
     if not storage_base.exists():
+        logger.warning(
+            "media_repair.storage_missing",
+            storage_base=str(storage_abs),
+        )
         return report
 
-    by_tail, by_name, by_name_size = _walk_storage(storage_base)
+    # Walk off-loop so static files keep serving while this runs.
+    by_tail, by_name, by_name_size = await asyncio.to_thread(_walk_storage, storage_base)
     indexed_files = sum(len(v) for v in by_name.values())
-    report.storage_base_abs = str(storage_base.resolve())
     report.indexed_files = indexed_files
     logger.info(
         "media_repair.index_built",
@@ -301,7 +322,50 @@ async def repair_media_links(
         unique_basenames=len(by_name),
     )
 
+    # Sanity log — if the index is empty, the rest of the run will
+    # unresolve every row. Surface that BEFORE the loop so a future
+    # "Repair finds nothing" report has an obvious smoking gun.
+    if indexed_files == 0:
+        logger.warning(
+            "media_repair.empty_index",
+            storage_base=report.storage_base_abs,
+            hint=(
+                "Walk completed but found zero files. The container "
+                "cannot see any storage contents. Either storage_base_path "
+                "is wrong, the bind mount points elsewhere, or the "
+                "skip_roots list is filtering everything."
+            ),
+        )
+
     rows = list((await session.execute(select(MediaAsset))).scalars().all())
+    logger.info("media_repair.rows_loaded", count=len(rows))
+
+    # v0.20.6 — diagnostic samples. When "repair finds nothing", the
+    # most common root cause is the DB rows and disk paths disagreeing
+    # about the directory layout (e.g. the backup was extracted into a
+    # slightly different tree). Emit 5 of each side so the log line
+    # alone is enough to tell what happened without a second round-trip.
+    sample_disk_paths: list[str] = []
+    for paths_list in list(by_tail.values())[:5]:
+        for p in paths_list[:1]:
+            try:
+                sample_disk_paths.append(p.relative_to(storage_base).as_posix())
+            except ValueError:
+                sample_disk_paths.append(p.as_posix())
+            if len(sample_disk_paths) >= 5:
+                break
+        if len(sample_disk_paths) >= 5:
+            break
+    sample_db_paths = [r.file_path for r in rows[:5] if r.file_path]
+    logger.info(
+        "media_repair.samples",
+        db_paths=sample_db_paths,
+        disk_paths=sample_disk_paths,
+    )
+    # Surface the samples into the report so the UI's diagnostics
+    # panel can render them — the user doesn't need to go to the logs.
+    report.sample_db_paths = sample_db_paths
+    report.sample_disk_paths = sample_disk_paths
 
     # ── Dedupe pass ─────────────────────────────────────────────────
     # Episodes regenerated multiple times often accumulate duplicate
