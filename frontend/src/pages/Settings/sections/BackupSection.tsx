@@ -50,6 +50,7 @@ interface StorageProbe {
   process_uid: number | null;
   process_gid: number | null;
   mount_fs: string | null;
+  host_source_path: string | null;
   samples: Array<{
     asset_type: string;
     file_path: string;
@@ -378,24 +379,31 @@ export function BackupSection() {
         </div>
         {probeReport && (
           <div className="mt-4 space-y-3 rounded bg-bg-elevated p-3 text-xs">
-            <div className="font-mono text-txt-primary">
-              storage_base: {probeReport.storage_base_path}
-              {probeReport.process_uid !== null && (
-                <> · uid={probeReport.process_uid}</>
-              )}
-              {probeReport.mount_fs && (
-                <> · fs={probeReport.mount_fs}
-                  {(probeReport.mount_fs === 'cifs' ||
-                    probeReport.mount_fs === 'smb3' ||
-                    probeReport.mount_fs === 'nfs' ||
-                    probeReport.mount_fs === 'nfs4') && (
-                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-accent/10 text-accent">
-                      {probeReport.mount_fs === 'cifs' || probeReport.mount_fs === 'smb3'
-                        ? 'SMB/CIFS share'
-                        : 'NFS share'}
-                    </span>
-                  )}
-                </>
+            <div className="font-mono text-txt-primary space-y-0.5">
+              <div>
+                inside container: {probeReport.storage_base_path}
+                {probeReport.process_uid !== null && (
+                  <> · uid={probeReport.process_uid}</>
+                )}
+                {probeReport.mount_fs && (
+                  <> · fs={probeReport.mount_fs}
+                    {(probeReport.mount_fs === 'cifs' ||
+                      probeReport.mount_fs === 'smb3' ||
+                      probeReport.mount_fs === 'nfs' ||
+                      probeReport.mount_fs === 'nfs4') && (
+                      <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-accent/10 text-accent">
+                        {probeReport.mount_fs === 'cifs' || probeReport.mount_fs === 'smb3'
+                          ? 'SMB/CIFS share'
+                          : 'NFS share'}
+                      </span>
+                    )}
+                  </>
+                )}
+              </div>
+              {probeReport.host_source_path && (
+                <div className="text-accent">
+                  on host: {probeReport.host_source_path}
+                </div>
               )}
             </div>
             {probeReport.hints.length > 0 && (

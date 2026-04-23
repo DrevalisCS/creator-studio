@@ -226,9 +226,6 @@ def _detect_mount_fs(path: Path) -> str | None:
     """Return the filesystem type backing *path* (``ext4``, ``cifs``,
     ``nfs``, ``overlay`` …) by reading ``/proc/mounts`` — or ``None``
     when that isn't readable (Windows, restricted containers).
-
-    Used purely as a diagnostic so the Settings UI can show whether
-    the media volume is local, SMB, NFS, or something else.
     """
     try:
         mounts = Path("/proc/mounts").read_text(encoding="utf-8").splitlines()
@@ -247,6 +244,52 @@ def _detect_mount_fs(path: Path) -> str | None:
             depth = len(mount_point)
             if best is None or depth > best[0]:
                 best = (depth, fs_type)
+    return best[1] if best else None
+
+
+def _detect_host_source(path: Path) -> str | None:
+    """Return the host path that ``path`` maps back to via Docker's
+    bind-mount — read from ``/proc/self/mountinfo``. Answers the
+    question "I'm inside the container at ``/app/storage``; where is
+    that on my actual hard disk?". Returns ``None`` when we can't
+    read mountinfo (Windows host, restricted container).
+
+    mountinfo line shape (simplified)::
+
+        36 35 253:0 /data /app/storage rw,relatime shared:1 - ext4 /dev/sda1 rw
+                     ^^^^^ ^^^^^^^^^^^                     ^^^ ^^^^^^^^^^^
+                     root  mount point                     fs  source
+
+    field[3] is the path *within* the source filesystem that was
+    mounted (for a bind mount, this is the host-side absolute path
+    when the namespace lets us see it). On Docker Desktop for
+    Windows / macOS this is the path inside the Linux VM, not the
+    host Windows / macOS path — so we surface it with a caveat in
+    the hint text.
+    """
+    try:
+        raw = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+    path_str = str(path)
+    best: tuple[int, str] | None = None
+    for line in raw:
+        parts = line.split()
+        # Need at least ``id parent_id major:minor root mount_point opts``
+        if len(parts) < 5:
+            continue
+        root = parts[3]
+        mount_point = parts[4]
+        if path_str == mount_point or path_str.startswith(mount_point.rstrip("/") + "/"):
+            # For paths deeper than the mount point, append the remainder.
+            tail = path_str[len(mount_point) :]
+            source = root.rstrip("/") + (
+                tail if tail.startswith("/") else "/" + tail if tail else ""
+            )
+            depth = len(mount_point)
+            if best is None or depth > best[0]:
+                best = (depth, source)
     return best[1] if best else None
 
 
@@ -291,6 +334,7 @@ async def storage_probe(
         "process_uid": None,
         "process_gid": None,
         "mount_fs": _detect_mount_fs(storage_base),
+        "host_source_path": _detect_host_source(storage_base),
     }
     # ``os.getuid`` / ``os.getgid`` only exist on POSIX. On Windows the
     # probe simply omits those fields.
@@ -393,6 +437,21 @@ def _storage_probe_hints(report: dict[str, Any]) -> list[str]:
             "real files, or flip the mount to follow_symlinks=True "
             "(weighs the path-traversal trade-off yourself)."
         )
+    host_source = report.get("host_source_path")
+    if host_source:
+        # Always surface the host path so users never copy media to the
+        # wrong place. Particularly important on Windows / macOS where
+        # Docker Desktop's VM path (/run/desktop/mnt/host/c/...) isn't
+        # obviously a bind of %USERPROFILE%.
+        hints.append(
+            f"The container's /app/storage path is bind-mounted from the "
+            f"host at ``{host_source}`` — your media files must live "
+            f"under that directory. On Windows Docker Desktop this path "
+            f"typically maps to a location under %USERPROFILE% (often "
+            f"``%USERPROFILE%\\Drevalis\\storage\\``); on Linux it's the "
+            f"absolute host path shown."
+        )
+
     if not hints:
         hints.append(
             "No obvious storage-serving problem detected. If videos still "
