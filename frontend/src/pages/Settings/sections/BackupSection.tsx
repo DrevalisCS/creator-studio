@@ -114,10 +114,36 @@ export function BackupSection() {
     setRepairing(true);
     setRepairReport(null);
     try {
-      const res = await fetch('/api/v1/backup/repair-media', { method: 'POST' });
+      // Explicitly empty JSON body — nginx/uvicorn stacks sometimes
+      // inject a default Content-Type header on body-less POSTs which
+      // confused FastAPI into returning 422. Sending "{}" with the
+      // correct Content-Type removes the ambiguity.
+      const res = await fetch('/api/v1/backup/repair-media', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: '{}',
+      });
       if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new ApiError(res.status, res.statusText, detail.detail ?? res.statusText);
+        const payload = await res.json().catch(() => ({}));
+        // FastAPI 422 puts a validation-error array in `.detail`; other
+        // errors put a plain string there. Flatten either shape to a
+        // human-readable message so toasts don't render "[object Object]".
+        let message = res.statusText;
+        const detail = (payload as { detail?: unknown }).detail;
+        if (Array.isArray(detail)) {
+          message = detail
+            .map((d: { loc?: unknown[]; msg?: string }) => {
+              const loc = (d.loc ?? []).join('.');
+              return loc ? `${loc}: ${d.msg ?? ''}` : d.msg ?? '';
+            })
+            .filter(Boolean)
+            .join('; ') || message;
+        } else if (typeof detail === 'string') {
+          message = detail;
+        } else if (detail && typeof detail === 'object') {
+          message = JSON.stringify(detail);
+        }
+        throw new ApiError(res.status, res.statusText, message);
       }
       const data: RepairReport = await res.json();
       setRepairReport(data);

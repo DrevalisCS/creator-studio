@@ -236,8 +236,12 @@ async def restore_backup(
 )
 async def repair_media(
     db: Annotated[AsyncSession, Depends(get_db)],
-    settings: Settings = Depends(get_settings),
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict[str, object]:
+    # No request body is accepted or required — both deps are dependency-
+    # injected. Switched to Annotated+Depends for both so FastAPI never
+    # tries to treat one as a query/body parameter (that was producing
+    # a spurious 422 when the frontend fired POST with no body).
     try:
         report = await repair_media_links(db, settings.storage_base_path)
     except Exception as exc:  # noqa: BLE001
