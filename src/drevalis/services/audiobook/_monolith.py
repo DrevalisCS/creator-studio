@@ -1503,13 +1503,37 @@ class AudiobookService:
     # ══════════════════════════════════════════════════════════════════════
 
     async def _convert_to_mp3(self, wav_path: Path) -> Path:
-        """Convert a WAV file to MP3 at 192 kbps."""
+        """Convert a WAV file to MP3 at 192 kbps, EBU R128 normalised,
+        with leading/trailing silence trimmed.
+
+        The filter chain is:
+
+          * ``silenceremove`` at both ends — drops any leading /
+            trailing audio < -40 dBFS lasting ≥ 0.1 s. Stops listeners
+            hearing a hang before chapter 1 kicks in when the first
+            TTS chunk has a slow onset.
+          * ``loudnorm`` with broadcast target ``I=-16 LUFS`` and
+            ``TP=-1.5 dBFS`` — keeps audiobooks inside Apple Books'
+            recommended loudness window and well under the -14 LUFS
+            Spotify ceiling. ``linear=true`` uses the EBU R128
+            single-pass algorithm; that's fine for already-concatenated
+            speech where dynamic range is modest.
+        """
         mp3_path = wav_path.with_suffix(".mp3")
+        af = (
+            "silenceremove=start_periods=1:start_silence=0.1:start_threshold=-40dB,"
+            "areverse,"
+            "silenceremove=start_periods=1:start_silence=0.1:start_threshold=-40dB,"
+            "areverse,"
+            "loudnorm=I=-16:TP=-1.5:LRA=11:linear=true:print_format=summary"
+        )
         cmd = [
             "ffmpeg",
             "-y",
             "-i",
             str(wav_path),
+            "-af",
+            af,
             "-codec:a",
             "libmp3lame",
             "-b:a",
@@ -1525,7 +1549,30 @@ class AudiobookService:
         _, stderr = await proc.communicate()
         if proc.returncode != 0:
             stderr_text = stderr.decode("utf-8", errors="replace")
-            raise RuntimeError(f"Failed to convert to MP3: {stderr_text[:300]}")
+            # Retry once without the filter chain so a ffmpeg-version
+            # incompat never loses the user's audiobook.
+            log.warning(
+                "audiobook.mp3_normalisation_failed_retrying_raw",
+                error=stderr_text[:200],
+            )
+            proc2 = await asyncio.create_subprocess_exec(
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(wav_path),
+                "-codec:a",
+                "libmp3lame",
+                "-b:a",
+                "192k",
+                str(mp3_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr2 = await proc2.communicate()
+            if proc2.returncode != 0:
+                raise RuntimeError(
+                    f"Failed to convert to MP3: {stderr2.decode('utf-8', 'replace')[:300]}"
+                )
 
         log.debug("audiobook.mp3_conversion_done", path=str(mp3_path))
         return mp3_path
