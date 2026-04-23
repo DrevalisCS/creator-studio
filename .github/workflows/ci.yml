@@ -57,7 +57,19 @@ jobs:
       - name: Run unit tests (xfails are expected)
         # Stale tests are marked xfail in conftest.py; they run but don't fail the build.
         # See TECHDEBT.md §1 for the quarantine list.
-        run: pytest tests/unit/ -v
+        run: |
+          pip install pytest-cov
+          pytest tests/unit/ -v --cov=src/drevalis --cov-report=term --cov-report=xml
+      - name: Summarise coverage on PRs
+        if: github.event_name == 'pull_request'
+        uses: orgoro/coverage@v3.1
+        with:
+          coverageFile: coverage.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          thresholdAll: 0.0
+          thresholdNew: 0.0
+          thresholdModified: 0.0
+        continue-on-error: true
 
   # ─────────────────────────── Frontend ───────────────────────────
 
@@ -110,3 +122,19 @@ jobs:
           tags: creator-studio-frontend:ci
           cache-from: type=gha,scope=frontend-ci
           cache-to: type=gha,scope=frontend-ci,mode=max
+      - name: Report image sizes
+        # Size deltas on each PR let us notice bloat early. Outputs in the
+        # GitHub Actions step summary so the PR reviewer sees the numbers
+        # without opening a log.
+        run: |
+          {
+            echo "## Docker image sizes"
+            echo ""
+            echo "| image | size |"
+            echo "|-------|------|"
+            for img in creator-studio-app:ci creator-studio-frontend:ci; do
+              size=$(docker image inspect "$img" --format='{{.Size}}' | \
+                awk '{printf "%.1f MB", $1/1024/1024}')
+              echo "| $img | $size |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
