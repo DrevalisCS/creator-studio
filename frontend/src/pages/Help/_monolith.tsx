@@ -1482,11 +1482,11 @@ as she reached for the lamp.`}</CodeBlock>
                 style from the series settings.
               </li>
             </ul>
-            <InfoBox className="mt-4">
+            <div className="mt-4"><InfoBox>
               Both music video and animation share the long-form chapter-based pipeline under the hood.
               You get the same chapter structure + cost estimate + assembly hygiene as a regular
               long-form series — the format only changes how prompts and audio are generated.
-            </InfoBox>
+            </InfoBox></div>
           </section>
 
           {/* ================================================================
