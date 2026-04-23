@@ -25,11 +25,19 @@ RUN chmod -R a+rX /usr/share/nginx/html
 
 # Run as the built-in non-root ``nginx`` user. The stock nginx:alpine
 # image still drops into root by default; flipping the USER here means
-# a container escape starts as an unprivileged uid. We also retarget
-# the pid file + cache dirs to paths the nginx user can write.
-RUN sed -i 's,/var/run/nginx.pid,/tmp/nginx.pid,' /etc/nginx/nginx.conf \
-  && sed -i 's,listen\s\+80,listen 3000,' /etc/nginx/conf.d/default.conf 2>/dev/null || true \
-  && chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
+# a container escape starts as an unprivileged uid.
+#
+# nginx:alpine defaults to ``pid /run/nginx.pid`` (NOT /var/run) so we
+# rewrite the nginx.conf pid directive to /tmp/nginx.pid, a path the
+# ``nginx`` uid can always write to. Cache + log dirs get chowned so
+# the non-root process can use them, and the stock entrypoint scripts
+# stay happy.
+RUN sed -i 's#^pid[[:space:]]\+.*;#pid /tmp/nginx.pid;#' /etc/nginx/nginx.conf \
+  && chown -R nginx:nginx \
+       /usr/share/nginx/html \
+       /var/cache/nginx \
+       /var/log/nginx \
+       /etc/nginx/conf.d
 USER nginx
 
 # wget is in busybox on alpine — use it for the healthcheck so we don't
