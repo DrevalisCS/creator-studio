@@ -20,14 +20,26 @@ class LicenseClaims(BaseModel):
     iss: str
     sub: str
     jti: str
-    tier: str  # "solo" | "pro" | "studio" | "trial"
+    tier: str  # "trial" | "solo" | "creator" | "pro" | "lifetime_pro" | "studio"
     features: list[str] = Field(default_factory=list)
     machines: int = 1
 
     iat: int
     nbf: int
-    exp: int  # period_end + 7-day grace
-    period_end: int  # actual paid-through date (unix)
+    exp: int  # period_end + 7-day grace (subscription) or 100y (lifetime)
+    period_end: int  # actual paid-through date (unix); sentinel for lifetime
+
+    # New claims for the Lifetime (Pro) tier. Default to "subscription" so
+    # legacy JWTs (issued before the rebrand) decode without complaint.
+    license_type: str = "subscription"
+    # Unix timestamp after which free updates end for lifetime licenses.
+    # ``None`` for subscription licenses and for legacy lifetime licenses
+    # issued before this field was added.
+    update_window_expires_at: int | None = None
+
+    @property
+    def is_lifetime(self) -> bool:
+        return self.license_type == "lifetime_pro"
 
     def exp_datetime(self) -> datetime:
         return datetime.fromtimestamp(self.exp, tz=UTC)

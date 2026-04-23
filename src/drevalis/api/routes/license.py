@@ -59,6 +59,12 @@ class LicenseStatusResponse(BaseModel):
     period_end: datetime | None = None
     exp: datetime | None = None
     error: str | None = None
+    # Lifetime (Pro) support. ``license_type`` is "subscription" for
+    # every pre-rebrand JWT (the claim defaults there); lifetime JWTs
+    # carry "lifetime_pro" and an ``update_window_expires_at`` timestamp
+    # after which bundled updates end (the license itself never does).
+    license_type: str | None = None
+    update_window_expires_at: datetime | None = None
 
 
 class ActivateRequest(BaseModel):
@@ -98,6 +104,9 @@ async def get_license_status(
     repo = LicenseStateRepository(session)
     row = await repo.get()
     claims = state.claims
+    update_window = None
+    if claims and claims.update_window_expires_at:
+        update_window = datetime.fromtimestamp(claims.update_window_expires_at, tz=UTC)
     return LicenseStatusResponse(
         state=state.status.value,
         tier=claims.tier if claims else None,
@@ -110,6 +119,8 @@ async def get_license_status(
         period_end=claims.period_end_datetime() if claims else None,
         exp=claims.exp_datetime() if claims else None,
         error=state.error,
+        license_type=claims.license_type if claims else None,
+        update_window_expires_at=update_window,
     )
 
 

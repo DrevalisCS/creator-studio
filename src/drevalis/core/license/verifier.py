@@ -119,6 +119,13 @@ def verify_jwt(token: str, *, public_key_override_pem: str | None = None) -> Lic
 def _classify(claims: LicenseClaims, *, now_unix: int) -> LicenseStatus:
     if now_unix < claims.nbf:
         return LicenseStatus.INVALID
+    # Lifetime licenses skip the period_end/exp classification — they are
+    # always ACTIVE once signature-verified. The JWT still carries a 100y
+    # ``exp`` as a defense-in-depth guardrail, which ``verify_jwt`` will
+    # reject if tampered; we just don't treat ``period_end`` as a paid-
+    # through date for this license type.
+    if claims.is_lifetime:
+        return LicenseStatus.ACTIVE
     if now_unix >= claims.exp:
         return LicenseStatus.EXPIRED
     if now_unix >= claims.period_end:

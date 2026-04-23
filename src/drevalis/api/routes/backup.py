@@ -322,6 +322,46 @@ async def storage_probe(
     storage_base = settings.storage_base_path.resolve()
     episodes_dir = (storage_base / "episodes").resolve()
     audiobooks_dir = (storage_base / "audiobooks").resolve()
+
+    # Shallow listing of whatever the container actually sees at the
+    # top level of storage_base. The user's most common confusion is
+    # "I copied 20 GB into the host directory, why does the app show
+    # nothing?" — when the bind source actually points somewhere else.
+    # Showing the real entries side-by-side with what they expect
+    # collapses that debugging session to a single glance.
+    top_level_entries: list[dict[str, Any]] = []
+    total_visible_bytes = 0
+    total_visible_count = 0
+    if storage_base.exists() and storage_base.is_dir():
+        try:
+            for child in sorted(storage_base.iterdir(), key=lambda p: p.name.lower())[:50]:
+                info: dict[str, Any] = {"name": child.name}
+                try:
+                    if child.is_file():
+                        info["kind"] = "file"
+                        info["size_bytes"] = child.stat().st_size
+                        total_visible_bytes += info["size_bytes"]
+                        total_visible_count += 1
+                    elif child.is_dir():
+                        # Shallow child count — avoid walking 20 GB just
+                        # to show a dashboard. Truthful but bounded.
+                        subcount = 0
+                        for _ in child.iterdir():
+                            subcount += 1
+                            if subcount >= 1000:
+                                break
+                        info["kind"] = "dir"
+                        info["child_count"] = subcount
+                        info["child_count_capped"] = subcount >= 1000
+                        total_visible_count += subcount
+                    else:
+                        info["kind"] = "other"
+                except OSError as exc:
+                    info["error"] = str(exc)[:120]
+                top_level_entries.append(info)
+        except OSError as exc:
+            top_level_entries.append({"error": f"iterdir: {exc}"})
+
     report: dict[str, Any] = {
         "storage_base_path": str(storage_base),
         "storage_base_exists": storage_base.exists(),
@@ -335,6 +375,9 @@ async def storage_probe(
         "process_gid": None,
         "mount_fs": _detect_mount_fs(storage_base),
         "host_source_path": _detect_host_source(storage_base),
+        "top_level_entries": top_level_entries,
+        "total_visible_bytes": total_visible_bytes,
+        "total_visible_count": total_visible_count,
     }
     # ``os.getuid`` / ``os.getgid`` only exist on POSIX. On Windows the
     # probe simply omits those fields.
@@ -474,6 +517,45 @@ def _storage_probe_hints(report: dict[str, Any]) -> list[str]:
             "{{.Source}}{{end}}{{end}}' $(docker ps -q --filter "
             "'name=app')`` — that prints the exact host source path "
             "Docker recorded when the container was created."
+        )
+
+    # "I see only 0-1 files under /app/storage even though I put 20 GB on
+    # disk" — by far the most common post-rough-restore story. Call it out
+    # directly instead of leaving the user to infer it from byte counts.
+    entries = report.get("top_level_entries") or []
+    visible_count = int(report.get("total_visible_count") or 0)
+    visible_bytes = int(report.get("total_visible_bytes") or 0)
+    non_backup_entries = [
+        e for e in entries if isinstance(e, dict) and e.get("name") not in {"backups", None}
+    ]
+    empty_non_backup = (
+        all(
+            (e.get("kind") == "dir" and (e.get("child_count") or 0) == 0)
+            or (e.get("kind") == "file" and (e.get("size_bytes") or 0) == 0)
+            for e in non_backup_entries
+        )
+        if non_backup_entries
+        else True
+    )
+    if entries and visible_count <= 2 and empty_non_backup:
+        hints.append(
+            "The container can only see 0–1 files under /app/storage. "
+            "Everything else in your storage/ directory on the host is NOT "
+            "reaching the container — almost certainly because the running "
+            "containers were started from a different directory than the "
+            "one you copied files into. Run the ``docker inspect`` command "
+            "below to see the actual host source Docker recorded when "
+            "this container was created, then relaunch compose from the "
+            "directory that holds your 20+ GB of media."
+        )
+    elif visible_count > 0 and visible_bytes < 1_000_000 and non_backup_entries:
+        # Non-empty but suspiciously small (< 1 MB). Surface the count so
+        # the user can eyeball it against what they expect.
+        hints.append(
+            f"Container sees {visible_count} entries totalling "
+            f"{visible_bytes} bytes at /app/storage — if that's much less "
+            "than what you copied on the host, the bind source is pointing "
+            "to a different directory than you expect."
         )
 
     if not hints:

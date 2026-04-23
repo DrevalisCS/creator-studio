@@ -100,7 +100,9 @@ _TYPE_PARENT_HINTS: dict[str, tuple[str, ...]] = {
 # ── Index building ─────────────────────────────────────────────────
 
 
-def _walk_storage(storage_base: Path) -> tuple[
+def _walk_storage(
+    storage_base: Path,
+) -> tuple[
     dict[tuple[str, str], list[Path]],
     dict[str, list[Path]],
     dict[tuple[str, int], list[Path]],
@@ -210,9 +212,7 @@ def _find_candidate(
     return _scene_number_fallback(row, by_tail)
 
 
-def _pick_best(
-    hits: list[Path], expected_size: int, row: MediaAsset
-) -> Path | None:
+def _pick_best(hits: list[Path], expected_size: int, row: MediaAsset) -> Path | None:
     """Pick the best candidate from ``hits``.
 
     Preference order:
@@ -321,9 +321,7 @@ async def repair_media_links(
         if prior is None:
             seen[key] = row
             continue
-        newest, stale = (
-            (row, prior) if _created_at(row) >= _created_at(prior) else (prior, row)
-        )
+        newest, stale = (row, prior) if _created_at(row) >= _created_at(prior) else (prior, row)
         seen[key] = newest
         to_delete.append(stale)
     for stale in to_delete:
@@ -363,9 +361,7 @@ async def repair_media_links(
                 # our index but guard anyway.
                 report.unresolved += 1
                 if current:
-                    report.unresolved_paths.append(
-                        (current, Path(current).name in by_name)
-                    )
+                    report.unresolved_paths.append((current, Path(current).name in by_name))
                 continue
             old = row.file_path
             row.file_path = rel

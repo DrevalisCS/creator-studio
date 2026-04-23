@@ -190,6 +190,14 @@ export function LicenseSection() {
 
   const periodEnd = status?.period_end ? new Date(status.period_end) : null;
   const exp = status?.exp ? new Date(status.exp) : null;
+  const isLifetime = status?.license_type === 'lifetime_pro';
+  const updateWindowEnds = status?.update_window_expires_at
+    ? new Date(status.update_window_expires_at)
+    : null;
+  // Lifetime-upgrade CTA surfaces for subscription-Pro customers (any
+  // interval). Creator / Studio paths stay on the subscription portal.
+  const canUpgradeToLifetime =
+    status?.state === 'active' && !isLifetime && status?.tier === 'pro';
 
   return (
     <div className="space-y-4">
@@ -211,22 +219,43 @@ export function LicenseSection() {
           <div className="text-right">
             <div className="text-xs text-txt-secondary mb-1">Tier</div>
             <div className="text-sm font-semibold text-txt-primary capitalize">
-              {status?.tier ?? '—'}
+              {isLifetime ? 'Lifetime (Pro)' : (status?.tier ?? '—')}
             </div>
+            {isLifetime && (
+              <div className="text-[11px] text-amber-300 mt-0.5">
+                {updateWindowEnds
+                  ? `Updates included until ${updateWindowEnds.toLocaleDateString()}`
+                  : 'Never expires'}
+              </div>
+            )}
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-4 pt-3 border-t border-white/[0.06]">
           <div>
-            <div className="text-xs text-txt-secondary mb-1">Paid through</div>
+            <div className="text-xs text-txt-secondary mb-1">
+              {isLifetime ? 'License' : 'Paid through'}
+            </div>
             <div className="text-sm text-txt-primary">
-              {periodEnd ? periodEnd.toLocaleDateString() : '—'}
+              {isLifetime
+                ? 'Never expires'
+                : periodEnd
+                  ? periodEnd.toLocaleDateString()
+                  : '—'}
             </div>
           </div>
           <div>
-            <div className="text-xs text-txt-secondary mb-1">Hard expiry (+ 7d grace)</div>
+            <div className="text-xs text-txt-secondary mb-1">
+              {isLifetime ? 'Updates included until' : 'Hard expiry (+ 7d grace)'}
+            </div>
             <div className="text-sm text-txt-primary">
-              {exp ? exp.toLocaleDateString() : '—'}
+              {isLifetime
+                ? updateWindowEnds
+                  ? updateWindowEnds.toLocaleDateString()
+                  : '—'
+                : exp
+                  ? exp.toLocaleDateString()
+                  : '—'}
             </div>
           </div>
           <div>
@@ -265,24 +294,75 @@ export function LicenseSection() {
         </div>
       </Card>
 
-      <Card className="p-5">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h4 className="text-sm font-semibold text-txt-primary">Manage subscription</h4>
-            <p className="text-xs text-txt-secondary mt-1">
-              Upgrade, downgrade, change payment method, view invoices, or cancel — handled by Stripe's billing portal.
-            </p>
+      {!isLifetime && (
+        <Card className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-txt-primary">Manage subscription</h4>
+              <p className="text-xs text-txt-secondary mt-1">
+                Upgrade, downgrade, change payment method, view invoices, or cancel — handled by Stripe's billing portal.
+              </p>
+            </div>
+            <Button
+              variant="secondary"
+              size="md"
+              onClick={onManageSubscription}
+              disabled={openingPortal || status?.state !== 'active'}
+            >
+              {openingPortal ? 'Opening…' : <>Open portal <ExternalLink size={14} /></>}
+            </Button>
           </div>
-          <Button
-            variant="secondary"
-            size="md"
-            onClick={onManageSubscription}
-            disabled={openingPortal || status?.state !== 'active'}
-          >
-            {openingPortal ? 'Opening…' : <>Open portal <ExternalLink size={14} /></>}
-          </Button>
-        </div>
-      </Card>
+        </Card>
+      )}
+
+      {isLifetime && (
+        <Card
+          className="p-5"
+          style={{
+            background: 'linear-gradient(135deg, rgba(251,191,36,0.06), rgba(20,22,27,0.8))',
+            borderColor: 'rgba(251,191,36,0.25)',
+          }}
+        >
+          <h4 className="text-sm font-semibold text-txt-primary mb-1">
+            Lifetime (Pro) — thank you.
+          </h4>
+          <p className="text-xs text-txt-secondary">
+            Your license is permanent. There's no billing portal, nothing to renew. Updates are bundled through
+            {updateWindowEnds ? ` ${updateWindowEnds.toLocaleDateString()}` : ' your included window'};
+            after that the app keeps working and you can extend updates
+            anytime from your account page.
+          </p>
+        </Card>
+      )}
+
+      {canUpgradeToLifetime && (
+        <Card
+          className="p-5"
+          style={{
+            background: 'linear-gradient(135deg, rgba(251,191,36,0.05), rgba(20,22,27,0.7))',
+            borderColor: 'rgba(251,191,36,0.2)',
+          }}
+        >
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h4 className="text-sm font-semibold text-txt-primary">Upgrade to Lifetime (Pro)</h4>
+              <p className="text-xs text-txt-secondary mt-1">
+                One-time CHF 599. Keeps the Pro feature set, never renews. 3 years of updates included.
+                Limited to the first 100 seats.
+              </p>
+            </div>
+            <Button
+              variant="primary"
+              size="md"
+              onClick={() =>
+                window.open('https://drevalis.com/pricing#plans', '_blank', 'noopener')
+              }
+            >
+              Upgrade <ExternalLink size={14} />
+            </Button>
+          </div>
+        </Card>
+      )}
 
       <Card className="p-5 space-y-3">
         <div>

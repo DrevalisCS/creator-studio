@@ -51,6 +51,16 @@ interface StorageProbe {
   process_gid: number | null;
   mount_fs: string | null;
   host_source_path: string | null;
+  top_level_entries?: Array<{
+    name?: string;
+    kind?: 'file' | 'dir' | 'other';
+    size_bytes?: number;
+    child_count?: number;
+    child_count_capped?: boolean;
+    error?: string;
+  }>;
+  total_visible_bytes?: number;
+  total_visible_count?: number;
   samples: Array<{
     asset_type: string;
     file_path: string;
@@ -417,6 +427,68 @@ export function BackupSection() {
                   </li>
                 ))}
               </ul>
+            )}
+            {probeReport.top_level_entries && (
+              <details className="rounded bg-bg-base p-2" open>
+                <summary className="cursor-pointer text-txt-secondary">
+                  What the container sees at /app/storage
+                  {typeof probeReport.total_visible_count === 'number' && (
+                    <span className="ml-2 text-txt-muted">
+                      ({probeReport.total_visible_count} entries,{' '}
+                      {formatBytes(probeReport.total_visible_bytes || 0)} visible)
+                    </span>
+                  )}
+                </summary>
+                {probeReport.top_level_entries.length === 0 ? (
+                  <div className="mt-2 text-txt-muted">
+                    No top-level entries. The storage directory is empty inside the
+                    container — whatever you have on the host is not reaching this
+                    bind mount.
+                  </div>
+                ) : (
+                  <div className="mt-2 space-y-1 font-mono text-[11px]">
+                    {probeReport.top_level_entries.map((e, i) => (
+                      <div key={i} className="flex items-center gap-3">
+                        <span
+                          className={[
+                            'shrink-0 w-10 text-[10px] uppercase font-sans tracking-wider',
+                            e.kind === 'dir'
+                              ? 'text-accent'
+                              : e.kind === 'file'
+                                ? 'text-txt-secondary'
+                                : 'text-txt-muted',
+                          ].join(' ')}
+                        >
+                          {e.kind || '?'}
+                        </span>
+                        <span className="min-w-0 truncate text-txt-primary">
+                          {e.name}
+                        </span>
+                        <span className="ml-auto shrink-0 text-txt-muted">
+                          {e.kind === 'file' && typeof e.size_bytes === 'number'
+                            ? formatBytes(e.size_bytes)
+                            : e.kind === 'dir'
+                              ? `${e.child_count}${e.child_count_capped ? '+' : ''} children`
+                              : ''}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-2 text-[10px] text-txt-muted">
+                  If what you see here doesn't match what's in{' '}
+                  <code className="bg-bg-elevated px-1 rounded">
+                    %USERPROFILE%\Drevalis\storage\
+                  </code>{' '}
+                  on your host, the running container was started from a
+                  different directory than the one you copied files into. In a
+                  terminal at <code className="bg-bg-elevated px-1 rounded">
+                    %USERPROFILE%\Drevalis\
+                  </code>: <code className="bg-bg-elevated px-1 rounded">
+                    docker compose down; docker compose up -d
+                  </code>.
+                </div>
+              </details>
             )}
             {probeReport.samples.length > 0 && (
               <details className="rounded bg-bg-base p-2">

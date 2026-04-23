@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Drevalis Creator Studio — Self-hosted AI video, audiobook &amp; YouTube Shorts automation</title>
-  <meta name="description" content="Self-hosted AI content pipeline: LLM scripts, TTS voices, ComfyUI scenes, word-level captions, FFmpeg assembly, one-click YouTube / TikTok / Instagram / X upload. Your GPU, your content, your IP. Try the live demo — no signup." />
+  <title>Drevalis Creator Studio — One topic in. A finished, captioned, uploaded Short out.</title>
+  <meta name="description" content="Self-hosted AI YouTube Shorts pipeline. Script, voice, scenes, word-level captions, thumbnail, upload — all on your hardware. No per-video credits. Flat license. Try the live demo — no signup." />
   <meta name="keywords" content="ai video generator, youtube shorts automation, self-hosted ai, comfyui pipeline, tts audiobook, ai content creation, short-form video ai, text to video self-hosted, ai video editor" />
   <meta name="theme-color" content="#0A0B0E" />
   <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
@@ -15,8 +15,8 @@
 
   <!-- Open Graph -->
   <meta property="og:site_name" content="Drevalis Creator Studio" />
-  <meta property="og:title" content="Drevalis Creator Studio — Self-hosted AI video &amp; audiobook production" />
-  <meta property="og:description" content="Self-hosted AI content pipeline with a real in-browser video editor. Try the live demo, no signup." />
+  <meta property="og:title" content="One topic in. A finished, captioned, uploaded Short out." />
+  <meta property="og:description" content="The full pipeline runs on your hardware. No per-video credits. Flat license. Try the live demo — no signup." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://drevalis.com/" />
   <meta property="og:image" content="https://drevalis.com/assets/images/hero-dashboard.png" />
@@ -26,8 +26,8 @@
 
   <!-- Twitter / X -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Drevalis Creator Studio — Self-hosted AI video &amp; audiobook production" />
-  <meta name="twitter:description" content="Self-hosted AI content pipeline. Scripts → voices → scenes → captions → upload. Try the live demo, no signup." />
+  <meta name="twitter:title" content="One topic in. A finished, captioned, uploaded Short out." />
+  <meta name="twitter:description" content="The full pipeline runs on your hardware. No per-video credits. Flat license. Try the live demo — no signup." />
   <meta name="twitter:image" content="https://drevalis.com/assets/images/hero-dashboard.png" />
 
   <!-- JSON-LD: SoftwareApplication -->
@@ -62,6 +62,17 @@
         "priceCurrency": "CHF",
         "price": "99",
         "availability": "https://schema.org/InStock"
+      },
+      {
+        "@type": "Offer",
+        "name": "Lifetime (Pro)",
+        "priceCurrency": "CHF",
+        "price": "599",
+        "availability": "https://schema.org/LimitedAvailability",
+        "eligibleTransactionVolume": {
+          "@type": "PriceSpecification",
+          "description": "One-time purchase. Limited to first 100 seats. 3 years of free updates included."
+        }
       }
     ],
     "aggregateRating": {
@@ -163,27 +174,52 @@
         <span class="eyebrow mb-6"><span class="eyebrow-dot"></span>Self-hosted · Your GPU · No cloud lock-in</span>
         <h1 class="display-hero mt-6 mb-5">
           One topic in.<br/>
-          A finished, captioned, <span class="accent-gradient">uploaded video</span> out.
+          A finished, captioned, <span class="accent-gradient">uploaded Short</span> out.
         </h1>
         <p class="lead max-w-2xl mx-auto mb-9">
-          Drevalis Creator Studio runs the whole pipeline on your own hardware: scripts, voices, scenes, word-level captions, assembly, thumbnails, uploads. Add a real in-browser editor, shared asset library, and one-click publish to every major platform. No vendor lock-in, no surprise invoices.
+          The full pipeline — script, voices, scenes, word-level captions, thumbnail, upload — runs on your hardware. No per-video credits. No surprise invoices. Just a flat license and your GPU.
         </p>
         <div class="flex flex-wrap items-center justify-center gap-3 mb-4">
-          <a href="https://demo.drevalis.com" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Try the live demo — no signup →</a>
+          <a href="https://demo.drevalis.com" target="_blank" rel="noopener" class="btn btn-primary btn-lg">Try the live demo →</a>
           <a href="/pricing" class="btn btn-secondary btn-lg">See pricing</a>
           <a href="/download" class="btn btn-ghost btn-lg hide-xs">Install guide</a>
         </div>
         <p class="small-muted">
-          Cancel anytime · No card held after cancellation
+          Cancel anytime · No card held after cancel · Used to publish 7+ channels and 200+ episodes
         </p>
       </div>
     </div>
 
-    <!-- Hero product shot — clickable, opens the live demo -->
+    <!-- Hero: autoplay loop video with a static image fallback. The
+         <video> element tries hero-demo.mp4; if the file isn't present
+         (or the browser blocks autoplay with no poster fetch), the
+         poster image stands in. If even the video element itself fails
+         to load, site.js swaps in the legacy <a><img> block. -->
     <div class="container-xl pb-8 relative z-10 reveal">
-      <a href="https://demo.drevalis.com" target="_blank" rel="noopener" class="demo-hero-card block group" aria-label="Try the live demo">
-        <div class="img-slot" data-aspect="16/9" data-hint="hero-dashboard.png&#10;Click to open the live demo">
-          <img src="/assets/images/hero-dashboard.png" alt="Drevalis dashboard — click to try the live demo" loading="eager" />
+      <a href="https://demo.drevalis.com" target="_blank" rel="noopener" class="demo-hero-card block group" aria-label="Try the live demo" data-hero-video-wrapper>
+        <div class="img-slot" data-aspect="16/9" data-hint="hero-demo.mp4 (looping screen capture)&#10;Click to open the live demo">
+          <video
+            class="absolute inset-0 w-full h-full object-cover"
+            autoplay
+            muted
+            loop
+            playsinline
+            preload="metadata"
+            poster="/assets/images/hero-dashboard.png"
+            aria-label="Drevalis pipeline demo"
+            data-hero-video
+          >
+            <source src="/assets/videos/hero-demo.mp4" type="video/mp4" />
+          </video>
+          <!-- Static fallback — hidden while the video is healthy; shown
+               by site.js when the video fires an ``error`` event. -->
+          <img
+            src="/assets/images/hero-dashboard.png"
+            alt="Drevalis dashboard — click to try the live demo"
+            loading="eager"
+            data-hero-fallback
+            hidden
+          />
           <div class="demo-hero-overlay">
             <div class="demo-hero-badge">
               <span class="demo-hero-dot"></span>
@@ -195,6 +231,45 @@
       </a>
       <p class="text-center small-muted mt-4">
         Click the screen to try the app live. Data resets nightly — nothing you do sticks, nothing to install.
+      </p>
+    </div>
+  </section>
+
+  <!-- ── Built by creators (social proof) ──────────────────── -->
+  <section class="section-compact" id="built-by-creators">
+    <div class="container-xl">
+      <div class="text-center max-w-2xl mx-auto mb-10 reveal">
+        <span class="eyebrow mb-3">Built by creators</span>
+        <h2 class="display-section mt-3 mb-3">Built by creators running real faceless operations.</h2>
+        <p class="lead">Channels actively shipping with Drevalis right now. No press deck, no influencer arrangement — just sub counts and episode counts.</p>
+      </div>
+      <div class="grid md:grid-cols-3 gap-5 reveal" data-built-by-creators>
+        <!-- Cards rendered by site.js from /data/channels.json.
+             SSR-safe placeholder cards render while JS loads. -->
+        <div class="card p-6 flex items-center gap-4 channel-card-placeholder">
+          <div class="w-14 h-14 rounded-full bg-[var(--bg-elevated)] shrink-0"></div>
+          <div class="min-w-0 flex-1">
+            <div class="h-4 w-24 rounded bg-[var(--bg-elevated)] mb-2"></div>
+            <div class="h-3 w-32 rounded bg-[var(--bg-elevated)]"></div>
+          </div>
+        </div>
+        <div class="card p-6 flex items-center gap-4 channel-card-placeholder">
+          <div class="w-14 h-14 rounded-full bg-[var(--bg-elevated)] shrink-0"></div>
+          <div class="min-w-0 flex-1">
+            <div class="h-4 w-24 rounded bg-[var(--bg-elevated)] mb-2"></div>
+            <div class="h-3 w-32 rounded bg-[var(--bg-elevated)]"></div>
+          </div>
+        </div>
+        <div class="card p-6 flex items-center gap-4 channel-card-placeholder">
+          <div class="w-14 h-14 rounded-full bg-[var(--bg-elevated)] shrink-0"></div>
+          <div class="min-w-0 flex-1">
+            <div class="h-4 w-24 rounded bg-[var(--bg-elevated)] mb-2"></div>
+            <div class="h-3 w-32 rounded bg-[var(--bg-elevated)]"></div>
+          </div>
+        </div>
+      </div>
+      <p class="text-center small-muted mt-6 reveal">
+        Want your channel here? Email <a href="mailto:support@drevalis.com?subject=Creator%20spotlight" class="text-[var(--accent)] underline">support@drevalis.com</a> once you've shipped 20 episodes — we'll credit 3 months of Pro.
       </p>
     </div>
   </section>
@@ -491,6 +566,26 @@
     </div>
   </section>
 
+  <!-- ── Example gallery ──────────────────────────────────── -->
+  <section class="section" id="examples">
+    <div class="container-xl">
+      <div class="text-center max-w-2xl mx-auto mb-10 reveal">
+        <span class="eyebrow mb-3">Real output</span>
+        <h2 class="display-section mt-3 mb-3">See what the pipeline actually produces.</h2>
+        <p class="lead">Every clip below was generated by Drevalis — including the voice, the scenes, the captions, and the thumbnail. Click to open the video; YouTube loads lazily on click.</p>
+      </div>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 reveal" data-example-gallery>
+        <!-- Rendered by site.js from /data/examples.json. When the feed
+             is empty, we show a single "examples coming soon" placeholder
+             card so the section isn't an empty grid on first load. -->
+        <div class="card p-5 flex flex-col items-center justify-center text-center aspect-[9/16] example-gallery-placeholder">
+          <div class="text-[var(--txt-muted)] text-xs uppercase tracking-widest mb-2">Examples</div>
+          <div class="text-sm text-[var(--txt-secondary)]">Shipping this week — watch this space.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
   <!-- ── Pricing preview ──────────────────────────────────── -->
   <section id="pricing" class="section">
     <div class="container-xl">
@@ -507,7 +602,7 @@
           <div class="h-6 w-11 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-strong)] peer-checked:bg-[var(--accent)]/30 peer-checked:border-[var(--accent)]/50 transition"></div>
           <div class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--txt-primary)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent)]"></div>
         </label>
-        <span class="text-sm text-[var(--txt-secondary)]">Yearly <span class="pill pill-green">1 month free</span></span>
+        <span class="text-sm text-[var(--txt-secondary)]">Yearly <span class="pill pill-green">2 months free · Save 20%</span></span>
       </div>
 
       <div class="grid md:grid-cols-3 gap-5 reveal">
@@ -516,12 +611,12 @@
           <h3 class="text-xl mb-1">Creator</h3>
           <p class="text-xs text-[var(--txt-muted)] mb-5">Solo creator, one channel.</p>
           <div class="mb-6">
-            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="19" data-price-yearly="209">19</span></span>
+            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="19" data-price-yearly="190">19</span></span>
             <span class="text-[var(--txt-secondary)]" data-interval-label>/mo</span>
           </div>
           <ul class="text-sm space-y-2 text-[var(--txt-secondary)] mb-8 flex-1">
             <li>— 1 machine seat</li>
-            <li>— 30 episodes / month</li>
+            <li>— <strong class="text-[var(--txt-primary)]">Unlimited</strong> episodes</li>
             <li>— 1 YouTube channel</li>
             <li>— Free local TTS + editor + asset library</li>
             <li>— SEO pre-flight</li>
@@ -535,7 +630,7 @@
           <h3 class="text-xl mb-1">Pro</h3>
           <p class="text-xs text-[var(--txt-muted)] mb-5">Multiple channels, real volume.</p>
           <div class="mb-6">
-            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="49" data-price-yearly="539">49</span></span>
+            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="49" data-price-yearly="490">49</span></span>
             <span class="text-[var(--txt-secondary)]" data-interval-label>/mo</span>
           </div>
           <ul class="text-sm space-y-2 text-[var(--txt-secondary)] mb-8 flex-1">
@@ -554,7 +649,7 @@
           <h3 class="text-xl mb-1">Studio</h3>
           <p class="text-xs text-[var(--txt-muted)] mb-5">Teams, agencies, studios.</p>
           <div class="mb-6">
-            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="99" data-price-yearly="1089">99</span></span>
+            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="99" data-price-yearly="990">99</span></span>
             <span class="text-[var(--txt-secondary)]" data-interval-label>/mo</span>
           </div>
           <ul class="text-sm space-y-2 text-[var(--txt-secondary)] mb-8 flex-1">
@@ -566,6 +661,14 @@
           </ul>
           <button data-checkout data-tier="studio" data-interval="monthly" class="btn btn-secondary">Start Studio</button>
         </div>
+      </div>
+
+      <div class="mt-6 text-center reveal">
+        <a href="/pricing#plans" class="inline-flex items-center gap-2 text-sm text-[var(--accent)] hover:underline">
+          <span>Or pay once:</span>
+          <strong class="text-[var(--txt-primary)]" style="color:#fbbf24;">Lifetime (Pro) — CHF 599</strong>
+          <span class="text-[var(--txt-muted)]">→ first 100 seats</span>
+        </a>
       </div>
 
       <p class="text-center small-muted mt-8">

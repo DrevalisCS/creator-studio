@@ -12,10 +12,18 @@ from drevalis.core.license.state import get_state
 # features list into the JWT's ``features`` claim; this map is the local
 # fallback used when the claim is empty (e.g. for legacy licenses) and also
 # doubles as documentation of what each tier buys.
+#
+# ``creator`` is the post-rebrand name for ``solo``; both are kept in the
+# maps below so legacy JWTs (issued before the rename) keep working.
+# ``lifetime_pro`` inherits the Pro feature set.
+_PRO_FEATURES = frozenset({"basic_generation", "runpod", "audiobooks"})
+
 TIER_FEATURES: dict[str, frozenset[str]] = {
     "trial": frozenset({"basic_generation"}),
     "solo": frozenset({"basic_generation"}),
-    "pro": frozenset({"basic_generation", "runpod", "audiobooks"}),
+    "creator": frozenset({"basic_generation"}),
+    "pro": _PRO_FEATURES,
+    "lifetime_pro": _PRO_FEATURES,
     "studio": frozenset(
         {
             "basic_generation",
@@ -33,16 +41,24 @@ TIER_FEATURES: dict[str, frozenset[str]] = {
 TIER_MACHINE_CAP: dict[str, int] = {
     "trial": 1,
     "solo": 1,
+    "creator": 1,
     "pro": 3,
+    "lifetime_pro": 3,
     "studio": 5,
 }
 
 # Daily episode quota per tier; ``None`` means unlimited. Enforced in
 # ``quota.check_episode_quota``.
+#
+# Creator is unlimited as of the pricing refresh — the old 30-episodes-per-
+# month cap has been removed. ``solo`` mirrors the new unlimited value so
+# legacy licenses don't silently regress.
 TIER_DAILY_EPISODE_QUOTA: dict[str, int | None] = {
     "trial": 3,
-    "solo": 5,
+    "solo": None,
+    "creator": None,
     "pro": None,
+    "lifetime_pro": None,
     "studio": None,
 }
 
@@ -50,7 +66,9 @@ TIER_DAILY_EPISODE_QUOTA: dict[str, int | None] = {
 TIER_CHANNEL_CAP: dict[str, int] = {
     "trial": 1,
     "solo": 1,
+    "creator": 1,
     "pro": 3,
+    "lifetime_pro": 3,
     "studio": 1_000,
 }
 
@@ -96,9 +114,20 @@ def require_feature(feature: str) -> None:
 def require_tier(minimum: str) -> None:
     """Raise 402 unless the current tier is ``>=`` the minimum.
 
-    Ordering: trial < solo < pro < studio.
+    Ordering: trial < solo/creator < pro/lifetime_pro < studio.
+
+    ``solo`` and ``creator`` share rank 1 (the rebrand preserved seat
+    semantics). ``lifetime_pro`` shares rank 2 with ``pro`` — a Lifetime
+    license satisfies any ``require_tier("pro")`` gate.
     """
-    order = {"trial": 0, "solo": 1, "pro": 2, "studio": 3}
+    order = {
+        "trial": 0,
+        "solo": 1,
+        "creator": 1,
+        "pro": 2,
+        "lifetime_pro": 2,
+        "studio": 3,
+    }
     state = get_state()
     if not state.is_usable or state.claims is None:
         raise HTTPException(

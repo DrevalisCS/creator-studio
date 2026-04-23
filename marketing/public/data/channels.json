@@ -1,0 +1,26 @@
+[
+  {
+    "handle": "@g3neric",
+    "description": "Hacking history, true crime",
+    "subs": "TBD",
+    "episodes": "TBD",
+    "url": "https://youtube.com/@g3neric",
+    "thumb": "/assets/images/channels/g3neric.webp"
+  },
+  {
+    "handle": "@TBD-channel-2",
+    "description": "TBD",
+    "subs": "TBD",
+    "episodes": "TBD",
+    "url": "#",
+    "thumb": "/assets/images/channels/tbd-2.webp"
+  },
+  {
+    "handle": "@TBD-channel-3",
+    "description": "TBD",
+    "subs": "TBD",
+    "episodes": "TBD",
+    "url": "#",
+    "thumb": "/assets/images/channels/tbd-3.webp"
+  }
+]
