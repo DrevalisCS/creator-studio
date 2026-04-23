@@ -257,8 +257,15 @@ async def _publish_scheduled_posts_locked(
                         error_message=str(exc)[:500],
                     )
                     await session.commit()
-                except Exception:
-                    pass
+                except Exception as nested:
+                    # Failure-recording itself failed. Don't silently
+                    # swallow — at worst the row stays in 'publishing'
+                    # but the operator needs to see the DB error.
+                    log.exception(
+                        "post_fail_record_failed",
+                        post_id=str(post.id),
+                        nested_error=str(nested)[:200],
+                    )
                 failed += 1
 
     log.info("job_complete", published=published, failed=failed, pending_checked=len(pending))
