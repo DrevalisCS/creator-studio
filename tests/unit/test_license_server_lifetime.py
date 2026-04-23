@@ -28,8 +28,15 @@ import pytest
 
 # Let pytest import ``app.*`` from the license-server alongside the main
 # project tree. We prepend so tests run without changing the existing
-# pytest rootdir.
+# pytest rootdir. In CI the ``license-server/`` directory is excluded
+# from the workspace checkout (it deploys separately), so if it isn't
+# present we skip the whole module cleanly rather than erroring.
 _LICENSE_SERVER_ROOT = Path(__file__).resolve().parents[2] / "license-server"
+if not (_LICENSE_SERVER_ROOT / "app" / "__init__.py").exists():
+    pytest.skip(
+        "license-server/ not present in checkout — lifetime JWT tests run locally only",
+        allow_module_level=True,
+    )
 if str(_LICENSE_SERVER_ROOT) not in sys.path:
     sys.path.insert(0, str(_LICENSE_SERVER_ROOT))
 

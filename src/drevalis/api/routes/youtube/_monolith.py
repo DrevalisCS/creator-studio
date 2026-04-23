@@ -75,7 +75,6 @@ async def _resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> 
                     client_id = decrypt_value(
                         row.encrypted_value,
                         settings.encryption_key,
-                        row.key_version or 1,
                     )
                 except Exception:  # noqa: BLE001 — fail closed
                     client_id = ""
@@ -86,7 +85,6 @@ async def _resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> 
                     client_secret = decrypt_value(
                         row.encrypted_value,
                         settings.encryption_key,
-                        row.key_version or 1,
                     )
                 except Exception:  # noqa: BLE001
                     client_secret = ""

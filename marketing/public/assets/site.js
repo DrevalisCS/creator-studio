@@ -392,7 +392,12 @@ async function renderBuiltByCreators() {
   }
 }
 
-// ── Example gallery: render /data/examples.json into a YT lite-embed grid
+// ── Example gallery: render /data/examples.json into an inline-<video> grid
+//
+// The shipped examples are real MP4s hosted under /assets/examples/.
+// Click a tile → it swaps the poster for the real <video> and starts
+// playing. One at a time (clicking another pauses all others) so we
+// don't blow through the visitor's bandwidth.
 async function renderExampleGallery() {
   const host = document.querySelector('[data-example-gallery]');
   if (!host) return;
@@ -403,55 +408,56 @@ async function renderExampleGallery() {
     if (!Array.isArray(examples) || examples.length === 0) return;
     host.innerHTML = '';
     for (const ex of examples) {
-      const tile = document.createElement('button');
-      tile.type = 'button';
+      const tile = document.createElement('div');
       tile.className =
-        'card p-0 overflow-hidden aspect-[9/16] relative flex items-center justify-center group';
-      tile.setAttribute('data-yt-id', ex.youtube_id || '');
-      tile.setAttribute('aria-label', `Play ${ex.series_name || 'example'}`);
-      // Poster thumbnail from YouTube's CDN — no iframe load until click.
+        'card p-0 overflow-hidden aspect-[9/16] relative group cursor-pointer';
+      tile.setAttribute('aria-label', `Play ${ex.title || ex.series_name || 'example'}`);
+      // The poster image carries the overlay. Becomes the <video>
+      // source on first click.
       const poster = document.createElement('img');
       poster.className =
-        'absolute inset-0 w-full h-full object-cover opacity-80 group-hover:opacity-100 transition';
+        'absolute inset-0 w-full h-full object-cover opacity-95 group-hover:opacity-100 transition-opacity';
       poster.loading = 'lazy';
-      poster.alt = ex.series_name || '';
-      poster.src = ex.youtube_id
-        ? `https://i.ytimg.com/vi/${encodeURIComponent(ex.youtube_id)}/hqdefault.jpg`
-        : '';
+      poster.alt = ex.title || ex.series_name || '';
+      poster.src = ex.poster_url || '';
       const overlay = document.createElement('div');
       overlay.className =
-        'absolute inset-0 bg-gradient-to-t from-black/80 to-transparent flex flex-col justify-end p-3 text-left';
+        'absolute inset-0 bg-gradient-to-t from-black/85 via-black/10 to-transparent flex flex-col justify-end p-3 text-left pointer-events-none';
       overlay.innerHTML = `
-        <div class="text-[var(--txt-primary)] text-sm font-semibold truncate">${escapeHtml(ex.series_name || '')}</div>
-        <div class="text-xs text-[var(--txt-muted)] truncate">
+        <div class="text-white text-xs font-semibold leading-tight mb-1">${escapeHtml(ex.title || '')}</div>
+        <div class="text-[11px] text-white/70 truncate">${escapeHtml(ex.series_name || '')}</div>
+        <div class="text-[10px] text-white/50 truncate mt-0.5">
           ${ex.duration_seconds ? `${Math.round(ex.duration_seconds)}s` : ''}
           ${ex.gpu_used ? ` · ${escapeHtml(ex.gpu_used)}` : ''}
-          ${ex.generation_time_minutes ? ` · ~${escapeHtml(String(ex.generation_time_minutes))} min render` : ''}
+          ${ex.generation_time_minutes ? ` · ${escapeHtml(String(ex.generation_time_minutes))} min render` : ''}
         </div>
       `;
       const play = document.createElement('div');
       play.className =
-        'absolute inset-0 flex items-center justify-center text-white opacity-80 group-hover:opacity-100 transition';
+        'absolute inset-0 flex items-center justify-center opacity-90 group-hover:opacity-100 transition pointer-events-none';
       play.innerHTML =
-        '<svg width="56" height="56" viewBox="0 0 56 56" fill="none"><circle cx="28" cy="28" r="28" fill="rgba(0,0,0,0.45)"/><path d="M22 18 L40 28 L22 38 Z" fill="white"/></svg>';
+        '<svg width="56" height="56" viewBox="0 0 56 56" fill="none" aria-hidden="true"><circle cx="28" cy="28" r="28" fill="rgba(0,0,0,0.55)"/><path d="M22 18 L40 28 L22 38 Z" fill="white"/></svg>';
       tile.appendChild(poster);
       tile.appendChild(overlay);
       tile.appendChild(play);
       tile.addEventListener('click', () => {
-        const id = tile.getAttribute('data-yt-id');
-        if (!id) return;
-        // Replace the tile's content with the real iframe only on click
-        // so the page cost stays low until the visitor actually asks.
+        if (!ex.video_url) return;
+        // Pause any other example videos in the grid, then mount ours.
+        document
+          .querySelectorAll('[data-example-gallery] video')
+          .forEach((v) => {
+            try { v.pause(); } catch { /* best-effort */ }
+          });
         tile.innerHTML = '';
-        const iframe = document.createElement('iframe');
-        iframe.className = 'w-full h-full absolute inset-0';
-        iframe.src = `https://www.youtube-nocookie.com/embed/${encodeURIComponent(id)}?autoplay=1&rel=0`;
-        iframe.title = ex.series_name || 'Drevalis example';
-        iframe.loading = 'lazy';
-        iframe.allow = 'autoplay; encrypted-media; picture-in-picture';
-        iframe.allowFullscreen = true;
-        iframe.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
-        tile.appendChild(iframe);
+        const video = document.createElement('video');
+        video.className = 'w-full h-full absolute inset-0 object-cover bg-black';
+        video.src = ex.video_url;
+        video.poster = ex.poster_url || '';
+        video.controls = true;
+        video.autoplay = true;
+        video.playsInline = true;
+        video.setAttribute('preload', 'metadata');
+        tile.appendChild(video);
       });
       host.appendChild(tile);
     }
@@ -459,6 +465,71 @@ async function renderExampleGallery() {
     // Placeholder tile stays — no noise in the UI on network hiccup.
     // eslint-disable-next-line no-console
     console.debug('examples.json load failed', err);
+  }
+}
+
+// ── Voice previews: render /data/voices.json as play-card grid
+async function renderVoicePreviews() {
+  const host = document.querySelector('[data-voice-previews]');
+  if (!host) return;
+  try {
+    const res = await fetch('/data/voices.json', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const voices = await res.json();
+    if (!Array.isArray(voices) || voices.length === 0) return;
+    host.innerHTML = '';
+    let currentAudio = null;
+    for (const v of voices) {
+      const card = document.createElement('div');
+      card.className = 'card card-hover p-5 flex items-center gap-4';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className =
+        'flex items-center justify-center w-11 h-11 rounded-full bg-accent-soft border border-[var(--border-accent)] text-[var(--accent)] hover:bg-[var(--accent)]/20 transition flex-shrink-0';
+      btn.setAttribute('aria-label', `Play ${v.name} preview`);
+      btn.innerHTML =
+        '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5 L19 12 L8 19 Z"/></svg>';
+      const body = document.createElement('div');
+      body.className = 'min-w-0 flex-1';
+      body.innerHTML = `
+        <div class="text-[var(--txt-primary)] font-semibold">${escapeHtml(v.name || '')}</div>
+        <div class="text-xs text-[var(--txt-secondary)]">${escapeHtml(v.description || '')}</div>
+        <div class="text-[11px] text-[var(--txt-muted)] mt-0.5">${escapeHtml(v.use_case || '')}</div>
+      `;
+      card.appendChild(btn);
+      card.appendChild(body);
+      // One shared <audio> per card — kept in closure so we can toggle
+      // play/pause + swap icon state without a framework.
+      const audio = new Audio();
+      audio.preload = 'none';
+      audio.src = v.preview_url || '';
+      const setIconPlay = () => {
+        btn.innerHTML =
+          '<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5 L19 12 L8 19 Z"/></svg>';
+      };
+      const setIconPause = () => {
+        btn.innerHTML =
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><rect x="6" y="5" width="4" height="14"/><rect x="14" y="5" width="4" height="14"/></svg>';
+      };
+      audio.addEventListener('ended', setIconPlay);
+      audio.addEventListener('pause', setIconPlay);
+      btn.addEventListener('click', () => {
+        if (currentAudio && currentAudio !== audio) {
+          try { currentAudio.pause(); } catch { /* best-effort */ }
+        }
+        if (audio.paused) {
+          audio.play().then(setIconPause).catch(() => setIconPlay());
+          currentAudio = audio;
+        } else {
+          audio.pause();
+          currentAudio = null;
+        }
+      });
+      host.appendChild(card);
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.debug('voices.json load failed', err);
   }
 }
 
@@ -519,5 +590,6 @@ document.addEventListener('DOMContentLoaded', () => {
   wireCompetitorCompareToggle();
   renderBuiltByCreators();
   renderExampleGallery();
+  renderVoicePreviews();
   renderPricingBlock();
 });
