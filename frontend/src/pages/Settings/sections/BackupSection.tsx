@@ -49,6 +49,7 @@ interface StorageProbe {
   api_auth_blocks_storage: boolean;
   process_uid: number | null;
   process_gid: number | null;
+  mount_fs: string | null;
   samples: Array<{
     asset_type: string;
     file_path: string;
@@ -381,6 +382,20 @@ export function BackupSection() {
               storage_base: {probeReport.storage_base_path}
               {probeReport.process_uid !== null && (
                 <> · uid={probeReport.process_uid}</>
+              )}
+              {probeReport.mount_fs && (
+                <> · fs={probeReport.mount_fs}
+                  {(probeReport.mount_fs === 'cifs' ||
+                    probeReport.mount_fs === 'smb3' ||
+                    probeReport.mount_fs === 'nfs' ||
+                    probeReport.mount_fs === 'nfs4') && (
+                    <span className="ml-2 inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-accent/10 text-accent">
+                      {probeReport.mount_fs === 'cifs' || probeReport.mount_fs === 'smb3'
+                        ? 'SMB/CIFS share'
+                        : 'NFS share'}
+                    </span>
+                  )}
+                </>
               )}
             </div>
             {probeReport.hints.length > 0 && (

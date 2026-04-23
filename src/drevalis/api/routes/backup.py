@@ -222,6 +222,34 @@ async def restore_backup(
             pass
 
 
+def _detect_mount_fs(path: Path) -> str | None:
+    """Return the filesystem type backing *path* (``ext4``, ``cifs``,
+    ``nfs``, ``overlay`` …) by reading ``/proc/mounts`` — or ``None``
+    when that isn't readable (Windows, restricted containers).
+
+    Used purely as a diagnostic so the Settings UI can show whether
+    the media volume is local, SMB, NFS, or something else.
+    """
+    try:
+        mounts = Path("/proc/mounts").read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError):
+        return None
+
+    path_str = str(path)
+    best: tuple[int, str] | None = None
+    for line in mounts:
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        mount_point = parts[1]
+        fs_type = parts[2]
+        if path_str == mount_point or path_str.startswith(mount_point.rstrip("/") + "/"):
+            depth = len(mount_point)
+            if best is None or depth > best[0]:
+                best = (depth, fs_type)
+    return best[1] if best else None
+
+
 # ── Storage probe (diagnose "can't see videos / images") ─────────────────
 
 
@@ -262,6 +290,7 @@ async def storage_probe(
         "api_auth_blocks_storage": bool(settings.api_auth_token),
         "process_uid": None,
         "process_gid": None,
+        "mount_fs": _detect_mount_fs(storage_base),
     }
     # ``os.getuid`` / ``os.getgid`` only exist on POSIX. On Windows the
     # probe simply omits those fields.
