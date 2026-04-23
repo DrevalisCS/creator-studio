@@ -17,17 +17,23 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "028"
-down_revision: Union[str, None] = "027"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "027"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "social_platforms",
-        sa.Column("account_metadata", sa.JSON(), nullable=True),
-    )
+    from migrations._helpers import has_column, has_index, has_table
+
+    if not has_column("social_platforms", "account_metadata"):
+        op.add_column(
+            "social_platforms",
+            sa.Column("account_metadata", sa.JSON(), nullable=True),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("social_platforms", "account_metadata")
+    from migrations._helpers import has_column, has_index, has_table
+
+    if has_column("social_platforms", "account_metadata"):
+        op.drop_column("social_platforms", "account_metadata")

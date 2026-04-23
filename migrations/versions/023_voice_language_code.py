@@ -10,22 +10,26 @@ Revises: 022
 Create Date: 2026-04-22
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 import sqlalchemy as sa
 from alembic import op
 
 revision: str = "023"
-down_revision: Union[str, None] = "022"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "022"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "voice_profiles",
-        sa.Column("language_code", sa.Text(), nullable=True),
-    )
+    from migrations._helpers import has_column, has_index, has_table
+
+    if not has_column("voice_profiles", "language_code"):
+        op.add_column(
+            "voice_profiles",
+            sa.Column("language_code", sa.Text(), nullable=True),
+        )
     # Derive language_code for Edge voices where the locale is the
     # first two dash-separated segments of edge_voice_id.
     # e.g. 'en-US-AriaNeural' → 'en-US'.
@@ -39,4 +43,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_column("voice_profiles", "language_code")
+    from migrations._helpers import has_column, has_index, has_table
+
+    if has_column("voice_profiles", "language_code"):
+        op.drop_column("voice_profiles", "language_code")

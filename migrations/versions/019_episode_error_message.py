@@ -14,23 +14,30 @@ Revises: 018
 Create Date: 2026-04-21
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 import sqlalchemy as sa
 from alembic import op
 
 revision: str = "019"
-down_revision: Union[str, None] = "018"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "018"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "episodes",
-        sa.Column("error_message", sa.Text(), nullable=True),
-    )
+    from migrations._helpers import has_column, has_index, has_table
+
+    if not has_column("episodes", "error_message"):
+        op.add_column(
+            "episodes",
+            sa.Column("error_message", sa.Text(), nullable=True),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("episodes", "error_message")
+    from migrations._helpers import has_column, has_index, has_table
+
+    if has_column("episodes", "error_message"):
+        op.drop_column("episodes", "error_message")

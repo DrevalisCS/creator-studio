@@ -13,53 +13,72 @@ Revises: 013
 Create Date: 2026-04-12
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 import sqlalchemy as sa
 from alembic import op
 
 revision: str = "014"
-down_revision: Union[str, None] = "013"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "013"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "series",
-        sa.Column("thumbnail_mode", sa.String(20), nullable=False, server_default="smart_frame"),
-    )
-    op.add_column(
-        "series",
-        sa.Column(
-            "thumbnail_comfyui_workflow_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
-            sa.ForeignKey("comfyui_workflows.id", ondelete="SET NULL"),
-            nullable=True,
-        ),
-    )
-    op.add_column(
-        "series",
-        sa.Column("music_bpm", sa.Integer(), nullable=True),
-    )
-    op.add_column(
-        "series",
-        sa.Column("music_key", sa.String(20), nullable=True),
-    )
-    op.add_column(
-        "series",
-        sa.Column("audio_preset", sa.String(20), nullable=True),
-    )
-    op.add_column(
-        "series",
-        sa.Column("video_clip_duration", sa.Integer(), nullable=False, server_default="5"),
-    )
+    from migrations._helpers import has_column, has_index, has_table
+
+    if not has_column("series", "thumbnail_mode"):
+        op.add_column(
+            "series",
+            sa.Column(
+                "thumbnail_mode", sa.String(20), nullable=False, server_default="smart_frame"
+            ),
+        )
+    if not has_column("series", "thumbnail_comfyui_workflow_id"):
+        op.add_column(
+            "series",
+            sa.Column(
+                "thumbnail_comfyui_workflow_id",
+                sa.dialects.postgresql.UUID(as_uuid=True),
+                sa.ForeignKey("comfyui_workflows.id", ondelete="SET NULL"),
+                nullable=True,
+            ),
+        )
+    if not has_column("series", "music_bpm"):
+        op.add_column(
+            "series",
+            sa.Column("music_bpm", sa.Integer(), nullable=True),
+        )
+    if not has_column("series", "music_key"):
+        op.add_column(
+            "series",
+            sa.Column("music_key", sa.String(20), nullable=True),
+        )
+    if not has_column("series", "audio_preset"):
+        op.add_column(
+            "series",
+            sa.Column("audio_preset", sa.String(20), nullable=True),
+        )
+    if not has_column("series", "video_clip_duration"):
+        op.add_column(
+            "series",
+            sa.Column("video_clip_duration", sa.Integer(), nullable=False, server_default="5"),
+        )
 
 
 def downgrade() -> None:
-    op.drop_column("series", "video_clip_duration")
-    op.drop_column("series", "audio_preset")
-    op.drop_column("series", "music_key")
-    op.drop_column("series", "music_bpm")
-    op.drop_column("series", "thumbnail_comfyui_workflow_id")
-    op.drop_column("series", "thumbnail_mode")
+    from migrations._helpers import has_column, has_index, has_table
+
+    if has_column("series", "video_clip_duration"):
+        op.drop_column("series", "video_clip_duration")
+    if has_column("series", "audio_preset"):
+        op.drop_column("series", "audio_preset")
+    if has_column("series", "music_key"):
+        op.drop_column("series", "music_key")
+    if has_column("series", "music_bpm"):
+        op.drop_column("series", "music_bpm")
+    if has_column("series", "thumbnail_comfyui_workflow_id"):
+        op.drop_column("series", "thumbnail_comfyui_workflow_id")
+    if has_column("series", "thumbnail_mode"):
+        op.drop_column("series", "thumbnail_mode")

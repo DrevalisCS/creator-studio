@@ -23,12 +23,16 @@ from alembic import op
 from sqlalchemy.dialects import postgresql
 
 revision: str = "026"
-down_revision: Union[str, None] = "025"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "025"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    from migrations._helpers import has_index, has_table
+
+    if has_table("video_edit_sessions"):
+        return
     op.create_table(
         "video_edit_sessions",
         sa.Column("id", postgresql.UUID(as_uuid=True), primary_key=True),
@@ -72,13 +76,16 @@ def upgrade() -> None:
             server_default=sa.func.now(),
         ),
     )
-    op.create_index(
-        "ix_video_edit_sessions_episode", "video_edit_sessions", ["episode_id"], unique=True
-    )
+    if not has_index("video_edit_sessions", "ix_video_edit_sessions_episode"):
+        op.create_index(
+            "ix_video_edit_sessions_episode", "video_edit_sessions", ["episode_id"], unique=True
+        )
 
 
 def downgrade() -> None:
-    op.drop_index(
-        "ix_video_edit_sessions_episode", table_name="video_edit_sessions"
-    )
-    op.drop_table("video_edit_sessions")
+    from migrations._helpers import has_index, has_table
+
+    if has_index("video_edit_sessions", "ix_video_edit_sessions_episode"):
+        op.drop_index("ix_video_edit_sessions_episode", table_name="video_edit_sessions")
+    if has_table("video_edit_sessions"):
+        op.drop_table("video_edit_sessions")

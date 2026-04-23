@@ -4,20 +4,25 @@ Revision ID: 003
 Revises: 002
 Create Date: 2026-03-24
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+from typing import Union
+
 import sqlalchemy as sa
+from alembic import op
 
 revision: str = "003"
-down_revision: Union[str, None] = "002"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "002"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
+    from migrations._helpers import has_column, has_index, has_table
+
     # voice_profiles: add edge_voice_id column
-    op.add_column("voice_profiles", sa.Column("edge_voice_id", sa.Text(), nullable=True))
+    if not has_column("voice_profiles", "edge_voice_id"):
+        op.add_column("voice_profiles", sa.Column("edge_voice_id", sa.Text(), nullable=True))
 
     # Update provider check constraint to include 'edge'
     # Use raw SQL since constraint name varies between naming conventions
@@ -42,11 +47,15 @@ def upgrade() -> None:
     """)
 
     # series: add negative_prompt column
-    op.add_column("series", sa.Column("negative_prompt", sa.Text(), nullable=True))
+    if not has_column("series", "negative_prompt"):
+        op.add_column("series", sa.Column("negative_prompt", sa.Text(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("series", "negative_prompt")
+    from migrations._helpers import has_column, has_index, has_table
+
+    if has_column("series", "negative_prompt"):
+        op.drop_column("series", "negative_prompt")
 
     op.execute("""
         DO $$
@@ -68,4 +77,5 @@ def downgrade() -> None:
         CHECK (provider IN ('piper', 'elevenlabs', 'kokoro'))
     """)
 
-    op.drop_column("voice_profiles", "edge_voice_id")
+    if has_column("voice_profiles", "edge_voice_id"):
+        op.drop_column("voice_profiles", "edge_voice_id")

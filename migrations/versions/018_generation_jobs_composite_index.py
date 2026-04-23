@@ -15,29 +15,38 @@ Revises: 017
 Create Date: 2026-04-21
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 from alembic import op
 
 revision: str = "018"
-down_revision: Union[str, None] = "017"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "017"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_index(
-        "ix_generation_jobs_episode_id_step",
-        "generation_jobs",
-        ["episode_id", "step"],
-    )
-    op.create_index(
-        "ix_series_youtube_channel_id",
-        "series",
-        ["youtube_channel_id"],
-    )
+    from migrations._helpers import has_column, has_index, has_table
+
+    if not has_index("generation_jobs", "ix_generation_jobs_episode_id_step"):
+        op.create_index(
+            "ix_generation_jobs_episode_id_step",
+            "generation_jobs",
+            ["episode_id", "step"],
+        )
+    if not has_index("series", "ix_series_youtube_channel_id"):
+        op.create_index(
+            "ix_series_youtube_channel_id",
+            "series",
+            ["youtube_channel_id"],
+        )
 
 
 def downgrade() -> None:
+    from migrations._helpers import has_column, has_index, has_table
+
+    # drop_index guarded by caller per-table check
     op.drop_index("ix_series_youtube_channel_id", table_name="series")
+    # drop_index guarded by caller per-table check
     op.drop_index("ix_generation_jobs_episode_id_step", table_name="generation_jobs")

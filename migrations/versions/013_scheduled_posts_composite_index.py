@@ -11,23 +11,30 @@ Revises: 012
 Create Date: 2026-04-12
 """
 
-from typing import Sequence, Union
+from collections.abc import Sequence
+from typing import Union
 
 from alembic import op
 
 revision: str = "013"
-down_revision: Union[str, None] = "012"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "012"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.create_index(
-        "ix_scheduled_posts_status_scheduled_at",
-        "scheduled_posts",
-        ["status", "scheduled_at"],
-    )
+    from migrations._helpers import has_column, has_index, has_table
+
+    if not has_index("scheduled_posts", "ix_scheduled_posts_status_scheduled_at"):
+        op.create_index(
+            "ix_scheduled_posts_status_scheduled_at",
+            "scheduled_posts",
+            ["status", "scheduled_at"],
+        )
 
 
 def downgrade() -> None:
+    from migrations._helpers import has_column, has_index, has_table
+
+    # drop_index guarded by caller per-table check
     op.drop_index("ix_scheduled_posts_status_scheduled_at", table_name="scheduled_posts")

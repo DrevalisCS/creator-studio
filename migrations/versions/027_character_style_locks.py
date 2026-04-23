@@ -26,16 +26,24 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "027"
-down_revision: Union[str, None] = "026"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "026"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
-    op.add_column("series", sa.Column("character_lock", sa.JSON(), nullable=True))
-    op.add_column("series", sa.Column("style_lock", sa.JSON(), nullable=True))
+    from migrations._helpers import has_column, has_index, has_table
+
+    if not has_column("series", "character_lock"):
+        op.add_column("series", sa.Column("character_lock", sa.JSON(), nullable=True))
+    if not has_column("series", "style_lock"):
+        op.add_column("series", sa.Column("style_lock", sa.JSON(), nullable=True))
 
 
 def downgrade() -> None:
-    op.drop_column("series", "style_lock")
-    op.drop_column("series", "character_lock")
+    from migrations._helpers import has_column, has_index, has_table
+
+    if has_column("series", "style_lock"):
+        op.drop_column("series", "style_lock")
+    if has_column("series", "character_lock"):
+        op.drop_column("series", "character_lock")
