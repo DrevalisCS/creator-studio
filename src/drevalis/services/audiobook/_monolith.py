@@ -133,8 +133,12 @@ class AudiobookService:
         """
         from pathlib import Path
 
-        storage_base = Path(self.storage.base_path)
-        output_dir = storage_base / "audiobooks" / str(audiobook_id)
+        # StorageBackend is a Protocol that doesn't declare ``base_path``
+        # (it's on the LocalStorage concrete impl). Resolve via
+        # ``resolve_path`` which every implementation provides and which
+        # returns an absolute Path under the storage root.
+        rel_dir = f"audiobooks/{audiobook_id}"
+        output_dir = Path(self.storage.resolve_path(rel_dir))
         if not output_dir.exists():
             return 0
 
