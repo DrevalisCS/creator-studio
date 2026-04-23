@@ -27,40 +27,51 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        "users",
-        sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
-        sa.Column("email", sa.Text(), nullable=False, unique=True),
-        sa.Column("password_hash", sa.Text(), nullable=False),
-        sa.Column("role", sa.Text(), nullable=False, server_default="'owner'"),
-        sa.Column("display_name", sa.Text(), nullable=True),
-        sa.Column(
-            "is_active",
-            sa.Boolean(),
-            nullable=False,
-            server_default=sa.text("true"),
-        ),
-        sa.Column(
-            "created_at",
-            sa.TIMESTAMP(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-        sa.Column(
-            "updated_at",
-            sa.TIMESTAMP(timezone=True),
-            nullable=False,
-            server_default=sa.func.now(),
-        ),
-        sa.Column("last_login_at", sa.TIMESTAMP(timezone=True), nullable=True),
-        sa.CheckConstraint(
-            "role IN ('owner', 'editor', 'viewer')",
-            name="ck_users_role_valid",
-        ),
-    )
-    op.create_index("ix_users_email_q", "users", ["email"])
+    # Idempotent: skip if the table already exists. Useful when a dev
+    # DB was hand-created ahead of the migration landing, or a partial
+    # run left the table behind before a later migration failed.
+    from migrations._helpers import has_index, has_table
+
+    if not has_table("users"):
+        op.create_table(
+            "users",
+            sa.Column("id", sa.dialects.postgresql.UUID(as_uuid=True), primary_key=True),
+            sa.Column("email", sa.Text(), nullable=False, unique=True),
+            sa.Column("password_hash", sa.Text(), nullable=False),
+            sa.Column("role", sa.Text(), nullable=False, server_default="'owner'"),
+            sa.Column("display_name", sa.Text(), nullable=True),
+            sa.Column(
+                "is_active",
+                sa.Boolean(),
+                nullable=False,
+                server_default=sa.text("true"),
+            ),
+            sa.Column(
+                "created_at",
+                sa.TIMESTAMP(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+            sa.Column(
+                "updated_at",
+                sa.TIMESTAMP(timezone=True),
+                nullable=False,
+                server_default=sa.func.now(),
+            ),
+            sa.Column("last_login_at", sa.TIMESTAMP(timezone=True), nullable=True),
+            sa.CheckConstraint(
+                "role IN ('owner', 'editor', 'viewer')",
+                name="ck_users_role_valid",
+            ),
+        )
+    if not has_index("users", "ix_users_email_q"):
+        op.create_index("ix_users_email_q", "users", ["email"])
 
 
 def downgrade() -> None:
-    op.drop_index("ix_users_email_q", table_name="users")
-    op.drop_table("users")
+    from migrations._helpers import has_index, has_table
+
+    if has_index("users", "ix_users_email_q"):
+        op.drop_index("ix_users_email_q", table_name="users")
+    if has_table("users"):
+        op.drop_table("users")
