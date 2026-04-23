@@ -535,10 +535,18 @@ class ElevenLabsTTSProvider:
         )
 
         # -- audio synthesis ------------------------------------------------
-        resp = await client.post(
+        # Honour ElevenLabs' rate-limit / upstream-overload responses
+        # via request_with_retry so a single 429 no longer flips the
+        # whole pipeline step to "failed".
+        from drevalis.core.http_retry import request_with_retry
+
+        resp = await request_with_retry(
+            client,
+            "POST",
             f"/text-to-speech/{voice_id}",
             json=payload,
             headers={"Accept": "audio/mpeg"},
+            label="elevenlabs.tts",
         )
         if resp.status_code != 200:
             body = resp.text
