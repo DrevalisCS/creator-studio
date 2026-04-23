@@ -67,9 +67,18 @@ class UpdateCheckError(Exception):
 
 
 async def _fetch_manifest(server_url: str, license_key: str) -> dict[str, Any]:
+    from drevalis.core.http_retry import request_with_retry
+
     url = server_url.rstrip("/") + "/updates/manifest"
     async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(url, params={"license": license_key, "current": _CURRENT_VERSION})
+        resp = await request_with_retry(
+            client,
+            "GET",
+            url,
+            params={"license": license_key, "current": _CURRENT_VERSION},
+            label="license.updates.manifest",
+            max_attempts=3,
+        )
     if resp.status_code >= 400:
         detail: dict[str, Any] = {}
         try:
