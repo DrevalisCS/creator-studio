@@ -20,14 +20,18 @@ function Layout() {
   const { demoMode } = useAuthMode();
   const { activityDock } = useTheme();
 
-  // Padding the <main> needs so the Activity Monitor doesn't cover content.
-  // Bottom dock ≈ 48px compact bar; left/right rails are 320px; top dock
-  // sits above the sticky header so we don't reserve space for it here.
+  // Padding the <main> needs so the Activity Monitor doesn't cover
+  // content. The rail widths are CSS-driven (ActivityMonitor sets
+  // ``w-[44px]`` collapsed or ``w-[320px]`` expanded based on its own
+  // state), so we conservatively reserve the 44px collapsed width from
+  // the page frame — the rail floats above ``<main>`` when expanded,
+  // which is the desirable behavior (rail overlays content briefly
+  // without reshuffling the layout on every expand/collapse).
   const dockPadClass =
     activityDock === 'right'
-      ? 'md:pr-[320px]'
+      ? 'md:pr-[44px]'
       : activityDock === 'left'
-        ? 'md:pl-[376px] lg:pl-[560px]' // sidebar + rail
+        ? 'md:pl-[100px]' // sidebar collapsed (56px) + rail (44px)
         : '';
   const bottomPadClass = activityDock === 'bottom' ? 'md:pb-[48px]' : 'md:pb-0';
   const topPadClass = activityDock === 'top' ? 'md:pt-[60px]' : '';
@@ -80,17 +84,12 @@ function Layout() {
           // Mobile: no sidebar offset, leave room for mobile nav + floating pill
           'pl-0 pb-[76px]',
           // Tablet: collapsed sidebar always shown at md+
-          activityDock === 'left' ? '' : 'md:pl-[56px]',
+          'md:pl-[56px]',
           bottomPadClass,
           topPadClass,
           dockPadClass,
-          // Desktop: respect sidebar expand/collapse state (unless the
-          // activity dock is on the left, which already pads deep enough)
-          activityDock === 'left'
-            ? ''
-            : sidebarCollapsed
-              ? 'lg:pl-[56px]'
-              : 'lg:pl-[240px]',
+          // Desktop: respect sidebar expand/collapse state
+          sidebarCollapsed ? 'lg:pl-[56px]' : 'lg:pl-[240px]',
         ].join(' ')}
       >
         <div className="p-6 pb-6 max-w-[1400px] mx-auto">

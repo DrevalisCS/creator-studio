@@ -307,9 +307,25 @@ async def repair_media_links(
     # Episodes regenerated multiple times often accumulate duplicate
     # media_assets rows — same (episode_id, asset_type, file_path) but
     # different created_at / file_size_bytes (from older generations
-    # that overwrote the bytes). The older duplicates carry stale
-    # sizes; if any consumer disambiguates by size the wrong row
-    # "wins". Keep the newest row per key, delete the others.
+    # that overwrote the bytes). Keep one row per key, delete the rest.
+    #
+    # IMPORTANT: v0.20.5 — we deleted "stale" rows blindly by age before,
+    # which broke working installs: if the "newest" row in a group had
+    # a file_path that no longer exists on disk (e.g. a regenerate run
+    # that wrote a path but never finalised), the survivor was a GHOST
+    # and the older row that actually pointed at real bytes got
+    # deleted. Media went dark for the user even though the files were
+    # still present. We now pick the survivor by (file-exists, then
+    # newest) so a real-bytes row always beats a ghost row.
+    def _exists_on_disk(row: MediaAsset) -> bool:
+        fp = row.file_path or ""
+        if not fp:
+            return False
+        try:
+            return (storage_base / fp).resolve().is_file()
+        except OSError:
+            return False
+
     seen: dict[tuple[Any, str, str], MediaAsset] = {}
     to_delete: list[MediaAsset] = []
     for row in rows:
@@ -321,9 +337,18 @@ async def repair_media_links(
         if prior is None:
             seen[key] = row
             continue
-        newest, stale = (row, prior) if _created_at(row) >= _created_at(prior) else (prior, row)
-        seen[key] = newest
-        to_delete.append(stale)
+        row_ok = _exists_on_disk(row)
+        prior_ok = _exists_on_disk(prior)
+        if row_ok != prior_ok:
+            # Real-bytes row wins outright, regardless of age.
+            survivor, loser = (row, prior) if row_ok else (prior, row)
+        else:
+            # Both OK or both ghosts → use created_at as the tie-breaker.
+            survivor, loser = (
+                (row, prior) if _created_at(row) >= _created_at(prior) else (prior, row)
+            )
+        seen[key] = survivor
+        to_delete.append(loser)
     for stale in to_delete:
         await session.delete(stale)
     if to_delete:

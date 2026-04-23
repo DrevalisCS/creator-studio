@@ -126,6 +126,40 @@ const STORAGE_DOCK_KEY = 'sf_activity_dock';
 // Apply theme to DOM
 // ---------------------------------------------------------------------------
 
+// ── Color-mix helpers ─────────────────────────────────────────────────
+// Parse a ``#RRGGBB`` → {r,g,b} so we can blend accent into neutral
+// surfaces at runtime. The v0.20.4 theme switcher only changed four
+// accent vars, so swapping accent looked subtle. v0.20.5 mixes accent
+// into the whole surface ladder (backgrounds, borders, hover states)
+// and bumps up all the related CSS variables, so a theme switch feels
+// like a real theme change — card surfaces pick up a subtle tint,
+// focus rings recolor, borders warm up.
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return { r: 0, g: 0, b: 0 };
+  const n = parseInt(m[1]!, 16);
+  return { r: (n >> 16) & 0xff, g: (n >> 8) & 0xff, b: n & 0xff };
+}
+
+function mix(
+  base: { r: number; g: number; b: number },
+  accent: { r: number; g: number; b: number },
+  ratio: number,
+): string {
+  const r = Math.round(base.r * (1 - ratio) + accent.r * ratio);
+  const g = Math.round(base.g * (1 - ratio) + accent.g * ratio);
+  const b = Math.round(base.b * (1 - ratio) + accent.b * ratio);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
+function rgba(
+  accent: { r: number; g: number; b: number },
+  alpha: number,
+): string {
+  return `rgba(${accent.r}, ${accent.g}, ${accent.b}, ${alpha})`;
+}
+
 function applyTheme(mode: ThemeMode, accent: AccentColor) {
   const html = document.documentElement;
 
@@ -138,16 +172,63 @@ function applyTheme(mode: ThemeMode, accent: AccentColor) {
     html.classList.remove('light');
   }
 
-  // Accent CSS variables
   const isLight = mode === 'light';
-  html.style.setProperty('--color-accent', isLight ? accent.light : accent.dark);
-  html.style.setProperty('--color-accent-hover', isLight ? accent.lightHover : accent.darkHover);
-  html.style.setProperty('--color-accent-active', isLight ? accent.light : accent.dark);
-  html.style.setProperty('--color-accent-muted', `${isLight ? accent.light : accent.dark}1A`);
-  html.style.setProperty('--color-accent-subtle', `${isLight ? accent.light : accent.dark}33`);
-  html.style.setProperty('--color-border-accent', `${isLight ? accent.light : accent.dark}33`);
-  html.style.setProperty('--shadow-accent-glow',
-    `0 0 20px ${isLight ? accent.light : accent.dark}26, 0 0 6px ${isLight ? accent.light : accent.dark}1A`
+  const accentHex = isLight ? accent.light : accent.dark;
+  const accentHoverHex = isLight ? accent.lightHover : accent.darkHover;
+  const accentRgb = hexToRgb(accentHex);
+
+  // ── Accent variables ──────────────────────────────────────
+  html.style.setProperty('--color-accent', accentHex);
+  html.style.setProperty('--color-accent-hover', accentHoverHex);
+  html.style.setProperty('--color-accent-active', accentHex);
+  html.style.setProperty('--color-accent-muted', rgba(accentRgb, 0.10));
+  html.style.setProperty('--color-accent-subtle', rgba(accentRgb, 0.20));
+  html.style.setProperty('--color-border-accent', rgba(accentRgb, 0.30));
+  html.style.setProperty(
+    '--shadow-accent-glow',
+    `0 0 24px ${rgba(accentRgb, 0.28)}, 0 0 8px ${rgba(accentRgb, 0.16)}`,
+  );
+
+  // ── Surface tinting — v0.20.5 ─────────────────────────────
+  // Mix the accent into the base/surface/elevated/hover slots so the
+  // whole UI picks up the chosen color rather than just the buttons.
+  // Dark mode uses a near-black base; light mode a near-white base.
+  const baseColor = isLight
+    ? { r: 248, g: 249, b: 250 } // #F8F9FA
+    : { r: 10, g: 10, b: 12 }; // #0A0A0C
+  const surfaceColor = isLight
+    ? { r: 255, g: 255, b: 255 }
+    : { r: 17, g: 17, b: 22 }; // #111116
+  const elevatedColor = isLight
+    ? { r: 255, g: 255, b: 255 }
+    : { r: 26, g: 26, b: 32 }; // #1A1A20
+  const hoverColor = isLight
+    ? { r: 241, g: 243, b: 245 } // #F1F3F5
+    : { r: 36, g: 36, b: 44 }; // #24242C
+
+  // Tint percentages are small on purpose — enough to read as "the
+  // orange theme" on surfaces without losing readability of white
+  // text on those surfaces.
+  const tint = isLight ? 0.04 : 0.035;
+  const hoverTint = isLight ? 0.07 : 0.065;
+
+  html.style.setProperty('--color-bg-base', mix(baseColor, accentRgb, tint * 0.4));
+  html.style.setProperty('--color-bg-surface', mix(surfaceColor, accentRgb, tint));
+  html.style.setProperty('--color-bg-elevated', mix(elevatedColor, accentRgb, tint));
+  html.style.setProperty('--color-bg-hover', mix(hoverColor, accentRgb, hoverTint));
+  html.style.setProperty(
+    '--color-bg-active',
+    mix(hoverColor, accentRgb, hoverTint * 1.4),
+  );
+
+  // Borders pick up a subtle accent wash too — cards read as a set.
+  const borderColor = isLight
+    ? { r: 229, g: 231, b: 235 } // #E5E7EB
+    : { r: 38, g: 38, b: 45 }; // #26262D
+  html.style.setProperty('--color-border', mix(borderColor, accentRgb, 0.12));
+  html.style.setProperty(
+    '--color-border-hover',
+    mix(borderColor, accentRgb, 0.22),
   );
 }
 

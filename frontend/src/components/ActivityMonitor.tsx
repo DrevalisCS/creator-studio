@@ -111,14 +111,18 @@ export function ActivityMonitor() {
   const { toast } = useToast();
   const { activityDock } = useTheme();
   const isVerticalDock = activityDock === 'left' || activityDock === 'right';
-  const [userExpanded, setUserExpanded] = useState(false);
-  // Vertical docks (left/right rails) are always fully visible — they're
-  // a sidebar, not a collapsible tray. Horizontal docks (top/bottom) keep
-  // the collapsed-by-default tray behavior the user can pop open.
-  const expanded = isVerticalDock ? true : userExpanded;
-  const setExpanded = (v: boolean) => {
-    if (!isVerticalDock) setUserExpanded(v);
-  };
+  // v0.20.5: left / right rails are now ALSO retractable. The rail
+  // collapses to a 40px strip showing just the Activity icon + count,
+  // click anywhere on the collapsed strip to pop it back out. Default
+  // for vertical docks is expanded, default for horizontal is collapsed.
+  const [userExpanded, setUserExpanded] = useState<boolean>(() => {
+    // One-time init only — we honor whatever the user had on the
+    // previous render so switching dock position doesn't flip their
+    // preference.
+    return false;
+  });
+  const expanded = userExpanded;
+  const setExpanded = (v: boolean) => setUserExpanded(v);
   const [tasks, setTasks] = useState<BackgroundTask[]>([]);
   const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [cancelling, setCancelling] = useState<Set<string>>(new Set());
@@ -287,26 +291,26 @@ export function ActivityMonitor() {
       )}
 
     {/* ── Desktop: position-aware docked bar (hidden on mobile) ─────
-         Position is driven by the theme-level ``activityDock`` setting
-         (Settings → Appearance). Four concrete docks:
-           bottom — classic task-bar style, full-width bottom strip
-           top    — above the page content, sticks to viewport top
-           left / right — vertical rail, slim width, collapses to icons
-
-         Styling rules are flipped per-position so the "expanded" drawer
-         opens the correct way (upward from bottom, downward from top,
-         out-to-side for vertical rails). Default stays bottom for
-         users who haven't changed the setting. */}
+         Position from ``activityDock`` (Settings → Appearance):
+         bottom/top = horizontal tray, collapsible
+         left/right = vertical rail; expanded = 320px, collapsed = 40px
+         rail with just Activity icon + count. Click strip to toggle. */}
     <div
       className={[
-        'hidden md:block fixed z-40 bg-bg-surface/85 backdrop-blur-xl',
-        'border-white/[0.06] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.5)]',
+        'hidden md:block fixed z-40 bg-bg-surface/90 backdrop-blur-xl',
+        'border-white/[0.08] shadow-[0_8px_32px_-8px_rgba(0,0,0,0.55)]',
+        'transition-[width,height] duration-200 ease-out',
         activityDock === 'bottom' ? 'bottom-0 left-0 right-0 border-t' : '',
         activityDock === 'top' ? 'top-0 left-0 right-0 border-b' : '',
-        activityDock === 'left' ? 'top-0 bottom-0 left-0 w-[320px] border-r flex flex-col' : '',
-        activityDock === 'right' ? 'top-0 bottom-0 right-0 w-[320px] border-l flex flex-col' : '',
+        activityDock === 'left'
+          ? `top-0 bottom-0 left-0 border-r flex flex-col ${expanded ? 'w-[320px]' : 'w-[44px]'}`
+          : '',
+        activityDock === 'right'
+          ? `top-0 bottom-0 right-0 border-l flex flex-col ${expanded ? 'w-[320px]' : 'w-[44px]'}`
+          : '',
       ].join(' ')}
       data-dock={activityDock}
+      data-expanded={expanded}
     >
       {/* Expanded panel */}
       {expanded && (
@@ -558,21 +562,39 @@ export function ActivityMonitor() {
           at the edge of the screen. */}
       <div
         className={[
-          'flex items-center justify-between px-4 select-none',
-          isVerticalDock ? 'h-11 border-b border-border/60' : 'h-10 cursor-pointer',
-          !isVerticalDock && totalActive > 0 ? 'bg-accent-muted/20' : '',
+          'flex items-center select-none cursor-pointer transition-colors',
+          isVerticalDock
+            ? expanded
+              ? 'h-11 px-4 border-b border-border/60 justify-between'
+              : 'flex-col h-full w-full py-3 gap-3 justify-start hover:bg-white/[0.03]'
+            : 'h-10 px-4 justify-between',
+          totalActive > 0 ? 'bg-accent-muted/20' : '',
         ].join(' ')}
-        onClick={() => !isVerticalDock && setExpanded(!expanded)}
-        role={isVerticalDock ? undefined : 'button'}
-        aria-expanded={isVerticalDock ? undefined : expanded}
-        aria-label={isVerticalDock ? undefined : 'Toggle activity monitor'}
+        onClick={() => setExpanded(!expanded)}
+        role="button"
+        aria-expanded={expanded}
+        aria-label={expanded ? 'Collapse activity monitor' : 'Expand activity monitor'}
       >
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Activity size={14} className="text-accent" />
-            <span className="text-xs font-display font-semibold text-txt-primary">
-              Activity
-            </span>
+        <div
+          className={
+            isVerticalDock && !expanded
+              ? 'flex flex-col items-center gap-2'
+              : 'flex items-center gap-3'
+          }
+        >
+          <div
+            className={
+              isVerticalDock && !expanded
+                ? 'flex flex-col items-center gap-1.5'
+                : 'flex items-center gap-2'
+            }
+          >
+            <Activity size={isVerticalDock && !expanded ? 18 : 14} className="text-accent" />
+            {(!isVerticalDock || expanded) && (
+              <span className="text-xs font-display font-semibold text-txt-primary">
+                Activity
+              </span>
+            )}
             {totalActive > 0 && (
               <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full bg-accent text-[10px] font-bold text-bg-base">
                 {totalActive}
@@ -592,51 +614,59 @@ export function ActivityMonitor() {
             aria-hidden="true"
           />
 
-          {/* Queue info */}
-          {queueStatus && (
-            <span className="text-[10px] text-txt-tertiary">
-              {queueStatus.active}/{queueStatus.max_concurrent} slots
-              {queueStatus.queued > 0 && ` · ${queueStatus.queued} queued`}
-            </span>
-          )}
-
-          {/* Priority mode */}
-          <span className="text-[10px] text-txt-tertiary">
-            · {PRIORITY_LABELS[priority]}
-          </span>
-
-          {/* Active task summary */}
-          {totalActive > 0 && (
-            <div className="flex items-center gap-1.5 ml-2">
-              {tasks.slice(0, 3).map((task) => (
-                <div key={task.id} className="flex items-center gap-1">
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full ${STEP_COLORS[task.step] || 'bg-accent'}`}
-                  />
-                  <span className="text-[10px] text-txt-secondary truncate max-w-[120px]">
-                    {task.title.length > 20 ? task.title.slice(0, 20) + '...' : task.title}
-                  </span>
-                </div>
-              ))}
-              {totalActive > 3 && (
-                <span className="text-[10px] text-txt-tertiary">+{totalActive - 3}</span>
+          {/* Everything beyond the core (Activity + count) is hidden
+              on a collapsed vertical rail — not enough horizontal
+              room to render legibly. */}
+          {(!isVerticalDock || expanded) && (
+            <>
+              {queueStatus && (
+                <span className="text-[10px] text-txt-tertiary">
+                  {queueStatus.active}/{queueStatus.max_concurrent} slots
+                  {queueStatus.queued > 0 && ` · ${queueStatus.queued} queued`}
+                </span>
               )}
-            </div>
+              <span className="text-[10px] text-txt-tertiary">
+                · {PRIORITY_LABELS[priority]}
+              </span>
+              {totalActive > 0 && (
+                <div className="flex items-center gap-1.5 ml-2">
+                  {tasks.slice(0, 3).map((task) => (
+                    <div key={task.id} className="flex items-center gap-1">
+                      <div
+                        className={`w-1.5 h-1.5 rounded-full ${STEP_COLORS[task.step] || 'bg-accent'}`}
+                      />
+                      <span className="text-[10px] text-txt-secondary truncate max-w-[120px]">
+                        {task.title.length > 20
+                          ? task.title.slice(0, 20) + '...'
+                          : task.title}
+                      </span>
+                    </div>
+                  ))}
+                  {totalActive > 3 && (
+                    <span className="text-[10px] text-txt-tertiary">
+                      +{totalActive - 3}
+                    </span>
+                  )}
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        <div className="flex items-center gap-2">
-          {totalActive > 0 && (
-            <Badge variant="accent" className="text-[9px]">
-              {totalActive} active
-            </Badge>
-          )}
-          {expanded ? (
-            <ChevronDown size={12} className="text-txt-tertiary" />
-          ) : (
-            <ChevronUp size={12} className="text-txt-tertiary" />
-          )}
-        </div>
+        {(!isVerticalDock || expanded) && (
+          <div className="flex items-center gap-2">
+            {totalActive > 0 && (
+              <Badge variant="accent" className="text-[9px]">
+                {totalActive} active
+              </Badge>
+            )}
+            {expanded ? (
+              <ChevronDown size={12} className="text-txt-tertiary" />
+            ) : (
+              <ChevronUp size={12} className="text-txt-tertiary" />
+            )}
+          </div>
+        )}
       </div>
     </div>
     </>
