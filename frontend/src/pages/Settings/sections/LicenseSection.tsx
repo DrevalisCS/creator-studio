@@ -74,29 +74,66 @@ export function LicenseSection() {
   const [activations, setActivations] = useState<ActivationsResponse | null>(null);
   const [activationsLoading, setActivationsLoading] = useState(false);
   const [deactivatingMachine, setDeactivatingMachine] = useState<string | null>(null);
+  // Track whether we've already given up on the seat-list endpoint for
+  // this session. An older license-server deployment (or a misconfigured
+  // ``LICENSE_SERVER_URL``) returns 404 here; re-trying on every render
+  // and toasting each time floods the UI. Sticky failure = silent after
+  // the first warning, and only the explicit "Refresh" button retries.
+  const [activationsDisabled, setActivationsDisabled] = useState(false);
 
-  const loadActivations = useCallback(async () => {
-    if (!status || status.state === 'unactivated' || status.state === 'invalid') {
-      setActivations(null);
-      return;
-    }
-    setActivationsLoading(true);
-    try {
-      const res = await license.listActivations();
-      setActivations(res);
-    } catch (e) {
-      // License server unreachable or endpoint missing (older server) -
-      // surface the cause once, keep UI functional.
-      toast.warning('Could not load seat list', { description: formatError(e) });
-      setActivations(null);
-    } finally {
-      setActivationsLoading(false);
-    }
-  }, [status, toast]);
+  // Narrow the useEffect trigger to the fields we actually read from
+  // ``status`` — ``state`` is a primitive and ``activated_at`` only flips
+  // on real changes. Using the object reference as a dependency would
+  // re-fire this effect on every poll of the license status, producing
+  // the toast flood bug.
+  const licenseState = status?.state;
+  const licenseActivatedAt = status?.activated_at;
+
+  const loadActivations = useCallback(
+    async (options: { manualRefresh?: boolean } = {}) => {
+      if (!licenseState || licenseState === 'unactivated' || licenseState === 'invalid') {
+        setActivations(null);
+        return;
+      }
+      if (activationsDisabled && !options.manualRefresh) {
+        return;
+      }
+      setActivationsLoading(true);
+      try {
+        const res = await license.listActivations();
+        setActivations(res);
+        // A successful fetch re-enables the auto-refresh hook; the server
+        // came back online or was just freshly deployed.
+        if (activationsDisabled) setActivationsDisabled(false);
+      } catch (e) {
+        // Show the warning once, then stop auto-retrying so a broken
+        // license-server doesn't produce hundreds of identical toasts.
+        if (!activationsDisabled) {
+          toast.warning('Seat list unavailable', {
+            description:
+              'The license server returned an error. This is typically a ' +
+              'stale license-server deployment — your license still works. ' +
+              'Use the refresh button above to retry.',
+          });
+          setActivationsDisabled(true);
+        }
+        setActivations(null);
+        // eslint-disable-next-line no-console
+        console.debug('listActivations failed (auto-retry suppressed):', formatError(e));
+      } finally {
+        setActivationsLoading(false);
+      }
+    },
+    [licenseState, activationsDisabled, toast],
+  );
 
   useEffect(() => {
     loadActivations();
-  }, [loadActivations]);
+    // We intentionally only refresh on ``licenseState`` / ``licenseActivatedAt``,
+    // not the full ``status`` object — see the ``licenseState`` comment above
+    // for the toast-flood we were fixing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [licenseState, licenseActivatedAt]);
 
   const onDeactivateMachine = async (machineId: string) => {
     const isSelf = machineId === activations?.this_machine_id;
@@ -402,7 +439,7 @@ export function LicenseSection() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={loadActivations}
+            onClick={() => loadActivations({ manualRefresh: true })}
             disabled={activationsLoading}
             title="Re-check seat list"
           >

@@ -102,25 +102,77 @@ function wireCheckoutButtons() {
 }
 
 function wireIntervalToggle() {
-  const toggle = document.querySelector('[data-interval-toggle]');
-  if (!toggle) return;
+  // Support both shapes: the legacy single checkbox (``data-interval-toggle``)
+  // and the new segmented radio group (``name="pricing-interval"``). Newly
+  // injected pricing blocks use the radio group; we watch both so we don't
+  // break in-flight pages.
+  const legacyToggle = document.querySelector('[data-interval-toggle]');
+  const radios = document.querySelectorAll('input[name="pricing-interval"]');
+  if (!legacyToggle && radios.length === 0) return;
+
+  const currentInterval = () => {
+    if (legacyToggle) return legacyToggle.checked ? 'yearly' : 'monthly';
+    const checked = document.querySelector('input[name="pricing-interval"]:checked');
+    return checked ? checked.value : 'monthly';
+  };
+
   const sync = () => {
-    const yearly = toggle.checked;
+    const yearly = currentInterval() === 'yearly';
     document.querySelectorAll('[data-price]').forEach((el) => {
       el.textContent = yearly ? el.dataset.priceYearly : el.dataset.priceMonthly;
     });
     document.querySelectorAll('[data-interval-label]').forEach((el) => {
+      // Lifetime cards leave the label static — they're one-time.
+      if (el.dataset.intervalLabelStatic === 'true') return;
       el.textContent = yearly ? '/yr' : '/mo';
     });
     document.querySelectorAll('[data-checkout]').forEach((btn) => {
+      // Don't clobber lifetime buttons — they're data-interval="once".
+      if (btn.dataset.tier === 'lifetime_pro') return;
       btn.dataset.interval = yearly ? 'yearly' : 'monthly';
     });
     document.querySelectorAll('[data-interval-hint]').forEach((el) => {
-      el.textContent = yearly ? 'Billed annually' : 'Billed monthly';
+      el.textContent = yearly
+        ? 'Billed annually · 2 months free'
+        : 'Billed monthly · cancel anytime';
     });
   };
-  toggle.addEventListener('change', sync);
+
+  if (legacyToggle) legacyToggle.addEventListener('change', sync);
+  radios.forEach((r) => r.addEventListener('change', sync));
   sync();
+}
+
+// Fetch the shared pricing block from /assets/pricing-block.html and
+// inject it wherever a data-pricing-block host exists. Keeps the homepage
+// preview and /pricing in perfect lockstep without server-side includes.
+async function renderPricingBlock() {
+  const hosts = document.querySelectorAll('[data-pricing-block]');
+  if (hosts.length === 0) return;
+  try {
+    const res = await fetch('/assets/pricing-block.html', { cache: 'no-cache' });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const html = await res.text();
+    hosts.forEach((h) => {
+      h.innerHTML = html;
+    });
+    // Re-wire toggle + checkout after injection since wireIntervalToggle /
+    // wireCheckoutButtons previously ran against an empty DOM.
+    wireCheckoutButtons();
+    wirePaypalButtons();
+    wireIntervalToggle();
+    // Run reveal on freshly-added .reveal nodes.
+    document.querySelectorAll('[data-pricing-block] .reveal').forEach((el) => {
+      el.classList.add('revealed');
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('pricing block load failed', err);
+    hosts.forEach((h) => {
+      h.innerHTML =
+        '<p class="text-center text-[var(--txt-muted)] text-sm">Could not load pricing. <a href="/pricing" class="underline">Open the full pricing page →</a></p>';
+    });
+  }
 }
 
 function wireBillingPortalForm() {
@@ -467,4 +519,5 @@ document.addEventListener('DOMContentLoaded', () => {
   wireCompetitorCompareToggle();
   renderBuiltByCreators();
   renderExampleGallery();
+  renderPricingBlock();
 });

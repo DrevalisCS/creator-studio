@@ -4,13 +4,13 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Pricing — Drevalis Creator Studio (from CHF 0/mo · Lifetime CHF 599)</title>
-  <meta name="description" content="Five ways to pay: Free demo, Creator (CHF 19/mo · unlimited episodes), Pro (CHF 49/mo), Studio (CHF 99/mo), or Lifetime Pro CHF 599 one-time. Save 20% on yearly. Cancel anytime. Stripe or PayPal." />
-  <meta name="keywords" content="drevalis pricing, ai video generator price, self-hosted ai pricing, creator studio tiers, chf pricing" />
+  <meta name="description" content="Free demo, Creator (CHF 19/mo · unlimited episodes), Pro (CHF 49/mo), Studio (CHF 99/mo), or Lifetime Pro CHF 599 one-time. Save 20% on yearly. Cancel anytime. Stripe or PayPal." />
+  <meta name="keywords" content="drevalis pricing, ai video generator price, self-hosted ai pricing, creator studio tiers, chf pricing, lifetime license" />
   <meta name="robots" content="index, follow" />
   <link rel="canonical" href="https://drevalis.com/pricing" />
 
   <meta property="og:title" content="Drevalis Creator Studio — Pricing" />
-  <meta property="og:description" content="4 tiers, CHF-billed, cancel anytime." />
+  <meta property="og:description" content="5 ways to pay: Free demo, Creator, Pro, Studio monthly/yearly, or CHF 599 Lifetime." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://drevalis.com/pricing" />
   <meta property="og:image" content="https://drevalis.com/assets/images/hero-dashboard.png" />
@@ -18,7 +18,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/site.css" />
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Google tag (gtag.js) with Consent Mode v2 defaults -->
@@ -28,9 +28,6 @@
 </head>
 
 <body class="antialiased">
-  <script src="/assets/boot-intro.js"></script>
-  <div class="noise"></div>
-
   <nav class="site-nav">
     <div class="site-nav-inner">
       <a href="/" class="site-brand">
@@ -39,7 +36,10 @@
         </span>
         Drevalis
       </a>
-      <button type="button" class="site-menu-btn" aria-label="Open menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg></button><div class="site-nav-links">
+      <button type="button" class="site-menu-btn" aria-label="Open menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
+      </button>
+      <div class="site-nav-links">
         <a href="/#features" class="site-nav-link hide-xs">Features</a>
         <a href="/#workflow" class="site-nav-link hide-sm">How it works</a>
         <a href="/pricing" class="site-nav-link" aria-current="page">Pricing</a>
@@ -51,217 +51,90 @@
     </div>
   </nav>
 
-  <!-- Header -->
+  <!-- ── Header ───────────────────────────────────────────── -->
   <section class="section-compact relative overflow-hidden">
-    <div class="bg-glow" style="background: var(--accent); top: -150px; left: 40%; width: 500px; height: 500px; opacity: 0.2;"></div>
-    <div class="container-xl text-center relative z-10 reveal">
+    <div class="bg-glow" style="top: -150px; left: 40%; width: 500px; height: 500px;"></div>
+    <div class="container-lg text-center relative z-10 reveal">
       <span class="eyebrow mb-5">Pricing</span>
-      <h1 class="display-hero mt-5 mb-5">Honest tiers. <span class="accent-gradient">CHF pricing</span>. No surprise add-ons.</h1>
-      <p class="lead max-w-2xl mx-auto">Try everything free in the <a href="https://demo.drevalis.com" class="underline text-[var(--accent)]">live demo</a>. When you're ready, pay monthly or yearly in CHF. Stripe converts to your local currency at checkout. PayPal supported on all paid tiers.</p>
+      <h1 class="display-hero mt-5 mb-5">Pick how much you need. <span class="accent-gradient">Pay once if you want.</span></h1>
+      <p class="lead max-w-2xl mx-auto">Try everything free in the <a href="https://demo.drevalis.com">live demo</a>. When you're ready, pick a plan. Stripe or PayPal, CHF-billed, local currency at checkout, VAT/MWST added where applicable.</p>
     </div>
   </section>
 
-  <!-- Plans -->
+  <!-- ── Plans (shared injected block) ──────────────────── -->
   <section id="plans" class="section-compact">
-    <div class="container-xl">
-      <div class="flex items-center justify-center gap-3 mb-12 reveal">
-        <span class="text-sm text-[var(--txt-secondary)]">Monthly</span>
-        <label class="relative inline-flex cursor-pointer items-center">
-          <input type="checkbox" data-interval-toggle class="peer sr-only" />
-          <div class="h-6 w-11 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-strong)] peer-checked:bg-[var(--accent)]/30 peer-checked:border-[var(--accent)]/50 transition"></div>
-          <div class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--txt-primary)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent)]"></div>
-        </label>
-        <span class="text-sm text-[var(--txt-secondary)]">Yearly <span class="pill pill-green">2 months free · Save 20%</span></span>
-      </div>
-
-      <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-4 reveal">
-
-        <!-- Free -->
-        <div class="card p-7 flex flex-col">
-          <h2 class="text-xl mb-1">Free</h2>
-          <p class="text-xs text-[var(--txt-muted)] mb-6">Tire-kick in the demo.</p>
-          <div class="mb-6">
-            <span class="text-5xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.025em;">CHF 0</span>
-            <span class="text-[var(--txt-secondary)] ml-1">/mo</span>
-          </div>
-          <p class="text-xs text-[var(--txt-muted)] mb-6">No signup, data resets nightly</p>
-          <a href="https://demo.drevalis.com" target="_blank" rel="noopener" class="btn btn-secondary mb-6">Open the demo →</a>
-          <ul class="text-sm space-y-3 text-[var(--txt-secondary)] flex-1">
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Full UI walkthrough</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Read-only exploration of series, episodes, editor</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Simulated generation (no real GPU)</li>
-            <li class="flex gap-2"><span class="text-[var(--txt-muted)]">✗</span> No real uploads</li>
-            <li class="flex gap-2"><span class="text-[var(--txt-muted)]">✗</span> No persistence</li>
-          </ul>
-        </div>
-
-        <!-- Creator -->
-        <div class="card p-7 flex flex-col">
-          <h2 class="text-xl mb-1">Creator</h2>
-          <p class="text-xs text-[var(--txt-muted)] mb-6">Solo creator, one channel.</p>
-          <div class="mb-6">
-            <span class="text-5xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.025em;">CHF <span data-price data-price-monthly="19" data-price-yearly="190">19</span></span>
-            <span class="text-[var(--txt-secondary)] ml-1" data-interval-label>/mo</span>
-          </div>
-          <p class="text-xs text-[var(--txt-muted)] mb-6" data-interval-hint>Billed monthly · cancel anytime</p>
-          <button data-checkout data-tier="creator" data-interval="monthly" class="btn btn-secondary mb-6">Start Creator</button>
-          <ul class="text-sm space-y-3 text-[var(--txt-secondary)] flex-1">
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 1 machine seat</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> <strong class="text-[var(--txt-primary)]">Unlimited</strong> episodes</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 1 YouTube channel</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Free local TTS (Edge, Piper, Kokoro)</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> In-browser video editor</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Asset library + video-in</li>
-            <li class="flex gap-2"><span class="text-[var(--txt-muted)]">✗</span> No cloud GPU</li>
-            <li class="flex gap-2"><span class="text-[var(--txt-muted)]">✗</span> No TikTok / IG / Facebook / X uploads</li>
-          </ul>
-        </div>
-
-        <!-- Pro -->
-        <div class="card card-featured p-7 flex flex-col relative">
-          <div class="absolute -top-3 left-1/2 -translate-x-1/2"><span class="pill pill-green" style="padding:4px 12px; font-size: 11px;">Most popular</span></div>
-          <h2 class="text-xl mb-1">Pro</h2>
-          <p class="text-xs text-[var(--txt-muted)] mb-6">Multiple channels, real volume.</p>
-          <div class="mb-6">
-            <span class="text-5xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.025em;">CHF <span data-price data-price-monthly="49" data-price-yearly="490">49</span></span>
-            <span class="text-[var(--txt-secondary)] ml-1" data-interval-label>/mo</span>
-          </div>
-          <p class="text-xs text-[var(--txt-muted)] mb-6" data-interval-hint>Billed monthly · cancel anytime</p>
-          <button data-checkout data-tier="pro" data-interval="monthly" class="btn btn-primary mb-6">Start Pro</button>
-          <ul class="text-sm space-y-3 text-[var(--txt-secondary)] flex-1">
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 3 machine seats</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> <strong class="text-[var(--txt-primary)]">Unlimited</strong> episodes</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 3 YouTube channels + TikTok</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Cloud GPU (RunPod · Vast.ai · Lambda)</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> ElevenLabs TTS + voice cloning</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Character + style locks</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Audiobook studio</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> SEO pre-flight + A/B title variants</li>
-          </ul>
-        </div>
-
-        <!-- Studio -->
-        <div class="card p-7 flex flex-col">
-          <h2 class="text-xl mb-1">Studio</h2>
-          <p class="text-xs text-[var(--txt-muted)] mb-6">Teams, agencies, studios.</p>
-          <div class="mb-6">
-            <span class="text-5xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.025em;">CHF <span data-price data-price-monthly="99" data-price-yearly="990">99</span></span>
-            <span class="text-[var(--txt-secondary)] ml-1" data-interval-label>/mo</span>
-          </div>
-          <p class="text-xs text-[var(--txt-muted)] mb-6" data-interval-hint>Billed monthly · cancel anytime</p>
-          <button data-checkout data-tier="studio" data-interval="monthly" class="btn btn-secondary mb-6">Start Studio</button>
-          <ul class="text-sm space-y-3 text-[var(--txt-secondary)] flex-1">
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> 5 machine seats</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Everything in Pro</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Unlimited YouTube channels</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Instagram Reels + Facebook + X video upload</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Team / workspace mode with roles</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> REST API access</li>
-            <li class="flex gap-2"><span class="text-[var(--accent)]">✓</span> Priority support (24h SLA)</li>
-          </ul>
-        </div>
-      </div>
-
-      <p class="text-center small-muted mt-8 reveal">
-        Billed in CHF via Stripe or PayPal · Stripe converts to local currency at checkout · VAT / MWST added where applicable · Cancel from the <a href="/account">billing portal</a> anytime
-      </p>
-
-      <!-- Lifetime (Pro) — one-time, visually distinct gold/deep tier -->
-      <div class="mt-10 reveal">
-        <div class="card p-8 md:p-10 relative overflow-hidden" style="background: linear-gradient(135deg, rgba(251, 191, 36, 0.08), rgba(20, 22, 27, 0.92)); border-color: rgba(251, 191, 36, 0.35);">
-          <div class="bg-glow" style="background: rgba(251, 191, 36, 0.6); top: -80px; right: -60px; width: 340px; height: 340px; opacity: 0.15;"></div>
-          <div class="relative z-10 grid md:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] gap-8 items-center">
-            <div>
-              <div class="flex flex-wrap items-center gap-2 mb-3">
-                <span class="pill pill-amber">Lifetime</span>
-                <span class="pill" style="padding:4px 10px; font-size: 11px; color: #fbbf24; border: 1px solid rgba(251,191,36,0.35); background: rgba(251,191,36,0.08);">Limited to first 100 seats</span>
-              </div>
-              <h2 class="text-2xl mb-2" style="font-family: var(--font-display); letter-spacing: -0.02em;">Lifetime <span style="color:#fbbf24">(Pro)</span></h2>
-              <p class="text-sm text-[var(--txt-secondary)] mb-5 max-w-prose">One payment, keep it forever. Pro feature set, priority email support, and 3 years of free updates included.</p>
-              <ul class="text-sm text-[var(--txt-secondary)] space-y-2">
-                <li class="flex gap-2"><span style="color:#fbbf24">✓</span> Every Pro-tier feature (multi-channel, cloud GPU, ElevenLabs, audiobooks)</li>
-                <li class="flex gap-2"><span style="color:#fbbf24">✓</span> 3 machine seats</li>
-                <li class="flex gap-2"><span style="color:#fbbf24">✓</span> <strong class="text-[var(--txt-primary)]">3 years of updates</strong> included</li>
-                <li class="flex gap-2"><span style="color:#fbbf24">✓</span> Priority email support (48h)</li>
-                <li class="flex gap-2"><span style="color:#fbbf24">✓</span> Transferable once (new owner keeps the updates window)</li>
-              </ul>
-            </div>
-            <div class="text-center md:text-right">
-              <div class="mb-4">
-                <span class="text-6xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.03em;">CHF 599</span>
-                <div class="text-sm text-[var(--txt-secondary)] mt-1">one-time</div>
-              </div>
-              <button data-checkout data-tier="lifetime_pro" data-interval="once" class="btn btn-primary btn-lg" style="background: linear-gradient(135deg, #fbbf24, #f59e0b); border-color: rgba(251,191,36,0.6); color: #0a0b0e;">Get Lifetime →</button>
-              <p class="small-muted mt-3">Approximately equal to 12 months of Pro · keeps working forever</p>
-            </div>
-          </div>
-        </div>
-      </div>
+    <div class="container-xl" data-pricing-block>
+      <!-- Injected from /assets/pricing-block.html on load. SSR fallback
+           so the page isn't blank in the ~100ms before the fetch lands: -->
+      <noscript>
+        <p class="text-center lead">
+          Pricing plans require JavaScript. Please enable it, or
+          <a href="mailto:support@drevalis.com">email support</a> to order.
+        </p>
+      </noscript>
     </div>
   </section>
 
-  <!-- Full comparison -->
-  <section class="section">
+  <!-- ── Full comparison ────────────────────────────────── -->
+  <section class="section border-t border-white/[0.05]">
     <div class="container-xl">
       <div class="text-center max-w-2xl mx-auto mb-10 reveal">
-        <h2 class="display-section mt-4 mb-4">Compare every feature</h2>
-        <p class="lead">Free is demo-only. Creator, Pro, and Studio are all self-hosted with the same container.</p>
+        <h2 class="display-section mt-4 mb-3">Compare every feature</h2>
+        <p class="lead">Free is the live demo. Creator, Pro, Studio, and Lifetime are all self-hosted and ship with the same container.</p>
       </div>
 
       <div class="card overflow-x-auto reveal">
         <table class="compare">
           <thead>
             <tr>
-              <th style="width: 36%;">Feature</th>
+              <th style="width: 32%;">Feature</th>
               <th class="text-center">Free</th>
               <th class="text-center">Creator</th>
               <th class="text-center">Pro</th>
               <th class="text-center">Studio</th>
+              <th class="text-center">Lifetime</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td class="feat" colspan="5" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Capacity</td></tr>
-            <tr><td class="feat">Machine seats</td><td class="text-center">—</td><td class="text-center">1</td><td class="text-center">3</td><td class="text-center">5</td></tr>
-            <tr><td class="feat">Monthly episodes</td><td class="text-center">Demo sim</td><td class="text-center">Unlimited</td><td class="text-center">Unlimited</td><td class="text-center">Unlimited</td></tr>
-            <tr><td class="feat">Parallel generations</td><td class="text-center">—</td><td class="text-center">up to 2</td><td class="text-center">up to 6</td><td class="text-center">up to 8</td></tr>
+            <tr><td class="feat" colspan="6" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Capacity</td></tr>
+            <tr><td class="feat">Machine seats</td><td class="text-center dash">—</td><td class="text-center">1</td><td class="text-center">3</td><td class="text-center">5</td><td class="text-center">3</td></tr>
+            <tr><td class="feat">Monthly episodes</td><td class="text-center dash">Demo</td><td class="text-center">Unlimited</td><td class="text-center">Unlimited</td><td class="text-center">Unlimited</td><td class="text-center">Unlimited</td></tr>
+            <tr><td class="feat">Parallel generations</td><td class="text-center dash">—</td><td class="text-center">up to 2</td><td class="text-center">up to 6</td><td class="text-center">up to 8</td><td class="text-center">up to 6</td></tr>
 
-            <tr><td class="feat" colspan="5" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Publishing</td></tr>
-            <tr><td class="feat">YouTube channels</td><td class="text-center dash">—</td><td class="text-center">1</td><td class="text-center">3</td><td class="text-center">Unlimited</td></tr>
-            <tr><td class="feat">TikTok Direct Post</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Instagram Reels</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">X (Twitter) video</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Scheduled publishing</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Cross-platform bulk publish</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat" colspan="6" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Publishing</td></tr>
+            <tr><td class="feat">YouTube channels</td><td class="text-center dash">—</td><td class="text-center">1</td><td class="text-center">3</td><td class="text-center">Unlimited</td><td class="text-center">3</td></tr>
+            <tr><td class="feat">TikTok Direct Post</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Instagram Reels · Facebook · X</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center dash">—</td></tr>
+            <tr><td class="feat">Scheduled publishing</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Cross-platform bulk publish</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
 
-            <tr><td class="feat" colspan="5" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Generation &amp; editor</td></tr>
-            <tr><td class="feat">Shorts + long-form video</td><td class="text-center dash">sim</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">In-browser video editor</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Asset library + video-in pipeline</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Local TTS (Edge, Piper, Kokoro)</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">ElevenLabs TTS</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">ElevenLabs voice cloning (IVC)</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Audiobook studio</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Character + style locks (IPAdapter)</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Cloud GPU (RunPod / Vast / Lambda)</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Inpaint single scenes</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Continuity checker (LLM)</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">SEO pre-flight + A/B variants</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat" colspan="6" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Generation &amp; editor</td></tr>
+            <tr><td class="feat">Shorts + long-form video</td><td class="text-center dash">sim</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">In-browser video editor</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Asset library + video-in</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Local TTS (Edge · Piper · Kokoro)</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">ElevenLabs TTS + voice cloning</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Audiobook studio</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Character + style locks</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Cloud GPU (RunPod · Vast · Lambda)</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Continuity checker (LLM)</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">SEO pre-flight + A/B variants</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
 
-            <tr><td class="feat" colspan="5" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Team &amp; operations</td></tr>
-            <tr><td class="feat">Team mode (roles: owner/editor/viewer)</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">REST API access</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Full backup / restore</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Encrypted secrets at rest</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">In-app updates</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
-            <tr><td class="feat">Priority support (24h SLA)</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat" colspan="6" style="font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--txt-muted); background: rgba(255,255,255,0.015);">Team &amp; operations</td></tr>
+            <tr><td class="feat">Team mode (owner/editor/viewer)</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center dash">—</td></tr>
+            <tr><td class="feat">REST API access</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center dash">—</td></tr>
+            <tr><td class="feat">Full backup / restore</td><td class="text-center dash">—</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">Encrypted secrets at rest</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td></tr>
+            <tr><td class="feat">In-app updates</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">✓</td><td class="text-center check">3y incl.</td></tr>
+            <tr><td class="feat">Priority support</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center check">24h SLA</td><td class="text-center check">48h email</td></tr>
           </tbody>
         </table>
       </div>
     </div>
   </section>
 
-  <!-- Competitor comparison (collapsed by default) -->
-  <section class="section">
+  <!-- ── Competitor comparison ─────────────────────────── -->
+  <section class="section-compact">
     <div class="container-lg">
       <details class="card p-6 md:p-8 reveal" data-competitor-compare>
         <summary class="cursor-pointer flex items-center justify-between gap-4 list-none">
@@ -288,39 +161,37 @@
             <tbody>
               <tr><td class="feat">Price at volume</td><td class="text-center">CHF 19/mo · unlimited</td><td class="text-center">$29/mo · 3,600 min</td><td class="text-center">$24/mo · 90 min</td><td class="text-center">$29/mo · 15 min</td></tr>
               <tr><td class="feat">Runs on your hardware</td><td class="text-center check">✓</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td></tr>
-              <tr><td class="feat">Source material stays on your disk</td><td class="text-center check">✓</td><td class="text-center dash">uploaded</td><td class="text-center dash">uploaded</td><td class="text-center dash">uploaded</td></tr>
-              <tr><td class="feat">Generates from a topic (no source clip)</td><td class="text-center check">✓</td><td class="text-center dash">clip-only</td><td class="text-center dash">clip-only</td><td class="text-center check">avatars only</td></tr>
-              <tr><td class="feat">Long-form (10-min+) output</td><td class="text-center check">✓</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td></tr>
+              <tr><td class="feat">Source material stays on disk</td><td class="text-center check">✓</td><td class="text-center dash">uploaded</td><td class="text-center dash">uploaded</td><td class="text-center dash">uploaded</td></tr>
+              <tr><td class="feat">Generates from a topic (no clip)</td><td class="text-center check">✓</td><td class="text-center dash">clip-only</td><td class="text-center dash">clip-only</td><td class="text-center check">avatars only</td></tr>
+              <tr><td class="feat">Long-form 10-min+ output</td><td class="text-center check">✓</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td></tr>
               <tr><td class="feat">Audiobook pipeline</td><td class="text-center check">Pro+</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td></tr>
-              <tr><td class="feat">Cloud GPU optional (BYO-RunPod)</td><td class="text-center check">Pro+</td><td class="text-center dash">cloud only</td><td class="text-center dash">cloud only</td><td class="text-center dash">cloud only</td></tr>
-              <tr><td class="feat">Cancellation = data loss</td><td class="text-center check" style="color: rgb(134, 239, 172)">Never</td><td class="text-center dash">yes (cloud)</td><td class="text-center dash">yes (cloud)</td><td class="text-center dash">yes (cloud)</td></tr>
-              <tr><td class="feat">Lifetime option</td><td class="text-center check">CHF 599</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td></tr>
+              <tr><td class="feat">Cloud GPU is optional (BYO)</td><td class="text-center check">Pro+</td><td class="text-center dash">cloud only</td><td class="text-center dash">cloud only</td><td class="text-center dash">cloud only</td></tr>
+              <tr><td class="feat">Cancellation = data loss</td><td class="text-center" style="color: #86efac;">Never</td><td class="text-center dash">yes</td><td class="text-center dash">yes</td><td class="text-center dash">yes</td></tr>
+              <tr><td class="feat">Lifetime option</td><td class="text-center" style="color: var(--gold);">CHF 599</td><td class="text-center dash">—</td><td class="text-center dash">—</td><td class="text-center dash">—</td></tr>
             </tbody>
           </table>
-          <p class="small-muted mt-4">
-            Public pricing as of April 2026. We compare "apples to apples" where we can — output minutes on subscription limits, not marketing-page headline specs. If a tier changed after this page shipped, <a href="mailto:support@drevalis.com?subject=Competitor+comparison">tell us</a> and we'll fix it.
-          </p>
+          <p class="small-muted mt-4">Public pricing as of April 2026. We compare output minutes on subscription limits rather than marketing-page headline specs. Spot a mistake? <a href="mailto:support@drevalis.com?subject=Competitor+comparison">Tell us</a> and we'll fix it.</p>
         </div>
       </details>
     </div>
   </section>
 
-  <!-- FAQ -->
+  <!-- ── FAQ ──────────────────────────────────────────── -->
   <section class="section">
     <div class="container-md">
       <h2 class="display-section text-center mb-10 reveal">Pricing questions</h2>
       <div class="card divide-y divide-white/[0.05] reveal">
         <details class="faq-item">
-          <summary>What's the difference between Free and the live demo?</summary>
-          <p>They're the same thing. Free = the public <a href="https://demo.drevalis.com">demo.drevalis.com</a>. Data resets nightly, no real uploads. Use it to decide whether the app is worth paying for.</p>
+          <summary>Free vs. the live demo — same thing?</summary>
+          <p>Same thing. Free = <a href="https://demo.drevalis.com">demo.drevalis.com</a>. Data resets nightly, no real uploads. Use it to decide whether the app is worth paying for.</p>
         </details>
         <details class="faq-item">
-          <summary>Why CHF and not USD or EUR?</summary>
-          <p>The business is registered in Switzerland, so CHF is the base currency. Stripe automatically converts to your local currency at checkout — you'll see EUR / USD / GBP on the payment page based on your card.</p>
+          <summary>Why CHF instead of USD or EUR?</summary>
+          <p>The business is registered in Switzerland, so CHF is the base. Stripe converts to your local currency at checkout — you'll see EUR / USD / GBP on the payment page based on your card.</p>
         </details>
         <details class="faq-item">
           <summary>Can I pay with PayPal?</summary>
-          <p>Yes — PayPal is available on Creator, Pro, and Studio. PayPal bills in CHF and converts at their published rate.</p>
+          <p>Yes — PayPal works on Creator, Pro, Studio, and Lifetime. Bills in CHF at PayPal's published conversion rate.</p>
         </details>
         <details class="faq-item">
           <summary>What counts as a "machine"?</summary>
@@ -332,21 +203,21 @@
         </details>
         <details class="faq-item">
           <summary>What happens to my videos if I cancel?</summary>
-          <p>Nothing. Episodes live on your disk. Cancellation gives you a 7-day grace window during which generation and upload still work; after that they lock but existing files are untouched and playable.</p>
+          <p>Nothing. Episodes live on your disk. Cancellation gives you a 7-day grace window during which generation and upload still work; after that they lock but existing files stay untouched and playable.</p>
         </details>
         <details class="faq-item">
           <summary>How does the Lifetime (Pro) license work?</summary>
-          <p>One-time CHF 599 payment, Pro feature set, license never expires. You get 3 years of included updates from purchase — after that, the app keeps working but new versions require an update-pack renewal. The license is transferable once, so you can resell it on a new machine.</p>
+          <p>One-time CHF 599. Pro feature set, license never expires. 3 years of updates included from purchase; after that the app keeps working and new versions can be unlocked with an update-pack renewal. Transferable once to a new owner.</p>
         </details>
         <details class="faq-item">
-          <summary>Is the Lifetime seat count limit real?</summary>
-          <p>Yes. First 100 buyers. After the 100th sale, this card disappears from the page and subsequent requests are pointed at the Pro subscription tiers.</p>
+          <summary>Is the Lifetime seat limit real?</summary>
+          <p>Yes — first 100 buyers only. After the 100th sale the card disappears and the pricing page points at Pro subscription tiers instead.</p>
         </details>
       </div>
     </div>
   </section>
 
-  <!-- Footer -->
+  <!-- ── Footer ───────────────────────────────────────── -->
   <footer class="site-footer">
     <div class="site-footer-grid">
       <div class="site-footer-about">

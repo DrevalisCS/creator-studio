@@ -127,7 +127,7 @@
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=DM+Sans:wght@400;500;600&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&amp;family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/assets/site.css" />
 
   <script src="https://cdn.tailwindcss.com"></script>
@@ -586,93 +586,26 @@
     </div>
   </section>
 
-  <!-- ── Pricing preview ──────────────────────────────────── -->
+  <!-- ── Pricing (shared block, 1:1 with /pricing) ─────────── -->
   <section id="pricing" class="section">
     <div class="container-xl">
       <div class="text-center max-w-2xl mx-auto mb-14 reveal">
         <span class="eyebrow mb-4">Pricing</span>
-        <h2 class="display-section mt-4 mb-4">Honest tiers. CHF pricing. No feature paywalls.</h2>
-        <p class="lead">Free to try in the <a href="https://demo.drevalis.com" class="underline text-[var(--accent)]">live demo</a>. When you're ready, pick a tier below. Stripe converts CHF → your local currency at checkout. PayPal supported on all paid tiers.</p>
+        <h2 class="display-section mt-4 mb-4">Pick how much you need. <span class="accent-gradient">Pay once if you want.</span></h2>
+        <p class="lead">Free to try in the <a href="https://demo.drevalis.com">live demo</a>. Monthly, yearly, or one-time Lifetime. Stripe or PayPal, CHF-billed, local currency at checkout.</p>
       </div>
 
-      <div class="flex items-center justify-center gap-3 mb-10 reveal">
-        <span class="text-sm text-[var(--txt-secondary)]">Monthly</span>
-        <label class="relative inline-flex cursor-pointer items-center">
-          <input type="checkbox" data-interval-toggle class="peer sr-only" />
-          <div class="h-6 w-11 rounded-full bg-[var(--bg-elevated)] border border-[var(--border-strong)] peer-checked:bg-[var(--accent)]/30 peer-checked:border-[var(--accent)]/50 transition"></div>
-          <div class="absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-[var(--txt-primary)] transition peer-checked:translate-x-5 peer-checked:bg-[var(--accent)]"></div>
-        </label>
-        <span class="text-sm text-[var(--txt-secondary)]">Yearly <span class="pill pill-green">2 months free · Save 20%</span></span>
+      <!-- Identical markup to /pricing — injected from /assets/pricing-block.html -->
+      <div data-pricing-block>
+        <noscript>
+          <p class="text-center lead">
+            <a href="/pricing">See full pricing →</a>
+          </p>
+        </noscript>
       </div>
 
-      <div class="grid md:grid-cols-3 gap-5 reveal">
-        <!-- Creator -->
-        <div class="card p-8 flex flex-col">
-          <h3 class="text-xl mb-1">Creator</h3>
-          <p class="text-xs text-[var(--txt-muted)] mb-5">Solo creator, one channel.</p>
-          <div class="mb-6">
-            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="19" data-price-yearly="190">19</span></span>
-            <span class="text-[var(--txt-secondary)]" data-interval-label>/mo</span>
-          </div>
-          <ul class="text-sm space-y-2 text-[var(--txt-secondary)] mb-8 flex-1">
-            <li>— 1 machine seat</li>
-            <li>— <strong class="text-[var(--txt-primary)]">Unlimited</strong> episodes</li>
-            <li>— 1 YouTube channel</li>
-            <li>— Free local TTS + editor + asset library</li>
-            <li>— SEO pre-flight</li>
-          </ul>
-          <button data-checkout data-tier="creator" data-interval="monthly" class="btn btn-secondary">Start Creator</button>
-        </div>
-
-        <!-- Pro -->
-        <div class="card card-featured p-8 flex flex-col relative">
-          <div class="absolute -top-3 left-1/2 -translate-x-1/2 pill pill-green" style="padding: 4px 12px; font-size: 11px;">Most popular</div>
-          <h3 class="text-xl mb-1">Pro</h3>
-          <p class="text-xs text-[var(--txt-muted)] mb-5">Multiple channels, real volume.</p>
-          <div class="mb-6">
-            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="49" data-price-yearly="490">49</span></span>
-            <span class="text-[var(--txt-secondary)]" data-interval-label>/mo</span>
-          </div>
-          <ul class="text-sm space-y-2 text-[var(--txt-secondary)] mb-8 flex-1">
-            <li>— 3 machine seats</li>
-            <li>— <strong>Unlimited</strong> episodes</li>
-            <li>— 3 YouTube channels + TikTok</li>
-            <li>— Cloud GPU (RunPod · Vast.ai · Lambda)</li>
-            <li>— ElevenLabs TTS + voice cloning</li>
-            <li>— Character + style locks · Audiobooks</li>
-          </ul>
-          <button data-checkout data-tier="pro" data-interval="monthly" class="btn btn-primary">Start Pro</button>
-        </div>
-
-        <!-- Studio -->
-        <div class="card p-8 flex flex-col">
-          <h3 class="text-xl mb-1">Studio</h3>
-          <p class="text-xs text-[var(--txt-muted)] mb-5">Teams, agencies, studios.</p>
-          <div class="mb-6">
-            <span class="text-4xl font-bold text-[var(--txt-primary)]" style="font-family: var(--font-display); letter-spacing: -0.02em;">CHF <span data-price data-price-monthly="99" data-price-yearly="990">99</span></span>
-            <span class="text-[var(--txt-secondary)]" data-interval-label>/mo</span>
-          </div>
-          <ul class="text-sm space-y-2 text-[var(--txt-secondary)] mb-8 flex-1">
-            <li>— 5 machine seats · unlimited channels</li>
-            <li>— Instagram Reels + Facebook + X video upload</li>
-            <li>— Team / workspace mode with roles</li>
-            <li>— REST API access</li>
-            <li>— Priority support (24h SLA)</li>
-          </ul>
-          <button data-checkout data-tier="studio" data-interval="monthly" class="btn btn-secondary">Start Studio</button>
-        </div>
-      </div>
-
-      <div class="mt-6 text-center reveal">
-        <a href="/pricing#plans" class="inline-flex items-center gap-2 text-sm text-[var(--accent)] hover:underline">
-          <span>Or pay once:</span>
-          <strong class="text-[var(--txt-primary)]" style="color:#fbbf24;">Lifetime (Pro) — CHF 599</strong>
-          <span class="text-[var(--txt-muted)]">→ first 100 seats</span>
-        </a>
-      </div>
-
-      <p class="text-center small-muted mt-8">
-        Stripe + PayPal · VAT/MWST automatic · Cancel anytime · See the full comparison on <a href="/pricing" class="underline">Pricing</a>
+      <p class="text-center small-muted mt-6">
+        See the <a href="/pricing" class="underline">full feature comparison</a> · Cancel anytime · VAT/MWST automatic
       </p>
     </div>
   </section>
