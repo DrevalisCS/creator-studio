@@ -266,6 +266,16 @@ def _safe_size(p: Path) -> int:
         return -1
 
 
+def _created_at(row: MediaAsset) -> Any:
+    """Best-effort ``created_at`` accessor that tolerates rows where
+    the column isn't populated (returns a sentinel so older-beats-
+    nothing works in the dedupe comparison)."""
+    value = getattr(row, "created_at", None)
+    if value is None:
+        return 0
+    return value
+
+
 # ── Entry point ────────────────────────────────────────────────────
 
 
@@ -291,13 +301,57 @@ async def repair_media_links(
         unique_basenames=len(by_name),
     )
 
-    rows = (await session.execute(select(MediaAsset))).scalars().all()
+    rows = list((await session.execute(select(MediaAsset))).scalars().all())
+
+    # ── Dedupe pass ─────────────────────────────────────────────────
+    # Episodes regenerated multiple times often accumulate duplicate
+    # media_assets rows — same (episode_id, asset_type, file_path) but
+    # different created_at / file_size_bytes (from older generations
+    # that overwrote the bytes). The older duplicates carry stale
+    # sizes; if any consumer disambiguates by size the wrong row
+    # "wins". Keep the newest row per key, delete the others.
+    seen: dict[tuple[Any, str, str], MediaAsset] = {}
+    to_delete: list[MediaAsset] = []
+    for row in rows:
+        fp = row.file_path or ""
+        if not fp:
+            continue
+        key = (row.episode_id, row.asset_type, fp)
+        prior = seen.get(key)
+        if prior is None:
+            seen[key] = row
+            continue
+        newest, stale = (
+            (row, prior) if _created_at(row) >= _created_at(prior) else (prior, row)
+        )
+        seen[key] = newest
+        to_delete.append(stale)
+    for stale in to_delete:
+        await session.delete(stale)
+    if to_delete:
+        await session.flush()
+        logger.info("media_repair.dedupe", removed=len(to_delete))
+
+    # Refresh the working set after deletes so the main loop doesn't
+    # iterate the tombstoned rows.
+    rows = [r for r in rows if r not in to_delete]
+
     for row in rows:
         report.scanned += 1
         current = row.file_path or ""
         abs_current = (storage_base / current).resolve() if current else None
         if abs_current and abs_current.exists():
             report.already_ok += 1
+            # Refresh ``file_size_bytes`` so a row that was already
+            # pointing at the correct file but carrying a stale size
+            # from an earlier generation stops confusing size-based
+            # consumers / caches.
+            try:
+                disk_size = abs_current.stat().st_size
+            except OSError:
+                disk_size = None
+            if disk_size is not None and disk_size != (row.file_size_bytes or 0):
+                row.file_size_bytes = disk_size
             continue
 
         new_path = _find_candidate(row, by_tail, by_name, by_name_size)
@@ -332,8 +386,11 @@ async def repair_media_links(
     # resurrect on a new machine.
     await _repair_audiobooks(session, storage_base, by_tail, by_name, by_name_size, report)
 
-    if report.relinked:
-        await session.commit()
+    # Commit on ANY change — relinks, size refreshes, or dedupe
+    # deletions all hit the session. Previously only ``relinked`` was
+    # checked so a run that only refreshed sizes silently discarded
+    # its work when the session closed.
+    await session.commit()
 
     logger.info(
         "media_repair.done",
