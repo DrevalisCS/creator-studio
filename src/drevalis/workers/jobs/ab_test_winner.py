@@ -39,9 +39,7 @@ async def compute_ab_test_winners(ctx: dict[str, Any]) -> dict[str, int]:
     # fallback so historic enqueues don't crash, but prefer the
     # canonical key so we don't silently hide missing ctx plumbing.
     session_factory = (
-        ctx.get("session_factory")
-        or ctx.get("db_session_factory")
-        or get_session_factory()
+        ctx.get("session_factory") or ctx.get("db_session_factory") or get_session_factory()
     )
 
     processed = 0
