@@ -204,7 +204,9 @@ function historyReducer(state: HistoryState, action: Action): HistoryState {
   const nextTimeline = applyAction(state.present, action);
   if (nextTimeline === state.present) return state;
   return {
-    past: [...state.past.slice(-49), state.present],
+    // 200-step undo history. The previous cap (50) was enough for
+    // small edits but lost context on real sessions.
+    past: [...state.past.slice(-199), state.present],
     present: nextTimeline,
     future: [],
   };
@@ -227,7 +229,15 @@ export default function EpisodeEditor() {
   const [rendering, setRendering] = useState(false);
   const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
   const [assetPickerOpen, setAssetPickerOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [snapEnabled, setSnapEnabled] = useState(true);
+  // Snap grid: 0.1s when zoomed in, 0.25s mid, 1s when zoomed out.
   const [zoom, setZoom] = useState(60); // px per second
+  const snapStep = zoom >= 100 ? 0.1 : zoom >= 50 ? 0.25 : 1.0;
+  const snap = useCallback(
+    (t: number) => (snapEnabled ? Math.round(t / snapStep) * snapStep : t),
+    [snapEnabled, snapStep],
+  );
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<'clip' | 'captions'>('clip');
@@ -323,6 +333,14 @@ export default function EpisodeEditor() {
       if (e.key === 'End') {
         e.preventDefault();
         setPlayhead(history.present.duration_s);
+      }
+      // Shortcut overlay toggle (and close with Escape).
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
+      }
+      if (e.key === 'Escape') {
+        setShortcutsOpen(false);
       }
     };
     window.addEventListener('keydown', handler);
@@ -591,11 +609,29 @@ export default function EpisodeEditor() {
         >
           <ImageIcon className="w-4 h-4" />
         </Button>
+        <Button
+          variant={snapEnabled ? 'primary' : 'ghost'}
+          size="sm"
+          onClick={() => setSnapEnabled((v) => !v)}
+          title={`Snap-to-grid (${snapStep}s). Click to toggle.`}
+          className="text-[11px] uppercase tracking-wider"
+        >
+          Snap {snapStep}s
+        </Button>
         <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.max(20, z - 20))}>
           <ZoomOut className="w-4 h-4" />
         </Button>
         <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.min(240, z + 20))}>
           <ZoomIn className="w-4 h-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setShortcutsOpen((v) => !v)}
+          title="Keyboard shortcuts (?)"
+          className="text-[11px]"
+        >
+          ?
         </Button>
       </div>
 
@@ -606,7 +642,7 @@ export default function EpisodeEditor() {
             duration={timeline.duration_s}
             zoom={zoom}
             playhead={playhead}
-            onScrub={setPlayhead}
+            onScrub={(t) => setPlayhead(snap(t))}
           />
           <div className="space-y-2 mt-1">
             {timeline.tracks.map((track) => (
@@ -616,13 +652,20 @@ export default function EpisodeEditor() {
                 zoom={zoom}
                 duration={timeline.duration_s}
                 playhead={playhead}
-                onScrub={setPlayhead}
+                onScrub={(t) => setPlayhead(snap(t))}
                 selectedClipId={selectedClipId}
                 onSelectClip={setSelectedClipId}
                 onReorder={(from, to) =>
                   dispatch({ type: 'reorder', trackId: track.id, fromIndex: from, toIndex: to })
                 }
-                onTrim={(id, in_s, out_s) => dispatch({ type: 'trim', clipId: id, in_s, out_s })}
+                onTrim={(id, in_s, out_s) =>
+                  dispatch({
+                    type: 'trim',
+                    clipId: id,
+                    in_s: in_s === undefined ? undefined : snap(in_s),
+                    out_s: out_s === undefined ? undefined : snap(out_s),
+                  })
+                }
                 onEnvelope={(clipId, envelope) =>
                   dispatch({ type: 'envelope', trackId: track.id, clipId, envelope })
                 }
@@ -642,6 +685,59 @@ export default function EpisodeEditor() {
         <span><kbd className="kbd">⌫</kbd> delete selected clip</span>
         <span><kbd className="kbd">⌘Z</kbd> / <kbd className="kbd">⌘⇧Z</kbd> undo/redo</span>
       </div>
+
+      {shortcutsOpen && (
+        <div
+          className="fixed inset-0 z-[9998] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+          onClick={() => setShortcutsOpen(false)}
+          role="dialog"
+          aria-label="Keyboard shortcuts"
+        >
+          <div
+            className="bg-bg-elevated border border-border rounded-xl p-6 max-w-md w-[92%] shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-display text-base">Keyboard shortcuts</h3>
+              <button
+                onClick={() => setShortcutsOpen(false)}
+                className="text-txt-tertiary hover:text-txt-primary text-lg"
+                aria-label="Close"
+              >
+                ×
+              </button>
+            </div>
+            <div className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-2 text-xs">
+              <kbd className="kbd">Space</kbd>
+              <span>Play / pause</span>
+              <kbd className="kbd">←</kbd>
+              <span>Nudge playhead -0.1s (Shift = -1s)</span>
+              <kbd className="kbd">→</kbd>
+              <span>Nudge playhead +0.1s (Shift = +1s)</span>
+              <kbd className="kbd">Home</kbd>
+              <span>Jump to start</span>
+              <kbd className="kbd">End</kbd>
+              <span>Jump to end</span>
+              <kbd className="kbd">S</kbd>
+              <span>Split selected clip at playhead</span>
+              <kbd className="kbd">⌫</kbd>
+              <span>Delete selected clip</span>
+              <kbd className="kbd">⌘/Ctrl + Z</kbd>
+              <span>Undo (up to 200 steps)</span>
+              <kbd className="kbd">⌘/Ctrl + ⇧ Z</kbd>
+              <span>Redo</span>
+              <kbd className="kbd">?</kbd>
+              <span>Toggle this overlay</span>
+              <kbd className="kbd">Esc</kbd>
+              <span>Close overlay</span>
+            </div>
+            <p className="text-[11px] text-txt-tertiary mt-4">
+              Snap-to-grid is {snapEnabled ? `on at ${snapStep}s` : 'off'}; toggle with the
+              Snap button in the toolbar. Grid step shrinks as you zoom in.
+            </p>
+          </div>
+        </div>
+      )}
 
       <AssetPicker
         open={assetPickerOpen}

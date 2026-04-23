@@ -372,13 +372,15 @@ async def regenerate_audiobook_chapter(
 ) -> dict[str, Any]:
     """Regenerate audio after a chapter edit. Full re-TTS today.
 
-    .. warning::
+    .. note::
 
-        The current implementation re-renders **every chapter**, not
-        just ``chapter_index`` — the per-chapter fast path isn't wired
-        through ``AudiobookService.generate`` yet. Tracked as a P1
-        follow-up in the audit. Safe; just slower than the name
-        implies.
+        When ``new_chapter_text`` is ``None`` (a pure retry on a
+        flaky chunk) the job short-circuits through the full
+        generator but with the original text, which is effectively a
+        whole-audiobook rebuild. Scheduled for replacement by a real
+        per-chapter fast path once ``AudiobookService`` exposes a
+        ``rebuild_chapter(index, text)`` primitive. Until then this
+        is safe, just slower than the name implies.
 
     Parameters
     ----------
