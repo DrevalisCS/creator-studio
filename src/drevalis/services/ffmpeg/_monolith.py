@@ -241,7 +241,14 @@ class FFmpegService:
         audio_duration = await self.get_duration(voiceover_path)
         total_scene_dur = sum(s.duration_seconds for s in scenes)
         if audio_duration > total_scene_dur + 0.5:
-            scale = (audio_duration + 1.0) / total_scene_dur  # +1s buffer
+            # Cap the per-scene stretch at 3×. A runaway voice track
+            # (TTS provider glitch, user pasted a 10-minute monologue
+            # into a Shorts episode) could otherwise push each 3s scene
+            # to 60s+, yielding a zero-motion "frozen frame" video.
+            # The raw cap-triggered case is rare, but silent. Log
+            # loudly when we hit it so the operator has a trail.
+            raw_scale = (audio_duration + 1.0) / total_scene_dur
+            scale = min(raw_scale, 3.0)
             scenes = [
                 SceneInput(
                     image_path=s.image_path,
@@ -254,7 +261,20 @@ class FFmpegService:
                 audio_dur=round(audio_duration, 1),
                 original_scene_dur=round(total_scene_dur, 1),
                 scale=round(scale, 2),
+                clamped=raw_scale > 3.0,
             )
+            if raw_scale > 3.0:
+                log.warning(
+                    "ffmpeg.scenes_scale_clamped_to_3x",
+                    audio_dur=round(audio_duration, 1),
+                    requested_scale=round(raw_scale, 2),
+                    message=(
+                        "Voice track is much longer than the sum of scene "
+                        "durations. Scenes stretched to 3x only; video will "
+                        "end before audio. Consider adding scenes or tightening "
+                        "the narration."
+                    ),
+                )
 
         # Determine whether to use Ken Burns filtergraph or concat demuxer.
         use_kenburns = (
