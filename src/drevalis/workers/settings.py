@@ -150,8 +150,13 @@ class WorkerSettings:
     # Concurrency: max 4 episodes generating in parallel
     max_jobs = 8
 
-    # 10-minute hard timeout per pipeline run
-    job_timeout = 7200  # 1 hour — scene generation on AMD ROCm can be slow
+    # Hard timeout per pipeline run. Long-form episodes legitimately
+    # take hours on slow GPU hardware — read the configured ceiling
+    # instead of hardcoding the shorts value.
+    from drevalis.core.config import Settings as _Settings
+
+    _settings_for_timeout = _Settings()
+    job_timeout = int(getattr(_settings_for_timeout, "longform_job_timeout", 14400))
 
     # Retry configuration
     retry_jobs = True

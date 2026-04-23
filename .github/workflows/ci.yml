@@ -31,6 +31,20 @@ jobs:
       - name: ruff format --check
         run: ruff format --check src/ tests/
 
+  deps-audit:
+    name: pip-audit (known CVEs)
+    runs-on: ubuntu-latest
+    # Non-blocking: surface advisories without gating releases.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install pip-audit
+      - name: pip-audit (strict, no cache)
+        run: pip-audit --strict --disable-pip || true
+
   typecheck:
     name: Mypy (typecheck)
     runs-on: ubuntu-latest

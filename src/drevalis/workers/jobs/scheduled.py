@@ -20,10 +20,30 @@ async def publish_scheduled_posts(ctx: dict[str, Any]) -> dict[str, Any]:
 
     Runs every 5 minutes via arq cron. For YouTube posts, performs the actual
     upload using the channel's OAuth tokens. Other platforms are TODO.
+
+    Guarded by :func:`cron_lock` — in a multi-worker deployment, only one
+    instance actually runs each 5-minute tick. Without this, two workers
+    firing at the same timestamp would race YouTube uploads and could
+    publish the same scheduled post twice.
     """
     import asyncio as _asyncio
     from datetime import datetime
     from pathlib import Path
+
+    from drevalis.workers.cron_lock import cron_lock
+
+    async with cron_lock(ctx, "publish_scheduled_posts", ttl_s=280) as owner:
+        if not owner:
+            return {"status": "skipped_not_cron_owner"}
+        return await _publish_scheduled_posts_locked(ctx, _asyncio, datetime, Path)
+
+
+async def _publish_scheduled_posts_locked(
+    ctx: dict[str, Any],
+    _asyncio: Any,
+    datetime: Any,
+    Path: Any,
+) -> dict[str, Any]:
 
     from drevalis.core.config import Settings
     from drevalis.repositories.episode import EpisodeRepository

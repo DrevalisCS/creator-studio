@@ -17,6 +17,14 @@ export default function LoginPage() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Client-side guard — stop the form firing an empty request when
+    // both fields are blank. The backend rejects it anyway, but this
+    // surfaces the problem with a useful message instead of a raw 422.
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail || !password) {
+      setError('Enter your email and password to sign in.');
+      return;
+    }
     setSubmitting(true);
     setError(null);
     try {
@@ -24,7 +32,7 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email: trimmedEmail, password }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));

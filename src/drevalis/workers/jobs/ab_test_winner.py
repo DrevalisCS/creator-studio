@@ -34,7 +34,15 @@ async def compute_ab_test_winners(ctx: dict[str, Any]) -> dict[str, int]:
     from drevalis.services.youtube import YouTubeService
 
     settings = ctx.get("settings") or Settings()
-    session_factory = ctx.get("db_session_factory") or get_session_factory()
+    # Every other worker job reads ``session_factory``; the lifecycle
+    # hook populates that key. Keep ``db_session_factory`` as a legacy
+    # fallback so historic enqueues don't crash, but prefer the
+    # canonical key so we don't silently hide missing ctx plumbing.
+    session_factory = (
+        ctx.get("session_factory")
+        or ctx.get("db_session_factory")
+        or get_session_factory()
+    )
 
     processed = 0
     settled = 0

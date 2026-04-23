@@ -7,8 +7,12 @@ services:
       POSTGRES_USER: drevalis
       POSTGRES_PASSWORD: drevalis
       POSTGRES_DB: drevalis
+    # Bind only to loopback so the DB never becomes publicly reachable
+    # on a VPS. Dev tools on the host can still connect via
+    # localhost:5432; the compose ``app`` service reaches it over the
+    # internal network as ``postgres:5432``.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     deploy:
@@ -33,8 +37,9 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
+    # Loopback-only: same reasoning as postgres above.
     ports:
-      - "6379:6379"
+      - "127.0.0.1:6379:6379"
     deploy:
       resources:
         limits:

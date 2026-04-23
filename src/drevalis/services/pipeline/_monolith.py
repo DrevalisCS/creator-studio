@@ -500,18 +500,23 @@ class PipelineOrchestrator:
 
             await self._broadcast_progress(PipelineStep.SCRIPT, 80, "running", "Saving script...")
 
+            # Preserve the episode's actual ``content_format`` —
+            # music_video / animation also take the long-form path,
+            # but overwriting them with "longform" would misclassify
+            # the episode for every downstream query (priority sort,
+            # workflow selection, UI badge).
             await self.episode_repo.update(
                 self.episode_id,
                 script=result["script"],
                 chapters=result["chapters"],
                 title=result["title"] or episode.title,
-                content_format="longform",
+                content_format=content_format,
             )
             await self.db.commit()
 
             self.log.info(
                 "step_script_done",
-                content_format="longform",
+                content_format=content_format,
                 scenes=len(result["script"].get("scenes", [])),
                 chapters=len(result["chapters"]),
             )

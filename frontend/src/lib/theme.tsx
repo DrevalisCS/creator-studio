@@ -150,26 +150,45 @@ function applyTheme(mode: ThemeMode, accent: AccentColor) {
 // Provider
 // ---------------------------------------------------------------------------
 
+// Safe wrappers — Safari private mode, locked-down browsers and some
+// embedded WebViews throw SecurityError on localStorage access. Returning
+// ``null`` / swallowing write errors means the theme falls back to its
+// in-memory default instead of crashing the ThemeProvider on mount.
+function safeGet(key: string): string | null {
+  try {
+    return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
+  } catch {
+    return null;
+  }
+}
+function safeSet(key: string, value: string): void {
+  try {
+    if (typeof window !== 'undefined') window.localStorage.setItem(key, value);
+  } catch {
+    /* ignore — persistence is best-effort */
+  }
+}
+
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [mode, setModeState] = useState<ThemeMode>(() => {
-    const stored = localStorage.getItem(STORAGE_MODE_KEY);
-    return (stored === 'light' || stored === 'dark') ? stored : 'dark';
+    const stored = safeGet(STORAGE_MODE_KEY);
+    return stored === 'light' || stored === 'dark' ? stored : 'dark';
   });
 
   const [accentId, setAccentIdState] = useState<string>(() => {
-    return localStorage.getItem(STORAGE_ACCENT_KEY) ?? 'teal';
+    return safeGet(STORAGE_ACCENT_KEY) ?? 'teal';
   });
 
   const accent = ACCENT_COLORS.find((c) => c.id === accentId) ?? ACCENT_COLORS[0]!;
 
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
-    localStorage.setItem(STORAGE_MODE_KEY, m);
+    safeSet(STORAGE_MODE_KEY, m);
   }, []);
 
   const setAccentId = useCallback((id: string) => {
     setAccentIdState(id);
-    localStorage.setItem(STORAGE_ACCENT_KEY, id);
+    safeSet(STORAGE_ACCENT_KEY, id);
   }, []);
 
   const toggleMode = useCallback(() => {

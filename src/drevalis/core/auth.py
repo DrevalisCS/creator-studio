@@ -72,8 +72,22 @@ class OptionalAPIKeyMiddleware(BaseHTTPMiddleware):
         # S-4: Per-IP rate limit on auth failures.
         # Check BEFORE inspecting the token so a blocked IP never reaches
         # the comparison and cannot enumerate valid tokens via timing.
+        #
+        # Behind nginx / NPM, ``request.client.host`` is the proxy's IP —
+        # every caller collapses into one bucket. Prefer the left-most
+        # entry of ``X-Forwarded-For`` when present and trust the first
+        # hop only. We keep the fallback to the socket peer for direct
+        # traffic.
         # ------------------------------------------------------------------
-        client_ip: str = request.client.host if request.client else "unknown"
+        forwarded = request.headers.get("x-forwarded-for")
+        if forwarded:
+            client_ip: str = forwarded.split(",", 1)[0].strip() or "unknown"
+        elif request.headers.get("x-real-ip"):
+            client_ip = request.headers["x-real-ip"].strip()
+        elif request.client:
+            client_ip = request.client.host
+        else:
+            client_ip = "unknown"
         rate_key: str = f"auth_fail:{client_ip}"
 
         try:

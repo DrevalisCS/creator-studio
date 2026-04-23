@@ -38,10 +38,31 @@ _POLL_INTERVAL_S = 4.0
 
 
 async def publish_pending_social_uploads(ctx: dict[str, Any]) -> dict[str, int]:
-    """arq cron entrypoint — process every pending social upload."""
-    session_factory = ctx.get("db_session_factory")
+    """arq cron entrypoint — process every pending social upload.
+
+    Guarded by :func:`cron_lock` so two workers firing at the same tick
+    don't race TikTok / Instagram / Facebook / X uploads.
+    """
+    from drevalis.workers.cron_lock import cron_lock
+
+    async with cron_lock(ctx, "publish_pending_social_uploads", ttl_s=280) as owner:
+        if not owner:
+            return {
+                "processed": 0,
+                "succeeded": 0,
+                "failed": 0,
+                "skipped_other_platforms": 0,
+            }
+        # Body runs inside the lock so two workers can't race the same
+        # SocialUpload rows on the same tick.
+        return await _publish_pending_social_uploads_locked(ctx)
+
+
+async def _publish_pending_social_uploads_locked(ctx: dict[str, Any]) -> dict[str, int]:
+    # Session factory canonicalised to ``session_factory`` per audit —
+    # keep ``db_session_factory`` as a legacy fallback.
+    session_factory = ctx.get("session_factory") or ctx.get("db_session_factory")
     if session_factory is None:
-        # Defer to the lifecycle hook that populated ctx.
         from drevalis.core.database import get_session_factory
 
         session_factory = get_session_factory()

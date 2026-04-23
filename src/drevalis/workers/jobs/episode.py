@@ -223,9 +223,14 @@ async def reassemble_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, 
             await orchestrator.run()
             log.info("job_complete", status="success")
             return {"episode_id": episode_id, "status": "success"}
-        except Exception as exc:
-            log.error("job_failed", error=str(exc), exc_info=True)
-            return {"episode_id": episode_id, "status": "failed", "error": str(exc)}
+        except Exception:
+            # Re-raise so arq honours max_tries + exponential backoff.
+            # The orchestrator has already persisted status='failed'
+            # on the Episode row, so there is no state-loss here;
+            # returning status='failed' would make arq consider the
+            # job complete and skip every remaining retry.
+            log.error("job_failed", exc_info=True)
+            raise
 
 
 async def regenerate_voice(ctx: dict[str, Any], episode_id: str) -> dict[str, Any]:
@@ -294,9 +299,14 @@ async def regenerate_voice(ctx: dict[str, Any], episode_id: str) -> dict[str, An
             await orchestrator.run()
             log.info("job_complete", status="success")
             return {"episode_id": episode_id, "status": "success"}
-        except Exception as exc:
-            log.error("job_failed", error=str(exc), exc_info=True)
-            return {"episode_id": episode_id, "status": "failed", "error": str(exc)}
+        except Exception:
+            # Re-raise so arq honours max_tries + exponential backoff.
+            # The orchestrator has already persisted status='failed'
+            # on the Episode row, so there is no state-loss here;
+            # returning status='failed' would make arq consider the
+            # job complete and skip every remaining retry.
+            log.error("job_failed", exc_info=True)
+            raise
 
 
 async def regenerate_scene(
