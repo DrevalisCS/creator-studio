@@ -458,7 +458,6 @@ class AudiobookService:
                 style=caption_style,
             )
             captions_ass_path = Path(caption_result.ass_path)
-            Path(caption_result.srt_path)
             captions_ass_rel = f"audiobooks/{audiobook_id}/captions/captions.ass"
             captions_srt_rel = f"audiobooks/{audiobook_id}/captions/captions.srt"
 

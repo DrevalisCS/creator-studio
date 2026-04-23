@@ -79,8 +79,6 @@ class LongFormScriptService:
         if chapter_count is None:
             chapter_count = max(3, target_duration_minutes // 8)
 
-        chapter_count * scenes_per_chapter
-
         log.info(
             "longform_script.generate.start",
             topic=topic[:80],

@@ -677,12 +677,11 @@ class FFmpegService:
             # EBU R128 integrated loudness normalization.
             voice_filters.append(f"loudnorm=I={cfg.voice_target_lufs}:LRA=11:TP=-1")
 
-        # The voice chain feeds into different labels depending on whether
-        # music is present (asplit needed for sidechain) or not.
-        if has_music:
-            voice_chain_out = "vo_processed"
-        else:
-            voice_chain_out = "vo_processed"
+        # Both branches historically produced the same label — the asplit
+        # used for sidechain happens further down, not here. Kept as a
+        # single assignment for clarity; the original if/else was dead.
+        voice_chain_out = "vo_processed"
+        _ = has_music  # reserved for future branch-specific logic
 
         # Emit the voice processing segment.
         segments: list[str] = []

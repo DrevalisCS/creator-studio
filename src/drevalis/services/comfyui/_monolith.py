@@ -974,7 +974,10 @@ class ComfyUIService:
             )
             rng = random.Random(rng_seed)
             angle = rng.choice(self.CAMERA_ANGLES)
-            full_prompt_parts.insert(-0 if not scene_style else 1, angle)
+            # Camera angle goes right after the scene style prefix when
+            # one is set; otherwise at the very front so the angle is the
+            # first thing the diffusion model sees.
+            full_prompt_parts.insert(1 if scene_style else 0, angle)
             if character_description:
                 full_prompt_parts.append(f"featuring {character_description}")
             else:
