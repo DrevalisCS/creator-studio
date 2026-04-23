@@ -32,6 +32,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
 
   # ── Redis ───────────────────────────────────────────────────────────────────
   redis:
@@ -50,6 +52,8 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    security_opt:
+      - no-new-privileges:true
 
   # ── FastAPI Application ─────────────────────────────────────────────────────
   # Runs `alembic upgrade head` inline before uvicorn. Previous setup used a
@@ -169,6 +173,24 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+
+# ── Defaults applied to every service via YAML anchors ─────────────────
+# Not every service can use ``read_only: true`` (ffmpeg writes to /tmp,
+# piper-dl needs /storage), so the anchor only covers the universally-
+# safe hardening: no-new-privileges + a minimal capability set. Each
+# service block above already carries these explicitly where tuning
+# differs (e.g. frontend needs CHOWN/SETUID to chown /var/log/nginx).
+x-hardening-defaults: &hardening-defaults
+  security_opt:
+    - no-new-privileges:true
 
 volumes:
   postgres_data:

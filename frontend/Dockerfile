@@ -23,6 +23,15 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Ensure nginx can read everything regardless of the host's umask.
 RUN chmod -R a+rX /usr/share/nginx/html
 
+# Run as the built-in non-root ``nginx`` user. The stock nginx:alpine
+# image still drops into root by default; flipping the USER here means
+# a container escape starts as an unprivileged uid. We also retarget
+# the pid file + cache dirs to paths the nginx user can write.
+RUN sed -i 's,/var/run/nginx.pid,/tmp/nginx.pid,' /etc/nginx/nginx.conf \
+  && sed -i 's,listen\s\+80,listen 3000,' /etc/nginx/conf.d/default.conf 2>/dev/null || true \
+  && chown -R nginx:nginx /usr/share/nginx/html /var/cache/nginx /var/log/nginx /etc/nginx/conf.d
+USER nginx
+
 # wget is in busybox on alpine — use it for the healthcheck so we don't
 # inflate the image with curl.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
