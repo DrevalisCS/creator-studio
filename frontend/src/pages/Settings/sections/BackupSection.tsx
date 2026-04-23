@@ -33,7 +33,9 @@ interface RepairReport {
   relinked: number;
   unresolved: number;
   relinked_paths: Array<{ from: string; to: string }>;
-  unresolved_paths: string[];
+  unresolved_paths: Array<{ path: string; basename_on_disk: boolean }>;
+  storage_base_abs?: string;
+  indexed_files?: number;
 }
 
 function formatBytes(bytes: number): string {
@@ -392,16 +394,36 @@ export function BackupSection() {
                 </summary>
                 <div className="mt-2 space-y-1 font-mono text-txt-secondary">
                   {repairReport.unresolved_paths.map((p, i) => (
-                    <div key={i} className="truncate">
-                      {p}
+                    <div key={i} className="truncate flex items-start gap-2">
+                      <span className="shrink-0 font-sans text-[10px] uppercase tracking-wider">
+                        {p.basename_on_disk ? (
+                          <span className="text-amber-300">bytes nearby</span>
+                        ) : (
+                          <span className="text-error">missing</span>
+                        )}
+                      </span>
+                      <span className="min-w-0 truncate">{p.path}</span>
                     </div>
                   ))}
                 </div>
                 <p className="mt-2 text-txt-muted">
-                  These rows still point nowhere. If the underlying files are genuinely gone,
-                  regenerate the affected episodes or delete the orphan rows.
+                  <strong className="text-txt-primary">bytes nearby</strong> — the filename exists
+                  somewhere under the storage root but the repair couldn't confidently match it
+                  (ambiguous duplicates, missing size on DB row). You can often recover by
+                  regenerating the specific scene; safe to ignore otherwise.
+                  <br />
+                  <strong className="text-txt-primary">missing</strong> — the file truly isn't on
+                  disk. Regenerate the affected episode or delete the orphan row.
                 </p>
               </details>
+            )}
+            {repairReport.storage_base_abs && (
+              <p className="text-[11px] text-txt-tertiary mt-2 font-mono">
+                storage root: {repairReport.storage_base_abs}
+                {typeof repairReport.indexed_files === 'number' && (
+                  <> · indexed {repairReport.indexed_files} files</>
+                )}
+              </p>
             )}
           </div>
         )}

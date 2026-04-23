@@ -51,7 +51,15 @@ class RepairReport:
     relinked: int = 0
     unresolved: int = 0
     relinked_paths: list[tuple[str, str]] = field(default_factory=list)
-    unresolved_paths: list[str] = field(default_factory=list)
+    # Each unresolved entry is (db_path, basename_on_disk_somewhere_bool)
+    # so the UI can tell the user whether the bytes are present but the
+    # repair couldn't match them, vs. the file is genuinely absent.
+    unresolved_paths: list[tuple[str, bool]] = field(default_factory=list)
+    # Diagnostics: the absolute storage root the repair is scanning
+    # and the total files it indexed. Helps identify cases where the
+    # app is pointed at a different directory than the user populated.
+    storage_base_abs: str = ""
+    indexed_files: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -60,7 +68,12 @@ class RepairReport:
             "relinked": self.relinked,
             "unresolved": self.unresolved,
             "relinked_paths": [{"from": a, "to": b} for a, b in self.relinked_paths[:50]],
-            "unresolved_paths": self.unresolved_paths[:50],
+            "unresolved_paths": [
+                {"path": p, "basename_on_disk": on_disk}
+                for p, on_disk in self.unresolved_paths[:50]
+            ],
+            "storage_base_abs": self.storage_base_abs,
+            "indexed_files": self.indexed_files,
         }
 
 
@@ -268,9 +281,13 @@ async def repair_media_links(
         return report
 
     by_tail, by_name, by_name_size = _walk_storage(storage_base)
+    indexed_files = sum(len(v) for v in by_name.values())
+    report.storage_base_abs = str(storage_base.resolve())
+    report.indexed_files = indexed_files
     logger.info(
         "media_repair.index_built",
-        files=sum(len(v) for v in by_name.values()),
+        storage_base=report.storage_base_abs,
+        files=indexed_files,
         unique_basenames=len(by_name),
     )
 
@@ -292,7 +309,9 @@ async def repair_media_links(
                 # our index but guard anyway.
                 report.unresolved += 1
                 if current:
-                    report.unresolved_paths.append(current)
+                    report.unresolved_paths.append(
+                        (current, Path(current).name in by_name)
+                    )
                 continue
             old = row.file_path
             row.file_path = rel
@@ -305,7 +324,8 @@ async def repair_media_links(
         else:
             report.unresolved += 1
             if current:
-                report.unresolved_paths.append(current)
+                basename_here = Path(current).name in by_name
+                report.unresolved_paths.append((current, basename_here))
 
     # Audiobook rows carry their own path columns (not media_assets).
     # Repair them with the same index so restored audiobooks also
@@ -378,14 +398,14 @@ async def _repair_audiobooks(
                     rel = new_path.relative_to(storage_base).as_posix()
                 except ValueError:
                     report.unresolved += 1
-                    report.unresolved_paths.append(current)
+                    report.unresolved_paths.append((current, False))
                     continue
                 setattr(ab, col, rel)
                 report.relinked += 1
                 report.relinked_paths.append((current, rel))
             else:
                 report.unresolved += 1
-                report.unresolved_paths.append(current)
+                report.unresolved_paths.append((current, Path(current).name in by_name))
 
 
 def _find_audiobook_path(
