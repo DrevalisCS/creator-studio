@@ -8,24 +8,30 @@ scans the DB + filesystem and relinks them automatically.
 
 Matching strategy (in order of confidence):
 
-1. **Exact-path hit** — row's ``file_path`` resolves as-is. Keep.
-2. **Filename + kind match** — find a unique file on disk under
-   ``storage/episodes/`` with the same basename and an asset-type-
-   consistent subdir (``output/final.mp4``, ``scenes/*.png``,
-   ``voice/full.wav``, etc.). Relink.
-3. **Episode-id dir match** — the DB row has
-   ``episodes/OLD-UUID/…`` but the UUID no longer exists; find a dir
-   under ``storage/episodes/`` that contains a file with the matching
-   basename in the matching subpath.
+1. **Exact path** — row's ``file_path`` resolves as-is. Keep.
+2. **Parent-dir + filename** — find a file under ``storage/`` whose
+   last-two path components match. This is the sweet spot: common
+   across episodes (``voice/full.wav``, ``output/thumbnail.jpg``)
+   but specific enough to rule out cross-file collisions in most
+   cases. Size-matches win when multiple candidates share the
+   same tail.
+3. **Filename + kind match** — find a file anywhere under ``storage/``
+   with the same basename and an asset-type-consistent subdir
+   (``output/final.mp4``, ``scenes/*.png``, ``voice/full.wav``, …).
+4. **Unique-basename anywhere** — last-resort basename match; only
+   picks when exactly one file in the whole tree has that name.
+5. **Scene_number fallback** — for ``scene`` rows with a known
+   scene_number, try the canonical ``scene_{NN}.png`` form.
 
-Rows that still don't resolve after step 3 are reported — the UI
+Rows that still don't resolve after step 5 are reported — the UI
 shows them in the Backup section so the operator can choose to
 re-assemble or drop them.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections import defaultdict
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -44,14 +50,8 @@ class RepairReport:
     already_ok: int = 0
     relinked: int = 0
     unresolved: int = 0
-    relinked_paths: list[tuple[str, str]] = None  # (old, new)
-    unresolved_paths: list[str] = None
-
-    def __post_init__(self) -> None:
-        if self.relinked_paths is None:
-            self.relinked_paths = []
-        if self.unresolved_paths is None:
-            self.unresolved_paths = []
+    relinked_paths: list[tuple[str, str]] = field(default_factory=list)
+    unresolved_paths: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -64,21 +64,196 @@ class RepairReport:
         }
 
 
-# Asset type → list of (subdir, filename-glob) candidates on disk.
-_TYPE_CANDIDATES: dict[str, list[tuple[str, str]]] = {
-    "video": [("output", "final.mp4"), ("output", "*.mp4")],
-    "video_proxy": [("output", "proxy.mp4")],
-    "thumbnail": [("output", "thumbnail.jpg"), ("output", "*.jpg")],
-    "voiceover": [
-        ("voice", "full.wav"),
-        ("audio", "voiceover.wav"),
-        ("voice", "*.wav"),
-        ("audio", "*.wav"),
-    ],
-    "scene": [("scenes", "*.png"), ("scenes", "*.jpg")],
-    "scene_video": [("scenes", "*.mp4")],
-    "caption": [("captions", "*.ass"), ("captions", "*.srt")],
+# Asset type → acceptable parent-directory names. Used when the parent-
+# dir-from-DB does not itself appear under storage (e.g. the user kept
+# the bytes but renamed ``voice`` to ``voiceover``).
+_TYPE_PARENT_HINTS: dict[str, tuple[str, ...]] = {
+    "video": ("output",),
+    "video_proxy": ("output",),
+    "thumbnail": ("output",),
+    "voiceover": ("voice", "audio"),
+    "voice": ("voice", "audio"),
+    "audio": ("voice", "audio"),
+    "scene": ("scenes",),
+    "scene_video": ("scenes",),
+    "caption": ("captions",),
+    "audiobook": ("",),  # audiobooks sit directly in audiobooks/<id>/
+    "audiobook_video": ("",),
+    "audiobook_cover": ("",),
+    "audiobook_chapter_image": ("chapters",),
 }
+
+
+# ── Index building ─────────────────────────────────────────────────
+
+
+def _walk_storage(storage_base: Path) -> tuple[
+    dict[tuple[str, str], list[Path]],
+    dict[str, list[Path]],
+    dict[tuple[str, int], list[Path]],
+]:
+    """Build three indices over every file under ``storage/``:
+
+    * ``by_tail`` — ``(parent_dir_name, filename) → [paths]``
+    * ``by_name`` — ``filename → [paths]``
+    * ``by_name_size`` — ``(filename, size_bytes) → [paths]``
+
+    Directory traversal skips ``models/``, ``temp/``, and hidden
+    directories so the indices aren't polluted with ComfyUI model
+    weights or scratch files.
+    """
+    by_tail: dict[tuple[str, str], list[Path]] = defaultdict(list)
+    by_name: dict[str, list[Path]] = defaultdict(list)
+    by_name_size: dict[tuple[str, int], list[Path]] = defaultdict(list)
+
+    skip_roots = {"models", "temp", "cache", "__pycache__"}
+    if not storage_base.exists():
+        return {}, {}, {}
+
+    for path in storage_base.rglob("*"):
+        if not path.is_file():
+            continue
+        # Skip known heavy / irrelevant roots.
+        try:
+            rel = path.relative_to(storage_base)
+        except ValueError:
+            continue
+        parts = rel.parts
+        if parts and parts[0] in skip_roots:
+            continue
+        if any(p.startswith(".") for p in parts):
+            continue
+
+        parent_name = path.parent.name
+        name = path.name
+        by_tail[(parent_name, name)].append(path)
+        by_name[name].append(path)
+        try:
+            size = path.stat().st_size
+        except OSError:
+            continue
+        by_name_size[(name, size)].append(path)
+
+    return dict(by_tail), dict(by_name), dict(by_name_size)
+
+
+# ── Match strategies ───────────────────────────────────────────────
+
+
+def _find_candidate(
+    row: MediaAsset,
+    by_tail: dict[tuple[str, str], list[Path]],
+    by_name: dict[str, list[Path]],
+    by_name_size: dict[tuple[str, int], list[Path]],
+) -> Path | None:
+    current = row.file_path or ""
+    if not current:
+        # Nothing to go on — scene_number fallback may still rescue us.
+        return _scene_number_fallback(row, by_tail)
+
+    p = Path(current)
+    basename = p.name
+    parent_name = p.parent.name if p.parent.parts else ""
+    expected_size = int(row.file_size_bytes or 0)
+
+    # Strategy A: exact (parent-dir, filename) hit.
+    if parent_name:
+        hits = by_tail.get((parent_name, basename)) or []
+        chosen = _pick_best(hits, expected_size, row)
+        if chosen is not None:
+            return chosen
+
+    # Strategy B: asset-type hints — parent dir from the type catalog.
+    for hint in _TYPE_PARENT_HINTS.get(row.asset_type, ()):
+        if hint:
+            hits = by_tail.get((hint, basename)) or []
+            chosen = _pick_best(hits, expected_size, row)
+            if chosen is not None:
+                return chosen
+
+    # Strategy C: size-exact basename match anywhere (defeats
+    # same-named chunks across different audiobooks because the
+    # bytes-per-chunk differ).
+    if expected_size > 0:
+        hits = by_name_size.get((basename, expected_size)) or []
+        chosen = _pick_best(hits, expected_size, row)
+        if chosen is not None:
+            return chosen
+
+    # Strategy D: unique-basename anywhere.
+    hits = by_name.get(basename) or []
+    if len(hits) == 1:
+        return hits[0]
+    if len(hits) > 1:
+        # Disambiguate by episode_id substring in the path.
+        narrowed: list[Path] = []
+        for h in hits:
+            if row.episode_id is not None and str(row.episode_id) in h.as_posix():
+                narrowed.append(h)
+        if len(narrowed) == 1:
+            return narrowed[0]
+
+    # Strategy E: scene_number fallback.
+    return _scene_number_fallback(row, by_tail)
+
+
+def _pick_best(
+    hits: list[Path], expected_size: int, row: MediaAsset
+) -> Path | None:
+    """Pick the best candidate from ``hits``.
+
+    Preference order:
+      1. Single hit → take it.
+      2. Hit whose parent path contains ``episode_id`` / ``audiobook_id``.
+      3. Hit whose size matches ``expected_size`` (when the DB row has it).
+      4. Give up.
+    """
+    if not hits:
+        return None
+    if len(hits) == 1:
+        return hits[0]
+
+    # ID-substring narrowing.
+    ep = getattr(row, "episode_id", None)
+    if ep is not None:
+        narrowed = [h for h in hits if str(ep) in h.as_posix()]
+        if len(narrowed) == 1:
+            return narrowed[0]
+        if narrowed:
+            hits = narrowed
+
+    # Size match.
+    if expected_size > 0:
+        size_hits = [h for h in hits if _safe_size(h) == expected_size]
+        if len(size_hits) == 1:
+            return size_hits[0]
+
+    # Ambiguous — don't guess.
+    return None
+
+
+def _scene_number_fallback(
+    row: MediaAsset,
+    by_tail: dict[tuple[str, str], list[Path]],
+) -> Path | None:
+    if row.asset_type != "scene" or row.scene_number is None:
+        return None
+    needle = f"scene_{int(row.scene_number):02d}.png"
+    hits = by_tail.get(("scenes", needle)) or []
+    for h in hits:
+        if row.episode_id is not None and str(row.episode_id) in h.as_posix():
+            return h
+    return hits[0] if hits else None
+
+
+def _safe_size(p: Path) -> int:
+    try:
+        return p.stat().st_size
+    except OSError:
+        return -1
+
+
+# ── Entry point ────────────────────────────────────────────────────
 
 
 async def repair_media_links(
@@ -89,24 +264,15 @@ async def repair_media_links(
     we can locate a matching file on disk, and commit.
     """
     report = RepairReport()
-    episodes_root = storage_base / "episodes"
-    if not episodes_root.exists():
+    if not storage_base.exists():
         return report
 
-    # Index existing files under storage/episodes by (subdir, filename)
-    # once so lookups are O(1).
-    index: dict[tuple[str, str], list[Path]] = {}
-    for ep_dir in episodes_root.iterdir():
-        if not ep_dir.is_dir():
-            continue
-        for sub in ("output", "voice", "audio", "scenes", "captions"):
-            sd = ep_dir / sub
-            if not sd.exists():
-                continue
-            for f in sd.iterdir():
-                if not f.is_file():
-                    continue
-                index.setdefault((sub, f.name), []).append(f)
+    by_tail, by_name, by_name_size = _walk_storage(storage_base)
+    logger.info(
+        "media_repair.index_built",
+        files=sum(len(v) for v in by_name.values()),
+        unique_basenames=len(by_name),
+    )
 
     rows = (await session.execute(select(MediaAsset))).scalars().all()
     for row in rows:
@@ -117,13 +283,23 @@ async def repair_media_links(
             report.already_ok += 1
             continue
 
-        # Try to find a matching file on disk.
-        new_path = _find_candidate(row, index, episodes_root)
+        new_path = _find_candidate(row, by_tail, by_name, by_name_size)
         if new_path is not None:
-            rel = new_path.relative_to(storage_base).as_posix()
+            try:
+                rel = new_path.relative_to(storage_base).as_posix()
+            except ValueError:
+                # File is outside storage_base — shouldn't happen with
+                # our index but guard anyway.
+                report.unresolved += 1
+                if current:
+                    report.unresolved_paths.append(current)
+                continue
             old = row.file_path
             row.file_path = rel
-            row.file_size_bytes = new_path.stat().st_size
+            try:
+                row.file_size_bytes = new_path.stat().st_size
+            except OSError:
+                pass
             report.relinked += 1
             report.relinked_paths.append((old or "", rel))
         else:
@@ -131,45 +307,122 @@ async def repair_media_links(
             if current:
                 report.unresolved_paths.append(current)
 
+    # Audiobook rows carry their own path columns (not media_assets).
+    # Repair them with the same index so restored audiobooks also
+    # resurrect on a new machine.
+    await _repair_audiobooks(session, storage_base, by_tail, by_name, by_name_size, report)
+
     if report.relinked:
         await session.commit()
+
+    logger.info(
+        "media_repair.done",
+        scanned=report.scanned,
+        already_ok=report.already_ok,
+        relinked=report.relinked,
+        unresolved=report.unresolved,
+    )
     return report
 
 
-def _find_candidate(
-    row: MediaAsset, index: dict[tuple[str, str], list[Path]], _episodes_root: Path
+# ── Audiobook-row repair ───────────────────────────────────────────
+
+
+_AUDIOBOOK_PATH_COLUMNS: tuple[str, ...] = (
+    "audio_path",
+    "video_path",
+    "mp3_path",
+    "cover_image_path",
+    "background_image_path",
+)
+
+
+async def _repair_audiobooks(
+    session: AsyncSession,
+    storage_base: Path,
+    by_tail: dict[tuple[str, str], list[Path]],
+    by_name: dict[str, list[Path]],
+    by_name_size: dict[tuple[str, int], list[Path]],
+    report: RepairReport,
+) -> None:
+    """Repair broken path columns on every Audiobook row.
+
+    Unlike media_assets, audiobooks store their paths directly on the
+    row (audio/video/mp3/cover/background). We re-use the filesystem
+    index already built by the caller.
+    """
+    from drevalis.models.audiobook import Audiobook
+
+    rows = (await session.execute(select(Audiobook))).scalars().all()
+    for ab in rows:
+        for col in _AUDIOBOOK_PATH_COLUMNS:
+            current = getattr(ab, col, None) or ""
+            if not current:
+                continue
+            report.scanned += 1
+            abs_current = (storage_base / current).resolve()
+            if abs_current.exists():
+                report.already_ok += 1
+                continue
+
+            new_path = _find_audiobook_path(
+                ab_id=str(ab.id),
+                col=col,
+                current=current,
+                by_tail=by_tail,
+                by_name=by_name,
+                by_name_size=by_name_size,
+            )
+            if new_path is not None:
+                try:
+                    rel = new_path.relative_to(storage_base).as_posix()
+                except ValueError:
+                    report.unresolved += 1
+                    report.unresolved_paths.append(current)
+                    continue
+                setattr(ab, col, rel)
+                report.relinked += 1
+                report.relinked_paths.append((current, rel))
+            else:
+                report.unresolved += 1
+                report.unresolved_paths.append(current)
+
+
+def _find_audiobook_path(
+    *,
+    ab_id: str,
+    col: str,
+    current: str,
+    by_tail: dict[tuple[str, str], list[Path]],
+    by_name: dict[str, list[Path]],
+    by_name_size: dict[tuple[str, int], list[Path]],
 ) -> Path | None:
-    """Given a broken media_asset, locate its file via three strategies."""
-    current = row.file_path or ""
-    basename = Path(current).name if current else ""
+    p = Path(current)
+    basename = p.name
+    parent_name = p.parent.name if p.parent.parts else ""
 
-    # 1. Same basename in the expected subdir. Uses the asset type's
-    #    candidate subdirs so a "thumbnail" doesn't match a random
-    #    thumbnail.jpg in the wrong episode.
-    candidates = _TYPE_CANDIDATES.get(row.asset_type, [])
-    for subdir, _glob in candidates:
-        if basename:
-            hits = index.get((subdir, basename)) or []
-            if len(hits) == 1:
-                return hits[0]
-
-    # 2. Same basename anywhere (weaker).
-    if basename:
-        for (sub, name), hits in index.items():
-            if name == basename and len(hits) == 1:
-                return hits[0]
-
-    # 3. For scenes specifically — if the DB has a scene_number but no
-    #    unique filename match, try ``scene_{NN}.png``.
-    if row.asset_type == "scene" and row.scene_number is not None:
-        needle = f"scene_{int(row.scene_number):02d}.png"
-        hits = index.get(("scenes", needle)) or []
-        if hits:
-            # Prefer a file within an episode dir that matches part of
-            # the current file_path; otherwise just take the first.
-            for h in hits:
-                if row.episode_id is not None and str(row.episode_id) in h.as_posix():
-                    return h
+    # 1. (parent, basename) hit narrowed by audiobook_id in the path.
+    if parent_name:
+        hits = by_tail.get((parent_name, basename)) or []
+        narrowed = [h for h in hits if ab_id in h.as_posix()]
+        if len(narrowed) == 1:
+            return narrowed[0]
+        if len(hits) == 1:
             return hits[0]
 
+    # 2. Basename anywhere narrowed by audiobook_id.
+    hits = by_name.get(basename) or []
+    narrowed = [h for h in hits if ab_id in h.as_posix()]
+    if len(narrowed) == 1:
+        return narrowed[0]
+    if len(hits) == 1:
+        return hits[0]
+
+    # 3. Fall back to column-driven directory guess — e.g. audio_path
+    # lives at audiobooks/<id>/{basename}.
+    # by_name_size is available for future size-based narrowing; not
+    # strictly needed for audiobooks today because basenames are
+    # unique per audiobook directory.
+    _ = by_name_size
+    _ = col
     return None
