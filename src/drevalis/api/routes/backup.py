@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import shutil
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Any
 
 import structlog
 from fastapi import (
@@ -220,6 +220,158 @@ async def restore_backup(
             tmp.unlink()
         except OSError:
             pass
+
+
+# ── Storage probe (diagnose "can't see videos / images") ─────────────────
+
+
+@router.get(
+    "/storage-probe",
+    summary="Probe the storage mount + serve path for common post-restore issues",
+)
+async def storage_probe(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    settings: Annotated[Settings, Depends(get_settings)],
+) -> dict[str, object]:
+    """Return a focused diagnostic for each of: does the app see the
+    right ``storage_base_path``? are the files readable by the Python
+    process that's going to serve them? is the storage directory a
+    symlink (StaticFiles mounts are ``follow_symlink=False``)? does
+    the auth middleware guard ``/storage/*``?
+
+    The frontend's Backup section renders the output as a checklist
+    so the user can tell at a glance which layer is broken.
+    """
+    import os
+
+    from sqlalchemy import func, select
+
+    from drevalis.models.media_asset import MediaAsset
+
+    storage_base = settings.storage_base_path.resolve()
+    episodes_dir = (storage_base / "episodes").resolve()
+    audiobooks_dir = (storage_base / "audiobooks").resolve()
+    report: dict[str, Any] = {
+        "storage_base_path": str(storage_base),
+        "storage_base_exists": storage_base.exists(),
+        "storage_base_is_symlink": storage_base.is_symlink(),
+        "episodes_dir_exists": episodes_dir.exists(),
+        "episodes_dir_is_symlink": episodes_dir.is_symlink(),
+        "audiobooks_dir_exists": audiobooks_dir.exists(),
+        "api_auth_token_configured": bool(settings.api_auth_token),
+        "api_auth_blocks_storage": bool(settings.api_auth_token),
+        "process_uid": None,
+        "process_gid": None,
+    }
+    # ``os.getuid`` / ``os.getgid`` only exist on POSIX. On Windows the
+    # probe simply omits those fields.
+    report["process_uid"] = getattr(os, "getuid", lambda: None)()
+    report["process_gid"] = getattr(os, "getgid", lambda: None)()
+
+    # Pull a representative sample of media_assets across types so the
+    # probe covers video / image / caption / audio. For each row
+    # actually attempt a read of the first byte — that's what
+    # StaticFiles.send_file does under the hood, and it's the only
+    # way to know whether the container user can actually serve the
+    # file.
+    sample_types = ["video", "thumbnail", "scene", "caption", "voiceover"]
+    samples: list[dict[str, Any]] = []
+    for asset_type in sample_types:
+        rows = (
+            (
+                await db.execute(
+                    select(MediaAsset)
+                    .where(MediaAsset.asset_type == asset_type)
+                    .order_by(func.random())
+                    .limit(1)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        for row in rows:
+            fp = row.file_path or ""
+            abs_p = (storage_base / fp).resolve() if fp else None
+            entry: dict[str, Any] = {
+                "asset_type": asset_type,
+                "file_path": fp,
+                "episode_id": str(row.episode_id) if row.episode_id else None,
+                "abs_path": str(abs_p) if abs_p else None,
+                "exists": False,
+                "readable": False,
+                "is_symlink": False,
+                "size_bytes": None,
+                "url_served_at": f"/storage/{fp}" if fp else None,
+                "error": None,
+            }
+            if abs_p and abs_p.exists():
+                entry["exists"] = True
+                entry["is_symlink"] = abs_p.is_symlink()
+                try:
+                    entry["size_bytes"] = abs_p.stat().st_size
+                except OSError as exc:
+                    entry["error"] = f"stat: {exc}"
+                try:
+                    with abs_p.open("rb") as f:
+                        _ = f.read(1)
+                    entry["readable"] = True
+                except OSError as exc:
+                    entry["error"] = f"read: {exc}"
+            samples.append(entry)
+
+    report["samples"] = samples
+    report["hints"] = _storage_probe_hints(report)
+    return report
+
+
+def _storage_probe_hints(report: dict[str, Any]) -> list[str]:
+    hints: list[str] = []
+    if not report.get("storage_base_exists"):
+        hints.append(
+            "The storage_base_path doesn't exist inside the app container. "
+            "Check your Docker volume mount — the host path with your media "
+            "must map to this path inside the container."
+        )
+    if report.get("api_auth_token_configured"):
+        hints.append(
+            "API_AUTH_TOKEN is set. Browser <video> / <img> tags can't send "
+            "Bearer headers, so every /storage/* request gets blocked by "
+            "the auth middleware. Either unset API_AUTH_TOKEN or move the "
+            "media behind a signed-URL scheme."
+        )
+    if report.get("storage_base_is_symlink") or report.get("episodes_dir_is_symlink"):
+        hints.append(
+            "storage_base_path or storage/episodes/ is a symlink. FastAPI "
+            "StaticFiles is mounted with follow_symlink=False so symlinked "
+            "directories return 404. Replace the symlink with the real "
+            "directory (or its contents)."
+        )
+    samples = report.get("samples") or []
+    exists_but_unreadable = [s for s in samples if s["exists"] and not s["readable"]]
+    if exists_but_unreadable:
+        hints.append(
+            f"{len(exists_but_unreadable)} of {len(samples)} probe files exist "
+            "but aren't readable by the app process — a permission problem. "
+            f"Inside the container run ``chown -R {report.get('process_uid')}:"
+            f"{report.get('process_gid')} /app/storage`` (or the equivalent "
+            "host-side chown on the mapped directory)."
+        )
+    samples_with_symlink = [s for s in samples if s["is_symlink"]]
+    if samples_with_symlink:
+        hints.append(
+            f"{len(samples_with_symlink)} sample files are symlinks. "
+            "StaticFiles is mounted with follow_symlink=False — serve "
+            "real files, or flip the mount to follow_symlinks=True "
+            "(weighs the path-traversal trade-off yourself)."
+        )
+    if not hints:
+        hints.append(
+            "No obvious storage-serving problem detected. If videos still "
+            "don't play, open browser DevTools → Network and look at the "
+            "actual HTTP status of the /storage/... request; share that "
+            "status + response headers."
+        )
+    return hints
 
 
 # ── Repair media links (after a rough restore or manual copy) ────────────

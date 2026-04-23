@@ -38,6 +38,32 @@ interface RepairReport {
   indexed_files?: number;
 }
 
+interface StorageProbe {
+  storage_base_path: string;
+  storage_base_exists: boolean;
+  storage_base_is_symlink: boolean;
+  episodes_dir_exists: boolean;
+  episodes_dir_is_symlink: boolean;
+  audiobooks_dir_exists: boolean;
+  api_auth_token_configured: boolean;
+  api_auth_blocks_storage: boolean;
+  process_uid: number | null;
+  process_gid: number | null;
+  samples: Array<{
+    asset_type: string;
+    file_path: string;
+    episode_id: string | null;
+    abs_path: string | null;
+    exists: boolean;
+    readable: boolean;
+    is_symlink: boolean;
+    size_bytes: number | null;
+    url_served_at: string | null;
+    error: string | null;
+  }>;
+  hints: string[];
+}
+
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -53,6 +79,8 @@ export function BackupSection() {
   const [restoring, setRestoring] = useState(false);
   const [repairing, setRepairing] = useState(false);
   const [repairReport, setRepairReport] = useState<RepairReport | null>(null);
+  const [probing, setProbing] = useState(false);
+  const [probeReport, setProbeReport] = useState<StorageProbe | null>(null);
   const [restoreConfirm, setRestoreConfirm] = useState('');
   const [allowKeyMismatch, setAllowKeyMismatch] = useState(false);
   const [restoreDb, setRestoreDb] = useState(true);
@@ -110,6 +138,21 @@ export function BackupSection() {
 
   const onDownload = (filename: string) => {
     window.open(`/api/v1/backup/${encodeURIComponent(filename)}`, '_blank');
+  };
+
+  const onProbe = async () => {
+    setProbing(true);
+    setProbeReport(null);
+    try {
+      const res = await fetch('/api/v1/backup/storage-probe');
+      if (!res.ok) throw new ApiError(res.status, res.statusText, await res.text());
+      const data: StorageProbe = await res.json();
+      setProbeReport(data);
+    } catch (err) {
+      toast.error('Storage probe failed', { description: formatError(err) });
+    } finally {
+      setProbing(false);
+    }
   };
 
   const onRepair = async () => {
@@ -323,10 +366,69 @@ export function BackupSection() {
               manual copy. Non-destructive: only rows whose current path is broken get updated.
             </p>
           </div>
-          <Button onClick={onRepair} disabled={repairing} variant="primary">
-            {repairing ? 'Scanning...' : 'Repair now'}
-          </Button>
+          <div className="flex gap-2">
+            <Button onClick={onProbe} disabled={probing} variant="ghost">
+              {probing ? 'Probing...' : 'Diagnose serving'}
+            </Button>
+            <Button onClick={onRepair} disabled={repairing} variant="primary">
+              {repairing ? 'Scanning...' : 'Repair now'}
+            </Button>
+          </div>
         </div>
+        {probeReport && (
+          <div className="mt-4 space-y-3 rounded bg-bg-elevated p-3 text-xs">
+            <div className="font-mono text-txt-primary">
+              storage_base: {probeReport.storage_base_path}
+              {probeReport.process_uid !== null && (
+                <> · uid={probeReport.process_uid}</>
+              )}
+            </div>
+            {probeReport.hints.length > 0 && (
+              <ul className="space-y-2">
+                {probeReport.hints.map((h, i) => (
+                  <li
+                    key={i}
+                    className="rounded bg-amber-500/10 border border-amber-500/30 p-2 text-amber-200"
+                  >
+                    {h}
+                  </li>
+                ))}
+              </ul>
+            )}
+            {probeReport.samples.length > 0 && (
+              <details className="rounded bg-bg-base p-2">
+                <summary className="cursor-pointer text-txt-secondary">
+                  Probe samples ({probeReport.samples.length})
+                </summary>
+                <div className="mt-2 space-y-1 font-mono">
+                  {probeReport.samples.map((s, i) => (
+                    <div key={i} className="truncate flex items-start gap-2">
+                      <span className="shrink-0 w-16 font-sans text-[10px] uppercase tracking-wider text-txt-tertiary">
+                        {s.asset_type}
+                      </span>
+                      <span
+                        className={[
+                          'shrink-0 w-16 font-sans text-[10px] uppercase tracking-wider',
+                          s.readable
+                            ? 'text-emerald-300'
+                            : s.exists
+                              ? 'text-amber-300'
+                              : 'text-error',
+                        ].join(' ')}
+                      >
+                        {s.readable ? 'readable' : s.exists ? 'exists' : 'missing'}
+                      </span>
+                      <span className="min-w-0 truncate text-txt-secondary">
+                        {s.abs_path}
+                        {s.error && <> — {s.error}</>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
         {repairReport && (
           <div className="mt-4 space-y-3">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
