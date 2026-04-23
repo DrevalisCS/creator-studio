@@ -439,17 +439,41 @@ def _storage_probe_hints(report: dict[str, Any]) -> list[str]:
         )
     host_source = report.get("host_source_path")
     if host_source:
-        # Always surface the host path so users never copy media to the
-        # wrong place. Particularly important on Windows / macOS where
-        # Docker Desktop's VM path (/run/desktop/mnt/host/c/...) isn't
-        # obviously a bind of %USERPROFILE%.
+        looks_vm_internal = (
+            host_source.startswith("/project/")
+            or host_source.startswith("/run/desktop/")
+            or host_source.startswith("/var/lib/docker/")
+            or host_source.startswith("/mnt/host_mnt/")
+        )
+        if looks_vm_internal:
+            hints.append(
+                f"The container's /app/storage is bind-mounted from "
+                f"``{host_source}`` — that's Docker Desktop's Linux-VM "
+                f"label for the compose file's parent directory on your "
+                f"real filesystem. On Windows it's the same folder as "
+                f"``%USERPROFILE%\\Drevalis\\storage\\`` (or wherever "
+                f"``docker-compose.yml`` lives + ``\\storage\\``); on "
+                f"macOS it's ``~/Drevalis/storage/`` by the same logic. "
+                f"If you copied files into that Windows/macOS folder "
+                f"but the app still shows no content, the running "
+                f"containers were likely started from a different "
+                f"directory. Close any other Drevalis stacks, open a "
+                f"terminal in ``%USERPROFILE%\\Drevalis\\``, run "
+                f"``docker compose down`` then ``docker compose up -d`` "
+                f"from THAT folder."
+            )
+        else:
+            hints.append(
+                f"The container's /app/storage is bind-mounted from the "
+                f"host at ``{host_source}`` — your media files must live "
+                f"under that directory."
+            )
         hints.append(
-            f"The container's /app/storage path is bind-mounted from the "
-            f"host at ``{host_source}`` — your media files must live "
-            f"under that directory. On Windows Docker Desktop this path "
-            f"typically maps to a location under %USERPROFILE% (often "
-            f"``%USERPROFILE%\\Drevalis\\storage\\``); on Linux it's the "
-            f"absolute host path shown."
+            "Sanity check from your host terminal: ``docker inspect -f "
+            '\'{{range .Mounts}}{{if eq .Destination "/app/storage"}}'
+            "{{.Source}}{{end}}{{end}}' $(docker ps -q --filter "
+            "'name=app')`` — that prints the exact host source path "
+            "Docker recorded when the container was created."
         )
 
     if not hints:

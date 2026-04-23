@@ -1627,6 +1627,22 @@ function StorageSection() {
                   <p className="text-sm text-accent font-mono mt-0.5 break-all">
                     {storage.host_source_path}
                   </p>
+                  {(storage.host_source_path.startsWith('/project/') ||
+                    storage.host_source_path.startsWith('/run/desktop/') ||
+                    storage.host_source_path.startsWith('/mnt/host_mnt/')) && (
+                    <p className="text-[11px] text-txt-tertiary mt-1">
+                      That's Docker Desktop's Linux-VM label for the compose
+                      file's directory. On Windows it's the same folder as{' '}
+                      <code className="text-txt-secondary">
+                        %USERPROFILE%\Drevalis\storage\
+                      </code>
+                      ; on macOS it's{' '}
+                      <code className="text-txt-secondary">
+                        ~/Drevalis/storage/
+                      </code>
+                      .
+                    </p>
+                  )}
                 </>
               )}
             </div>
