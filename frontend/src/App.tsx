@@ -1,9 +1,8 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
 import { LicenseGate } from '@/components/LicenseGate';
 import { LoginGate } from '@/components/LoginGate';
-import { BootIntro } from '@/components/BootIntro';
 import { ToastProvider } from '@/components/ui/Toast';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { ThemeProvider } from '@/lib/theme';
@@ -70,13 +69,10 @@ function YouTubeCallback() {
 // ---------------------------------------------------------------------------
 
 function App() {
-  const [booted, setBooted] = useState(false);
-
   return (
     <ThemeProvider>
     <ToastProvider>
     <TooltipProvider delayDuration={300}>
-    {!booted && <BootIntro onDone={() => setBooted(true)} />}
     <LicenseGate>
     <Suspense fallback={<PageLoadingFallback />}>
     <Routes>
