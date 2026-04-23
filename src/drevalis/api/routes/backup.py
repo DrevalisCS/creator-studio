@@ -86,8 +86,21 @@ def _safe_backup_path(settings: Settings, filename: str) -> Path:
 @router.get("", summary="List existing backup archives")
 async def list_backups(settings: Settings = Depends(get_settings)) -> dict[str, object]:
     svc = _service(settings)
+    backup_dir_abs = settings.backup_directory.resolve()
+    host_source = _detect_host_source(backup_dir_abs)
+    # When the backup dir resolves inside the bind-mounted storage_base,
+    # try to also give the caller an absolute container path so the UI can
+    # render both the container-side and host-side locations.
     return {
         "backup_directory": str(settings.backup_directory),
+        "backup_directory_abs": str(backup_dir_abs),
+        # Host path as reported by ``/proc/self/mountinfo``. On Docker
+        # Desktop for Windows/macOS this is the Linux-VM label (e.g.
+        # ``/project/storage/backups``) — still useful because the UI
+        # can translate that to ``%USERPROFILE%\Drevalis\storage\backups``
+        # in the explanation text. None on Windows hosts / restricted
+        # containers where mountinfo isn't readable.
+        "backup_directory_host_source": host_source,
         "retention": settings.backup_retention,
         "auto_enabled": settings.backup_auto_enabled,
         "archives": svc.list_backups(),

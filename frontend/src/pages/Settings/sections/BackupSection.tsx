@@ -22,9 +22,39 @@ interface Archive {
 
 interface BackupListResponse {
   backup_directory: string;
+  backup_directory_abs?: string;
+  backup_directory_host_source?: string | null;
   retention: number;
   auto_enabled: boolean;
   archives: Archive[];
+}
+
+function hostHintFromVmLabel(path: string | null | undefined): string | null {
+  // Docker Desktop on Windows/macOS labels bind-mounted host directories
+  // with VM-internal prefixes. Map them back to the real user-visible
+  // Windows/macOS equivalent so the operator can paste it into Explorer.
+  if (!path) return null;
+  const vmPrefixes = ['/project/', '/run/desktop/mnt/', '/mnt/host_mnt/', '/host_mnt/'];
+  for (const prefix of vmPrefixes) {
+    if (path.startsWith(prefix)) {
+      const tail = path.slice(prefix.length);
+      // Heuristic: the compose directory's basename is the same in both
+      // worlds, so tail under the prefix maps 1:1 to ``%USERPROFILE%\<tail>``
+      // on Windows (or ``~/<tail>`` on macOS) for the default install.
+      const winPath = '%USERPROFILE%\\' + tail.replace(/\//g, '\\');
+      const macPath = '~/' + tail;
+      return `Windows: ${winPath}   ·   macOS: ${macPath}`;
+    }
+  }
+  if (path.startsWith('/var/lib/docker/volumes/')) {
+    return (
+      'This is a Docker NAMED VOLUME, not a bind mount — the backup lives ' +
+      "inside Docker Desktop's VM and isn't visible in Windows Explorer. " +
+      'Set BACKUP_DIRECTORY in .env to a bind-mounted path, or use ' +
+      '"docker cp drevalis-app-1:<path> ." to pull files to your host.'
+    );
+  }
+  return null;
 }
 
 interface RepairReport {
@@ -298,8 +328,23 @@ export function BackupSection() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mt-4 text-xs">
           <div className="rounded bg-bg-elevated p-3">
-            <div className="text-txt-muted uppercase tracking-wider mb-1">Directory</div>
-            <div className="text-txt-primary font-mono break-all">{state.backup_directory}</div>
+            <div className="text-txt-muted uppercase tracking-wider mb-1">Directory (container)</div>
+            <div className="text-txt-primary font-mono break-all">
+              {state.backup_directory_abs || state.backup_directory}
+            </div>
+            {state.backup_directory_host_source && (
+              <>
+                <div className="text-txt-muted uppercase tracking-wider mt-3 mb-1">On host</div>
+                <div className="text-accent font-mono break-all">
+                  {state.backup_directory_host_source}
+                </div>
+                {hostHintFromVmLabel(state.backup_directory_host_source) && (
+                  <div className="mt-2 text-[11px] text-txt-secondary leading-relaxed">
+                    {hostHintFromVmLabel(state.backup_directory_host_source)}
+                  </div>
+                )}
+              </>
+            )}
           </div>
           <div className="rounded bg-bg-elevated p-3">
             <div className="text-txt-muted uppercase tracking-wider mb-1">Retention</div>
@@ -316,6 +361,13 @@ export function BackupSection() {
           Configure via environment variables: <code>BACKUP_DIRECTORY</code>,{' '}
           <code>BACKUP_RETENTION</code>, <code>BACKUP_AUTO_ENABLED</code>. Mount a network share
           (SMB/NFS) into the container at the backup directory path to send backups off-box.
+          Can't find a backup on your host? Run{' '}
+          <code className="text-[11px]">
+            docker inspect -f &quot;&#123;&#123;range .Mounts&#125;&#125;&#123;&#123;if eq .Destination
+            \&quot;/app/storage\&quot;&#125;&#125;&#123;&#123;.Source&#125;&#125;&#123;&#123;end&#125;&#125;&#123;&#123;end&#125;&#125;&quot;
+            $(docker ps -q --filter &quot;name=app&quot;)
+          </code>{' '}
+          to see the exact host directory Docker bound when the container started.
         </p>
       </Card>
 
