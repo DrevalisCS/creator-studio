@@ -512,6 +512,9 @@ export interface StorageUsage {
   total_size_bytes: number;
   total_size_human: string;
   storage_base_path: string;
+  storage_base_abs?: string | null;
+  host_source_path?: string | null;
+  subdir_sizes?: Record<string, number>;
 }
 
 export interface ServiceHealth {

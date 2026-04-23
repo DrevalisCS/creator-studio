@@ -1556,6 +1556,13 @@ function LLMSection() {
 // Storage Section
 // ---------------------------------------------------------------------------
 
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+}
+
 function StorageSection() {
   const { toast } = useToast();
   const [storage, setStorage] = useState<StorageUsage | null>(null);
@@ -1608,12 +1615,60 @@ function StorageSection() {
               </p>
             </div>
             <div>
-              <span className="text-xs text-txt-tertiary">Storage Path</span>
+              <span className="text-xs text-txt-tertiary">Storage Path (container)</span>
               <p className="text-sm text-txt-secondary font-mono mt-0.5 break-all">
-                {storage.storage_base_path}
+                {storage.storage_base_abs || storage.storage_base_path}
               </p>
+              {storage.host_source_path && (
+                <>
+                  <span className="text-xs text-txt-tertiary mt-3 block">
+                    On host (copy media here)
+                  </span>
+                  <p className="text-sm text-accent font-mono mt-0.5 break-all">
+                    {storage.host_source_path}
+                  </p>
+                </>
+              )}
             </div>
           </div>
+          {storage.subdir_sizes && Object.keys(storage.subdir_sizes).length > 0 && (
+            <div className="mt-6 pt-4 border-t border-border">
+              <p className="text-xs text-txt-tertiary mb-2">Subdirectory breakdown</p>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                {Object.entries(storage.subdir_sizes)
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([name, size]) => (
+                    <div
+                      key={name}
+                      className="rounded bg-bg-elevated p-2 font-mono"
+                    >
+                      <div className="text-txt-primary">{name}</div>
+                      <div
+                        className={
+                          size > 0 ? 'text-txt-secondary' : 'text-txt-tertiary'
+                        }
+                      >
+                        {formatBytes(size)}
+                      </div>
+                    </div>
+                  ))}
+              </div>
+              {storage.total_size_bytes < 10 * 1024 * 1024 && (
+                <p className="mt-3 text-xs text-amber-300 bg-amber-500/10 p-2 rounded border border-amber-500/30">
+                  Storage is nearly empty. If you copied media files to your
+                  host, make sure the destination is
+                  {storage.host_source_path && (
+                    <> <code className="font-mono">{storage.host_source_path}</code></>
+                  )}
+                  {' — '}
+                  the app only sees files under the bind-mounted directory.
+                  Copying elsewhere (e.g. a sibling folder with a different
+                  case, or a drive the compose file doesn't map) won't be
+                  picked up.
+                </p>
+              )}
+            </div>
+          )}
         </Card>
       ) : (
         <Card padding="md">

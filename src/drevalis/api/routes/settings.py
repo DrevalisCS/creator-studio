@@ -47,13 +47,74 @@ def _human_size(size_bytes: int) -> str:
 async def storage_usage(
     settings: Settings = Depends(get_settings),
 ) -> StorageUsageResponse:
-    """Return total disk usage of the storage directory."""
+    """Return total disk usage of the storage directory, the absolute
+    container path, the host-side bind-mount root, and a per-subdir
+    byte breakdown. The breakdown is the useful bit when a user has
+    copied media into a host directory that isn't actually bind-
+    mounted: every subdir shows 0 bytes and the mismatch is obvious.
+    """
     storage = LocalStorage(settings.storage_base_path)
     total = await storage.get_total_size_bytes()
+    base_abs = Path(settings.storage_base_path).resolve()
+
+    # Subdir breakdown — walk each top-level folder the app ships.
+    subdir_sizes: dict[str, int] = {}
+    for name in (
+        "episodes",
+        "audiobooks",
+        "voice_previews",
+        "backups",
+        "models",
+        "temp",
+        "music",
+        "workflows",
+    ):
+        sub = base_abs / name
+        if not sub.exists():
+            continue
+        sub_total = 0
+        try:
+            for f in sub.rglob("*"):
+                if f.is_file():
+                    try:
+                        sub_total += f.stat().st_size
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        subdir_sizes[name] = sub_total
+
+    # Host-side bind-mount root via /proc/self/mountinfo.
+    host_source: str | None = None
+    try:
+        lines = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+        path_str = str(base_abs)
+        best: tuple[int, str] | None = None
+        for line in lines:
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            root = parts[3]
+            mount_point = parts[4]
+            if path_str == mount_point or path_str.startswith(mount_point.rstrip("/") + "/"):
+                tail = path_str[len(mount_point) :]
+                suffix = tail if tail.startswith("/") else ("/" + tail if tail else "")
+                source = root.rstrip("/") + suffix
+                depth = len(mount_point)
+                if best is None or depth > best[0]:
+                    best = (depth, source)
+        if best:
+            host_source = best[1]
+    except (OSError, UnicodeDecodeError):
+        pass
+
     return StorageUsageResponse(
         total_size_bytes=total,
         total_size_human=_human_size(total),
         storage_base_path=str(settings.storage_base_path),
+        storage_base_abs=str(base_abs),
+        host_source_path=host_source,
+        subdir_sizes=subdir_sizes,
     )
 
 
