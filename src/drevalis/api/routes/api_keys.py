@@ -51,7 +51,15 @@ async def list_api_keys(
     """Return all stored API key names without their values."""
     repo = ApiKeyStoreRepository(db)
     entries = await repo.get_all()
-    items = [ApiKeyStoreListItem(key_name=e.key_name) for e in entries]
+    items = [
+        ApiKeyStoreListItem(
+            key_name=e.key_name,
+            has_value=True,
+            created_at=e.created_at,
+            updated_at=e.updated_at,
+        )
+        for e in entries
+    ]
     return ApiKeyStoreListResponse(items=items)
 
 

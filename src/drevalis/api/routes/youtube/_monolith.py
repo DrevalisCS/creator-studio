@@ -76,7 +76,17 @@ async def _resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> 
                         row.encrypted_value,
                         settings.encryption_key,
                     )
-                except Exception:  # noqa: BLE001 — fail closed
+                except Exception as exc:  # noqa: BLE001
+                    # v0.20.16 — surface decryption failures instead of
+                    # silently falling back to empty. The most common
+                    # cause is a backup restored onto a different
+                    # ENCRYPTION_KEY; the user needs to know the key
+                    # is stored but can't be read with the current
+                    # Fernet key, not "integration not configured".
+                    logger.warning(
+                        "youtube_client_id_decrypt_failed",
+                        error=f"{type(exc).__name__}: {str(exc)[:120]}",
+                    )
                     client_id = ""
         if not client_secret:
             row = await repo.get_by_key_name("youtube_client_secret")
@@ -86,7 +96,11 @@ async def _resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> 
                         row.encrypted_value,
                         settings.encryption_key,
                     )
-                except Exception:  # noqa: BLE001
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "youtube_client_secret_decrypt_failed",
+                        error=f"{type(exc).__name__}: {str(exc)[:120]}",
+                    )
                     client_secret = ""
 
     return client_id, client_secret
@@ -96,6 +110,33 @@ async def _build_youtube_service(settings: Settings, db: AsyncSession) -> YouTub
     """Build a YouTubeService, pulling credentials from env + DB store."""
     client_id, client_secret = await _resolve_youtube_credentials(settings, db)
     if not client_id or not client_secret:
+        # If there ARE rows in api_key_store for these names but we still
+        # ended up with blanks, decryption failed — ENCRYPTION_KEY was
+        # rotated or the rows came from a backup made with a different
+        # key. Surface that specifically.
+        from drevalis.repositories.api_key_store import ApiKeyStoreRepository
+
+        repo = ApiKeyStoreRepository(db)
+        has_id_row = await repo.get_by_key_name("youtube_client_id") is not None
+        has_secret_row = await repo.get_by_key_name("youtube_client_secret") is not None
+        if has_id_row or has_secret_row:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={
+                    "error": "youtube_key_decrypt_failed",
+                    "hint": (
+                        "YouTube keys ARE stored in the DB but can't be "
+                        "decrypted with the current ENCRYPTION_KEY. This "
+                        "usually means a backup was restored onto a "
+                        "different encryption key. Either restore the "
+                        "original ENCRYPTION_KEY in your .env, or delete "
+                        "the old keys under Settings → API Keys and "
+                        "re-enter them so they're re-encrypted."
+                    ),
+                    "id_stored": has_id_row,
+                    "secret_stored": has_secret_row,
+                },
+            )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(

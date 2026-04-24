@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from datetime import datetime
+
 from pydantic import BaseModel, ConfigDict, Field
 
 # -- Pod management schemas ----------------------------------------------------
@@ -176,10 +178,18 @@ class ApiKeyStoreRequest(BaseModel):
 
 
 class ApiKeyStoreListItem(BaseModel):
-    """Name-only representation of a stored API key (value is never returned)."""
+    """Name-only representation of a stored API key (value is never returned).
+
+    Timestamps surface when the key was added / last rotated — the UI
+    displays them on the Settings → API Keys row. Optional for
+    back-compat with the upsert response which only knows the name
+    after writing.
+    """
 
     key_name: str
     has_value: bool = True
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
 
 
 class ApiKeyStoreListResponse(BaseModel):
