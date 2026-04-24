@@ -969,12 +969,23 @@ export const youtube = {
 
   getUploads: () => get<YouTubeUpload[]>('/api/v1/youtube/uploads'),
 
-  // Playlists
-  listPlaylists: () =>
-    get<YouTubePlaylist[]>('/api/v1/youtube/playlists'),
+  // Playlists — when ``channelId`` is omitted AND the install has
+  // multiple connected channels, the backend returns 400 with the
+  // full channel list so the caller can pick. v0.20.18 plumbed
+  // ``channelId`` through every scoped endpoint.
+  listPlaylists: (channelId?: string) =>
+    get<YouTubePlaylist[]>(
+      `/api/v1/youtube/playlists${channelId ? `?channel_id=${channelId}` : ''}`,
+    ),
 
-  createPlaylist: (data: { title: string; description?: string; privacy_status?: string }) =>
-    post<YouTubePlaylist>('/api/v1/youtube/playlists', data),
+  createPlaylist: (
+    data: { title: string; description?: string; privacy_status?: string },
+    channelId?: string,
+  ) =>
+    post<YouTubePlaylist>(
+      `/api/v1/youtube/playlists${channelId ? `?channel_id=${channelId}` : ''}`,
+      data,
+    ),
 
   addToPlaylist: (playlistId: string, videoId: string) =>
     post<{ message: string }>(`/api/v1/youtube/playlists/${playlistId}/add`, { video_id: videoId }),
@@ -983,8 +994,12 @@ export const youtube = {
     del(`/api/v1/youtube/playlists/${playlistId}`),
 
   // Analytics
-  getVideoStats: (videoIds: string[]) =>
-    get<YouTubeVideoStats[]>(`/api/v1/youtube/analytics?video_ids=${videoIds.join(',')}`),
+  getVideoStats: (videoIds: string[], channelId?: string) => {
+    const params = new URLSearchParams();
+    params.set('video_ids', videoIds.join(','));
+    if (channelId) params.set('channel_id', channelId);
+    return get<YouTubeVideoStats[]>(`/api/v1/youtube/analytics?${params.toString()}`);
+  },
 
   getChannelAnalytics: (params?: { channelId?: string; days?: number }) => {
     const qs = new URLSearchParams();

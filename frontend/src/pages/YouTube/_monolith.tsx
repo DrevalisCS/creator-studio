@@ -733,12 +733,14 @@ interface PlaylistsTabProps {
   playlists: YouTubePlaylist[];
   loading: boolean;
   onPlaylistCreated: () => void;
+  channelId?: string;
 }
 
 function PlaylistsTab({
   playlists,
   loading,
   onPlaylistCreated,
+  channelId,
 }: PlaylistsTabProps) {
   const { toast } = useToast();
   const [createOpen, setCreateOpen] = useState(false);
@@ -755,11 +757,14 @@ function PlaylistsTab({
     setCreating(true);
     setCreateError(null);
     try {
-      await youtubeApi.createPlaylist({
-        title: title.trim(),
-        description: description.trim() || undefined,
-        privacy_status: privacy,
-      });
+      await youtubeApi.createPlaylist(
+        {
+          title: title.trim(),
+          description: description.trim() || undefined,
+          privacy_status: privacy,
+        },
+        channelId,
+      );
       setTitle('');
       setDescription('');
       setPrivacy('private');
@@ -1026,9 +1031,12 @@ interface AnalyticsTabProps {
   uploads: YouTubeUpload[];
   loading: boolean;
   channelMap?: Record<string, string>;
+  // v0.20.18 — explicit channel scoping. Required when the install
+  // has > 1 connected channel; the backend 400s without it.
+  channelId?: string;
 }
 
-function AnalyticsTab({ uploads, loading, channelMap }: AnalyticsTabProps) {
+function AnalyticsTab({ uploads, loading, channelMap, channelId }: AnalyticsTabProps) {
   const [stats, setStats] = useState<YouTubeVideoStats[]>([]);
   const [statsLoading, setStatsLoading] = useState(false);
   const [statsError, setStatsError] = useState<string | null>(null);
@@ -1045,11 +1053,12 @@ function AnalyticsTab({ uploads, loading, channelMap }: AnalyticsTabProps) {
     if (completedUploads.length === 0) return;
     setStatsLoading(true);
     setStatsError(null);
+    void channelId; // re-run when the selected channel changes
     try {
       const videoIds = completedUploads
         .map((u) => u.youtube_video_id!)
         .filter(Boolean);
-      const data = await youtubeApi.getVideoStats(videoIds);
+      const data = await youtubeApi.getVideoStats(videoIds, channelId);
       // Sort by views descending
       setStats([...data].sort((a, b) => b.views - a.views));
     } catch (err) {
@@ -1064,7 +1073,10 @@ function AnalyticsTab({ uploads, loading, channelMap }: AnalyticsTabProps) {
   const fetchChannelAnalytics = useCallback(async () => {
     setChannelAnalyticsErr(null);
     try {
-      const data = await youtubeApi.getChannelAnalytics({ days: windowDays });
+      const data = await youtubeApi.getChannelAnalytics({
+        channelId,
+        days: windowDays,
+      });
       setChannelAnalytics(data);
     } catch (err: any) {
       const raw = err?.detailRaw;
@@ -1077,7 +1089,7 @@ function AnalyticsTab({ uploads, loading, channelMap }: AnalyticsTabProps) {
         });
       }
     }
-  }, [windowDays]);
+  }, [windowDays, channelId]);
 
   useEffect(() => {
     void fetchStats();
@@ -1674,17 +1686,29 @@ function YouTubePage() {
 
   // ---- Fetch playlists ----
 
+  // Resolve which channel UUID to pass to single-channel endpoints.
+  // ``selectedChannelId === 'all'`` means the user hasn't picked a
+  // specific channel in the filter; the backend requires one when
+  // more than one is connected, so default to the first channel
+  // rather than 400-ing. Per-channel UI can still set a specific id.
+  const resolvedChannelId = (() => {
+    if (selectedChannelId && selectedChannelId !== 'all') return selectedChannelId;
+    if (allChannels.length === 1) return allChannels[0]!.id;
+    if (allChannels.length > 1) return allChannels[0]!.id;
+    return undefined;
+  })();
+
   const fetchPlaylists = useCallback(async () => {
     setPlaylistsLoading(true);
     try {
-      const data = await youtubeApi.listPlaylists();
+      const data = await youtubeApi.listPlaylists(resolvedChannelId);
       setPlaylists(data);
     } catch (err) {
       toast.error('Failed to load playlists', { description: String(err) });
     } finally {
       setPlaylistsLoading(false);
     }
-  }, [toast]);
+  }, [toast, resolvedChannelId]);
 
   // ---- Fetch stats for dashboard ----
 
@@ -1698,13 +1722,13 @@ function YouTubePage() {
         const videoIds = completedUploads
           .map((u) => u.youtube_video_id!)
           .filter(Boolean);
-        const data = await youtubeApi.getVideoStats(videoIds);
+        const data = await youtubeApi.getVideoStats(videoIds, resolvedChannelId);
         setStats(data);
       } catch (err) {
         toast.error('Failed to load video stats', { description: String(err) });
       }
     },
-    [toast],
+    [toast, resolvedChannelId],
   );
 
   // ---- Fetch social data ----
@@ -1926,6 +1950,7 @@ function YouTubePage() {
                   <PlaylistsTab
                     playlists={filteredPlaylists}
                     loading={playlistsLoading}
+                    channelId={resolvedChannelId}
                     onPlaylistCreated={() => {
                       void fetchPlaylists();
                     }}
@@ -1936,6 +1961,7 @@ function YouTubePage() {
                     uploads={filteredUploads}
                     loading={uploadsLoading}
                     channelMap={channelMap}
+                    channelId={resolvedChannelId}
                   />
                 )}
                 {activeTab === 'social' && (
