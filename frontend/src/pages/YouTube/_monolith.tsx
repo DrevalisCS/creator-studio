@@ -1058,7 +1058,23 @@ function AnalyticsTab({ uploads, loading, channelMap, channelId }: AnalyticsTabP
       const videoIds = completedUploads
         .map((u) => u.youtube_video_id!)
         .filter(Boolean);
-      const data = await youtubeApi.getVideoStats(videoIds, channelId);
+      let data: YouTubeVideoStats[];
+      try {
+        data = await youtubeApi.getVideoStats(videoIds, channelId);
+      } catch (err: any) {
+        const detail = err?.detailRaw || err?.detail;
+        const connected =
+          detail?.connected_channels || detail?.detail?.connected_channels;
+        if (
+          Array.isArray(connected) &&
+          connected.length > 0 &&
+          typeof connected[0]?.id === 'string'
+        ) {
+          data = await youtubeApi.getVideoStats(videoIds, connected[0].id);
+        } else {
+          throw err;
+        }
+      }
       // Sort by views descending
       setStats([...data].sort((a, b) => b.views - a.views));
     } catch (err) {
@@ -1068,15 +1084,34 @@ function AnalyticsTab({ uploads, loading, channelMap, channelId }: AnalyticsTabP
     } finally {
       setStatsLoading(false);
     }
-  }, [completedUploads.length]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [completedUploads.length, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchChannelAnalytics = useCallback(async () => {
     setChannelAnalyticsErr(null);
     try {
-      const data = await youtubeApi.getChannelAnalytics({
-        channelId,
-        days: windowDays,
-      });
+      let data: YouTubeChannelAnalytics;
+      try {
+        data = await youtubeApi.getChannelAnalytics({
+          channelId,
+          days: windowDays,
+        });
+      } catch (err: any) {
+        const detail = err?.detailRaw || err?.detail;
+        const connected =
+          detail?.connected_channels || detail?.detail?.connected_channels;
+        if (
+          Array.isArray(connected) &&
+          connected.length > 0 &&
+          typeof connected[0]?.id === 'string'
+        ) {
+          data = await youtubeApi.getChannelAnalytics({
+            channelId: connected[0].id,
+            days: windowDays,
+          });
+        } else {
+          throw err;
+        }
+      }
       setChannelAnalytics(data);
     } catch (err: any) {
       const raw = err?.detailRaw;
@@ -1701,7 +1736,32 @@ function YouTubePage() {
   const fetchPlaylists = useCallback(async () => {
     setPlaylistsLoading(true);
     try {
-      const data = await youtubeApi.listPlaylists(resolvedChannelId);
+      let data: YouTubePlaylist[];
+      try {
+        data = await youtubeApi.listPlaylists(resolvedChannelId);
+      } catch (err: any) {
+        // v0.20.19 — when the first try was without a channel_id (because
+        // fetchStatus hadn't populated allChannels yet OR the old
+        // backend shape lost the channels array), the backend returns
+        // 400 with the full connected_channels list. Auto-retry with
+        // the first channel instead of showing the user a scary error.
+        const detail = err?.detailRaw || err?.detail;
+        const connected =
+          detail?.connected_channels || detail?.detail?.connected_channels;
+        if (
+          Array.isArray(connected) &&
+          connected.length > 0 &&
+          typeof connected[0]?.id === 'string'
+        ) {
+          data = await youtubeApi.listPlaylists(connected[0].id);
+          // Populate allChannels so the filter UI + other tabs see them.
+          if (allChannels.length === 0) {
+            setAllChannels(connected);
+          }
+        } else {
+          throw err;
+        }
+      }
       setPlaylists(data);
     } catch (err) {
       toast.error('Failed to load playlists', { description: String(err) });
