@@ -274,23 +274,42 @@ while true; do
         [[ -n "${env_line}" ]] && run_args+=(-e "${env_line}")
       done < <(echo "${snapshot}" | jq -r '.[0].Config.Env[]? // empty')
 
-      # Bind mounts (preserves the host paths compose originally
-      # recorded — this is the whole reason we go container → image
-      # rather than compose → container).
-      while IFS=$'\t' read -r src dst mode; do
-        [[ -z "${src}" ]] && continue
-        if [[ -n "${mode}" && "${mode}" != "null" ]]; then
-          run_args+=(-v "${src}:${dst}:${mode}")
-        else
-          run_args+=(-v "${src}:${dst}")
-        fi
-      done < <(echo "${snapshot}" | jq -r '.[0].HostConfig.Binds // [] | .[] | split(":") as $p | "\($p[0])\t\($p[1])\t\($p[2] // "")"')
-
-      # Named volumes mounted as volumes (not binds)
-      while IFS=$'\t' read -r src dst; do
+      # All mount points (binds + named volumes) — drive the -v args
+      # from ``.Mounts[]`` exclusively. Earlier versions of this
+      # script pulled binds from ``HostConfig.Binds`` AND volumes
+      # from ``Mounts[type=volume]``, which double-added any named
+      # volume whose entry appears in both fields (Docker stores
+      # named volumes in both under some circumstances, producing
+      # ``docker: Error response from daemon: Duplicate mount point``
+      # at ``docker run`` time). ``Mounts`` is the canonical source
+      # of truth and distinguishes bind vs. volume via ``Type``, so
+      # we iterate it once and emit the right ``-v`` shape per type.
+      while IFS=$'\t' read -r mtype src dst mode; do
         [[ -z "${src}" || -z "${dst}" ]] && continue
-        run_args+=(-v "${src}:${dst}")
-      done < <(echo "${snapshot}" | jq -r '.[0].Mounts // [] | .[] | select(.Type == "volume") | "\(.Name)\t\(.Destination)"')
+        if [[ "${mtype}" == "volume" ]]; then
+          # Named volume: -v <volume_name>:<dst>
+          run_args+=(-v "${src}:${dst}")
+        else
+          # Bind mount: -v <host_path>:<dst>[:ro]
+          if [[ -n "${mode}" && "${mode}" != "null" && "${mode}" != "true" && "${mode}" != "false" ]]; then
+            run_args+=(-v "${src}:${dst}:${mode}")
+          else
+            run_args+=(-v "${src}:${dst}")
+          fi
+        fi
+      done < <(
+        echo "${snapshot}" | jq -r '
+          .[0].Mounts // []
+          | .[]
+          | [
+              .Type,
+              (if .Type == "volume" then .Name else .Source end),
+              .Destination,
+              (.Mode // "")
+            ]
+          | @tsv
+        '
+      )
 
       # Port bindings (e.g. 8000:8000, 3000:3000)
       while IFS= read -r port_line; do
