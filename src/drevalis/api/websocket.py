@@ -47,21 +47,32 @@ router = APIRouter()
 async def _validate_ws_token(websocket: WebSocket) -> bool:
     """Validate WebSocket auth token supplied as a query parameter.
 
-    Returns True when auth is disabled (API_AUTH_TOKEN not set) or when the
-    caller supplies a matching ``?token=<value>`` query parameter.
+    Returns True when auth is disabled (API_AUTH_TOKEN not set / empty)
+    or when the caller supplies a matching ``?token=<value>`` query
+    parameter.
 
     WebSocket clients cannot set the ``Authorization`` header from a browser,
     so the token is accepted via query parameter instead.  The comparison uses
     ``secrets.compare_digest`` to prevent timing-oracle attacks.
 
+    v0.20.13 — strip whitespace on the configured token before the "is
+    auth configured?" check. On Windows, the installer writes .env with
+    CRLF line endings, so ``API_AUTH_TOKEN=`` (intentionally blank slot)
+    lands in the container as ``"\\r"`` — truthy, forces auth on, and
+    every browser WebSocket gets closed with 4001 → HTTP 403. Same
+    coercion the OptionalAPIKeyMiddleware already does; we now mirror
+    it here.
+
     CWE-306 (Missing Authentication), OWASP A07:2021 (Identification and
     Authentication Failures).
     """
-    configured_token: str = os.environ.get("API_AUTH_TOKEN", "")
+    raw_token: str = os.environ.get("API_AUTH_TOKEN", "") or ""
+    configured_token: str = raw_token.strip()
     if not configured_token:
-        # Auth is disabled — local dev mode.
+        # Auth is disabled — local dev mode (or Windows-CRLF-mangled
+        # blank-slot value; see docstring).
         return True
-    ws_token: str = websocket.query_params.get("token", "")
+    ws_token: str = websocket.query_params.get("token", "").strip()
     return secrets.compare_digest(ws_token, configured_token)
 
 
