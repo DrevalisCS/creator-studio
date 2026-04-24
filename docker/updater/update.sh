@@ -117,19 +117,34 @@ while true; do
     log "flag detected -- pulling new images"
     write_status "pulling" "docker compose pull started"
 
-    # v0.20.17 — pre-flight network check. Helps distinguish "pull
-    # failed because of a yaml typo" from "pull failed because your
-    # install can't reach ghcr.io". Registry doesn't require auth to
-    # hit /v2/; a 200 response proves DNS+TLS+TCP are working.
-    if ! curl -fsS --max-time 8 -o /dev/null \
-        -w "ghcr_status=%{http_code}\n" https://ghcr.io/v2/ 2>/tmp/curl.err; then
+    # v0.20.21 — pre-flight network check. Hit ghcr.io's /v2/ endpoint
+    # and accept 200 OR 401 as "reachable" — the registry protocol
+    # ALWAYS returns 401 for unauthenticated requests to /v2/, so
+    # treating it as a failure (v0.20.17 did) blocks every legitimate
+    # update with a bogus network-error message. A 401 here proves
+    # DNS + TLS + TCP are fully working; `docker compose pull` handles
+    # the token exchange itself a moment later.
+    ghcr_rc=0
+    ghcr_status=$(curl -sS --max-time 8 -o /dev/null \
+        -w "%{http_code}" https://ghcr.io/v2/ 2>/tmp/curl.err) || ghcr_rc=$?
+    if [[ ${ghcr_rc} -ne 0 ]]; then
       err_detail=$(head -c 300 /tmp/curl.err 2>/dev/null | tr '\n' ' ')
-      write_status "failed" "cannot reach ghcr.io (network / DNS): ${err_detail}"
-      log "preflight ghcr.io unreachable — ${err_detail}"
+      write_status "failed" "cannot reach ghcr.io (network / DNS / TLS): ${err_detail}"
+      log "preflight ghcr.io unreachable (curl rc=${ghcr_rc}) — ${err_detail}"
       rm -f "${FLAG}"
       continue
     fi
-    log "preflight ghcr.io reachable"
+    case "${ghcr_status}" in
+      200|401)
+        log "preflight ghcr.io reachable (status=${ghcr_status})"
+        ;;
+      *)
+        write_status "failed" "ghcr.io returned unexpected status ${ghcr_status}"
+        log "preflight ghcr.io unexpected status ${ghcr_status}"
+        rm -f "${FLAG}"
+        continue
+        ;;
+    esac
 
     # Capture pull output and its exit code. Can't use tee in a pipeline
     # for the exit code (set -o pipefail is on, but the tee wouldn't
