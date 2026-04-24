@@ -163,11 +163,19 @@ async def _seed_timeline_from_episode(
     # JSONB serialization can't handle Decimal; catching it here means a
     # future asset field that's accidentally NUMERIC-backed doesn't
     # re-break the editor.
-    return _jsonable(timeline)  # type: ignore[return-value]
+    cleaned = _jsonable(timeline)
+    assert isinstance(cleaned, dict), "timeline must remain a dict after coercion"
+    return cleaned
 
 
 def _jsonable(obj: Any) -> Any:
-    """Return a JSON-serializable copy of *obj*, coercing Decimal → float."""
+    """Return a JSON-serializable copy of *obj*, coercing Decimal → float.
+
+    Accepts and returns ``Any`` because the walker recurses into nested
+    lists/dicts and mixed leaf types. Callers that know the outer shape
+    (e.g. the seed timeline is a dict) narrow with an ``isinstance``
+    check at the call site.
+    """
     from decimal import Decimal
 
     if isinstance(obj, Decimal):
