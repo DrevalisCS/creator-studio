@@ -21,6 +21,8 @@ import {
   Monitor,
   Smartphone,
   Subtitles,
+  Image as ImageIcon,
+  Sparkles,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -757,6 +759,15 @@ function AudiobookDetail() {
             </Card>
           )}
 
+          {/* Chapter image gallery (v0.21.0) */}
+          {chapters.length > 0 && audiobook && (
+            <ChapterImageGallery
+              audiobookId={audiobook.id}
+              chapters={chapters}
+              onRegenerated={() => void fetchAudiobook()}
+            />
+          )}
+
           {/* Chapter list */}
           {chapters.length > 0 && (
             <Card padding="md">
@@ -1319,6 +1330,200 @@ function AudiobookDetail() {
         </DialogFooter>
       </Dialog>
     </div>
+  );
+}
+
+// ─── ChapterImageGallery (v0.21.0) ──────────────────────────────
+//
+// Visual carousel of the per-chapter AI illustrations. The audiobook
+// generator already populates ``chapters[i].image_path``; this
+// component just surfaces them with a regenerate-on-click flow that
+// hits the new ``/regenerate-chapter-image/{idx}`` endpoint.
+
+interface ChapterRecord {
+  index?: number;
+  title?: string;
+  start_seconds?: number | null;
+  end_seconds?: number | null;
+  image_path?: string | null;
+  visual_prompt?: string | null;
+  text?: string | null;
+}
+
+function ChapterImageGallery({
+  audiobookId,
+  chapters,
+  onRegenerated,
+}: {
+  audiobookId: string;
+  chapters: ChapterRecord[];
+  onRegenerated: () => void;
+}) {
+  const { toast } = useToast();
+  const [openChapter, setOpenChapter] = useState<number | null>(null);
+  const [promptOverride, setPromptOverride] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
+
+  const chaptersWithImages = chapters.filter(
+    (ch) => ch.image_path && ch.image_path.length > 0,
+  ).length;
+
+  const handleRegenerate = async (chapterIndex: number) => {
+    setRegenerating(true);
+    try {
+      await audiobooksApi.regenerateChapterImage(
+        audiobookId,
+        chapterIndex,
+        promptOverride.trim() || undefined,
+      );
+      toast.success('Chapter image regeneration started', {
+        description: 'Should swap in within ~30s. Page refreshes when ready.',
+      });
+      setOpenChapter(null);
+      setPromptOverride('');
+      // Poll once after 30s — that matches typical Qwen image gen
+      // time. The user can also refresh manually.
+      setTimeout(() => onRegenerated(), 30_000);
+    } catch (err) {
+      toast.error('Failed to start image regeneration', {
+        description: err instanceof Error ? err.message : String(err),
+      });
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
+  // Resolve a chapter's image to the static URL the storage mount
+  // serves. ``image_path`` is stored as an absolute path on the
+  // server's disk; we strip the storage prefix to derive the URL
+  // path. If the path doesn't include the storage segment, fall
+  // back to the raw path.
+  const imageUrlFor = (imagePath: string): string => {
+    const idx = imagePath.indexOf('audiobooks/');
+    if (idx >= 0) return `/storage/${imagePath.slice(idx)}`.replace(/\\/g, '/');
+    return imagePath.replace(/\\/g, '/');
+  };
+
+  const active = openChapter !== null ? chapters[openChapter] : null;
+
+  return (
+    <Card padding="md">
+      <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-txt-primary flex items-center gap-2">
+            <ImageIcon size={14} className="text-accent" />
+            Chapter Illustrations
+          </h3>
+          <p className="text-[11px] text-txt-tertiary mt-0.5">
+            {chaptersWithImages} of {chapters.length} chapters have an
+            image. Click to view full-size or regenerate.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+        {chapters.map((ch, i) => {
+          const hasImage = !!ch.image_path;
+          return (
+            <button
+              key={i}
+              type="button"
+              onClick={() => {
+                setOpenChapter(i);
+                setPromptOverride(ch.visual_prompt ?? '');
+              }}
+              className="group relative aspect-video rounded-md border border-border bg-bg-elevated overflow-hidden hover:border-accent/50 transition-colors duration-fast text-left"
+              title={ch.title || `Chapter ${i + 1}`}
+            >
+              {hasImage ? (
+                <img
+                  src={imageUrlFor(ch.image_path as string)}
+                  alt={ch.title || `Chapter ${i + 1}`}
+                  className="absolute inset-0 w-full h-full object-cover"
+                  draggable={false}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-txt-muted">
+                  <ImageIcon size={24} />
+                </div>
+              )}
+              <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-1.5">
+                <div className="text-[10px] font-mono text-white/70">
+                  Ch {i + 1}
+                </div>
+                <div className="text-[11px] text-white truncate font-medium">
+                  {ch.title || `Chapter ${i + 1}`}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Detail / regen modal */}
+      <Dialog
+        open={openChapter !== null}
+        onClose={() => {
+          setOpenChapter(null);
+          setPromptOverride('');
+        }}
+        title={
+          active
+            ? `Chapter ${openChapter! + 1} — ${active.title || 'Untitled'}`
+            : ''
+        }
+        description="Preview the current illustration and regenerate it with an optional custom prompt."
+        maxWidth="lg"
+      >
+        {active && (
+          <div className="space-y-3">
+            <div className="rounded-md overflow-hidden border border-border bg-black/40">
+              {active.image_path ? (
+                <img
+                  src={imageUrlFor(active.image_path as string)}
+                  alt={active.title ?? ''}
+                  className="w-full max-h-[420px] object-contain"
+                />
+              ) : (
+                <div className="aspect-video flex items-center justify-center text-txt-muted">
+                  <span className="text-xs">No image yet</span>
+                </div>
+              )}
+            </div>
+            <Textarea
+              label="Visual prompt (optional)"
+              value={promptOverride}
+              onChange={(e) => setPromptOverride(e.target.value)}
+              placeholder="Override the auto-derived prompt — useful when the chapter title alone produces a weak image."
+              hint="Leave blank to reuse the auto-derived prompt (chapter title + mood + first 200 chars of text)."
+              rows={3}
+            />
+          </div>
+        )}
+        <DialogFooter>
+          <Button
+            variant="ghost"
+            onClick={() => {
+              setOpenChapter(null);
+              setPromptOverride('');
+            }}
+          >
+            Close
+          </Button>
+          <Button
+            variant="primary"
+            loading={regenerating}
+            disabled={openChapter === null}
+            onClick={() =>
+              openChapter !== null && void handleRegenerate(openChapter)
+            }
+          >
+            <Sparkles size={13} />
+            Regenerate Image
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </Card>
   );
 }
 

@@ -32,6 +32,13 @@ import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { assets as assetsApi } from '@/lib/api';
 import {
+  STAMP_CATALOG,
+  STAMP_CATEGORY_LABELS,
+  findStampById,
+  type StampCategory,
+  type StampEntry,
+} from '@/stamps/catalog';
+import {
   editor as editorApi,
   formatError,
   type EditSession,
@@ -45,6 +52,10 @@ import {
 // MIME-ish key used to move an asset id from the right-rail asset
 // browser into the timeline via drag-and-drop.
 const ASSET_DRAG_MIME = 'application/x-drevalis-asset';
+// Drag MIME for stamps (bundled SVG presets from /stamps/). Stamps
+// drop as image overlays just like assets, but resolve to a static
+// URL instead of /api/v1/assets/{id}/file.
+const STAMP_DRAG_MIME = 'application/x-drevalis-stamp';
 
 function waveformUrlFor(episodeId: string, trackId: string): string | null {
   if (trackId === 'voice') return `/api/v1/episodes/${episodeId}/editor/waveform?track=voice`;
@@ -253,6 +264,12 @@ export default function EpisodeEditor() {
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [inspectorTab, setInspectorTab] = useState<'clip' | 'captions'>('clip');
+  // Drives the right-panel external tab selection. When the
+  // ToolsRail "Stamps" or "Image" buttons fire, we bump this so
+  // the panel snaps to the matching tab.
+  const [rightPanelTab, setRightPanelTab] = useState<
+    'clip' | 'captions' | 'assets' | 'stamps' | undefined
+  >(undefined);
   const [previewingProxy, setPreviewingProxy] = useState(false);
   const [proxyReadyTs, setProxyReadyTs] = useState<number | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -479,6 +496,46 @@ export default function EpisodeEditor() {
     [dispatch, history.present.duration_s, playhead, snap, toast],
   );
 
+  // Drop a bundled stamp onto the timeline. Resolves the catalog entry
+  // and adds an image overlay using the stamp's static URL — no
+  // upload pipeline involved, so this is fast and reliable even on
+  // air-gapped installs.
+  const addStampOverlay = useCallback(
+    (stampId: string, startSecs?: number) => {
+      const stamp = findStampById(stampId);
+      if (!stamp) {
+        toast.error('Unknown stamp', { description: stampId });
+        return;
+      }
+      const start = startSecs !== undefined ? startSecs : playhead;
+      const dur = stamp.defaultDurationSeconds ?? 3;
+      const clipId = `stamp-${Date.now()}`;
+      dispatch({
+        type: 'add_overlay',
+        clip: {
+          id: clipId,
+          kind: 'image',
+          // Pass the bundled URL through unchanged. The FFmpeg
+          // overlay renderer can fetch http(s) URLs as well as
+          // local paths, so this works in both dev and prod.
+          asset_path: stamp.url,
+          x: stamp.category === 'transitions' ? '0' : '(W-w)/2',
+          y: stamp.category === 'lower-thirds'
+            ? 'H-h-80'
+            : stamp.category === 'transitions'
+              ? '0'
+              : '(H-h)/2',
+          in_s: 0,
+          out_s: dur,
+          start_s: snap(start),
+          end_s: Math.min(snap(start) + dur, history.present.duration_s),
+        },
+      });
+      setSelectedClipId(clipId);
+    },
+    [dispatch, history.present.duration_s, playhead, snap, toast],
+  );
+
   if (loading || !episodeId) {
     return (
       <div className="flex justify-center py-20">
@@ -596,6 +653,8 @@ export default function EpisodeEditor() {
           onAddText={addTextOverlay}
           onAddShape={addShapeOverlay}
           onOpenAssetPicker={() => setAssetPickerOpen(true)}
+          onOpenAssetsTab={() => setRightPanelTab('assets')}
+          onOpenStampsTab={() => setRightPanelTab('stamps')}
           onSplit={() => {
             if (selectedClipId) {
               dispatch({
@@ -675,14 +734,18 @@ export default function EpisodeEditor() {
             <div
               className="flex-1 overflow-auto"
               onDragOver={(e) => {
-                if (e.dataTransfer.types.includes(ASSET_DRAG_MIME)) {
+                if (
+                  e.dataTransfer.types.includes(ASSET_DRAG_MIME) ||
+                  e.dataTransfer.types.includes(STAMP_DRAG_MIME)
+                ) {
                   e.preventDefault();
                   e.dataTransfer.dropEffect = 'copy';
                 }
               }}
               onDrop={(e) => {
-                const id = e.dataTransfer.getData(ASSET_DRAG_MIME);
-                if (!id) return;
+                const assetId = e.dataTransfer.getData(ASSET_DRAG_MIME);
+                const stampId = e.dataTransfer.getData(STAMP_DRAG_MIME);
+                if (!assetId && !stampId) return;
                 e.preventDefault();
                 // Map the drop x-position (relative to the scrollable
                 // container's left edge plus its horizontal scroll
@@ -694,7 +757,11 @@ export default function EpisodeEditor() {
                 // labels before the zoomed timeline area begins.
                 const xInTimeline = Math.max(0, localX - 80);
                 const dropSecs = xInTimeline / zoom;
-                void addImageOverlayFromAsset(id, dropSecs);
+                if (stampId) {
+                  addStampOverlay(stampId, dropSecs);
+                } else if (assetId) {
+                  void addImageOverlayFromAsset(assetId, dropSecs);
+                }
               }}
             >
               <div
@@ -784,6 +851,8 @@ export default function EpisodeEditor() {
             });
           }}
           onPickAsset={(id) => void addImageOverlayFromAsset(id)}
+          onPickStamp={(id) => addStampOverlay(id)}
+          initialTab={rightPanelTab}
         />
       </div>
 
@@ -885,6 +954,8 @@ interface ToolsRailProps {
   onAddText: (preset: 'title' | 'subtitle' | 'caption' | 'lowerThird') => void;
   onAddShape: (shape: 'rect' | 'circle' | 'line') => void;
   onOpenAssetPicker: () => void;
+  onOpenAssetsTab: () => void;
+  onOpenStampsTab: () => void;
   onSplit: () => void;
   onDelete: () => void;
   snapEnabled: boolean;
@@ -900,6 +971,8 @@ function ToolsRail({
   onAddText,
   onAddShape,
   onOpenAssetPicker,
+  onOpenAssetsTab,
+  onOpenStampsTab,
   onSplit,
   onDelete,
   snapEnabled,
@@ -1012,13 +1085,13 @@ function ToolsRail({
       />
       <ToolButton
         icon={ImageIcon}
-        label="Image"
-        onClick={onOpenAssetPicker}
+        label="Image (assets)"
+        onClick={onOpenAssetsTab}
       />
       <ToolButton
         icon={Sticker}
-        label="Stamps"
-        onClick={onOpenAssetPicker}
+        label="Stamps & effects"
+        onClick={onOpenStampsTab}
       />
       <div className="mx-2 my-1 h-px bg-border" />
       <ToolButton
@@ -1165,6 +1238,8 @@ interface RightPanelProps {
   onDeleteClip: () => void;
   onTrimClip: (in_s?: number, out_s?: number) => void;
   onPickAsset: (assetId: string) => void;
+  onPickStamp: (stampId: string) => void;
+  initialTab?: 'clip' | 'captions' | 'assets' | 'stamps';
 }
 
 function RightPanel({
@@ -1177,31 +1252,42 @@ function RightPanel({
   onDeleteClip,
   onTrimClip,
   onPickAsset,
+  onPickStamp,
+  initialTab,
 }: RightPanelProps) {
   const [extendedTab, setExtendedTab] = useState<
-    'clip' | 'captions' | 'assets'
-  >(activeTab);
+    'clip' | 'captions' | 'assets' | 'stamps'
+  >(initialTab ?? activeTab);
 
-  // Sync the parent's two-state tab with our three-state tab so the
+  // Sync the parent's two-state tab with our four-state tab so the
   // old "clip / captions" API still works when something outside the
-  // panel flips it.
+  // panel flips it (e.g. the user clicks a clip).
   useEffect(() => {
-    setExtendedTab(activeTab);
+    setExtendedTab((prev) =>
+      prev === 'assets' || prev === 'stamps' ? prev : activeTab,
+    );
   }, [activeTab]);
 
-  const setTab = (t: 'clip' | 'captions' | 'assets') => {
+  // External request to switch into a non-clip/captions tab (e.g.
+  // ToolsRail "Stamps" button → open the Stamps tab directly).
+  useEffect(() => {
+    if (initialTab) setExtendedTab(initialTab);
+  }, [initialTab]);
+
+  const setTab = (t: 'clip' | 'captions' | 'assets' | 'stamps') => {
     setExtendedTab(t);
-    if (t !== 'assets') onTabChange(t);
+    if (t === 'clip' || t === 'captions') onTabChange(t);
   };
 
   return (
     <aside className="w-[340px] shrink-0 flex flex-col bg-bg-surface">
-      <div className="h-9 border-b border-border flex items-center px-2 gap-1 shrink-0">
+      <div className="h-9 border-b border-border flex items-center px-2 gap-1 shrink-0 overflow-x-auto">
         {(
           [
-            { id: 'clip', label: 'Inspector', icon: Layers },
+            { id: 'clip', label: 'Inspect', icon: Layers },
             { id: 'captions', label: 'Captions', icon: Type },
             { id: 'assets', label: 'Assets', icon: ImageIcon },
+            { id: 'stamps', label: 'Stamps', icon: Sticker },
           ] as const
         ).map((t) => {
           const TIcon = t.icon;
@@ -1230,6 +1316,8 @@ function RightPanel({
           <CaptionsInspector episodeId={episodeId} playhead={playhead} />
         ) : extendedTab === 'assets' ? (
           <AssetsBrowser onPickAsset={onPickAsset} />
+        ) : extendedTab === 'stamps' ? (
+          <StampsBrowser onPickStamp={onPickStamp} />
         ) : selectedClip ? (
           selectedClip.kind ? (
             <OverlayInspector
@@ -1401,6 +1489,144 @@ function AssetsBrowser({
         Clicking adds it at the current playhead.
       </div>
     </div>
+  );
+}
+
+// ─── StampsBrowser — bundled overlay catalog ────────────────────
+
+function StampsBrowser({
+  onPickStamp,
+}: {
+  onPickStamp: (stampId: string) => void;
+}) {
+  const [activeCategory, setActiveCategory] = useState<StampCategory | 'all'>(
+    'all',
+  );
+  const [search, setSearch] = useState('');
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return STAMP_CATALOG.filter((s) => {
+      if (activeCategory !== 'all' && s.category !== activeCategory)
+        return false;
+      if (
+        q &&
+        !s.label.toLowerCase().includes(q) &&
+        !(s.description ?? '').toLowerCase().includes(q)
+      )
+        return false;
+      return true;
+    });
+  }, [activeCategory, search]);
+
+  const categories: Array<{ id: StampCategory | 'all'; label: string }> = [
+    { id: 'all', label: 'All' },
+    ...(Object.keys(STAMP_CATEGORY_LABELS) as StampCategory[]).map((id) => ({
+      id,
+      label: STAMP_CATEGORY_LABELS[id],
+    })),
+  ];
+
+  return (
+    <div className="space-y-3">
+      <div className="relative">
+        <Search
+          size={11}
+          className="absolute left-2 top-1/2 -translate-y-1/2 text-txt-tertiary pointer-events-none"
+        />
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Filter stamps…"
+          className="w-full pl-7 pr-2 py-1.5 text-xs bg-bg-elevated border border-border rounded text-txt-primary placeholder:text-txt-tertiary focus:outline-none focus:border-accent"
+        />
+      </div>
+
+      <div className="flex flex-wrap gap-1">
+        {categories.map((c) => {
+          const active = activeCategory === c.id;
+          return (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => setActiveCategory(c.id)}
+              className={[
+                'rounded-full border px-2.5 py-1 text-[10px] uppercase tracking-wider transition-colors duration-fast',
+                active
+                  ? 'border-accent bg-accent/10 text-accent'
+                  : 'border-border bg-bg-elevated text-txt-tertiary hover:text-txt-primary',
+              ].join(' ')}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="text-xs text-txt-muted py-8 text-center">
+          No stamps match that filter.
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-1.5">
+          {filtered.map((stamp) => (
+            <StampTile
+              key={stamp.id}
+              stamp={stamp}
+              onPick={() => onPickStamp(stamp.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      <div className="text-[10px] text-txt-muted border-t border-border pt-2 leading-relaxed">
+        <strong className="text-txt-secondary">Drag</strong> a stamp onto the
+        timeline to drop it at a specific time, or <strong className="text-txt-secondary">click</strong> to
+        add at the current playhead. Lower-thirds anchor to the bottom of
+        the frame; transitions cover the whole frame.
+      </div>
+    </div>
+  );
+}
+
+function StampTile({
+  stamp,
+  onPick,
+}: {
+  stamp: StampEntry;
+  onPick: () => void;
+}) {
+  const isTransition = stamp.category === 'transitions';
+  return (
+    <button
+      type="button"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(STAMP_DRAG_MIME, stamp.id);
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+      onClick={onPick}
+      title={`${stamp.label}${stamp.description ? ` — ${stamp.description}` : ''}`}
+      className={[
+        'group relative aspect-square rounded-md border border-border overflow-hidden hover:border-accent/50 transition-colors duration-fast',
+        // Transition stamps are full-frame solid colors that look
+        // empty in a thumbnail, so give them a checkerboard hint.
+        isTransition
+          ? 'bg-[repeating-conic-gradient(#1c1c1c_0%_25%,#0e0e0e_25%_50%)]'
+          : 'bg-bg-elevated',
+      ].join(' ')}
+    >
+      <img
+        src={stamp.url}
+        alt={stamp.label}
+        className="absolute inset-2 w-[calc(100%-1rem)] h-[calc(100%-1rem)] object-contain"
+        draggable={false}
+      />
+      <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+        {stamp.label}
+      </div>
+    </button>
   );
 }
 

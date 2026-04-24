@@ -794,6 +794,80 @@ async def regenerate_chapter(
     }
 
 
+class ChapterImageRegeneratePayload(BaseModel):
+    prompt_override: str | None = Field(
+        default=None,
+        description=(
+            "Optional ComfyUI prompt to use instead of the chapter title. "
+            "Useful when the auto-derived prompt produces a poor image."
+        ),
+    )
+
+
+@router.post(
+    "/{audiobook_id}/regenerate-chapter-image/{chapter_index}",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Regenerate a single chapter's illustration",
+)
+async def regenerate_chapter_image(
+    audiobook_id: UUID,
+    chapter_index: int,
+    payload: ChapterImageRegeneratePayload | None = None,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Regenerate a single chapter's image only.
+
+    Faster than the full chapter regen (which re-synthesizes audio +
+    re-assembles the audiobook). Only the ComfyUI image generation
+    runs; the audiobook video is NOT re-rendered, but the chapter's
+    ``image_path`` is updated so the next assembly picks it up.
+    """
+    repo = AudiobookRepository(db)
+    audiobook = await repo.get_by_id(audiobook_id)
+    if audiobook is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audiobook {audiobook_id} not found",
+        )
+    if audiobook.chapters:
+        if chapter_index < 0 or chapter_index >= len(audiobook.chapters):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    f"chapter_index {chapter_index} is out of range "
+                    f"(0..{len(audiobook.chapters) - 1})"
+                ),
+            )
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Audiobook has no chapters yet",
+        )
+
+    prompt_override = payload.prompt_override if payload else None
+
+    arq = get_arq_pool()
+    await arq.enqueue_job(
+        "regenerate_audiobook_chapter_image",
+        str(audiobook_id),
+        chapter_index,
+        prompt_override,
+    )
+
+    log.info(
+        "audiobook.regenerate_chapter_image.enqueued",
+        audiobook_id=str(audiobook_id),
+        chapter_index=chapter_index,
+        has_prompt_override=prompt_override is not None,
+    )
+
+    return {
+        "message": f"Chapter {chapter_index} image regeneration enqueued",
+        "audiobook_id": str(audiobook_id),
+        "chapter_index": chapter_index,
+    }
+
+
 # ── Regenerate full audiobook ──────────────────────────────────────────
 
 

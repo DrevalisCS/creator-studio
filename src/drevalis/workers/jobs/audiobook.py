@@ -896,3 +896,136 @@ async def generate_ai_audiobook(
             )
             await session.commit()
         return {"status": "failed", "audiobook_id": audiobook_id}
+
+
+async def regenerate_audiobook_chapter_image(
+    ctx: dict[str, Any],
+    audiobook_id: str,
+    chapter_index: int,
+    prompt_override: str | None = None,
+) -> dict[str, Any]:
+    """Regenerate a single chapter's illustration via ComfyUI.
+
+    Faster than ``regenerate_audiobook_chapter`` — that path
+    re-synthesises audio + re-assembles the audiobook. This path
+    only re-runs the qwen_image_2512 ComfyUI workflow for one
+    chapter, then patches ``chapters[idx]["image_path"]`` on the DB
+    row. The audiobook video file itself is NOT regenerated, but
+    the next assembly run will pick up the new image.
+
+    Parameters
+    ----------
+    ctx:
+        arq context dict.
+    audiobook_id:
+        UUID string of the audiobook record.
+    chapter_index:
+        0-based chapter index whose image to regenerate.
+    prompt_override:
+        Optional ComfyUI prompt to use instead of the auto-derived
+        one (chapter title + mood + first 200 chars of text).
+    """
+    from pathlib import Path
+
+    from drevalis.repositories.audiobook import AudiobookRepository
+    from drevalis.services.audiobook import AudiobookService
+
+    log = logger.bind(
+        audiobook_id=audiobook_id,
+        chapter_index=chapter_index,
+        job="regenerate_audiobook_chapter_image",
+    )
+    log.info("job_start", has_prompt_override=prompt_override is not None)
+
+    parsed_id = uuid.UUID(audiobook_id)
+
+    session_factory = ctx["session_factory"]
+    async with session_factory() as session:
+        ab_repo = AudiobookRepository(session)
+        audiobook = await ab_repo.get_by_id(parsed_id)
+        if audiobook is None:
+            log.error("audiobook_not_found")
+            return {
+                "audiobook_id": audiobook_id,
+                "status": "failed",
+                "error": "not found",
+            }
+
+        chapters = list(audiobook.chapters or [])
+        if chapter_index < 0 or chapter_index >= len(chapters):
+            log.error("chapter_index_out_of_range", total=len(chapters))
+            return {
+                "audiobook_id": audiobook_id,
+                "status": "failed",
+                "error": "chapter index out of range",
+            }
+
+        chapter = dict(chapters[chapter_index])
+        if prompt_override:
+            chapter["visual_prompt"] = prompt_override
+
+        # Drop any existing image path so the service regenerates
+        # rather than skipping. Same dir, same filename.
+        old_path_str = chapter.get("image_path")
+        if old_path_str:
+            try:
+                old_path = Path(old_path_str)
+                if old_path.exists():
+                    old_path.unlink()
+            except Exception:  # noqa: BLE001
+                # Best-effort delete; the generator will overwrite.
+                pass
+
+        svc = AudiobookService(
+            tts_service=ctx["tts_service"],
+            ffmpeg_service=ctx["ffmpeg_service"],
+            storage=ctx["storage"],
+            comfyui_service=ctx.get("comfyui_service"),
+        )
+        if svc.comfyui_service is None:
+            log.error("no_comfyui_service")
+            return {
+                "audiobook_id": audiobook_id,
+                "status": "failed",
+                "error": "ComfyUI not configured",
+            }
+
+        # Resolve the audiobook output dir + the canonical
+        # 1080×1920 dimensions used by the original generator.
+        output_dir = ctx["storage"].resolve_path(f"audiobooks/{audiobook_id}")
+        # Run the existing helper with a single-element chapter list.
+        # ``chapter_indices`` keeps the output filename aligned with
+        # the original slot (``ch{idx:03d}.png``) instead of always
+        # writing to ``ch000.png``.
+        results = await svc._generate_chapter_images(
+            chapters=[chapter],
+            output_dir=output_dir,
+            audiobook_id=parsed_id,
+            video_width=1080,
+            video_height=1920,
+            chapter_indices=[chapter_index],
+        )
+        if not results or results[0] is None:
+            log.error("comfyui_returned_no_image")
+            return {
+                "audiobook_id": audiobook_id,
+                "status": "failed",
+                "error": "image generation returned no result",
+            }
+
+        new_image_path = results[0]
+        # Persist the updated chapter record.
+        chapters[chapter_index] = {
+            **chapters[chapter_index],
+            "image_path": str(new_image_path),
+        }
+        await ab_repo.update(parsed_id, chapters=chapters)
+        await session.commit()
+
+        log.info("job_complete", image_path=str(new_image_path))
+        return {
+            "audiobook_id": audiobook_id,
+            "chapter_index": chapter_index,
+            "status": "done",
+            "image_path": str(new_image_path),
+        }

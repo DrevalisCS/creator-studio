@@ -1143,12 +1143,25 @@ class AudiobookService:
         audiobook_id: UUID,
         video_width: int,
         video_height: int,
+        chapter_indices: list[int] | None = None,
     ) -> list[Path]:
         """Generate an image for each chapter via ComfyUI.
 
         Uses the qwen_image_2512 workflow. Chapters that already have an
         ``image_path`` are skipped. Generation is parallelised with a
         concurrency semaphore of 3.
+
+        Parameters
+        ----------
+        chapters:
+            List of chapter dicts.
+        chapter_indices:
+            Optional explicit indices to use when naming output files
+            (``ch{idx:03d}.png``). When ``None``, indices are derived
+            from ``enumerate(chapters)``. Pass explicit indices when
+            re-generating a single chapter so its existing image at
+            the right index is overwritten rather than writing to
+            ``ch000.png``.
         """
         if not self.comfyui_service:
             log.warning("audiobook.images.no_comfyui_service")
@@ -1228,23 +1241,34 @@ class AudiobookService:
                     height=video_height,
                 )
 
-        tasks = [_gen_one(i, ch) for i, ch in enumerate(chapters)]
+        # Use explicit indices when given (single-chapter regen case)
+        # so the output filename targets the correct slot.
+        effective_indices = (
+            chapter_indices
+            if chapter_indices is not None
+            else list(range(len(chapters)))
+        )
+        tasks = [
+            _gen_one(idx, ch)
+            for idx, ch in zip(effective_indices, chapters, strict=True)
+        ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         image_paths: list[Path] = []
         for i, result in enumerate(results):
+            chapter_idx = effective_indices[i]
             if isinstance(result, Path) and result.exists():
                 image_paths.append(result)
             elif isinstance(result, Exception):
                 log.warning(
                     "audiobook.images.chapter_exception",
-                    chapter_index=i,
+                    chapter_index=chapter_idx,
                     error=str(result),
                 )
                 # Generate title card as fallback
                 fallback = await self._generate_title_card(
                     images_dir,
-                    chapters[i].get("title", f"Chapter {i + 1}"),
+                    chapters[i].get("title", f"Chapter {chapter_idx + 1}"),
                     width=video_width,
                     height=video_height,
                 )

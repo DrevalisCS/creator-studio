@@ -20,6 +20,7 @@ from drevalis.workers.jobs.audiobook import (
     generate_audiobook,
     generate_script_async,
     regenerate_audiobook_chapter,
+    regenerate_audiobook_chapter_image,
 )
 from drevalis.workers.jobs.backup import scheduled_backup
 from drevalis.workers.jobs.edit_render import render_from_edit
@@ -104,6 +105,7 @@ class WorkerSettings:
         generate_audiobook,
         generate_ai_audiobook,
         regenerate_audiobook_chapter,
+        regenerate_audiobook_chapter_image,
         retry_episode_step,
         reassemble_episode,
         regenerate_voice,

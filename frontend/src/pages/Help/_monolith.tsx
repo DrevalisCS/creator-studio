@@ -1058,9 +1058,16 @@ function UserGuide({
       )}
 
       {/* ── Left sidebar ─────────────────────────────────────────── */}
+      {/* sticky + self-start + max-h-full pin the rail to the top of
+          the scroll container (the central <div ref={contentRef}>) so
+          the nav stays visible even when the user is at the bottom of
+          a long article. self-start prevents the aside from stretching
+          to the height of its tall sibling content; max-h-full caps it
+          to the visible flex container so its internal overflow-y-auto
+          can still scroll the long category list. */}
       <aside
         className={[
-          'shrink-0 flex flex-col border-r border-border transition-all duration-fast',
+          'sticky top-0 self-start max-h-full shrink-0 flex flex-col border-r border-border transition-all duration-fast',
           sidebarCollapsed ? 'w-12 pr-0' : 'w-64 pr-3',
         ].join(' ')}
       >

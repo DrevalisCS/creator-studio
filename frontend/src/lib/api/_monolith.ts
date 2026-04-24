@@ -702,6 +702,16 @@ export const audiobooks = {
       newText ? { text: newText } : {},
     ),
 
+  regenerateChapterImage: (
+    id: string,
+    chapterIndex: number,
+    promptOverride?: string,
+  ) =>
+    post<{ message: string; audiobook_id: string; chapter_index: number }>(
+      `/api/v1/audiobooks/${id}/regenerate-chapter-image/${chapterIndex}`,
+      promptOverride ? { prompt_override: promptOverride } : {},
+    ),
+
   regenerate: (id: string) =>
     post<{ message: string; audiobook_id: string }>(
       `/api/v1/audiobooks/${id}/regenerate`,
