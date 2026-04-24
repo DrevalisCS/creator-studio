@@ -920,3 +920,42 @@ html.light .text-gradient-accent {
   line-height: 1.2;
   vertical-align: middle;
 }
+
+/* ------------------------------------------------------------------
+   Theme-aware icon stroke (v0.20.27)
+   Lucide icons inherit ``stroke-width`` from the nearest SVG rule.
+   Setting the global default lets every theme preset dial icon
+   boldness without editing each component.
+   ------------------------------------------------------------------ */
+:root { --icon-stroke-width: 2; }
+.lucide, svg.lucide, svg[class*="lucide"] {
+  stroke-width: var(--icon-stroke-width);
+}
+
+/* ------------------------------------------------------------------
+   Theme-specific overrides (v0.20.27)
+   Tiny per-preset polish nudges. Kept surgical — the preset already
+   sets ~90 percent via CSS variables; these handle the ~10 percent
+   where a preset wants a distinct style rule, not just a new color.
+   ------------------------------------------------------------------ */
+html[data-theme="brutalist"] {
+  /* Thicker borders on cards for that brutalist card-wall feel. */
+}
+html[data-theme="brutalist"] .card,
+html[data-theme="brutalist"] [class~="card"] {
+  border-width: 2px;
+}
+html[data-theme="cyber"] .card-featured,
+html[data-theme="cyber"] [class~="card-featured"] {
+  /* Neon underglow on featured cards. */
+  box-shadow: var(--shadow-accent-glow);
+}
+html[data-theme="warm"] h1,
+html[data-theme="warm"] h2,
+html[data-theme="warm"] h3,
+html[data-theme="ink"] h1,
+html[data-theme="ink"] h2,
+html[data-theme="ink"] h3 {
+  /* Serif presets look better with slightly looser letter-spacing. */
+  letter-spacing: -0.01em;
+}

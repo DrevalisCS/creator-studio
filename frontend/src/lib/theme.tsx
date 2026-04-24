@@ -1,7 +1,24 @@
 /**
- * Theme system — dark/light mode + accent color selection.
+ * Theme system — bundled "personality" presets.
  *
- * Persists to localStorage. Applies CSS class to <html> element.
+ * Previously (v0.20.4 - v0.20.19) this module exposed an ``accentId``
+ * that only swapped the accent color variables. Users asked for more —
+ * each theme should change fonts, shadows, border radii, icon weights
+ * alongside the color. This file now exposes ``themeId`` with 5 full
+ * presets; each one sets:
+ *
+ * - ``--color-accent*`` / surface-tint variables (the v0.20.5 color
+ *   system, kept).
+ * - ``--font-display``  — headings + brand marks.
+ * - ``--font-sans``     — body text.
+ * - ``--radius-base``   — card + input corner radius.
+ * - ``--shadow-style``  — ``flat | soft | glow | lifted``.
+ * - ``--icon-stroke``   — inherited by every lucide icon via the CSS
+ *                         ``svg { stroke-width: var(--icon-stroke); }``
+ *                         rule applied globally.
+ *
+ * Adding a new preset: drop an entry in ``THEME_PRESETS`` with the same
+ * shape. ``AppearanceSection`` auto-renders it.
  */
 
 import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from 'react';
@@ -12,104 +29,150 @@ import { createContext, useCallback, useContext, useEffect, useState, type React
 
 export type ThemeMode = 'dark' | 'light';
 
+export type ShadowStyle = 'flat' | 'soft' | 'glow' | 'lifted';
+
+export interface ThemePreset {
+  id: string;
+  name: string;
+  description: string;
+  /** Accent hex — one color for dark mode, one for light. */
+  accentDark: string;
+  accentLight: string;
+  accentDarkHover: string;
+  accentLightHover: string;
+  /** CSS font-family stack, including fallbacks. */
+  fontDisplay: string;
+  fontSans: string;
+  /** Base corner radius in px. Scales via ``--radius-sm/md/lg``. */
+  radiusBase: number;
+  /** Stroke width passed to every lucide icon. Higher = bolder. */
+  iconStroke: number;
+  /** Shadow personality. See ``applyShadowStyle`` below. */
+  shadowStyle: ShadowStyle;
+}
+
+export type ActivityDockPosition = 'bottom' | 'top' | 'left' | 'right';
+
+// ---------------------------------------------------------------------------
+// Presets — one bundle per "mood"
+// ---------------------------------------------------------------------------
+
+export const THEME_PRESETS: ThemePreset[] = [
+  {
+    id: 'studio',
+    name: 'Studio',
+    description: 'Balanced indigo · clean sans · soft shadows. Default.',
+    accentDark: '#6366F1',
+    accentLight: '#4F46E5',
+    accentDarkHover: '#7C7EFF',
+    accentLightHover: '#4338CA',
+    fontDisplay: '"Outfit", system-ui, -apple-system, sans-serif',
+    fontSans: '"Inter", "DM Sans", system-ui, -apple-system, sans-serif',
+    radiusBase: 10,
+    iconStroke: 2,
+    shadowStyle: 'soft',
+  },
+  {
+    id: 'cyber',
+    name: 'Cyber',
+    description: 'Electric cyan · geometric sans · neon glow · sharp corners.',
+    accentDark: '#22D3EE',
+    accentLight: '#06B6D4',
+    accentDarkHover: '#67E8F9',
+    accentLightHover: '#0891B2',
+    fontDisplay: '"Space Grotesk", "Outfit", system-ui, sans-serif',
+    fontSans: '"Inter", system-ui, -apple-system, sans-serif',
+    radiusBase: 4,
+    iconStroke: 1.75,
+    shadowStyle: 'glow',
+  },
+  {
+    id: 'warm',
+    name: 'Warm',
+    description: 'Amber gold · editorial serif · lifted shadows · pill corners.',
+    accentDark: '#FBBF24',
+    accentLight: '#F59E0B',
+    accentDarkHover: '#FCD34D',
+    accentLightHover: '#D97706',
+    fontDisplay: '"Fraunces", "Playfair Display", Georgia, serif',
+    fontSans: '"Inter", system-ui, -apple-system, sans-serif',
+    radiusBase: 16,
+    iconStroke: 2.25,
+    shadowStyle: 'lifted',
+  },
+  {
+    id: 'ink',
+    name: 'Ink',
+    description: 'Rose red · serif headings · measured rhythm · quiet shadows.',
+    accentDark: '#FB7185',
+    accentLight: '#E11D48',
+    accentDarkHover: '#FDA4AF',
+    accentLightHover: '#BE123C',
+    fontDisplay: '"Fraunces", Georgia, serif',
+    fontSans: '"Inter", system-ui, -apple-system, sans-serif',
+    radiusBase: 8,
+    iconStroke: 1.8,
+    shadowStyle: 'soft',
+  },
+  {
+    id: 'brutalist',
+    name: 'Brutalist',
+    description: 'Monospace · emerald · no shadows · zero radius.',
+    accentDark: '#34D399',
+    accentLight: '#10B981',
+    accentDarkHover: '#6EE7B7',
+    accentLightHover: '#059669',
+    fontDisplay: '"IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace',
+    fontSans: '"IBM Plex Mono", "JetBrains Mono", ui-monospace, monospace',
+    radiusBase: 0,
+    iconStroke: 1.5,
+    shadowStyle: 'flat',
+  },
+];
+
+// Back-compat shim: pages that imported ``ACCENT_COLORS`` still work —
+// we expose the presets under that name with the shape the old code
+// expected. The old pages that used this aren't part of the app's nav
+// post-v0.20.20 (theme UI moved to Settings → Appearance) but leaving
+// the export avoids breaking external references.
+export const ACCENT_COLORS = THEME_PRESETS.map((p) => ({
+  id: p.id,
+  name: p.name,
+  dark: p.accentDark,
+  light: p.accentLight,
+  darkHover: p.accentDarkHover,
+  lightHover: p.accentLightHover,
+}));
 export interface AccentColor {
   id: string;
   name: string;
-  /** CSS color value for dark mode */
   dark: string;
-  /** CSS color value for light mode */
   light: string;
-  /** Hover variant */
   darkHover: string;
   lightHover: string;
 }
 
 // ---------------------------------------------------------------------------
-// Available accent colors
-// ---------------------------------------------------------------------------
-
-export const ACCENT_COLORS: AccentColor[] = [
-  {
-    id: 'teal',
-    name: 'Teal',
-    dark: '#00D4AA',
-    light: '#00B894',
-    darkHover: '#00E8BC',
-    lightHover: '#00A885',
-  },
-  {
-    id: 'blue',
-    name: 'Ocean Blue',
-    dark: '#60A5FA',
-    light: '#3B82F6',
-    darkHover: '#93C5FD',
-    lightHover: '#2563EB',
-  },
-  {
-    id: 'purple',
-    name: 'Violet',
-    dark: '#A78BFA',
-    light: '#8B5CF6',
-    darkHover: '#C4B5FD',
-    lightHover: '#7C3AED',
-  },
-  {
-    id: 'rose',
-    name: 'Rose',
-    dark: '#FB7185',
-    light: '#F43F5E',
-    darkHover: '#FDA4AF',
-    lightHover: '#E11D48',
-  },
-  {
-    id: 'amber',
-    name: 'Amber',
-    dark: '#FBBF24',
-    light: '#F59E0B',
-    darkHover: '#FCD34D',
-    lightHover: '#D97706',
-  },
-  {
-    id: 'emerald',
-    name: 'Emerald',
-    dark: '#34D399',
-    light: '#10B981',
-    darkHover: '#6EE7B7',
-    lightHover: '#059669',
-  },
-  {
-    id: 'cyan',
-    name: 'Cyan',
-    dark: '#22D3EE',
-    light: '#06B6D4',
-    darkHover: '#67E8F9',
-    lightHover: '#0891B2',
-  },
-  {
-    id: 'orange',
-    name: 'Sunset',
-    dark: '#FB923C',
-    light: '#F97316',
-    darkHover: '#FDBA74',
-    lightHover: '#EA580C',
-  },
-];
-
-// ---------------------------------------------------------------------------
 // Context
 // ---------------------------------------------------------------------------
 
-export type ActivityDockPosition = 'bottom' | 'top' | 'left' | 'right';
-
 interface ThemeContextValue {
   mode: ThemeMode;
-  accentId: string;
-  accent: AccentColor;
+  themeId: string;
+  preset: ThemePreset;
   activityDock: ActivityDockPosition;
+
   setMode: (mode: ThemeMode) => void;
-  setAccentId: (id: string) => void;
+  setThemeId: (id: string) => void;
   setActivityDock: (p: ActivityDockPosition) => void;
   toggleMode: () => void;
+
+  // Back-compat aliases — ``accent`` / ``setAccentId`` / ``accentId``
+  // mirror the pre-v0.20.27 shape. New code should use ``preset`` and
+  // ``setThemeId``.
+  accent: AccentColor;
+  accentId: string;
+  setAccentId: (id: string) => void;
 }
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
@@ -119,21 +182,15 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 // ---------------------------------------------------------------------------
 
 const STORAGE_MODE_KEY = 'sf_theme_mode';
-const STORAGE_ACCENT_KEY = 'sf_theme_accent';
+// Reuse the old accent key so users who had a preset picked keep it
+// post-upgrade. Valid values are now preset IDs; any old accent ID
+// that doesn't match a preset falls through to 'studio' on load.
+const STORAGE_THEME_KEY = 'sf_theme_accent';
 const STORAGE_DOCK_KEY = 'sf_activity_dock';
 
 // ---------------------------------------------------------------------------
-// Apply theme to DOM
+// Color-mix + shadow helpers
 // ---------------------------------------------------------------------------
-
-// ── Color-mix helpers ─────────────────────────────────────────────────
-// Parse a ``#RRGGBB`` → {r,g,b} so we can blend accent into neutral
-// surfaces at runtime. The v0.20.4 theme switcher only changed four
-// accent vars, so swapping accent looked subtle. v0.20.5 mixes accent
-// into the whole surface ladder (backgrounds, borders, hover states)
-// and bumps up all the related CSS variables, so a theme switch feels
-// like a real theme change — card surfaces pick up a subtle tint,
-// focus rings recolor, borders warm up.
 
 function hexToRgb(hex: string): { r: number; g: number; b: number } {
   const m = /^#?([0-9a-f]{6})$/i.exec(hex);
@@ -160,7 +217,83 @@ function rgba(
   return `rgba(${accent.r}, ${accent.g}, ${accent.b}, ${alpha})`;
 }
 
-function applyTheme(mode: ThemeMode, accent: AccentColor) {
+/** Shadow presets — each style produces a different CSS shadow token set. */
+function applyShadowStyle(
+  html: HTMLElement,
+  style: ShadowStyle,
+  accentRgb: { r: number; g: number; b: number },
+  isLight: boolean,
+): void {
+  const base = isLight
+    ? { softAlpha: 0.08, strongAlpha: 0.14 }
+    : { softAlpha: 0.35, strongAlpha: 0.55 };
+
+  switch (style) {
+    case 'flat':
+      html.style.setProperty('--shadow-sm', 'none');
+      html.style.setProperty('--shadow', 'none');
+      html.style.setProperty('--shadow-lg', 'none');
+      html.style.setProperty('--shadow-accent-glow', 'none');
+      break;
+    case 'glow':
+      html.style.setProperty('--shadow-sm', `0 0 8px ${rgba(accentRgb, 0.12)}`);
+      html.style.setProperty(
+        '--shadow',
+        `0 0 20px ${rgba(accentRgb, 0.22)}, 0 0 2px ${rgba(accentRgb, 0.5)}`,
+      );
+      html.style.setProperty(
+        '--shadow-lg',
+        `0 0 40px ${rgba(accentRgb, 0.35)}, 0 0 4px ${rgba(accentRgb, 0.6)}`,
+      );
+      html.style.setProperty(
+        '--shadow-accent-glow',
+        `0 0 32px ${rgba(accentRgb, 0.45)}, 0 0 10px ${rgba(accentRgb, 0.3)}`,
+      );
+      break;
+    case 'lifted':
+      html.style.setProperty(
+        '--shadow-sm',
+        `0 2px 4px rgba(0,0,0,${base.softAlpha})`,
+      );
+      html.style.setProperty(
+        '--shadow',
+        `0 6px 16px -4px rgba(0,0,0,${base.softAlpha * 1.5})`,
+      );
+      html.style.setProperty(
+        '--shadow-lg',
+        `0 24px 48px -16px rgba(0,0,0,${base.strongAlpha})`,
+      );
+      html.style.setProperty(
+        '--shadow-accent-glow',
+        `0 8px 24px ${rgba(accentRgb, 0.28)}, 0 0 0 1px ${rgba(accentRgb, 0.15)}`,
+      );
+      break;
+    case 'soft':
+    default:
+      html.style.setProperty(
+        '--shadow-sm',
+        `0 1px 2px rgba(0,0,0,${base.softAlpha * 0.6})`,
+      );
+      html.style.setProperty(
+        '--shadow',
+        `0 4px 12px -4px rgba(0,0,0,${base.softAlpha})`,
+      );
+      html.style.setProperty(
+        '--shadow-lg',
+        `0 16px 32px -12px rgba(0,0,0,${base.strongAlpha})`,
+      );
+      html.style.setProperty(
+        '--shadow-accent-glow',
+        `0 0 20px ${rgba(accentRgb, 0.2)}, 0 0 6px ${rgba(accentRgb, 0.12)}`,
+      );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Apply theme to DOM
+// ---------------------------------------------------------------------------
+
+function applyTheme(mode: ThemeMode, preset: ThemePreset): void {
   const html = document.documentElement;
 
   // Mode class
@@ -173,42 +306,32 @@ function applyTheme(mode: ThemeMode, accent: AccentColor) {
   }
 
   const isLight = mode === 'light';
-  const accentHex = isLight ? accent.light : accent.dark;
-  const accentHoverHex = isLight ? accent.lightHover : accent.darkHover;
+  const accentHex = isLight ? preset.accentLight : preset.accentDark;
+  const accentHoverHex = isLight ? preset.accentLightHover : preset.accentDarkHover;
   const accentRgb = hexToRgb(accentHex);
 
-  // ── Accent variables ──────────────────────────────────────
+  // ── Accent ────────────────────────────────────────────────
   html.style.setProperty('--color-accent', accentHex);
   html.style.setProperty('--color-accent-hover', accentHoverHex);
   html.style.setProperty('--color-accent-active', accentHex);
-  html.style.setProperty('--color-accent-muted', rgba(accentRgb, 0.10));
-  html.style.setProperty('--color-accent-subtle', rgba(accentRgb, 0.20));
-  html.style.setProperty('--color-border-accent', rgba(accentRgb, 0.30));
-  html.style.setProperty(
-    '--shadow-accent-glow',
-    `0 0 24px ${rgba(accentRgb, 0.28)}, 0 0 8px ${rgba(accentRgb, 0.16)}`,
-  );
+  html.style.setProperty('--color-accent-muted', rgba(accentRgb, 0.1));
+  html.style.setProperty('--color-accent-subtle', rgba(accentRgb, 0.2));
+  html.style.setProperty('--color-border-accent', rgba(accentRgb, 0.3));
 
-  // ── Surface tinting — v0.20.5 ─────────────────────────────
-  // Mix the accent into the base/surface/elevated/hover slots so the
-  // whole UI picks up the chosen color rather than just the buttons.
-  // Dark mode uses a near-black base; light mode a near-white base.
+  // ── Surface tinting ──────────────────────────────────────
   const baseColor = isLight
-    ? { r: 248, g: 249, b: 250 } // #F8F9FA
-    : { r: 10, g: 10, b: 12 }; // #0A0A0C
+    ? { r: 248, g: 249, b: 250 }
+    : { r: 10, g: 10, b: 12 };
   const surfaceColor = isLight
     ? { r: 255, g: 255, b: 255 }
-    : { r: 17, g: 17, b: 22 }; // #111116
+    : { r: 17, g: 17, b: 22 };
   const elevatedColor = isLight
     ? { r: 255, g: 255, b: 255 }
-    : { r: 26, g: 26, b: 32 }; // #1A1A20
+    : { r: 26, g: 26, b: 32 };
   const hoverColor = isLight
-    ? { r: 241, g: 243, b: 245 } // #F1F3F5
-    : { r: 36, g: 36, b: 44 }; // #24242C
+    ? { r: 241, g: 243, b: 245 }
+    : { r: 36, g: 36, b: 44 };
 
-  // Tint percentages are small on purpose — enough to read as "the
-  // orange theme" on surfaces without losing readability of white
-  // text on those surfaces.
   const tint = isLight ? 0.04 : 0.035;
   const hoverTint = isLight ? 0.07 : 0.065;
 
@@ -221,25 +344,46 @@ function applyTheme(mode: ThemeMode, accent: AccentColor) {
     mix(hoverColor, accentRgb, hoverTint * 1.4),
   );
 
-  // Borders pick up a subtle accent wash too — cards read as a set.
   const borderColor = isLight
-    ? { r: 229, g: 231, b: 235 } // #E5E7EB
-    : { r: 38, g: 38, b: 45 }; // #26262D
+    ? { r: 229, g: 231, b: 235 }
+    : { r: 38, g: 38, b: 45 };
   html.style.setProperty('--color-border', mix(borderColor, accentRgb, 0.12));
   html.style.setProperty(
     '--color-border-hover',
     mix(borderColor, accentRgb, 0.22),
   );
+
+  // ── Preset-scoped tokens (v0.20.27) ──────────────────────
+  html.style.setProperty('--font-display', preset.fontDisplay);
+  html.style.setProperty('--font-sans', preset.fontSans);
+
+  // Radii scale off the preset base so buttons/inputs/pills all keep
+  // their proportions when switching themes.
+  const r = preset.radiusBase;
+  html.style.setProperty('--radius-sm', `${Math.max(0, r - 4)}px`);
+  html.style.setProperty('--radius', `${r}px`);
+  html.style.setProperty('--radius-md', `${r}px`);
+  html.style.setProperty('--radius-lg', `${r + 4}px`);
+  html.style.setProperty('--radius-xl', `${r + 10}px`);
+  // Full — pills stay fully round for brutalist/flat too since a
+  // pill-shaped chip is a semantic shape, not a theme choice.
+  html.style.setProperty('--radius-full', '9999px');
+
+  // Icon stroke applied globally via the rule in globals.css:
+  //   svg { stroke-width: var(--icon-stroke-width); }
+  html.style.setProperty('--icon-stroke-width', String(preset.iconStroke));
+
+  // Tag the theme on <html> so CSS can opt specific styles in/out per
+  // preset (e.g. ``html[data-theme="brutalist"] .card { border-width: 2px; }``).
+  html.dataset.theme = preset.id;
+
+  applyShadowStyle(html, preset.shadowStyle, accentRgb, isLight);
 }
 
 // ---------------------------------------------------------------------------
 // Provider
 // ---------------------------------------------------------------------------
 
-// Safe wrappers — Safari private mode, locked-down browsers and some
-// embedded WebViews throw SecurityError on localStorage access. Returning
-// ``null`` / swallowing write errors means the theme falls back to its
-// in-memory default instead of crashing the ThemeProvider on mount.
 function safeGet(key: string): string | null {
   try {
     return typeof window !== 'undefined' ? window.localStorage.getItem(key) : null;
@@ -251,7 +395,7 @@ function safeSet(key: string, value: string): void {
   try {
     if (typeof window !== 'undefined') window.localStorage.setItem(key, value);
   } catch {
-    /* ignore — persistence is best-effort */
+    /* persistence is best-effort */
   }
 }
 
@@ -261,8 +405,22 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     return stored === 'light' || stored === 'dark' ? stored : 'dark';
   });
 
-  const [accentId, setAccentIdState] = useState<string>(() => {
-    return safeGet(STORAGE_ACCENT_KEY) ?? 'teal';
+  const [themeId, setThemeIdState] = useState<string>(() => {
+    const stored = safeGet(STORAGE_THEME_KEY) ?? 'studio';
+    // Old accent IDs ('teal', 'blue', 'amber', ...) — remap to the
+    // closest preset so users aren't bounced to the default silently.
+    const legacyMap: Record<string, string> = {
+      teal: 'studio',
+      blue: 'studio',
+      purple: 'studio',
+      rose: 'ink',
+      amber: 'warm',
+      emerald: 'brutalist',
+      cyan: 'cyber',
+      orange: 'warm',
+    };
+    const valid = THEME_PRESETS.some((p) => p.id === stored);
+    return valid ? stored : (legacyMap[stored] ?? 'studio');
   });
 
   const [activityDock, setActivityDockState] = useState<ActivityDockPosition>(() => {
@@ -274,17 +432,21 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       : 'bottom';
   });
 
-  const accent = ACCENT_COLORS.find((c) => c.id === accentId) ?? ACCENT_COLORS[0]!;
+  const preset =
+    THEME_PRESETS.find((p) => p.id === themeId) ?? THEME_PRESETS[0]!;
 
   const setMode = useCallback((m: ThemeMode) => {
     setModeState(m);
     safeSet(STORAGE_MODE_KEY, m);
   }, []);
 
-  const setAccentId = useCallback((id: string) => {
-    setAccentIdState(id);
-    safeSet(STORAGE_ACCENT_KEY, id);
+  const setThemeId = useCallback((id: string) => {
+    setThemeIdState(id);
+    safeSet(STORAGE_THEME_KEY, id);
   }, []);
+
+  // Alias for back-compat.
+  const setAccentId = setThemeId;
 
   const setActivityDock = useCallback((p: ActivityDockPosition) => {
     setActivityDockState(p);
@@ -295,29 +457,37 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setMode(mode === 'dark' ? 'light' : 'dark');
   }, [mode, setMode]);
 
-  // Apply on mount and when mode/accent changes
   useEffect(() => {
-    applyTheme(mode, accent);
-  }, [mode, accent]);
+    applyTheme(mode, preset);
+  }, [mode, preset]);
 
-  // Reflect dock position on <html> so both CSS-side layout and components
-  // that need to know (e.g. sidebar, toast stack) can react without
-  // re-rendering via context changes.
   useEffect(() => {
     document.documentElement.dataset.activityDock = activityDock;
   }, [activityDock]);
+
+  const accent: AccentColor = {
+    id: preset.id,
+    name: preset.name,
+    dark: preset.accentDark,
+    light: preset.accentLight,
+    darkHover: preset.accentDarkHover,
+    lightHover: preset.accentLightHover,
+  };
 
   return (
     <ThemeContext.Provider
       value={{
         mode,
-        accentId,
-        accent,
+        themeId,
+        preset,
         activityDock,
         setMode,
-        setAccentId,
+        setThemeId,
         setActivityDock,
         toggleMode,
+        accent,
+        accentId: themeId,
+        setAccentId,
       }}
     >
       {children}
