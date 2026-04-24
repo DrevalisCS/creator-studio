@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Cpu,
   Play,
@@ -10,6 +11,7 @@ import {
   ExternalLink,
   Check,
   X,
+  Key,
 } from 'lucide-react';
 import { useToast } from '@/components/ui/Toast';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
@@ -175,9 +177,19 @@ export default function CloudGPUPage() {
         <div>
           <h1 className="text-2xl font-bold text-txt-primary">Cloud GPU</h1>
           <p className="mt-1 text-sm text-txt-secondary">
-            Launch on-demand GPU pods across RunPod, Vast.ai, and Lambda Labs. Use them to
-            offload ComfyUI scene generation or host a vLLM endpoint when your local GPU
-            isn't enough.
+            Launch on-demand GPU pods across RunPod, Vast.ai, and Lambda
+            Labs. Use them to offload ComfyUI scene generation or host a
+            vLLM endpoint when your local GPU isn't enough. All pod
+            management lives on this page — add or update the provider
+            API keys in{' '}
+            <Link
+              to="/settings"
+              className="text-accent hover:underline inline-flex items-center gap-1"
+            >
+              Settings → API Keys
+              <Key size={11} />
+            </Link>
+            .
           </p>
         </div>
         <Button variant="ghost" size="sm" onClick={() => void refresh()}>

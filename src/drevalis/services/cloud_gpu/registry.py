@@ -31,6 +31,10 @@ SUPPORTED_PROVIDERS: tuple[dict[str, str], ...] = (
         "name": "runpod",
         "display_name": "RunPod",
         "api_key_name": "runpod_api_key",
+        # Legacy alias — the integrations dropdown used to store the
+        # key under the bare slug "runpod"; keep accepting it so
+        # existing installs don't lose their pod access.
+        "api_key_alias": "runpod",
         "settings_attr": "runpod_api_key",
         "docs_url": "https://docs.runpod.io/",
     },
@@ -57,20 +61,35 @@ async def _resolve_api_key(
     spec: dict[str, str],
 ) -> str | None:
     """Fetch a provider's API key from the encrypted key-store first,
-    then fall back to the Settings env-var (if one exists)."""
+    then fall back to the Settings env-var (if one exists).
+
+    The registry's canonical key name is the ``api_key_name`` field
+    (e.g. ``runpod_api_key``). For backward compatibility with the
+    integrations dropdown — which historically stored RunPod under the
+    bare ``runpod`` slug — we also check the alias when defined. This
+    means users who added their key before v0.20.40 still resolve,
+    and new users can use either form.
+    """
     from drevalis.repositories.api_key_store import ApiKeyStoreRepository
 
     repo = ApiKeyStoreRepository(db)
-    row = await repo.get_by_key_name(spec["api_key_name"])
-    if row and row.encrypted_value:
-        try:
-            return decrypt_value(row.encrypted_value, settings.encryption_key)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "cloud_gpu.decrypt_failed",
-                provider=spec["name"],
-                error=str(exc)[:200],
-            )
+    lookup_names: list[str] = [spec["api_key_name"]]
+    alias = spec.get("api_key_alias")
+    if alias:
+        lookup_names.append(alias)
+
+    for name in lookup_names:
+        row = await repo.get_by_key_name(name)
+        if row and row.encrypted_value:
+            try:
+                return decrypt_value(row.encrypted_value, settings.encryption_key)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "cloud_gpu.decrypt_failed",
+                    provider=spec["name"],
+                    key_name=name,
+                    error=str(exc)[:200],
+                )
 
     attr = spec.get("settings_attr")
     if attr:

@@ -102,7 +102,10 @@ const SECTIONS = [
   { id: 'templates', label: 'Templates', icon: LayoutTemplate },
   { id: 'social', label: 'Social Media', icon: Globe },
   { id: 'apikeys', label: 'API Keys', icon: Key },
-  { id: 'runpod', label: 'Cloud GPU', icon: Cloud },
+  // Cloud GPU management moved out of Settings in v0.20.40 — it now
+  // lives at its own /cloud-gpu page so there's a single place to
+  // manage pods across RunPod, Vast.ai, and Lambda Labs. API keys for
+  // those providers still live under "API Keys" above.
 ] as const;
 
 type SectionId = (typeof SECTIONS)[number]['id'];
@@ -164,7 +167,6 @@ function Settings() {
           {activeSection === 'templates' && <TemplatesSection />}
           {activeSection === 'social' && <SocialSection />}
           {activeSection === 'apikeys' && <ApiKeysSection onNavigateToApiKeys={() => setActiveSection('apikeys')} />}
-          {activeSection === 'runpod' && <RunPodSection onNavigateToApiKeys={() => setActiveSection('apikeys')} />}
         </div>
       </div>
     </div>
@@ -2469,9 +2471,23 @@ const INTEGRATION_DEFS: Array<{
   {
     id: 'runpod',
     label: 'RunPod',
-    description: 'Cloud GPU for image generation',
+    description: 'Cloud GPU pods — manage at /cloud-gpu',
     iconBg: 'bg-violet-500/10',
     iconColor: 'text-violet-400',
+  },
+  {
+    id: 'vast_ai',
+    label: 'Vast.ai',
+    description: 'Spot-market GPU pods — manage at /cloud-gpu',
+    iconBg: 'bg-sky-500/10',
+    iconColor: 'text-sky-400',
+  },
+  {
+    id: 'lambda_labs',
+    label: 'Lambda Labs',
+    description: 'On-demand A100/H100 — manage at /cloud-gpu',
+    iconBg: 'bg-teal-500/10',
+    iconColor: 'text-teal-400',
   },
   {
     id: 'elevenlabs',
@@ -2498,6 +2514,8 @@ const INTEGRATION_DEFS: Array<{
 
 const KEY_NAME_OPTIONS = [
   { value: 'runpod', label: 'RunPod API Key' },
+  { value: 'vastai_api_key', label: 'Vast.ai API Key' },
+  { value: 'lambda_api_key', label: 'Lambda Labs API Key' },
   { value: 'elevenlabs', label: 'ElevenLabs API Key' },
   { value: 'anthropic', label: 'Anthropic API Key' },
   { value: 'openai', label: 'OpenAI API Key' },
