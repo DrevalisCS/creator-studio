@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   BookOpen,
   Code,
@@ -16,6 +16,7 @@ import {
   Lightbulb,
   Search,
   ChevronRight,
+  ChevronDown,
   FileText,
   Volume2,
   Image,
@@ -28,6 +29,16 @@ import {
   Star,
   Hash,
   Clock,
+  Command,
+  Link2,
+  Rocket,
+  Wrench,
+  Upload,
+  Compass,
+  ArrowRight,
+  X,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { onboarding as onboardingApi } from '@/lib/api';
 
@@ -268,6 +279,148 @@ const TOC: TocEntry[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Category groupings (v0.20.38)
+//
+// The flat TOC has ~20 top-level entries — too many to navigate
+// comfortably. Grouping them by lifecycle ("what are you doing
+// right now?") turns the sidebar into a 5-category list with
+// progressive disclosure.
+// ---------------------------------------------------------------------------
+
+interface Category {
+  id: string;
+  label: string;
+  description: string;
+  icon: typeof Film;
+  accentVar: string;
+  sectionIds: string[];
+}
+
+const CATEGORIES: Category[] = [
+  {
+    id: 'start',
+    label: 'Start here',
+    description: 'What this is and how to get going.',
+    icon: Rocket,
+    accentVar: 'text-accent',
+    sectionIds: ['getting-started'],
+  },
+  {
+    id: 'create',
+    label: 'Create content',
+    description: 'Series, episodes, voice, and music.',
+    icon: Film,
+    accentVar: 'text-sky-400',
+    sectionIds: [
+      'content-studio',
+      'episode-detail',
+      'longform-videos',
+      'text-to-voice',
+      'voice-profiles',
+      'music-audio',
+    ],
+  },
+  {
+    id: 'publish',
+    label: 'Publish & reach',
+    description: 'YouTube, scheduling, multi-channel.',
+    icon: Upload,
+    accentVar: 'text-red-400',
+    sectionIds: ['social-youtube', 'multi-channel'],
+  },
+  {
+    id: 'operate',
+    label: 'Operate & scale',
+    description: 'Workers, servers, hardware, backups.',
+    icon: Wrench,
+    accentVar: 'text-amber-400',
+    sectionIds: [
+      'worker-management',
+      'load-balancing',
+      'settings',
+      'hardware-performance',
+      'backup-restore',
+      'updates',
+    ],
+  },
+  {
+    id: 'reference',
+    label: 'Reference',
+    description: 'Shortcuts, tiers, tips, troubleshooting.',
+    icon: BookOpen,
+    accentVar: 'text-violet-400',
+    sectionIds: ['keyboard-shortcuts', 'license-tiers', 'pro-tips', 'troubleshooting'],
+  },
+];
+
+// Popular articles — surfaced on the hub view. Hand-picked based on
+// "what does a new user actually search for"; tweak as telemetry
+// says otherwise.
+const POPULAR_ENTRIES: Array<{ sectionId: string; subsectionId?: string; label: string }> = [
+  { sectionId: 'getting-started', subsectionId: 'quick-start', label: 'Quick Start: first video in 5 steps' },
+  { sectionId: 'troubleshooting', subsectionId: 'stuck-generation', label: 'Generation is stuck' },
+  { sectionId: 'troubleshooting', subsectionId: 'ts-uploads', label: 'YouTube upload fails' },
+  { sectionId: 'multi-channel', subsectionId: 'multi-channel-connect', label: 'Connect multiple YouTube channels' },
+  { sectionId: 'backup-restore', subsectionId: 'br-auto', label: 'Schedule automatic backups' },
+  { sectionId: 'hardware-performance', subsectionId: 'hw-gpu', label: 'GPU recommendations' },
+  { sectionId: 'updates', subsectionId: 'updates-auto', label: 'Update from inside the app' },
+  { sectionId: 'license-tiers', subsectionId: 'tier-compare', label: 'Tier feature matrix' },
+];
+
+// Flat index used by the command palette's fuzzy search.
+interface IndexEntry {
+  key: string; // unique id for the nav target
+  sectionId: string;
+  subsectionId?: string;
+  label: string;
+  sectionLabel: string;
+  categoryLabel: string;
+  icon: typeof Film;
+}
+
+function buildIndex(): IndexEntry[] {
+  const out: IndexEntry[] = [];
+  for (const category of CATEGORIES) {
+    for (const sid of category.sectionIds) {
+      const entry = TOC.find((t) => t.id === sid);
+      if (!entry) continue;
+      out.push({
+        key: `sec:${entry.id}`,
+        sectionId: entry.id,
+        label: entry.label,
+        sectionLabel: entry.label,
+        categoryLabel: category.label,
+        icon: entry.icon,
+      });
+      for (const sub of entry.subsections) {
+        out.push({
+          key: `sub:${entry.id}:${sub.id}`,
+          sectionId: entry.id,
+          subsectionId: sub.id,
+          label: sub.label,
+          sectionLabel: entry.label,
+          categoryLabel: category.label,
+          icon: entry.icon,
+        });
+      }
+    }
+  }
+  return out;
+}
+
+// Case-insensitive substring matching with a simple score that
+// prefers prefix matches and matches on the label over matches on
+// metadata.
+function scoreEntry(e: IndexEntry, q: string): number {
+  const label = e.label.toLowerCase();
+  const meta = `${e.sectionLabel} ${e.categoryLabel}`.toLowerCase();
+  if (label.startsWith(q)) return 100;
+  if (label.includes(q)) return 60;
+  if (meta.includes(q)) return 20;
+  return 0;
+}
+
+// ---------------------------------------------------------------------------
 // Utility sub-components
 // ---------------------------------------------------------------------------
 
@@ -314,21 +467,59 @@ function CodeBlock({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SectionHeading({ id, icon: Icon, title }: { id: string; icon: typeof Film; title: string }) {
+function CopyLinkButton({ id, label }: { id: string; label: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      const url = `${window.location.origin}/help#${id}`;
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      /* clipboard blocked — skip silently */
+    }
+  };
   return (
-    <div id={id} className="flex items-center gap-3 mb-5 pt-2">
+    <button
+      type="button"
+      onClick={copy}
+      className="opacity-0 group-hover:opacity-100 transition-opacity rounded p-1 text-txt-muted hover:text-accent"
+      aria-label={`Copy link to ${label}`}
+      title={copied ? 'Link copied!' : 'Copy link'}
+    >
+      {copied ? <CheckSquare size={12} /> : <Link2 size={12} />}
+    </button>
+  );
+}
+
+function SectionHeading({
+  id,
+  icon: Icon,
+  title,
+}: {
+  id: string;
+  icon: typeof Film;
+  title: string;
+}) {
+  return (
+    <div id={id} className="group flex items-center gap-3 mb-5 pt-2 scroll-mt-4">
       <div className="w-9 h-9 rounded-lg bg-accent/20 flex items-center justify-center shrink-0">
         <Icon size={17} className="text-accent" />
       </div>
       <h2 className="text-xl font-semibold text-txt-primary">{title}</h2>
+      <CopyLinkButton id={id} label={title} />
     </div>
   );
 }
 
 function SubHeading({ id, title }: { id: string; title: string }) {
   return (
-    <h3 id={id} className="text-md font-semibold text-txt-primary mt-8 mb-3 scroll-mt-6">
-      {title}
+    <h3
+      id={id}
+      className="group flex items-center gap-2 text-md font-semibold text-txt-primary mt-8 mb-3 scroll-mt-6"
+    >
+      <span>{title}</span>
+      <CopyLinkButton id={id} label={title} />
     </h3>
   );
 }
@@ -350,32 +541,74 @@ function StepBadge({ step, color }: { step: string; color: string }) {
 
 function Help() {
   const [tab, setTab] = useState<'guide' | 'api'>('guide');
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  // The UserGuide owns its own scrolling + section state, but the
+  // shell owns the command palette so pressing Cmd/Ctrl+K from
+  // anywhere (including the API tab) opens it.
+  const [jumpTarget, setJumpTarget] = useState<IndexEntry | null>(null);
 
   const rerunOnboarding = async () => {
     try {
       await onboardingApi.reset();
       window.location.reload();
     } catch {
-      // noop — user can just refresh
+      /* noop — user can just refresh */
     }
   };
+
+  // Global shortcut: Cmd/Ctrl+K opens the palette. The '/' shortcut
+  // also opens unless the user is typing in an input / textarea.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const inField =
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target as HTMLElement)?.isContentEditable;
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(true);
+      } else if (e.key === '/' && !inField) {
+        e.preventDefault();
+        setPaletteOpen(true);
+      } else if (e.key === 'Escape' && paletteOpen) {
+        setPaletteOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [paletteOpen]);
 
   return (
     <div className="flex flex-col h-full">
       {/* Page header */}
-      <div className="flex items-center justify-between mb-5">
-        <div>
+      <div className="flex items-center justify-between mb-5 gap-4 flex-wrap">
+        <div className="min-w-0">
           <h2 className="text-2xl font-bold text-txt-primary">Help & Documentation</h2>
           <p className="mt-1 text-sm text-txt-secondary">
-            Comprehensive guides, examples, and reference for every feature in Drevalis Creator Studio.
+            Every feature in Drevalis Creator Studio, grouped by what you're
+            trying to do — search, browse, or press{' '}
+            <Kbd>⌘ K</Kbd> to jump anywhere.
           </p>
         </div>
-        <button
-          onClick={() => void rerunOnboarding()}
-          className="text-xs px-3 py-1.5 rounded-md border border-border text-txt-secondary hover:text-txt-primary hover:border-white/20 transition-colors"
-        >
-          Re-run onboarding
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="inline-flex items-center gap-2 rounded-md border border-border bg-bg-elevated px-3 py-1.5 text-xs text-txt-tertiary hover:border-accent/40 hover:text-txt-primary transition-colors duration-fast"
+            aria-label="Open search (Ctrl+K)"
+          >
+            <Search size={12} />
+            <span>Search…</span>
+            <span className="ml-3 inline-flex items-center gap-1 text-txt-muted">
+              <Command size={10} /> K
+            </span>
+          </button>
+          <button
+            onClick={() => void rerunOnboarding()}
+            className="text-xs px-3 py-1.5 rounded-md border border-border text-txt-secondary hover:text-txt-primary hover:border-white/20 transition-colors"
+          >
+            Re-run onboarding
+          </button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -404,9 +637,17 @@ function Help() {
         </button>
       </div>
 
-      {tab === 'guide' && <UserGuide />}
+      {tab === 'guide' && (
+        <UserGuide
+          jumpTarget={jumpTarget}
+          onJumpConsumed={() => setJumpTarget(null)}
+        />
+      )}
       {tab === 'api' && (
-        <div className="rounded-lg overflow-hidden border border-border mt-4 flex-1" style={{ minHeight: 0 }}>
+        <div
+          className="rounded-lg overflow-hidden border border-border mt-4 flex-1"
+          style={{ minHeight: 0 }}
+        >
           <iframe
             src="/docs"
             title="API Documentation"
@@ -415,6 +656,195 @@ function Help() {
           />
         </div>
       )}
+
+      {paletteOpen && (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          onPick={(entry) => {
+            setPaletteOpen(false);
+            if (tab !== 'guide') setTab('guide');
+            setJumpTarget(entry);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// CommandPalette — fuzzy-ish search over every section + subsection
+// ---------------------------------------------------------------------------
+
+function CommandPalette({
+  onClose,
+  onPick,
+}: {
+  onClose: () => void;
+  onPick: (entry: IndexEntry) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const index = useMemo(buildIndex, []);
+
+  const results = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) {
+      // Show a curated top list when query is empty so the palette
+      // is useful even without typing.
+      const popular = POPULAR_ENTRIES.map((p) =>
+        index.find(
+          (e) => e.sectionId === p.sectionId && e.subsectionId === p.subsectionId,
+        ),
+      ).filter((x): x is IndexEntry => Boolean(x));
+      return popular.slice(0, 8);
+    }
+    const scored = index
+      .map((e) => ({ e, s: scoreEntry(e, q) }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s)
+      .slice(0, 30);
+    return scored.map((x) => x.e);
+  }, [query, index]);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  useEffect(() => {
+    setSelectedIdx(0);
+  }, [query]);
+
+  // Keep selection within bounds + scroll into view.
+  useEffect(() => {
+    const el = listRef.current?.querySelector<HTMLElement>(
+      `[data-idx="${selectedIdx}"]`,
+    );
+    el?.scrollIntoView({ block: 'nearest' });
+  }, [selectedIdx]);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.min(i + 1, results.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedIdx((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const pick = results[selectedIdx];
+      if (pick) onPick(pick);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/50 backdrop-blur-sm pt-[10vh] px-4"
+      onClick={onClose}
+      role="dialog"
+      aria-label="Search help"
+      aria-modal
+    >
+      <div
+        className="w-full max-w-xl rounded-xl border border-border bg-bg-surface shadow-2xl overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
+          <Search size={14} className="text-txt-tertiary shrink-0" />
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={onKeyDown}
+            placeholder="Search for a topic, shortcut, or error message…"
+            className="flex-1 bg-transparent outline-none text-sm text-txt-primary placeholder:text-txt-muted"
+            aria-label="Search help topics"
+          />
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded p-1 text-txt-muted hover:text-txt-primary"
+            aria-label="Close"
+          >
+            <X size={13} />
+          </button>
+        </div>
+
+        <div ref={listRef} className="max-h-[50vh] overflow-y-auto">
+          {results.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-txt-muted">
+              No matches for “{query}”.
+              <div className="mt-1 text-[11px]">
+                Try a shorter query, or check the sidebar for a related
+                category.
+              </div>
+            </div>
+          ) : (
+            <div className="py-1">
+              {!query && (
+                <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-txt-tertiary">
+                  Popular
+                </div>
+              )}
+              {results.map((e, i) => {
+                const Icon = e.icon;
+                const selected = i === selectedIdx;
+                return (
+                  <button
+                    key={e.key}
+                    data-idx={i}
+                    type="button"
+                    onMouseEnter={() => setSelectedIdx(i)}
+                    onClick={() => onPick(e)}
+                    className={[
+                      'flex w-full items-center gap-3 px-3 py-2 text-left transition-colors duration-fast',
+                      selected
+                        ? 'bg-accent/10 text-txt-primary'
+                        : 'text-txt-secondary hover:bg-bg-hover',
+                    ].join(' ')}
+                  >
+                    <Icon
+                      size={13}
+                      className={selected ? 'text-accent' : 'text-txt-tertiary'}
+                    />
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate text-sm">{e.label}</div>
+                      <div className="truncate text-[11px] text-txt-muted">
+                        {e.categoryLabel} · {e.sectionLabel}
+                      </div>
+                    </div>
+                    {selected && (
+                      <ArrowRight size={12} className="text-accent shrink-0" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-1.5 text-[11px] text-txt-muted bg-bg-elevated/40">
+          <div className="flex items-center gap-3">
+            <span>
+              <Kbd>↑</Kbd> <Kbd>↓</Kbd> to move
+            </span>
+            <span>
+              <Kbd>↵</Kbd> to open
+            </span>
+            <span>
+              <Kbd>Esc</Kbd> to close
+            </span>
+          </div>
+          <span className="hidden sm:inline">
+            {results.length} {results.length === 1 ? 'result' : 'results'}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -423,32 +853,57 @@ function Help() {
 // UserGuide — sidebar + scrollable content
 // ---------------------------------------------------------------------------
 
-function UserGuide() {
+function UserGuide({
+  jumpTarget,
+  onJumpConsumed,
+}: {
+  jumpTarget: IndexEntry | null;
+  onJumpConsumed: () => void;
+}) {
   const [activeSection, setActiveSection] = useState<string>('getting-started');
   const [activeSubsection, setActiveSubsection] = useState<string>('what-is');
-  const [search, setSearch] = useState('');
+  const [sidebarSearch, setSidebarSearch] = useState('');
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Track which categories are expanded. Default: expand the category
+  // owning the active section so the rail isn't a wall of closed
+  // collapsibles on first load.
+  const [expandedCategories, setExpandedCategories] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    for (const cat of CATEGORIES) {
+      if (cat.sectionIds.includes('getting-started')) initial.add(cat.id);
+    }
+    return initial;
+  });
+  // Reading progress 0..1 derived from scroll position.
+  const [progress, setProgress] = useState(0);
+  // Hub view shows the welcome/category grid instead of dumping the
+  // user straight into the first article. We flip it off once the
+  // user clicks into anything.
+  const [mode, setMode] = useState<'hub' | 'read'>(() => {
+    // If the URL carries a hash, skip the hub and jump directly.
+    if (typeof window !== 'undefined' && window.location.hash) return 'read';
+    return 'hub';
+  });
+
   const contentRef = useRef<HTMLDivElement>(null);
   const observerRef = useRef<IntersectionObserver | null>(null);
 
-  // Collect all section + subsection ids
-  const allIds = TOC.flatMap(entry => [
-    entry.id,
-    ...entry.subsections.map(s => s.id),
-  ]);
+  const allIds = useMemo(
+    () => TOC.flatMap((entry) => [entry.id, ...entry.subsections.map((s) => s.id)]),
+    [],
+  );
 
   const handleIntersect = useCallback((entries: IntersectionObserverEntry[]) => {
     for (const entry of entries) {
       if (entry.isIntersecting) {
         const id = entry.target.id;
-        // Check if it's a top-level section
-        const section = TOC.find(t => t.id === id);
+        const section = TOC.find((t) => t.id === id);
         if (section) {
           setActiveSection(id);
           setActiveSubsection(section.subsections[0]?.id ?? '');
         } else {
-          // It's a subsection — find its parent
           for (const t of TOC) {
-            const sub = t.subsections.find(s => s.id === id);
+            const sub = t.subsections.find((s) => s.id === id);
             if (sub) {
               setActiveSection(t.id);
               setActiveSubsection(id);
@@ -462,103 +917,334 @@ function UserGuide() {
   }, []);
 
   useEffect(() => {
+    if (mode !== 'read') return;
     if (!contentRef.current) return;
     observerRef.current = new IntersectionObserver(handleIntersect, {
       root: contentRef.current,
       rootMargin: '-10% 0px -70% 0px',
       threshold: 0,
     });
-    allIds.forEach(id => {
+    allIds.forEach((id) => {
       const el = document.getElementById(id);
       if (el) observerRef.current!.observe(el);
     });
     return () => observerRef.current?.disconnect();
-  }, [handleIntersect]);
+  }, [handleIntersect, allIds, mode]);
 
-  function scrollTo(id: string) {
-    const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  // Expand the active section's category when the active section
+  // changes — keeps the sidebar self-consistent.
+  useEffect(() => {
+    const owning = CATEGORIES.find((c) => c.sectionIds.includes(activeSection));
+    if (owning) {
+      setExpandedCategories((prev) => {
+        if (prev.has(owning.id)) return prev;
+        const next = new Set(prev);
+        next.add(owning.id);
+        return next;
+      });
     }
-  }
+  }, [activeSection]);
 
-  const filteredToc = TOC.filter(entry => {
-    if (!search) return true;
-    const q = search.toLowerCase();
-    return (
-      entry.label.toLowerCase().includes(q) ||
-      entry.subsections.some(s => s.label.toLowerCase().includes(q))
-    );
-  });
+  // Reading progress bar: updates on scroll.
+  useEffect(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      const max = el.scrollHeight - el.clientHeight;
+      if (max <= 0) return setProgress(0);
+      setProgress(Math.min(1, Math.max(0, el.scrollTop / max)));
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [mode]);
+
+  const scrollTo = useCallback((id: string) => {
+    // Give the DOM a tick after switching to read mode so the
+    // section actually exists before we try to scroll to it.
+    requestAnimationFrame(() => {
+      const el = document.getElementById(id);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  const navigateTo = useCallback(
+    (sectionId: string, subsectionId?: string) => {
+      setMode('read');
+      setActiveSection(sectionId);
+      if (subsectionId) setActiveSubsection(subsectionId);
+      scrollTo(subsectionId || sectionId);
+    },
+    [scrollTo],
+  );
+
+  // Handle jump target from command palette (arrives via prop).
+  useEffect(() => {
+    if (!jumpTarget) return;
+    navigateTo(jumpTarget.sectionId, jumpTarget.subsectionId);
+    onJumpConsumed();
+  }, [jumpTarget, navigateTo, onJumpConsumed]);
+
+  // Handle initial URL hash (e.g. /help#ts-uploads from a shared
+  // link).
+  useEffect(() => {
+    if (mode !== 'read') return;
+    if (typeof window === 'undefined' || !window.location.hash) return;
+    const id = window.location.hash.slice(1);
+    // Defer so content has mounted.
+    const t = setTimeout(() => scrollTo(id), 50);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  const toggleCategory = (id: string) => {
+    setExpandedCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Filter the categories + their sections based on the sidebar search
+  // query. Sections inside a matching category always pass; within a
+  // non-matching category only section-label matches survive.
+  const filteredCategories = useMemo(() => {
+    if (!sidebarSearch.trim()) {
+      return CATEGORIES.map((cat) => ({
+        ...cat,
+        sections: cat.sectionIds
+          .map((sid) => TOC.find((t) => t.id === sid))
+          .filter((x): x is TocEntry => Boolean(x)),
+      }));
+    }
+    const q = sidebarSearch.toLowerCase();
+    return CATEGORIES.map((cat) => {
+      const sections = cat.sectionIds
+        .map((sid) => TOC.find((t) => t.id === sid))
+        .filter((x): x is TocEntry => Boolean(x))
+        .filter(
+          (entry) =>
+            cat.label.toLowerCase().includes(q) ||
+            entry.label.toLowerCase().includes(q) ||
+            entry.subsections.some((s) => s.label.toLowerCase().includes(q)),
+        );
+      return { ...cat, sections };
+    }).filter((cat) => cat.sections.length > 0);
+  }, [sidebarSearch]);
+
+  // "On this page" data for the right rail: the subsections of the
+  // currently active section.
+  const currentSection = TOC.find((t) => t.id === activeSection) ?? null;
+  const currentCategory =
+    CATEGORIES.find((c) => c.sectionIds.includes(activeSection)) ?? null;
 
   return (
-    <div className="flex gap-0 mt-4 flex-1 min-h-0" style={{ height: 'calc(100vh - 220px)' }}>
-      {/* Left TOC sidebar */}
-      <aside className="w-56 shrink-0 flex flex-col border-r border-border pr-3 overflow-hidden">
-        {/* Search */}
-        <div className="relative mb-3 shrink-0">
-          <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-txt-tertiary pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Filter sections..."
-            className="w-full pl-8 pr-3 py-1.5 text-xs bg-bg-elevated border border-border rounded-md text-txt-primary placeholder:text-txt-tertiary focus:outline-none focus:border-border-accent"
-            aria-label="Filter documentation sections"
+    <div
+      className="relative flex gap-0 mt-4 flex-1 min-h-0"
+      style={{ height: 'calc(100vh - 220px)' }}
+    >
+      {/* Reading progress bar — full-width thin line at the top */}
+      {mode === 'read' && (
+        <div
+          className="pointer-events-none absolute left-0 right-0 top-0 h-0.5 bg-bg-elevated/80 z-10"
+          aria-hidden
+        >
+          <div
+            className="h-full bg-accent transition-transform duration-fast origin-left"
+            style={{ transform: `scaleX(${progress})` }}
           />
         </div>
+      )}
 
-        {/* TOC entries */}
-        <nav className="overflow-y-auto flex-1 space-y-0.5" aria-label="Table of contents">
-          {filteredToc.map(entry => {
-            const Icon = entry.icon;
-            const isActive = activeSection === entry.id;
-            return (
-              <div key={entry.id}>
-                <button
-                  onClick={() => scrollTo(entry.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-xs font-medium transition text-left ${
-                    isActive
-                      ? 'bg-accent/15 text-accent'
-                      : 'text-txt-secondary hover:text-txt-primary hover:bg-bg-elevated'
-                  }`}
-                  aria-current={isActive ? 'true' : undefined}
-                >
-                  <Icon size={13} className={isActive ? 'text-accent' : 'text-txt-tertiary'} />
-                  {entry.label}
-                </button>
-                {isActive && (
-                  <div className="ml-5 mt-0.5 space-y-0.5 mb-1">
-                    {entry.subsections
-                      .filter(s => !search || s.label.toLowerCase().includes(search.toLowerCase()))
-                      .map(sub => (
-                        <button
-                          key={sub.id}
-                          onClick={() => scrollTo(sub.id)}
-                          className={`w-full flex items-center gap-1.5 px-2 py-1 rounded text-xs transition text-left ${
-                            activeSubsection === sub.id
-                              ? 'text-accent'
-                              : 'text-txt-tertiary hover:text-txt-secondary'
-                          }`}
-                        >
-                          <ChevronRight size={10} />
-                          {sub.label}
-                        </button>
-                      ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </nav>
+      {/* ── Left sidebar ─────────────────────────────────────────── */}
+      <aside
+        className={[
+          'shrink-0 flex flex-col border-r border-border transition-all duration-fast',
+          sidebarCollapsed ? 'w-12 pr-0' : 'w-64 pr-3',
+        ].join(' ')}
+      >
+        <div className="mb-3 flex items-center gap-2 shrink-0">
+          {!sidebarCollapsed && (
+            <div className="relative flex-1">
+              <Search
+                size={13}
+                className="absolute left-2.5 top-1/2 -translate-y-1/2 text-txt-tertiary pointer-events-none"
+              />
+              <input
+                type="text"
+                value={sidebarSearch}
+                onChange={(e) => setSidebarSearch(e.target.value)}
+                placeholder="Filter topics…"
+                className="w-full pl-8 pr-3 py-1.5 text-xs bg-bg-elevated border border-border rounded-md text-txt-primary placeholder:text-txt-tertiary focus:outline-none focus:border-border-accent"
+                aria-label="Filter help topics"
+              />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => setSidebarCollapsed((v) => !v)}
+            className="rounded-md border border-border bg-bg-elevated p-1.5 text-txt-tertiary hover:text-txt-primary hover:border-accent/40 transition-colors duration-fast"
+            aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          >
+            {sidebarCollapsed ? (
+              <PanelLeftOpen size={12} />
+            ) : (
+              <PanelLeftClose size={12} />
+            )}
+          </button>
+        </div>
+
+        {!sidebarCollapsed && (
+          <nav
+            className="overflow-y-auto flex-1 space-y-2 pb-6"
+            aria-label="Help navigation"
+          >
+            {/* Hub link pinned at top */}
+            <button
+              type="button"
+              onClick={() => {
+                setMode('hub');
+                if (contentRef.current) contentRef.current.scrollTop = 0;
+              }}
+              className={[
+                'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium transition-colors duration-fast text-left',
+                mode === 'hub'
+                  ? 'bg-accent/15 text-accent'
+                  : 'text-txt-secondary hover:bg-bg-elevated hover:text-txt-primary',
+              ].join(' ')}
+            >
+              <Compass
+                size={13}
+                className={mode === 'hub' ? 'text-accent' : 'text-txt-tertiary'}
+              />
+              Hub
+            </button>
+
+            {filteredCategories.map((category) => {
+              const Icon = category.icon;
+              // Auto-expand if the search filter would otherwise hide
+              // what the user is trying to find.
+              const expanded =
+                expandedCategories.has(category.id) || Boolean(sidebarSearch);
+              return (
+                <div key={category.id} className="space-y-0.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleCategory(category.id)}
+                    className="w-full flex items-center gap-2 px-2 py-1 rounded text-[10px] font-semibold uppercase tracking-wider text-txt-tertiary hover:text-txt-secondary transition-colors duration-fast"
+                    aria-expanded={expanded}
+                  >
+                    <Icon size={12} className={category.accentVar} />
+                    <span className="flex-1 text-left">{category.label}</span>
+                    <ChevronDown
+                      size={11}
+                      className={[
+                        'transition-transform duration-fast',
+                        expanded ? '' : '-rotate-90',
+                      ].join(' ')}
+                    />
+                  </button>
+                  {expanded &&
+                    category.sections.map((entry) => {
+                      const SecIcon = entry.icon;
+                      const isActive =
+                        mode === 'read' && activeSection === entry.id;
+                      return (
+                        <div key={entry.id}>
+                          <button
+                            type="button"
+                            onClick={() => navigateTo(entry.id)}
+                            className={[
+                              'w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs font-medium transition-colors duration-fast text-left',
+                              isActive
+                                ? 'bg-accent/15 text-accent'
+                                : 'text-txt-secondary hover:bg-bg-elevated hover:text-txt-primary',
+                            ].join(' ')}
+                            aria-current={isActive ? 'true' : undefined}
+                          >
+                            <SecIcon
+                              size={12}
+                              className={
+                                isActive ? 'text-accent' : 'text-txt-tertiary'
+                              }
+                            />
+                            {entry.label}
+                          </button>
+                          {isActive && (
+                            <div className="ml-5 mt-0.5 space-y-0.5 mb-1">
+                              {entry.subsections
+                                .filter(
+                                  (s) =>
+                                    !sidebarSearch ||
+                                    s.label
+                                      .toLowerCase()
+                                      .includes(sidebarSearch.toLowerCase()),
+                                )
+                                .map((sub) => (
+                                  <button
+                                    key={sub.id}
+                                    type="button"
+                                    onClick={() =>
+                                      navigateTo(entry.id, sub.id)
+                                    }
+                                    className={[
+                                      'w-full flex items-center gap-1.5 px-2 py-1 rounded text-xs transition-colors duration-fast text-left',
+                                      activeSubsection === sub.id
+                                        ? 'text-accent'
+                                        : 'text-txt-tertiary hover:text-txt-secondary',
+                                    ].join(' ')}
+                                  >
+                                    <ChevronRight size={10} />
+                                    {sub.label}
+                                  </button>
+                                ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              );
+            })}
+          </nav>
+        )}
       </aside>
 
-      {/* Right scrollable content */}
+      {/* ── Main content ─────────────────────────────────────────── */}
       <div
         ref={contentRef}
-        className="flex-1 overflow-y-auto pl-8 pr-4 pb-24"
+        className="flex-1 overflow-y-auto"
       >
-        <div className="max-w-3xl">
+        {mode === 'hub' ? (
+          <HelpHub onPick={navigateTo} />
+        ) : (
+          <div className="pl-8 pr-4 pb-24 flex gap-8">
+            <div className="flex-1 min-w-0 max-w-3xl">
+              {/* Breadcrumb */}
+              {currentCategory && currentSection && (
+                <div className="mt-4 mb-2 flex items-center gap-2 text-xs text-txt-tertiary">
+                  <button
+                    type="button"
+                    onClick={() => setMode('hub')}
+                    className="hover:text-txt-primary transition-colors duration-fast"
+                  >
+                    Help
+                  </button>
+                  <ChevronRight size={10} />
+                  <span className={currentCategory.accentVar}>
+                    {currentCategory.label}
+                  </span>
+                  <ChevronRight size={10} />
+                  <span className="text-txt-secondary">
+                    {currentSection.label}
+                  </span>
+                </div>
+              )}
+
+              {/* Actual content sections (unchanged) */}
+              <div>
 
           {/* ================================================================
               1. GETTING STARTED
@@ -2211,9 +2897,238 @@ as she reached for the lamp.`}</CodeBlock>
             </InfoBox>
           </section>
 
+              </div>
+            </div>
+
+            {/* Right rail — "On this page" TOC for the current section.
+                Hidden on narrow screens where the left sidebar is already
+                doing a lot of work. */}
+            {currentSection && currentSection.subsections.length > 0 && (
+              <RightRailToc
+                section={currentSection}
+                activeSubsectionId={activeSubsection}
+                onPick={(subId) => navigateTo(currentSection.id, subId)}
+              />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// HelpHub — landing view with search + category cards + popular row
+// ---------------------------------------------------------------------------
+
+function HelpHub({
+  onPick,
+}: {
+  onPick: (sectionId: string, subsectionId?: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const index = useMemo(buildIndex, []);
+
+  const hits = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+    return index
+      .map((e) => ({ e, s: scoreEntry(e, q) }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s)
+      .slice(0, 8);
+  }, [query, index]);
+
+  return (
+    <div className="px-6 md:px-10 pt-10 pb-24">
+      {/* Hero */}
+      <div className="max-w-2xl mx-auto text-center space-y-3">
+        <div className="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-accent/15 text-accent">
+          <Compass size={22} />
+        </div>
+        <h1 className="text-3xl font-bold text-txt-primary">
+          How can we help?
+        </h1>
+        <p className="text-sm text-txt-secondary">
+          Search the guide, browse by category, or pick from the most-read
+          topics. Press <Kbd>⌘ K</Kbd> anywhere to open the command palette.
+        </p>
+        <div className="relative mt-6">
+          <Search
+            size={15}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-txt-tertiary pointer-events-none"
+          />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search topics, shortcuts, error messages…"
+            className="w-full pl-11 pr-4 py-3 text-sm rounded-lg bg-bg-elevated border border-border text-txt-primary placeholder:text-txt-tertiary focus:outline-none focus:border-accent transition-colors duration-fast"
+            autoFocus
+          />
+          {hits.length > 0 && (
+            <div className="absolute left-0 right-0 top-full mt-2 rounded-lg border border-border bg-bg-surface shadow-xl z-10 py-1 text-left">
+              {hits.map((h) => {
+                const Icon = h.e.icon;
+                return (
+                  <button
+                    key={h.e.key}
+                    type="button"
+                    onClick={() => onPick(h.e.sectionId, h.e.subsectionId)}
+                    className="flex w-full items-center gap-3 px-3 py-2 text-left text-txt-secondary hover:bg-bg-hover hover:text-txt-primary transition-colors duration-fast"
+                  >
+                    <Icon size={13} className="text-txt-tertiary" />
+                    <div className="flex-1 min-w-0">
+                      <div className="truncate text-sm">{h.e.label}</div>
+                      <div className="truncate text-[11px] text-txt-muted">
+                        {h.e.categoryLabel} · {h.e.sectionLabel}
+                      </div>
+                    </div>
+                    <ArrowRight size={11} className="text-txt-tertiary" />
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Popular row */}
+      <div className="mt-16 max-w-5xl mx-auto">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-txt-tertiary">
+            Popular right now
+          </h2>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          {POPULAR_ENTRIES.map((p) => {
+            const section = TOC.find((t) => t.id === p.sectionId);
+            if (!section) return null;
+            const Icon = section.icon;
+            return (
+              <button
+                key={`${p.sectionId}:${p.subsectionId ?? ''}`}
+                type="button"
+                onClick={() => onPick(p.sectionId, p.subsectionId)}
+                className="group text-left rounded-lg border border-border bg-bg-elevated p-3 hover:border-accent/40 hover:bg-bg-hover transition-colors duration-fast"
+              >
+                <div className="flex items-center gap-2 mb-1.5">
+                  <Icon size={13} className="text-accent" />
+                  <span className="text-[10px] uppercase tracking-wider text-txt-tertiary">
+                    {section.label}
+                  </span>
+                </div>
+                <div className="text-sm text-txt-primary font-medium group-hover:text-accent transition-colors duration-fast">
+                  {p.label}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Category grid */}
+      <div className="mt-16 max-w-5xl mx-auto">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-txt-tertiary mb-4">
+          Browse by category
+        </h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {CATEGORIES.map((category) => {
+            const CatIcon = category.icon;
+            const sections = category.sectionIds
+              .map((sid) => TOC.find((t) => t.id === sid))
+              .filter((x): x is TocEntry => Boolean(x));
+            return (
+              <div
+                key={category.id}
+                className="group rounded-xl border border-border bg-bg-elevated p-5 hover:border-accent/40 transition-colors duration-fast"
+              >
+                <div className="flex items-start gap-3">
+                  <div
+                    className={[
+                      'w-10 h-10 rounded-lg bg-bg-surface border border-border flex items-center justify-center shrink-0',
+                      category.accentVar,
+                    ].join(' ')}
+                  >
+                    <CatIcon size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold text-txt-primary">
+                      {category.label}
+                    </h3>
+                    <p className="mt-0.5 text-xs text-txt-tertiary">
+                      {category.description}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-4 space-y-1">
+                  {sections.map((entry) => (
+                    <button
+                      key={entry.id}
+                      type="button"
+                      onClick={() => onPick(entry.id)}
+                      className="flex w-full items-center justify-between gap-2 px-2 py-1.5 rounded-md text-xs text-txt-secondary hover:bg-bg-hover hover:text-txt-primary transition-colors duration-fast"
+                    >
+                      <span className="truncate text-left">{entry.label}</span>
+                      <span className="text-[10px] text-txt-muted shrink-0">
+                        {entry.subsections.length}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// RightRailToc — "On this page" navigation for the current section
+// ---------------------------------------------------------------------------
+
+function RightRailToc({
+  section,
+  activeSubsectionId,
+  onPick,
+}: {
+  section: TocEntry;
+  activeSubsectionId: string;
+  onPick: (subsectionId: string) => void;
+}) {
+  return (
+    <aside
+      className="hidden xl:block w-48 shrink-0 pt-6"
+      aria-label="On this page"
+    >
+      <div className="sticky top-6 space-y-2 text-xs">
+        <div className="text-[10px] font-semibold uppercase tracking-wider text-txt-tertiary">
+          On this page
+        </div>
+        <nav className="space-y-0.5 border-l border-border pl-3">
+          {section.subsections.map((sub) => {
+            const active = activeSubsectionId === sub.id;
+            return (
+              <button
+                key={sub.id}
+                type="button"
+                onClick={() => onPick(sub.id)}
+                className={[
+                  'block w-full text-left py-1 transition-colors duration-fast',
+                  active
+                    ? 'text-accent -ml-3.5 pl-3 border-l-2 border-accent'
+                    : 'text-txt-tertiary hover:text-txt-secondary',
+                ].join(' ')}
+              >
+                {sub.label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+    </aside>
   );
 }
 
