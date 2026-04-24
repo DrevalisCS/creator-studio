@@ -70,10 +70,33 @@ STARTED_AT=""
 # container compose creates. We query by that label so we never touch
 # unrelated containers on the host.
 list_project_containers() {
-  docker ps -a \
-    --filter "label=com.docker.compose.project=${PROJECT_NAME}" \
-    --format '{{.Names}}|{{.Image}}|{{.Label "com.docker.compose.service"}}|{{.State}}' \
-    2>/dev/null
+  # Use ``Config.Image`` via ``docker inspect`` rather than
+  # ``docker ps --format '{{.Image}}'``. The latter returns the raw
+  # image SHA ID (``b0c778a40ed1``) when the tag has been bumped since
+  # the container was created — unpullable, because it lacks a
+  # registry name. ``Config.Image`` holds the original reference
+  # (e.g. ``ghcr.io/drevaliscs/creator-studio-app:stable``) that
+  # compose wrote at creation time, which IS pullable.
+  local names
+  names=$(
+    docker ps -a \
+      --filter "label=com.docker.compose.project=${PROJECT_NAME}" \
+      --format '{{.Names}}' \
+      2>/dev/null
+  )
+  for name in ${names}; do
+    local image service state
+    image=$(
+      docker inspect "${name}" --format '{{.Config.Image}}' 2>/dev/null
+    )
+    service=$(
+      docker inspect "${name}" \
+        --format '{{index .Config.Labels "com.docker.compose.service"}}' \
+        2>/dev/null
+    )
+    state=$(docker inspect "${name}" --format '{{.State.Status}}' 2>/dev/null)
+    printf '%s|%s|%s|%s\n' "${name}" "${image}" "${service}" "${state}"
+  done
 }
 
 log "targeting compose project: ${PROJECT_NAME}"
@@ -133,7 +156,17 @@ while true; do
         log "skipping self (service=${service}, name=${name})"
         continue
       fi
-      images_to_pull["${image}"]=1
+      # Guard: refuse to pull something that looks like a raw image
+      # ID (12-char hex, no ':' or '/') — those can't be pulled
+      # without a registry reference. Fall through to restart-only,
+      # which is still useful: Docker honors the already-pulled
+      # image under whatever tag the user's most recent PowerShell
+      # ``docker compose pull`` recorded.
+      if [[ "${image}" =~ ^[0-9a-f]{8,}$ ]] || ! [[ "${image}" == *":"* || "${image}" == *"/"* ]]; then
+        log "skipping pull for ${name}: image '${image}' has no registry reference (will still restart)"
+      else
+        images_to_pull["${image}"]=1
+      fi
       services_to_restart+=("${name}")
     done <<< "${containers_raw}"
 
