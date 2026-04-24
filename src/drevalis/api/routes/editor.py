@@ -166,21 +166,95 @@ async def get_editor_session(
 ) -> EditSessionResponse:
     """Return the edit session for this episode, auto-creating it from
     the current scene state if one doesn't yet exist.
+
+    v0.20.12 — wraps every step in targeted try/except + structlog so
+    a 500 response carries a real cause instead of an opaque "Internal
+    Server Error". Before this change, a ``UndefinedTable`` for
+    ``video_edit_sessions`` (migration 026 not applied) looked
+    identical to a malformed-JSON script field. Users had to grep
+    worker logs; now the endpoint surfaces the root cause.
     """
     ep_repo = EpisodeRepository(db)
-    if await ep_repo.get_by_id(episode_id) is None:
+    try:
+        episode = await ep_repo.get_by_id(episode_id)
+    except Exception as exc:
+        logger.exception("editor_episode_lookup_failed", episode_id=str(episode_id))
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            {
+                "error": "episode_lookup_failed",
+                "reason": f"{type(exc).__name__}: {exc}",
+                "hint": (
+                    "A database error occurred fetching the episode. "
+                    "Check ``docker compose logs app`` for the full trace."
+                ),
+            },
+        ) from exc
+    if episode is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
 
     repo = VideoEditSessionRepository(db)
-    session = await repo.get_by_episode(episode_id)
+    try:
+        session = await repo.get_by_episode(episode_id)
+    except Exception as exc:
+        logger.exception("editor_session_lookup_failed", episode_id=str(episode_id))
+        # ``ProgrammingError: relation "video_edit_sessions" does not
+        # exist`` means migration 026 hasn't run on this install.
+        # Surface that specifically so the user knows to run alembic.
+        msg = str(exc)
+        if "video_edit_sessions" in msg and "does not exist" in msg:
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {
+                    "error": "migration_missing",
+                    "missing_table": "video_edit_sessions",
+                    "hint": (
+                        "Migration 026_video_edit_sessions hasn't been "
+                        "applied. Run ``docker compose exec app alembic "
+                        "upgrade head`` (or restart the app container — "
+                        "it runs migrations on startup)."
+                    ),
+                },
+            ) from exc
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            {
+                "error": "session_lookup_failed",
+                "reason": f"{type(exc).__name__}: {msg[:200]}",
+            },
+        ) from exc
+
     if session is None:
-        timeline = await _seed_timeline_from_episode(episode_id, db)
-        session = await repo.create(
-            episode_id=episode_id,
-            version=1,
-            timeline=timeline,
-        )
-        await db.commit()
+        try:
+            timeline = await _seed_timeline_from_episode(episode_id, db)
+        except Exception as exc:
+            logger.exception("editor_seed_failed", episode_id=str(episode_id))
+            # Seeding failure shouldn't prevent opening the editor —
+            # return an empty timeline so the user lands on a usable
+            # editor instead of a broken route.
+            timeline = {"duration_s": 0.0, "tracks": []}
+            logger.warning(
+                "editor_fell_back_to_empty_timeline",
+                episode_id=str(episode_id),
+                reason=f"{type(exc).__name__}: {exc}",
+            )
+        try:
+            session = await repo.create(
+                episode_id=episode_id,
+                version=1,
+                timeline=timeline,
+            )
+            await db.commit()
+        except Exception as exc:
+            logger.exception("editor_session_create_failed", episode_id=str(episode_id))
+            await db.rollback()
+            raise HTTPException(
+                status.HTTP_500_INTERNAL_SERVER_ERROR,
+                {
+                    "error": "session_create_failed",
+                    "reason": f"{type(exc).__name__}: {str(exc)[:200]}",
+                },
+            ) from exc
     return EditSessionResponse.model_validate(
         {
             "id": session.id,
