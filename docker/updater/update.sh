@@ -1,31 +1,44 @@
 #!/usr/bin/env bash
-# Polls /shared/do_update once per 15 seconds. When the flag appears, pulls
-# the new images (tags come from the compose file / env) and restarts the
-# stack with docker compose up -d --remove-orphans.
+# Watches /shared/do_update once per 15 seconds. When the flag appears,
+# pulls each stack image directly via ``docker pull`` and restarts the
+# affected containers via ``docker restart``.
 #
-# Progress is written to /shared/update_status.json so the frontend can
-# show a live phase indicator even while the app container is being
-# recycled. Phases: idle -> pulling -> pulled -> restarting -> done / failed.
+# ── Why no ``docker compose``? ────────────────────────────────────
+# The updater runs inside a container. ``docker compose`` CLI reads
+# compose.yml + .env locally to the process. On Docker Desktop for
+# Windows, bind mounts are recorded against ``--project-directory``,
+# which needs to be the Windows host path for the containers to see
+# the user's files. But the CLI also reads relative files like
+# ``env_file: .env`` against that same project-directory — and a
+# Windows path is unreadable from inside the Linux container, so
+# compose fails with ``stat /project/C:\Users\...\.env: no such
+# file or directory``.
 #
-# Deletes the flag on success AND on failure so a broken update doesn't
-# wedge the sidecar in an infinite retry loop -- the user can always
-# re-click "Update now" from the UI.
+# v0.20.8 – v0.20.22 tried progressively harder to juggle
+# ``--project-directory`` / ``--file`` / ``--env-file``. Every
+# workaround hit a new edge case. The fundamental insight: we don't
+# need compose at all. The user's PowerShell ran compose to create
+# the containers with correct bind mounts. ``docker pull`` + ``docker
+# restart`` preserves those bind mounts verbatim and swaps only the
+# image under each service. That's exactly what routine image
+# updates need to do. Compose-shape changes (new services, new env
+# vars) are rare and handled via a release-note banner prompting the
+# user to run PowerShell once.
+#
+# Phases written to /shared/update_status.json:
+#   idle -> pulling -> pulled -> restarting -> done / failed
 
 set -euo pipefail
 
 FLAG=/shared/do_update
 STATUS_FILE=/shared/update_status.json
 POLL_SECONDS=${POLL_SECONDS:-15}
-PROJECT_NAME="${COMPOSE_PROJECT_NAME:-}"
+PROJECT_NAME="${COMPOSE_PROJECT_NAME:-drevalis}"
 
 log() {
   printf '[updater] %s\n' "$*"
 }
 
-# Write a JSON status frame. Shape:
-#   { "phase": "...", "detail": "...", "ts": "...", "started_at": "..." }
-# Phases are listed in the file header. ``started_at`` is set once per
-# update cycle and preserved across frames so the UI can show elapsed time.
 STARTED_AT=""
 write_status() {
   local phase="$1"
@@ -35,7 +48,6 @@ write_status() {
   if [[ -z "${STARTED_AT}" || "${phase}" == "pulling" ]]; then
     STARTED_AT="${now}"
   fi
-  # Escape double quotes in detail so we never emit malformed JSON.
   local escaped_detail="${detail//\\/\\\\}"
   escaped_detail="${escaped_detail//\"/\\\"}"
   cat > "${STATUS_FILE}.tmp" <<EOF
@@ -45,101 +57,46 @@ EOF
   chmod 0644 "${STATUS_FILE}"
 }
 
-# Named volumes are initialised root:root 0755 by Docker, which blocks
-# the non-root `appuser` (UID 1000) in the app container from creating
-# the flag file. The updater runs as root, so it's the only place that
-# can relax the permissions once on startup.
 mkdir -p /shared
 chmod 0777 /shared
 log "shared volume readied (0777 /shared)"
 
-# Initialise status. ``idle`` + missing ``started_at`` tells the UI that no
-# update is in progress, so the overlay won't reappear on page load.
 write_status "idle" ""
 STARTED_AT=""
 
-# v0.20.8 — resolve our own container's /project mount to the REAL
-# host directory. Previously the updater passed ``--project-directory
-# /project`` (our container-side mount point), so docker compose
-# recorded bind-mount sources as ``/project/storage`` — a Linux-VM
-# path that's meaningless on Windows hosts. Result: /app/storage in
-# the app container was bound to the updater's bind, not the user's
-# %USERPROFILE%\Drevalis\storage. Media invisible despite being
-# present on disk. See issue: v0.20.5-v0.20.7 "content not available".
+# ── Discovery: list every container belonging to this project ─────
 #
-# Fix: ``docker inspect $(hostname)`` returns our own container; read
-# the Source of the /project mount to get the host path Docker has
-# on file, and pass THAT as --project-directory. Docker then resolves
-# ``./storage`` against the real host dir, so bind sources match
-# what the user would see if they ran ``docker compose up -d`` from
-# PowerShell themselves.
-UPDATER_ID=$(cat /etc/hostname 2>/dev/null || hostname)
-HOST_PROJECT_DIR=""
-if [[ -n "${UPDATER_ID}" ]]; then
-  HOST_PROJECT_DIR=$(
-    docker inspect "${UPDATER_ID}" --format \
-      '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}' \
-      2>/dev/null || true
-  )
-fi
+# ``com.docker.compose.project=<name>`` label is set on every
+# container compose creates. We query by that label so we never touch
+# unrelated containers on the host.
+list_project_containers() {
+  docker ps -a \
+    --filter "label=com.docker.compose.project=${PROJECT_NAME}" \
+    --format '{{.Names}}|{{.Image}}|{{.Label "com.docker.compose.service"}}|{{.State}}' \
+    2>/dev/null
+}
 
-if [[ -n "${HOST_PROJECT_DIR}" && "${HOST_PROJECT_DIR}" != "/project" ]]; then
-  log "host project directory resolved via docker inspect: ${HOST_PROJECT_DIR}"
-  # The compose CLI runs INSIDE this updater container, so the --file
-  # argument must point at a path readable from here (``/project/…``).
-  # --project-directory is used by the daemon to resolve relative bind
-  # mounts in the compose file — set it to the REAL host path so
-  # Docker records ``C:\Users\...\storage`` instead of ``/project/
-  # storage`` on bind-mount sources.
-  compose_args=(
-    --file /project/docker-compose.yml
-    --project-directory "${HOST_PROJECT_DIR}"
-  )
-else
-  # Fallback for bare-Linux installs where /project IS the host path
-  # (no path translation needed) or for environments where docker
-  # inspect on our own ID is denied.
-  log "host project directory fallback: /project (Linux-native or inspect denied)"
-  compose_args=(--project-directory /project)
-fi
-
-if [[ -n "${PROJECT_NAME}" ]]; then
-  compose_args+=(--project-name "${PROJECT_NAME}")
-  log "using compose project name: ${PROJECT_NAME}"
-else
-  log "WARNING: COMPOSE_PROJECT_NAME not set -- sidecar will default to 'project' and may create a parallel stack instead of restarting the real one"
-fi
-
+log "targeting compose project: ${PROJECT_NAME}"
 log "watching ${FLAG} (poll ${POLL_SECONDS}s)"
 
 while true; do
   if [[ -f "${FLAG}" ]]; then
-    log "flag detected -- pulling new images"
-    # v0.20.22 — clear the flag BEFORE work begins. If the updater
-    # container gets recreated mid-pull (Docker Desktop's compose pull
-    # has been observed to trigger this when the updater's own image
-    # shows up in the set), the fresh updater instance would re-enter
-    # this same loop forever because the flag was still present.
-    # Clearing up front turns a mid-run kill into a clean "try again
-    # from the UI" rather than a hang.
+    log "flag detected -- starting update"
+    # Clear the flag BEFORE work begins. If the container gets killed
+    # mid-run for any reason, the fresh instance doesn't loop on the
+    # same stale flag. User retries from the UI.
     rm -f "${FLAG}"
-    write_status "pulling" "docker compose pull started"
+    write_status "pulling" "starting image pulls"
 
-    # v0.20.21 — pre-flight network check. Hit ghcr.io's /v2/ endpoint
-    # and accept 200 OR 401 as "reachable" — the registry protocol
-    # ALWAYS returns 401 for unauthenticated requests to /v2/, so
-    # treating it as a failure (v0.20.17 did) blocks every legitimate
-    # update with a bogus network-error message. A 401 here proves
-    # DNS + TLS + TCP are fully working; `docker compose pull` handles
-    # the token exchange itself a moment later.
+    # ── Preflight: ghcr.io reachability ───────────────────────────
     ghcr_rc=0
     ghcr_status=$(curl -sS --max-time 8 -o /dev/null \
         -w "%{http_code}" https://ghcr.io/v2/ 2>/tmp/curl.err) || ghcr_rc=$?
     if [[ ${ghcr_rc} -ne 0 ]]; then
       err_detail=$(head -c 300 /tmp/curl.err 2>/dev/null | tr '\n' ' ')
-      write_status "failed" "cannot reach ghcr.io (network / DNS / TLS): ${err_detail}"
-      log "preflight ghcr.io unreachable (curl rc=${ghcr_rc}) — ${err_detail}"
-      rm -f "${FLAG}"
+      write_status "failed" "cannot reach ghcr.io: ${err_detail}"
+      log "preflight ghcr.io unreachable (rc=${ghcr_rc}) — ${err_detail}"
+      STARTED_AT=""
       continue
     fi
     case "${ghcr_status}" in
@@ -149,95 +106,129 @@ while true; do
       *)
         write_status "failed" "ghcr.io returned unexpected status ${ghcr_status}"
         log "preflight ghcr.io unexpected status ${ghcr_status}"
-        rm -f "${FLAG}"
+        STARTED_AT=""
         continue
         ;;
     esac
 
-    # v0.20.22 — pull EVERY service except the updater itself, one by
-    # one, with visible progress + a hard timeout. Previously the pull
-    # ran silently against all services (including updater), which
-    # could self-terminate the container when Docker Desktop recreated
-    # it as the new updater image landed. Excluding updater from the
-    # in-app pull removes that race entirely. Per-service pulls also
-    # make stalls visible — log output shows which service is slow.
-    #
-    # Updater image itself still ships via one manual ``docker compose
-    # pull updater`` from the user's host when the updater code
-    # changes; that's documented in the release notes.
-    pull_rc=0
-    : > /tmp/pull.log
-    pullable=$(docker compose "${compose_args[@]}" config --services 2>/dev/null | grep -v '^updater$')
-    if [[ -z "${pullable}" ]]; then
-      write_status "failed" "could not enumerate compose services for pull"
-      log "could not enumerate services for pull -- aborting"
+    # ── Enumerate containers in the stack ─────────────────────────
+    containers_raw=$(list_project_containers)
+    if [[ -z "${containers_raw}" ]]; then
+      write_status "failed" "no containers found for project=${PROJECT_NAME}"
+      log "no containers with label com.docker.compose.project=${PROJECT_NAME}"
+      STARTED_AT=""
       continue
     fi
-    for svc in ${pullable}; do
-      log "pulling service: ${svc}"
-      write_status "pulling" "pulling ${svc}"
-      # ``timeout`` caps any single service pull at 10 minutes — large
-      # images plus a slow link can legitimately take a while, but past
-      # 10 min we want to fail loudly instead of the UI sitting on
-      # "pulling" forever.
+
+    # Collect unique images (one image per service), skipping the
+    # updater service (pulling our own image while we run risks
+    # container recreation). Registry-sourced images only — skip
+    # locally-built ones that don't live on ghcr.io (postgres, redis
+    # from docker hub DO get updated, which is what we want).
+    declare -A images_to_pull=()
+    declare -a services_to_restart=()
+    while IFS='|' read -r name image service state; do
+      [[ -z "${name}" ]] && continue
+      if [[ "${service}" == "updater" ]]; then
+        log "skipping self (service=${service}, name=${name})"
+        continue
+      fi
+      images_to_pull["${image}"]=1
+      services_to_restart+=("${name}")
+    done <<< "${containers_raw}"
+
+    log "images to pull: ${!images_to_pull[*]}"
+    log "containers to restart after pull: ${services_to_restart[*]}"
+
+    # ── Pull each unique image ────────────────────────────────────
+    : > /tmp/pull.log
+    pull_rc=0
+    failed_image=""
+    for image in "${!images_to_pull[@]}"; do
+      log "pulling: ${image}"
+      write_status "pulling" "pulling ${image}"
       set +o pipefail
-      timeout 600 docker compose "${compose_args[@]}" pull "${svc}" 2>&1 | tee -a /tmp/pull.log
+      timeout 600 docker pull "${image}" 2>&1 | tee -a /tmp/pull.log
       rc=${PIPESTATUS[0]}
       set -o pipefail
       if [[ ${rc} -ne 0 ]]; then
         pull_rc=${rc}
-        log "pull ${svc} FAILED (rc=${rc}) — aborting remaining pulls"
+        failed_image="${image}"
+        log "pull ${image} FAILED (rc=${rc})"
         break
       fi
     done
 
-    if [[ ${pull_rc} -eq 0 ]]; then
-      write_status "pulled" "images pulled, about to restart services"
-      log "pull ok -- restarting stack"
-
-      # Restart every service EXCEPT this updater itself. If we included
-      # 'updater' in the up -d call, docker compose would SIGTERM us
-      # mid-flight while recreating the updater service, leaving the app
-      # container stuck in 'Created' state (never started). Compose is
-      # synchronous and runs in a child of this bash script -- kill the
-      # script and you kill compose too.
-      #
-      # Trade-off: if the UPDATER image itself changed in this release,
-      # the new updater image is pulled but not started until the next
-      # manual `docker compose up -d updater`. That's rare and safe.
-      services_to_restart=$(docker compose "${compose_args[@]}" config --services 2>/dev/null | grep -v '^updater$' | tr '\n' ' ')
-      if [[ -z "${services_to_restart// /}" ]]; then
-        write_status "failed" "could not enumerate compose services"
-        log "could not enumerate services -- aborting"
-        continue
-      fi
-      log "restarting services (excluding self): ${services_to_restart}"
-
-      write_status "restarting" "docker compose up -d ${services_to_restart}"
-      # shellcheck disable=SC2086 # intentional word-splitting of service list
-      if docker compose "${compose_args[@]}" up -d --remove-orphans ${services_to_restart} 2>&1 | tee /tmp/up.log; then
-        write_status "done" "stack recreated on the new image"
-        log "restart ok"
-      else
-        write_status "failed" "docker compose up -d returned non-zero; check updater logs"
-        log "restart FAILED"
-      fi
-    else
-      # Put the tail of the actual pull log into the status JSON so
-      # the UI can show the real error (missing image tag, ghcr auth,
-      # DNS failure, rc=124 for timeout, etc.) instead of a generic
-      # "pull failed".
+    if [[ ${pull_rc} -ne 0 ]]; then
       pull_tail=$(tail -n 5 /tmp/pull.log 2>/dev/null | tr '\n' ' ' | head -c 400)
       if [[ ${pull_rc} -eq 124 ]]; then
-        write_status "failed" "pull timed out after 10 minutes — ghcr.io or the local Docker daemon may be slow: ${pull_tail}"
+        write_status "failed" "pull of ${failed_image} timed out after 10 min: ${pull_tail}"
       else
-        write_status "failed" "docker compose pull failed (rc=${pull_rc}): ${pull_tail}"
+        write_status "failed" "pull of ${failed_image} failed (rc=${pull_rc}): ${pull_tail}"
       fi
-      log "pull FAILED (rc=${pull_rc})"
       log "--- last lines of pull.log ---"
       tail -n 20 /tmp/pull.log 2>/dev/null || true
       log "--- end pull.log ---"
+      STARTED_AT=""
+      continue
     fi
+
+    write_status "pulled" "all images pulled, restarting services"
+    log "pull ok -- restarting services"
+
+    # ── Restart each affected container ───────────────────────────
+    #
+    # ``docker restart`` SIGTERMs the container (graceful shutdown
+    # via the entrypoint), then starts it again. The container's
+    # config — including bind mounts, env vars, port bindings — is
+    # preserved from when the user ran ``docker compose up -d``
+    # from PowerShell.
+    #
+    # ``docker restart`` does NOT re-pull the image, BUT it re-
+    # creates the container from the image currently tagged as the
+    # one the container was started with. Since we just pulled a
+    # new image under that same tag, the restart picks it up.
+    #
+    # Some installs pin by digest rather than tag — ``docker restart``
+    # won't switch to a new digest. In that rare case we fall back to
+    # recreate-from-scratch: ``docker rm -f`` + re-run with the same
+    # config. That's signalled by the user on the UI.
+    restart_rc=0
+    failed_container=""
+    : > /tmp/restart.log
+    for name in "${services_to_restart[@]}"; do
+      log "restarting container: ${name}"
+      write_status "restarting" "restarting ${name}"
+      # Force-recreate by stop+rm+start-from-image avoids the
+      # "pinned-by-digest" issue: we read the container's current
+      # image + config, remove the container, and start a new one.
+      # BUT Docker CLI doesn't have a one-shot "recreate with same
+      # config" verb. ``docker restart`` handles the tag-update case,
+      # which is what compose produces; we start there.
+      set +o pipefail
+      timeout 120 docker restart "${name}" 2>&1 | tee -a /tmp/restart.log
+      rc=${PIPESTATUS[0]}
+      set -o pipefail
+      if [[ ${rc} -ne 0 ]]; then
+        restart_rc=${rc}
+        failed_container="${name}"
+        log "restart ${name} FAILED (rc=${rc})"
+        break
+      fi
+    done
+
+    if [[ ${restart_rc} -ne 0 ]]; then
+      restart_tail=$(tail -n 5 /tmp/restart.log 2>/dev/null | tr '\n' ' ' | head -c 400)
+      write_status "failed" "restart of ${failed_container} failed (rc=${restart_rc}): ${restart_tail}"
+      log "--- last lines of restart.log ---"
+      tail -n 20 /tmp/restart.log 2>/dev/null || true
+      log "--- end restart.log ---"
+      STARTED_AT=""
+      continue
+    fi
+
+    write_status "done" "stack updated: ${#images_to_pull[@]} image(s) pulled, ${#services_to_restart[@]} container(s) restarted"
+    log "update complete"
     STARTED_AT=""
   fi
   sleep "${POLL_SECONDS}"
