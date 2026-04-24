@@ -116,14 +116,19 @@ async def _seed_timeline_from_episode(
     voiceovers = await asset_repo.get_by_episode_and_type(episode_id, "voiceover")
     if voiceovers:
         va = voiceovers[-1]
+        # v0.20.14 — ``MediaAsset.duration_seconds`` is a SQL NUMERIC,
+        # returned as Python ``Decimal``. JSONB columns serialize via
+        # json.dumps which doesn't know Decimal → StatementError on
+        # INSERT. Coerce to float before storing.
+        dur_s = float(va.duration_seconds) if va.duration_seconds is not None else float(running)
         voice_clips.append(
             {
                 "id": "voice-main",
                 "asset_path": va.file_path,
                 "in_s": 0.0,
-                "out_s": va.duration_seconds or running,
+                "out_s": dur_s,
                 "start_s": 0.0,
-                "end_s": va.duration_seconds or running,
+                "end_s": dur_s,
                 "gain_db": 0.0,
             }
         )
@@ -144,7 +149,7 @@ async def _seed_timeline_from_episode(
             }
         )
 
-    return {
+    timeline: dict[str, Any] = {
         "duration_s": round(running, 3),
         "tracks": [
             {"id": "video", "kind": "video", "clips": video_clips},
@@ -154,6 +159,26 @@ async def _seed_timeline_from_episode(
             {"id": "captions", "kind": "captions", "clips": []},
         ],
     }
+    # Defensive: walk the whole structure and coerce ``Decimal`` → float.
+    # JSONB serialization can't handle Decimal; catching it here means a
+    # future asset field that's accidentally NUMERIC-backed doesn't
+    # re-break the editor.
+    return _jsonable(timeline)  # type: ignore[return-value]
+
+
+def _jsonable(obj: Any) -> Any:
+    """Return a JSON-serializable copy of *obj*, coercing Decimal → float."""
+    from decimal import Decimal
+
+    if isinstance(obj, Decimal):
+        return float(obj)
+    if isinstance(obj, dict):
+        return {k: _jsonable(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_jsonable(v) for v in obj]
+    if isinstance(obj, tuple):
+        return [_jsonable(v) for v in obj]
+    return obj
 
 
 @router.get(
