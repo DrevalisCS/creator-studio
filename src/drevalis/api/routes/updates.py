@@ -103,6 +103,110 @@ async def get_progress() -> ProgressResponse:
     )
 
 
+class ChangelogEntry(BaseModel):
+    """A single GitHub release — tag, title, body, date, URL."""
+
+    version: str
+    name: str
+    body: str
+    published_at: str | None = None
+    html_url: str | None = None
+    is_prerelease: bool = False
+
+
+class ChangelogResponse(BaseModel):
+    entries: list[ChangelogEntry] = []
+    cached: bool = False
+    source: str = "github"
+    error: str | None = None
+
+
+@router.get("/changelog", response_model=ChangelogResponse)
+async def get_changelog(
+    limit: int = Query(20, ge=1, le=100),
+    force: bool = Query(False, description="Bypass the 1-hour Redis cache"),
+    redis: Redis = Depends(get_redis),
+) -> ChangelogResponse:
+    """Return recent release notes from the project's GitHub repo.
+
+    Cached in Redis for 1 hour so a chatty UI doesn't burn the
+    unauthenticated GitHub API quota (60/hr). ``?force=true`` bypasses
+    the cache when the user explicitly hits a refresh button.
+    """
+    import json
+
+    import httpx
+
+    cache_key = f"drevalis:changelog:limit:{limit}"
+    if not force:
+        try:
+            cached = await redis.get(cache_key)
+            if cached:
+                data = json.loads(cached)
+                return ChangelogResponse(**data, cached=True)
+        except Exception:
+            # Redis hiccup — fall through to a live fetch.
+            pass
+
+    url = f"https://api.github.com/repos/DrevalisCS/creator-studio/releases?per_page={limit}"
+    headers = {
+        "Accept": "application/vnd.github+json",
+        "User-Agent": "drevalis-creator-studio",
+    }
+    try:
+        async with httpx.AsyncClient(timeout=httpx.Timeout(8.0)) as client:
+            resp = await client.get(url, headers=headers)
+        if resp.status_code == 403:
+            # Rate limited or corporate proxy. Return any stale cache we
+            # have rather than surfacing an empty list to the UI.
+            try:
+                cached = await redis.get(cache_key)
+                if cached:
+                    data = json.loads(cached)
+                    return ChangelogResponse(
+                        **data,
+                        cached=True,
+                        error="GitHub API rate limited; showing cached data",
+                    )
+            except Exception:
+                pass
+            return ChangelogResponse(error="GitHub API rate limited — try again in 10 minutes")
+        if resp.status_code != 200:
+            return ChangelogResponse(error=f"GitHub returned HTTP {resp.status_code}")
+        releases = resp.json()
+    except (httpx.NetworkError, httpx.TimeoutException) as exc:
+        return ChangelogResponse(
+            error=f"Could not reach GitHub: {type(exc).__name__}",
+        )
+    except Exception as exc:  # noqa: BLE001 — defensive for UI
+        return ChangelogResponse(
+            error=f"Unexpected error: {type(exc).__name__}: {str(exc)[:120]}",
+        )
+
+    entries = [
+        ChangelogEntry(
+            version=r.get("tag_name") or "",
+            name=r.get("name") or r.get("tag_name") or "",
+            body=r.get("body") or "",
+            published_at=r.get("published_at"),
+            html_url=r.get("html_url"),
+            is_prerelease=bool(r.get("prerelease")),
+        )
+        for r in releases
+        if isinstance(r, dict)
+    ]
+
+    payload = {"entries": [e.model_dump() for e in entries]}
+    try:
+        # 1-hour cache; within that window, the endpoint stays snappy
+        # + GitHub isn't hit repeatedly even if the user refreshes.
+        await redis.setex(cache_key, 3600, json.dumps(payload))
+    except Exception:
+        pass
+
+    return ChangelogResponse(**payload)
+
+
 @router.post("/apply", response_model=ApplyResponse)
 async def apply_update() -> ApplyResponse:
     """Ask the updater sidecar to pull new images and restart the stack.

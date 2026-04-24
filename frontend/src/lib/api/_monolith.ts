@@ -1155,11 +1155,31 @@ export interface UpdateProgress {
   started_at: string;
 }
 
+export interface ChangelogEntry {
+  version: string;
+  name: string;
+  body: string;
+  published_at: string | null;
+  html_url: string | null;
+  is_prerelease: boolean;
+}
+
+export interface ChangelogResponse {
+  entries: ChangelogEntry[];
+  cached: boolean;
+  source: string;
+  error: string | null;
+}
+
 export const updates = {
   status: (force: boolean = false) =>
     get<UpdateStatus>(`/api/v1/updates/status${force ? '?force=true' : ''}`),
   apply: () => post<{ queued: boolean; hint: string }>('/api/v1/updates/apply'),
   progress: () => get<UpdateProgress>('/api/v1/updates/progress'),
+  changelog: (force: boolean = false, limit: number = 20) =>
+    get<ChangelogResponse>(
+      `/api/v1/updates/changelog?limit=${limit}${force ? '&force=true' : ''}`,
+    ),
 };
 
 // ---------------------------------------------------------------------------

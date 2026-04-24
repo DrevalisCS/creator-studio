@@ -11,7 +11,12 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useToast } from '@/components/ui/Toast';
 import { UpdateProgressOverlay } from '@/components/UpdateProgressOverlay';
-import { updates, type UpdateStatus, formatError } from '@/lib/api';
+import {
+  updates,
+  type UpdateStatus,
+  type ChangelogEntry,
+  formatError,
+} from '@/lib/api';
 
 /** Human-readable "2 minutes ago" from a Date. */
 function timeAgo(d: Date): string {
@@ -34,6 +39,10 @@ export function UpdatesSection() {
   const [applying, setApplying] = useState(false);
   const [overlayOpen, setOverlayOpen] = useState(false);
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [changelog, setChangelog] = useState<ChangelogEntry[]>([]);
+  const [changelogLoading, setChangelogLoading] = useState(true);
+  const [changelogError, setChangelogError] = useState<string | null>(null);
+  const [changelogCached, setChangelogCached] = useState(false);
 
   const refresh = useCallback(
     async (force: boolean, surfaceResult: boolean) => {
@@ -77,6 +86,24 @@ export function UpdatesSection() {
     // Initial fetch: no toast, just populate.
     refresh(false, false);
   }, [refresh]);
+
+  const loadChangelog = useCallback(async (force: boolean) => {
+    setChangelogLoading(true);
+    try {
+      const r = await updates.changelog(force, 20);
+      setChangelog(r.entries ?? []);
+      setChangelogCached(r.cached);
+      setChangelogError(r.error ?? null);
+    } catch (e) {
+      setChangelogError(formatError(e));
+    } finally {
+      setChangelogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadChangelog(false);
+  }, [loadChangelog]);
 
   // Re-render the "last checked" label once a minute so it stays accurate
   // without the user clicking around.
@@ -253,6 +280,121 @@ export function UpdatesSection() {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+      </Card>
+
+      {/* ── Changelog — pulled from GitHub releases ─────────────── */}
+      <Card className="p-5 space-y-3">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <h4 className="text-sm font-semibold text-txt-primary">
+              What&apos;s new
+            </h4>
+            <p className="text-xs text-txt-secondary mt-1">
+              Recent releases from the project&apos;s GitHub repo.
+              {changelogCached && (
+                <span className="ml-1 text-txt-muted">(cached, refreshes hourly)</span>
+              )}
+            </p>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void loadChangelog(true)}
+            disabled={changelogLoading}
+            title="Re-fetch release notes from GitHub"
+          >
+            <RefreshCw
+              size={13}
+              className={changelogLoading ? 'animate-spin' : ''}
+            />
+            Refresh
+          </Button>
+        </div>
+
+        {changelogError && (
+          <div className="text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/30 rounded p-2">
+            {changelogError}
+          </div>
+        )}
+
+        {changelogLoading && changelog.length === 0 ? (
+          <div className="text-xs text-txt-muted py-4 text-center">
+            Loading release notes…
+          </div>
+        ) : changelog.length === 0 ? (
+          <div className="text-xs text-txt-muted py-4 text-center">
+            No releases yet.
+          </div>
+        ) : (
+          <div className="space-y-4 max-h-[480px] overflow-y-auto pr-1">
+            {changelog.map((entry) => {
+              const published = entry.published_at
+                ? new Date(entry.published_at).toLocaleDateString()
+                : null;
+              const isCurrent =
+                status.current_installed &&
+                entry.version.replace(/^v/, '') ===
+                  status.current_installed.replace(/^v/, '');
+              return (
+                <div
+                  key={entry.version}
+                  className={[
+                    'rounded border p-3',
+                    isCurrent
+                      ? 'border-accent/40 bg-accent/[0.05]'
+                      : 'border-white/[0.06] bg-bg-elevated/40',
+                  ].join(' ')}
+                >
+                  <div className="flex items-center gap-2 flex-wrap mb-1">
+                    <code className="font-mono text-sm font-semibold text-txt-primary">
+                      {entry.version}
+                    </code>
+                    {entry.name && entry.name !== entry.version && (
+                      <span className="text-xs text-txt-secondary">
+                        — {entry.name}
+                      </span>
+                    )}
+                    {entry.is_prerelease && (
+                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300">
+                        pre-release
+                      </span>
+                    )}
+                    {isCurrent && (
+                      <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-accent/20 text-accent">
+                        Installed
+                      </span>
+                    )}
+                    {published && (
+                      <span className="text-[11px] text-txt-muted ml-auto">
+                        {published}
+                      </span>
+                    )}
+                    {entry.html_url && (
+                      <a
+                        href={entry.html_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-txt-muted hover:text-accent"
+                        title="Open on GitHub"
+                      >
+                        <ExternalLink size={11} />
+                      </a>
+                    )}
+                  </div>
+                  {entry.body ? (
+                    <pre className="whitespace-pre-wrap text-[11px] leading-relaxed text-txt-secondary font-sans break-words">
+                      {entry.body}
+                    </pre>
+                  ) : (
+                    <div className="text-[11px] text-txt-muted italic">
+                      (no release notes provided)
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </Card>
