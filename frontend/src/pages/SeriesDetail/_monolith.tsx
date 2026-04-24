@@ -18,6 +18,12 @@ import {
   TrendingUp,
   LayoutTemplate,
   CheckCircle2,
+  LayoutGrid,
+  Columns3,
+  Youtube,
+  Palette,
+  Settings2,
+  Wand2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
@@ -568,6 +574,32 @@ function SeriesDetail() {
     );
   }
 
+  // ── Section nav config (v0.20.31) ────────────────────────────
+  // Each entry renders in the sticky left rail on wide screens and
+  // scrolls its target section into view on click. Icons reuse the
+  // lucide set already imported elsewhere on the page.
+  const SECTION_NAV: Array<{
+    id: string;
+    label: string;
+    icon: React.ElementType;
+  }> = [
+    { id: 'overview', label: 'Overview', icon: Film },
+    { id: 'visual', label: 'Visual Style', icon: Palette },
+    { id: 'audio', label: 'Audio', icon: Music },
+    { id: 'publish', label: 'Publish', icon: Youtube },
+    { id: 'format', label: 'Content Format', icon: LayoutTemplate },
+    { id: 'generation', label: 'Generation', icon: Settings2 },
+    { id: 'episodes', label: 'Episodes', icon: Wand2 },
+  ];
+  const scrollToSection = (id: string) => {
+    const el = document.getElementById(`section-${id}`);
+    if (!el) return;
+    // Offset for the sticky header so the section header doesn't end up
+    // behind it.
+    const y = el.getBoundingClientRect().top + window.scrollY - 80;
+    window.scrollTo({ top: y, behavior: 'smooth' });
+  };
+
   return (
     <div className="space-y-6">
       {/* Breadcrumb + Back */}
@@ -578,7 +610,32 @@ function SeriesDetail() {
         ]}
       />
 
+      {/* Two-column layout (lg+): sticky rail nav + scrollable content.
+          Collapses to a single column below lg. */}
+      <div className="lg:grid lg:grid-cols-[200px_1fr] lg:gap-6">
+        <aside className="hidden lg:block">
+          <nav
+            className="sticky top-20 flex flex-col gap-0.5 rounded-lg border border-border bg-bg-surface/60 p-2 backdrop-blur"
+            aria-label="Series sections"
+          >
+            {SECTION_NAV.map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => scrollToSection(id)}
+                className="flex items-center gap-2 rounded-md px-3 py-2 text-left text-sm text-txt-secondary transition-colors duration-fast hover:bg-bg-hover hover:text-txt-primary"
+              >
+                <Icon size={14} className="shrink-0 text-txt-tertiary" />
+                <span>{label}</span>
+              </button>
+            ))}
+          </nav>
+        </aside>
+
+        <div className="space-y-6 min-w-0">
+
       {/* Series info header */}
+      <section id="section-overview" />
       <Card padding="lg">
         <div className="flex items-start justify-between gap-4">
           <div className="flex-1 space-y-4">
@@ -711,6 +768,7 @@ function SeriesDetail() {
       </Card>
 
       {/* Caption Style Section */}
+      <section id="section-visual" />
       <CollapsibleSection
         title="Caption Style"
         icon={Subtitles}
@@ -725,6 +783,7 @@ function SeriesDetail() {
       </CollapsibleSection>
 
       {/* Music Section */}
+      <section id="section-audio" />
       <CollapsibleSection title="Background Music" icon={Music} defaultOpen={false}>
         <div className="mt-3 space-y-4">
           {/* Enable / disable toggle */}
@@ -790,6 +849,7 @@ function SeriesDetail() {
       </CollapsibleSection>
 
       {/* YouTube Channel Section */}
+      <section id="section-publish" />
       {youtubeChannels.length > 0 && (
         <CollapsibleSection
           title="YouTube Channel"
@@ -820,6 +880,7 @@ function SeriesDetail() {
       )}
 
       {/* Content Format Section */}
+      <section id="section-format" />
       <CollapsibleSection
         title="Content Format"
         icon={Film}
@@ -1025,6 +1086,7 @@ function SeriesDetail() {
       </CollapsibleSection>
 
       {/* Scene Mode Section */}
+      <section id="section-generation" />
       <CollapsibleSection
         title="Scene Mode"
         icon={Video}
@@ -1109,105 +1171,22 @@ function SeriesDetail() {
         </Button>
       </div>
 
-      {/* Episodes section */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-xl font-semibold text-txt-primary">
-              Episodes ({episodesList.length})
-            </h2>
-            {episodesList.length > 0 && (
-              <p className="mt-1 text-sm text-txt-tertiary">
-                {episodesList.length} episode{episodesList.length !== 1 ? 's' : ''}
-                {(() => {
-                  const counts: Record<string, number> = {};
-                  for (const ep of episodesList) {
-                    counts[ep.status] = (counts[ep.status] ?? 0) + 1;
-                  }
-                  const parts = Object.entries(counts).map(
-                    ([status, count]) => `${count} ${status}`,
-                  );
-                  return parts.length > 0 ? `: ${parts.join(', ')}` : '';
-                })()}
-              </p>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            {episodesList.filter((ep) => ep.status === 'draft').length > 0 && (
-              <Button
-                variant="secondary"
-                size="sm"
-                loading={generatingAllDrafts}
-                onClick={() => void handleGenerateAllDrafts()}
-              >
-                <Play size={14} />
-                Generate All Draft ({episodesList.filter((ep) => ep.status === 'draft').length})
-              </Button>
-            )}
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={addingEpisodesAi}
-              onClick={() => void handleAddEpisodesAi()}
-              title="Generate 5 new episode ideas using AI"
-            >
-              <Sparkles size={14} />
-              AI Add Episodes
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={trendingLoading}
-              onClick={() => void handleTrendingTopics()}
-              title="Get trending topic ideas for this series"
-            >
-              <TrendingUp size={14} />
-              Trending Ideas
-            </Button>
-            {episodesList.length > 0 && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-txt-tertiary hover:text-error"
-                onClick={() => setDeleteAllEpisodesOpen(true)}
-              >
-                <Trash2 size={14} />
-                Delete All
-              </Button>
-            )}
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setCreateDialogOpen(true)}
-            >
-              <Plus size={14} />
-              Create Episode
-            </Button>
-          </div>
-        </div>
+      {/* Episodes section (v0.20.31 redesign) */}
+      <section id="section-episodes" />
+      <EpisodesSection
+        episodes={episodesList}
+        onCreate={() => setCreateDialogOpen(true)}
+        onGenerateAllDrafts={() => void handleGenerateAllDrafts()}
+        onAiAdd={() => void handleAddEpisodesAi()}
+        onTrending={() => void handleTrendingTopics()}
+        onDeleteAll={() => setDeleteAllEpisodesOpen(true)}
+        generatingAllDrafts={generatingAllDrafts}
+        addingEpisodesAi={addingEpisodesAi}
+        trendingLoading={trendingLoading}
+      />
 
-        {episodesList.length === 0 ? (
-          <div className="empty-state py-12">
-            <Film size={36} />
-            <p className="text-sm">No episodes in this series</p>
-            <Button
-              variant="primary"
-              size="sm"
-              className="mt-3"
-              onClick={() => setCreateDialogOpen(true)}
-            >
-              <Plus size={14} />
-              Create First Episode
-            </Button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {episodesList.map((ep) => (
-              <EpisodeCard key={ep.id} episode={ep} />
-            ))}
-          </div>
-        )}
-      </div>
+        </div> {/* end right column */}
+      </div> {/* end two-column grid */}
 
       {/* Create Episode Dialog */}
       <Dialog
@@ -1443,6 +1422,255 @@ function SeriesDetail() {
 // assets" button. ``ids`` is the comma-separated string the save
 // payload already uses, so plugging this in didn't require the
 // parent to track an array separately.
+
+// ─────────────────────────────────────────────────────────────────
+// EpisodesSection (v0.20.31)
+//
+// Status-grouped "kanban-lite" view with a toggle back to the flat
+// grid for users who prefer it. Pulls quick-action buttons into a
+// compact toolbar at the top so scattered generate / AI-add /
+// trending / delete-all all live in one predictable spot. Empty
+// state stays the same.
+// ─────────────────────────────────────────────────────────────────
+
+interface EpisodesSectionProps {
+  episodes: EpisodeListItem[];
+  onCreate: () => void;
+  onGenerateAllDrafts: () => void;
+  onAiAdd: () => void;
+  onTrending: () => void;
+  onDeleteAll: () => void;
+  generatingAllDrafts: boolean;
+  addingEpisodesAi: boolean;
+  trendingLoading: boolean;
+}
+
+// Human-friendly order + labels + colors for the status columns.
+// Statuses not in the list (e.g. "editing") land in "Other" so a new
+// status added server-side doesn't silently disappear from the UI.
+const EPISODE_STATUS_COLUMNS: Array<{
+  id: string;
+  label: string;
+  statuses: string[];
+  color: string;
+}> = [
+  { id: 'draft', label: 'Draft', statuses: ['draft'], color: 'text-txt-secondary' },
+  {
+    id: 'generating',
+    label: 'Generating',
+    statuses: ['generating', 'queued'],
+    color: 'text-info',
+  },
+  {
+    id: 'review',
+    label: 'Review',
+    statuses: ['review', 'editing'],
+    color: 'text-warning',
+  },
+  {
+    id: 'exported',
+    label: 'Exported',
+    statuses: ['exported', 'done', 'uploaded'],
+    color: 'text-success',
+  },
+];
+
+function EpisodesSection({
+  episodes,
+  onCreate,
+  onGenerateAllDrafts,
+  onAiAdd,
+  onTrending,
+  onDeleteAll,
+  generatingAllDrafts,
+  addingEpisodesAi,
+  trendingLoading,
+}: EpisodesSectionProps) {
+  const [view, setView] = useState<'kanban' | 'grid'>('kanban');
+  const [failedOpen, setFailedOpen] = useState(true);
+
+  const draftCount = episodes.filter((ep) => ep.status === 'draft').length;
+
+  // Bucket episodes into the kanban columns. Failed episodes get
+  // their own row underneath the columns rather than disappearing
+  // into an "Other" bucket.
+  const columns = EPISODE_STATUS_COLUMNS.map((col) => ({
+    ...col,
+    items: episodes.filter((ep) => col.statuses.includes(ep.status)),
+  }));
+  const failedEpisodes = episodes.filter((ep) => ep.status === 'failed');
+  const uncategorized = episodes.filter(
+    (ep) =>
+      !EPISODE_STATUS_COLUMNS.some((c) => c.statuses.includes(ep.status)) &&
+      ep.status !== 'failed',
+  );
+
+  return (
+    <div>
+      <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
+        <div>
+          <h2 className="text-xl font-semibold text-txt-primary">
+            Episodes ({episodes.length})
+          </h2>
+          <p className="mt-1 text-sm text-txt-tertiary">
+            {episodes.length === 0
+              ? 'No episodes yet — create one or generate ideas.'
+              : `${draftCount} draft${draftCount !== 1 ? 's' : ''} · ${episodes.length - draftCount} in progress or done`}
+          </p>
+        </div>
+
+        <div className="inline-flex items-center rounded-md border border-border bg-bg-elevated p-0.5 text-xs">
+          <button
+            type="button"
+            onClick={() => setView('kanban')}
+            className={[
+              'flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors duration-fast',
+              view === 'kanban'
+                ? 'bg-accent-muted text-accent'
+                : 'text-txt-tertiary hover:text-txt-primary',
+            ].join(' ')}
+            aria-pressed={view === 'kanban'}
+            title="Group by status"
+          >
+            <Columns3 size={12} />
+            Kanban
+          </button>
+          <button
+            type="button"
+            onClick={() => setView('grid')}
+            className={[
+              'flex items-center gap-1.5 rounded px-2.5 py-1 transition-colors duration-fast',
+              view === 'grid'
+                ? 'bg-accent-muted text-accent'
+                : 'text-txt-tertiary hover:text-txt-primary',
+            ].join(' ')}
+            aria-pressed={view === 'grid'}
+            title="Flat grid"
+          >
+            <LayoutGrid size={12} />
+            Grid
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Actions toolbar */}
+      <div className="mb-4 flex items-center flex-wrap gap-2">
+        <Button variant="primary" size="sm" onClick={onCreate}>
+          <Plus size={14} />
+          New Episode
+        </Button>
+        {draftCount > 0 && (
+          <Button
+            variant="secondary"
+            size="sm"
+            loading={generatingAllDrafts}
+            onClick={onGenerateAllDrafts}
+          >
+            <Play size={14} />
+            Generate {draftCount} draft{draftCount !== 1 ? 's' : ''}
+          </Button>
+        )}
+        <Button variant="secondary" size="sm" loading={addingEpisodesAi} onClick={onAiAdd}>
+          <Sparkles size={14} />
+          AI add 5
+        </Button>
+        <Button variant="secondary" size="sm" loading={trendingLoading} onClick={onTrending}>
+          <TrendingUp size={14} />
+          Trending
+        </Button>
+        {episodes.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="ml-auto text-txt-tertiary hover:text-error"
+            onClick={onDeleteAll}
+          >
+            <Trash2 size={14} />
+            Delete All
+          </Button>
+        )}
+      </div>
+
+      {episodes.length === 0 ? (
+        <div className="empty-state py-12">
+          <Film size={36} />
+          <p className="text-sm">No episodes in this series</p>
+          <Button variant="primary" size="sm" className="mt-3" onClick={onCreate}>
+            <Plus size={14} />
+            Create First Episode
+          </Button>
+        </div>
+      ) : view === 'kanban' ? (
+        <div className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+            {columns.map((col) => (
+              <div
+                key={col.id}
+                className="rounded-lg border border-border bg-bg-elevated/40 p-3 min-h-[180px]"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <span
+                    className={`text-xs font-semibold uppercase tracking-wider ${col.color}`}
+                  >
+                    {col.label}
+                  </span>
+                  <span className="text-[11px] text-txt-tertiary">
+                    {col.items.length}
+                  </span>
+                </div>
+                {col.items.length === 0 ? (
+                  <p className="text-[11px] text-txt-muted py-6 text-center">
+                    Nothing here.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {col.items.map((ep) => (
+                      <EpisodeCard key={ep.id} episode={ep} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {(failedEpisodes.length > 0 || uncategorized.length > 0) && (
+            <div className="rounded-lg border border-error/20 bg-error/5 p-3">
+              <button
+                type="button"
+                onClick={() => setFailedOpen((v) => !v)}
+                className="flex w-full items-center justify-between text-left"
+              >
+                <span className="text-xs font-semibold uppercase tracking-wider text-error">
+                  {failedEpisodes.length > 0
+                    ? `Failed (${failedEpisodes.length})`
+                    : `Other (${uncategorized.length})`}
+                </span>
+                {failedOpen ? (
+                  <ChevronDown size={14} className="text-txt-tertiary" />
+                ) : (
+                  <ChevronRight size={14} className="text-txt-tertiary" />
+                )}
+              </button>
+              {failedOpen && (
+                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+                  {[...failedEpisodes, ...uncategorized].map((ep) => (
+                    <EpisodeCard key={ep.id} episode={ep} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          {episodes.map((ep) => (
+            <EpisodeCard key={ep.id} episode={ep} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function AssetLockPicker({
   ids,
