@@ -58,7 +58,49 @@ log "shared volume readied (0777 /shared)"
 write_status "idle" ""
 STARTED_AT=""
 
-compose_args=(--project-directory /project)
+# v0.20.8 — resolve our own container's /project mount to the REAL
+# host directory. Previously the updater passed ``--project-directory
+# /project`` (our container-side mount point), so docker compose
+# recorded bind-mount sources as ``/project/storage`` — a Linux-VM
+# path that's meaningless on Windows hosts. Result: /app/storage in
+# the app container was bound to the updater's bind, not the user's
+# %USERPROFILE%\Drevalis\storage. Media invisible despite being
+# present on disk. See issue: v0.20.5-v0.20.7 "content not available".
+#
+# Fix: ``docker inspect $(hostname)`` returns our own container; read
+# the Source of the /project mount to get the host path Docker has
+# on file, and pass THAT as --project-directory. Docker then resolves
+# ``./storage`` against the real host dir, so bind sources match
+# what the user would see if they ran ``docker compose up -d`` from
+# PowerShell themselves.
+UPDATER_ID=$(cat /etc/hostname 2>/dev/null || hostname)
+HOST_PROJECT_DIR=""
+if [[ -n "${UPDATER_ID}" ]]; then
+  HOST_PROJECT_DIR=$(
+    docker inspect "${UPDATER_ID}" --format \
+      '{{range .Mounts}}{{if eq .Destination "/project"}}{{.Source}}{{end}}{{end}}' \
+      2>/dev/null || true
+  )
+fi
+
+if [[ -n "${HOST_PROJECT_DIR}" && "${HOST_PROJECT_DIR}" != "/project" ]]; then
+  log "host project directory resolved via docker inspect: ${HOST_PROJECT_DIR}"
+  compose_args=(--project-directory "${HOST_PROJECT_DIR}")
+else
+  # Fallback for bare-Linux installs where /project IS the host path
+  # (no path translation needed) or for environments where docker
+  # inspect on our own ID is denied.
+  log "host project directory fallback: /project (Linux-native or inspect denied)"
+  compose_args=(--project-directory /project)
+fi
+
+# Same for the compose file path — if the discovered host dir is a
+# Windows path, feed docker compose the explicit file location so
+# there's no ambiguity about which yml to read.
+if [[ -n "${HOST_PROJECT_DIR}" && "${HOST_PROJECT_DIR}" != "/project" ]]; then
+  compose_args+=(--file "${HOST_PROJECT_DIR}/docker-compose.yml")
+fi
+
 if [[ -n "${PROJECT_NAME}" ]]; then
   compose_args+=(--project-name "${PROJECT_NAME}")
   log "using compose project name: ${PROJECT_NAME}"
