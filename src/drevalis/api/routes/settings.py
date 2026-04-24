@@ -154,6 +154,28 @@ async def storage_usage(
     except (OSError, UnicodeDecodeError):
         pass
 
+    # v0.20.7 — raw mountinfo dump for the container's /app/storage line
+    # so a user whose "21 GB on host, 0 B in container" problem persists
+    # can paste the FULL mount entry back to support and get a bisection
+    # of the bind-mount chain. Filters to lines that mention the storage
+    # path so we don't leak unrelated mounts (e.g. /tmp, /proc).
+    mountinfo_lines: list[str] = []
+    try:
+        raw = Path("/proc/self/mountinfo").read_text(encoding="utf-8").splitlines()
+        path_str = str(base_abs)
+        for line in raw:
+            parts = line.split()
+            if len(parts) < 5:
+                continue
+            mount_point = parts[4]
+            # Keep the line if it covers our storage path OR is a
+            # parent of it (so we capture overlay layers that would
+            # otherwise hide the real bind).
+            if mount_point == path_str or path_str.startswith(mount_point.rstrip("/") + "/") or mount_point == "/" or mount_point == "":
+                mountinfo_lines.append(line)
+    except (OSError, UnicodeDecodeError):
+        pass
+
     return StorageUsageResponse(
         total_size_bytes=total,
         total_size_human=_human_size(total),
@@ -161,6 +183,7 @@ async def storage_usage(
         storage_base_abs=str(base_abs),
         host_source_path=host_source,
         subdir_sizes=subdir_sizes,
+        mountinfo_lines=mountinfo_lines,
     )
 
 

@@ -513,6 +513,7 @@ export interface StorageUsage {
   storage_base_abs?: string | null;
   host_source_path?: string | null;
   subdir_sizes?: Record<string, number>;
+  mountinfo_lines?: string[];
 }
 
 export interface ServiceHealth {

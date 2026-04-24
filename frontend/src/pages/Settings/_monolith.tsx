@@ -1687,6 +1687,24 @@ function StorageSection() {
                   picked up.
                 </p>
               )}
+              {storage.mountinfo_lines && storage.mountinfo_lines.length > 0 && (
+                <details className="mt-3 rounded bg-bg-elevated p-3 text-[11px]">
+                  <summary className="cursor-pointer text-txt-secondary">
+                    Raw mount info ({storage.mountinfo_lines.length} lines) — paste for support
+                  </summary>
+                  <pre className="mt-2 font-mono text-[10px] text-txt-primary whitespace-pre-wrap break-all leading-relaxed">
+                    {storage.mountinfo_lines.join('\n')}
+                  </pre>
+                  <p className="mt-2 text-[11px] text-txt-secondary leading-relaxed">
+                    The 4th whitespace-separated field of the ``/app/storage``
+                    line is the host source path Docker recorded. If it doesn't
+                    match the directory where your 21 GB lives, the containers
+                    were started from a different folder. Stop them, cd to the
+                    directory that HAS your files + the docker-compose.yml,
+                    then ``docker compose up -d`` from there.
+                  </p>
+                </details>
+              )}
             </div>
           )}
         </Card>

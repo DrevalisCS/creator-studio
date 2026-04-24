@@ -26,6 +26,10 @@ class StorageUsageResponse(BaseModel):
     # the app says 900 KB" scenarios (the files were copied to a
     # different host directory than the compose bind mount reaches).
     subdir_sizes: dict[str, int] = {}
+    # v0.20.7 — raw /proc/self/mountinfo lines scoped to the storage
+    # bind mount. Paste into a support ticket to diagnose persistent
+    # bind-target mismatches after installation.
+    mountinfo_lines: list[str] = []
 
 
 class ServiceHealth(BaseModel):
