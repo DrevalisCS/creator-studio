@@ -328,6 +328,49 @@ while true; do
       user_val=$(echo "${snapshot}" | jq -r '.[0].Config.User // empty')
       [[ -n "${user_val}" ]] && run_args+=(-u "${user_val}")
 
+      # Healthcheck — preserved verbatim. Without this redis/postgres
+      # come back without ``--health-cmd``, and any dependent service
+      # with ``depends_on: { condition: service_healthy }`` then
+      # refuses to start ("container has no healthcheck configured").
+      # Docker stores the durations as nanoseconds in the inspect
+      # output — divide by 1e9 to get seconds for the docker run
+      # ``--health-*`` flags. ``Test`` is an array starting with
+      # either CMD or CMD-SHELL.
+      hc_test_kind=$(echo "${snapshot}" | jq -r '.[0].Config.Healthcheck.Test[0] // empty')
+      if [[ -n "${hc_test_kind}" && "${hc_test_kind}" != "NONE" ]]; then
+        # Reassemble the test command. CMD passes args verbatim,
+        # CMD-SHELL passes a single shell string.
+        if [[ "${hc_test_kind}" == "CMD-SHELL" ]]; then
+          hc_cmd=$(echo "${snapshot}" | jq -r '.[0].Config.Healthcheck.Test[1]')
+          run_args+=(--health-cmd "${hc_cmd}")
+        else
+          # CMD: join the rest of the array with spaces, quoting any
+          # arg that contains whitespace.
+          hc_cmd=$(echo "${snapshot}" | jq -r '.[0].Config.Healthcheck.Test[1:] | join(" ")')
+          run_args+=(--health-cmd "${hc_cmd}")
+        fi
+        for field in Interval Timeout StartPeriod Retries; do
+          val=$(echo "${snapshot}" | jq -r ".[0].Config.Healthcheck.${field} // empty")
+          [[ -z "${val}" || "${val}" == "0" ]] && continue
+          case "${field}" in
+            Retries)
+              run_args+=(--health-retries "${val}")
+              ;;
+            *)
+              # Convert ns → s with one decimal of precision.
+              secs=$(awk "BEGIN { printf \"%.0f\", ${val} / 1000000000 }")
+              [[ "${secs}" == "0" ]] && continue
+              flag=$(echo "${field}" | tr '[:upper:]' '[:lower:]')
+              # ``StartPeriod`` becomes ``--health-start-period``.
+              if [[ "${flag}" == "startperiod" ]]; then
+                flag="start-period"
+              fi
+              run_args+=(--health-${flag} "${secs}s")
+              ;;
+          esac
+        done
+      fi
+
       # Hostname + cap_drop/cap_add are intentionally skipped — the
       # image defaults cover the common case; compose's hardening
       # flags are replayed via labels that our future reconciler
