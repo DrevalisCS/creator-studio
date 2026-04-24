@@ -17,6 +17,15 @@ import {
   Type,
   Image as ImageIcon,
   Square,
+  Scissors,
+  Sticker,
+  Slash,
+  Circle,
+  Keyboard,
+  X,
+  Upload,
+  Search,
+  MoveHorizontal,
 } from 'lucide-react';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { Button } from '@/components/ui/Button';
@@ -32,7 +41,12 @@ import {
   type EditTimelineClip,
   type EditTimelineTrack,
   type CaptionWord,
+  type Asset,
 } from '@/lib/api';
+
+// MIME-ish key used to move an asset id from the right-rail asset
+// browser into the timeline via drag-and-drop.
+const ASSET_DRAG_MIME = 'application/x-drevalis-asset';
 
 function waveformUrlFor(episodeId: string, trackId: string): string | null {
   if (trackId === 'voice') return `/api/v1/episodes/${episodeId}/editor/waveform?track=voice`;
@@ -375,6 +389,95 @@ export default function EpisodeEditor() {
     return null;
   }, [timeline, selectedClipId]);
 
+  // Helpers that the tools rail + timeline drops both call so a
+  // click and a drag produce identical overlays.
+  const addTextOverlay = useCallback(
+    (preset: 'title' | 'subtitle' | 'caption' | 'lowerThird') => {
+      const style = {
+        title: { text: 'Title', font_size: 80, y: 'h/2-h/8' },
+        subtitle: { text: 'Subtitle', font_size: 56, y: 'h/2' },
+        caption: { text: 'Caption text', font_size: 40, y: 'h-200' },
+        lowerThird: { text: 'Lower third', font_size: 48, y: 'h-120' },
+      }[preset];
+      const id = `t-${Date.now()}`;
+      dispatch({
+        type: 'add_overlay',
+        clip: {
+          id,
+          kind: 'text',
+          text: style.text,
+          font_size: style.font_size,
+          color: '#ffffff',
+          box: preset === 'caption' || preset === 'lowerThird',
+          box_color: '#000000',
+          x: '(w-text_w)/2',
+          y: style.y,
+          in_s: 0,
+          out_s: Math.min(3, history.present.duration_s),
+          start_s: playhead,
+          end_s: Math.min(playhead + 3, history.present.duration_s),
+        },
+      });
+      setSelectedClipId(id);
+    },
+    [dispatch, history.present.duration_s, playhead],
+  );
+
+  const addShapeOverlay = useCallback(
+    (shape: 'rect' | 'circle' | 'line') => {
+      const id = `s-${Date.now()}`;
+      dispatch({
+        type: 'add_overlay',
+        clip: {
+          id,
+          kind: 'shape',
+          shape,
+          color: '#ffffff',
+          w: shape === 'line' ? 800 : shape === 'circle' ? 200 : 400,
+          h: shape === 'line' ? 4 : shape === 'circle' ? 200 : 200,
+          x: '(w-w)/2',
+          y: shape === 'line' ? 'h-320' : 'h/2-h/4',
+          in_s: 0,
+          out_s: 3,
+          start_s: playhead,
+          end_s: Math.min(playhead + 3, history.present.duration_s),
+        },
+      });
+      setSelectedClipId(id);
+    },
+    [dispatch, history.present.duration_s, playhead],
+  );
+
+  const addImageOverlayFromAsset = useCallback(
+    async (assetId: string, startSecs?: number) => {
+      try {
+        const asset = await assetsApi.get(assetId);
+        const start = startSecs !== undefined ? startSecs : playhead;
+        const clipId = `i-${Date.now()}`;
+        dispatch({
+          type: 'add_overlay',
+          clip: {
+            id: clipId,
+            kind: 'image',
+            asset_path: asset.file_path,
+            x: '(W-w)/2',
+            y: 'H-h-80',
+            in_s: 0,
+            out_s: 3,
+            start_s: snap(start),
+            end_s: Math.min(snap(start) + 3, history.present.duration_s),
+          },
+        });
+        setSelectedClipId(clipId);
+      } catch (err) {
+        toast.error('Failed to attach asset', {
+          description: err instanceof Error ? err.message : 'Unknown error',
+        });
+      }
+    },
+    [dispatch, history.present.duration_s, playhead, snap, toast],
+  );
+
   if (loading || !episodeId) {
     return (
       <div className="flex justify-center py-20">
@@ -384,39 +487,55 @@ export default function EpisodeEditor() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
-      {/* Top bar */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="sm" onClick={() => navigate(`/episodes/${episodeId}`)}>
-          <ArrowLeft className="w-4 h-4 mr-1" />
-          Back
+    <div className="flex flex-col h-full min-h-0">
+      {/* ═══════════════════════════════════════════════════════════
+          Top bar — compact, icon-heavy, full width
+          ═══════════════════════════════════════════════════════════ */}
+      <header className="h-12 border-b border-border flex items-center gap-2 px-3 shrink-0 bg-bg-surface">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => navigate(`/episodes/${episodeId}`)}
+          title="Back to episode"
+        >
+          <ArrowLeft className="w-4 h-4" />
         </Button>
-        <h1 className="text-lg font-semibold">Video Editor</h1>
+        <div className="h-6 w-px bg-border" />
+        <h1 className="text-sm font-semibold">Video Editor</h1>
         <div className="flex-1" />
+
+        {/* Autosave */}
         <div
           className={[
             'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium',
             saving
               ? 'bg-warning/10 text-warning border border-warning/30'
               : savedAt
-              ? 'bg-success/10 text-success border border-success/30'
-              : 'bg-bg-elevated text-txt-muted border border-white/[0.06]',
+                ? 'bg-success/10 text-success border border-success/30'
+                : 'bg-bg-elevated text-txt-muted border border-white/[0.06]',
           ].join(' ')}
           title="Autosave status"
         >
           <span
             className={[
               'w-1.5 h-1.5 rounded-full',
-              saving ? 'bg-warning animate-pulse' : savedAt ? 'bg-success' : 'bg-txt-muted',
+              saving
+                ? 'bg-warning animate-pulse'
+                : savedAt
+                  ? 'bg-success'
+                  : 'bg-txt-muted',
             ].join(' ')}
           />
           {saving ? 'Saving…' : savedAt ? `Saved ${savedAgo}` : 'Ready'}
         </div>
+
+        <div className="h-6 w-px bg-border mx-1" />
         <Button
           variant="ghost"
           size="sm"
           onClick={() => dispatch({ type: 'undo' })}
           disabled={!history.past.length}
+          title="Undo (⌘Z)"
         >
           <Undo2 className="w-4 h-4" />
         </Button>
@@ -425,9 +544,11 @@ export default function EpisodeEditor() {
           size="sm"
           onClick={() => dispatch({ type: 'redo' })}
           disabled={!history.future.length}
+          title="Redo (⌘⇧Z)"
         >
           <Redo2 className="w-4 h-4" />
         </Button>
+        <div className="h-6 w-px bg-border mx-1" />
         <Button
           variant="ghost"
           size="sm"
@@ -436,13 +557,15 @@ export default function EpisodeEditor() {
             setPreviewingProxy(true);
             try {
               await editorApi.preview(episodeId);
-              // Bump the cache key so the video element reloads the proxy.
               setTimeout(() => setProxyReadyTs(Date.now()), 30_000);
               toast.success('Preview render enqueued', {
-                description: 'Proxy will swap in once FFmpeg finishes (~30s).',
+                description:
+                  'Proxy will swap in once FFmpeg finishes (~30s).',
               });
             } catch (err) {
-              toast.error('Preview failed', { description: formatError(err) });
+              toast.error('Preview failed', {
+                description: formatError(err),
+              });
             } finally {
               setPreviewingProxy(false);
             }
@@ -452,247 +575,215 @@ export default function EpisodeEditor() {
         >
           {previewingProxy ? 'Preview…' : 'Preview'}
         </Button>
-        <Button variant="primary" size="sm" onClick={() => void onRender()} disabled={rendering}>
+        <Button
+          variant="primary"
+          size="sm"
+          onClick={() => void onRender()}
+          disabled={rendering}
+        >
           <Rocket className="w-4 h-4 mr-1" />
           {rendering ? 'Rendering…' : 'Render'}
         </Button>
-      </div>
+      </header>
 
-      {/* Preview + inspector */}
-      <div className="grid grid-cols-12 gap-4">
-        <Card className="col-span-8 p-3 flex flex-col items-center">
-          <PreviewPlayer
-            timeline={timeline}
-            playhead={playhead}
-            onPlayheadChange={setPlayhead}
-            playing={playing}
-            onPlayToggle={() => setPlaying((p) => !p)}
-            proxyUrl={
-              proxyReadyTs
-                ? `/storage/episodes/${episodeId}/output/proxy.mp4?v=${proxyReadyTs}`
-                : null
+      {/* ═══════════════════════════════════════════════════════════
+          Body — 3-column: ToolsRail | main | RightPanel
+          ═══════════════════════════════════════════════════════════ */}
+      <div className="flex-1 flex min-h-0">
+        {/* Tools rail */}
+        <ToolsRail
+          onAddText={addTextOverlay}
+          onAddShape={addShapeOverlay}
+          onOpenAssetPicker={() => setAssetPickerOpen(true)}
+          onSplit={() => {
+            if (selectedClipId) {
+              dispatch({
+                type: 'split',
+                clipId: selectedClipId,
+                at_s: playhead,
+              });
             }
-            finalVideoUrl={
-              // v0.20.20 — fall back to the already-assembled final
-              // video so the preview shows SOMETHING by default.
-              // Previously the player tried to play scene PNGs in a
-              // <video> element and silently showed nothing.
-              session?.final_video_path
-                ? `/storage/${session.final_video_path}`
-                : null
+          }}
+          onDelete={() => {
+            if (selectedClipId) {
+              dispatch({ type: 'delete', clipId: selectedClipId });
+              setSelectedClipId(null);
             }
-          />
-        </Card>
+          }}
+          snapEnabled={snapEnabled}
+          snapStep={snapStep}
+          onToggleSnap={() => setSnapEnabled((v) => !v)}
+          onZoomIn={() => setZoom((z) => Math.min(240, z + 20))}
+          onZoomOut={() => setZoom((z) => Math.max(20, z - 20))}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
+          hasSelection={!!selectedClipId}
+        />
 
-        <Card className="col-span-4 p-4 space-y-3">
-          <div className="flex items-center gap-2">
-            <button
-              className={[
-                'text-[11px] uppercase tracking-wider px-2 py-1 rounded',
-                inspectorTab === 'clip' ? 'bg-accent/20 text-accent' : 'text-txt-muted',
-              ].join(' ')}
-              onClick={() => setInspectorTab('clip')}
-            >
-              Inspector
-            </button>
-            <button
-              className={[
-                'text-[11px] uppercase tracking-wider px-2 py-1 rounded',
-                inspectorTab === 'captions' ? 'bg-accent/20 text-accent' : 'text-txt-muted',
-              ].join(' ')}
-              onClick={() => setInspectorTab('captions')}
-            >
-              Captions
-            </button>
+        {/* Center column: preview on top (bounded), timeline below */}
+        <div className="flex-1 flex flex-col min-w-0 border-r border-border">
+          {/* Preview — flex-1 so it takes remaining space in this
+              column but never pushes the timeline off-screen, since
+              the timeline has its own fixed height allocation below. */}
+          <div className="flex-1 min-h-0 flex items-center justify-center bg-black/40 p-4 relative">
+            <PreviewPlayer
+              timeline={timeline}
+              playhead={playhead}
+              onPlayheadChange={setPlayhead}
+              playing={playing}
+              onPlayToggle={() => setPlaying((p) => !p)}
+              proxyUrl={
+                proxyReadyTs
+                  ? `/storage/episodes/${episodeId}/output/proxy.mp4?v=${proxyReadyTs}`
+                  : null
+              }
+              finalVideoUrl={
+                session?.final_video_path
+                  ? `/storage/${session.final_video_path}`
+                  : null
+              }
+            />
           </div>
-          {inspectorTab === 'captions' ? (
-            <CaptionsInspector episodeId={episodeId} playhead={playhead} />
-          ) : selectedClip ? (
-            selectedClip.kind ? (
-              <OverlayInspector
-                clip={selectedClip}
-                onUpdate={(patch) =>
-                  dispatch({ type: 'update_overlay', clipId: selectedClip.id, patch })
-                }
-                onDelete={() => {
-                  dispatch({ type: 'delete', clipId: selectedClip.id });
-                  setSelectedClipId(null);
-                }}
-              />
-            ) : (
-              <ClipInspector
-                clip={selectedClip}
-                onTrim={(in_s, out_s) =>
-                  dispatch({ type: 'trim', clipId: selectedClip.id, in_s, out_s })
-                }
-                onDelete={() => {
-                  dispatch({ type: 'delete', clipId: selectedClip.id });
-                  setSelectedClipId(null);
-                }}
-              />
-            )
-          ) : (
-            <div className="text-xs text-txt-muted">
-              Select a clip in the timeline. Shortcuts: <kbd>Space</kbd> play ·{' '}
-              <kbd>S</kbd> split · <kbd>⌫</kbd> delete · <kbd>⌘Z</kbd> / <kbd>⌘⇧Z</kbd>.
+
+          {/* Timeline strip — fixed height, always visible */}
+          <div className="h-[40%] min-h-[260px] border-t border-border bg-bg-surface flex flex-col">
+            {/* Mini controls bar above the tracks */}
+            <div className="h-9 px-3 flex items-center gap-2 shrink-0 border-b border-border">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setPlaying((p) => !p)}
+                title="Play / Pause (Space)"
+              >
+                {playing ? (
+                  <Pause className="w-4 h-4" />
+                ) : (
+                  <Play className="w-4 h-4" />
+                )}
+              </Button>
+              <div className="text-xs font-mono text-txt-muted w-32 tabular-nums">
+                {playhead.toFixed(2)}s / {timeline.duration_s.toFixed(2)}s
+              </div>
+              <div className="flex-1" />
+              <div className="text-[10px] text-txt-muted hidden md:flex items-center gap-1">
+                <MoveHorizontal size={10} />
+                Drag assets into the timeline to add overlays
+              </div>
             </div>
-          )}
-        </Card>
-      </div>
 
-      {/* Timeline controls */}
-      <div className="flex items-center gap-2">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setPlaying((p) => !p)}
-        >
-          {playing ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
-        </Button>
-        <div className="text-xs font-mono text-txt-muted w-20">
-          {playhead.toFixed(2)}s / {timeline.duration_s.toFixed(2)}s
-        </div>
-        <div className="flex-1" />
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            const id = `t-${Date.now()}`;
-            dispatch({
-              type: 'add_overlay',
-              clip: {
-                id,
-                kind: 'text',
-                text: 'New text',
-                font_size: 56,
-                color: '#ffffff',
-                box: true,
-                box_color: '#000000',
-                x: '(w-text_w)/2',
-                y: 'h-240',
-                in_s: 0,
-                out_s: Math.min(3, timeline.duration_s),
-                start_s: playhead,
-                end_s: Math.min(playhead + 3, timeline.duration_s),
-              },
-            });
-            setSelectedClipId(id);
-          }}
-          title="Add text overlay"
-        >
-          <Type className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => {
-            const id = `s-${Date.now()}`;
-            dispatch({
-              type: 'add_overlay',
-              clip: {
-                id,
-                kind: 'shape',
-                shape: 'rect',
-                color: '#ffffff',
-                w: 600,
-                h: 6,
-                x: '(w-w)/2',
-                y: 'h-320',
-                in_s: 0,
-                out_s: 3,
-                start_s: playhead,
-                end_s: Math.min(playhead + 3, timeline.duration_s),
-              },
-            });
-            setSelectedClipId(id);
-          }}
-          title="Add shape overlay"
-        >
-          <Square className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setAssetPickerOpen(true)}
-          title="Add image overlay — pick from asset library"
-        >
-          <ImageIcon className="w-4 h-4" />
-        </Button>
-        <Button
-          variant={snapEnabled ? 'primary' : 'ghost'}
-          size="sm"
-          onClick={() => setSnapEnabled((v) => !v)}
-          title={`Snap-to-grid (${snapStep}s). Click to toggle.`}
-          className="text-[11px] uppercase tracking-wider"
-        >
-          Snap {snapStep}s
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.max(20, z - 20))}>
-          <ZoomOut className="w-4 h-4" />
-        </Button>
-        <Button variant="ghost" size="sm" onClick={() => setZoom((z) => Math.min(240, z + 20))}>
-          <ZoomIn className="w-4 h-4" />
-        </Button>
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => setShortcutsOpen((v) => !v)}
-          title="Keyboard shortcuts (?)"
-          className="text-[11px]"
-        >
-          ?
-        </Button>
-      </div>
-
-      {/* Timeline — ruler + tracks */}
-      <Card className="p-3 overflow-x-auto">
-        <div style={{ minWidth: Math.max(timeline.duration_s * zoom + 80, 600) }}>
-          <TimelineRuler
-            duration={timeline.duration_s}
-            zoom={zoom}
-            playhead={playhead}
-            onScrub={(t) => setPlayhead(snap(t))}
-          />
-          <div className="space-y-2 mt-1">
-            {timeline.tracks.map((track) => (
-              <TrackRow
-                key={track.id}
-                track={track}
-                zoom={zoom}
-                duration={timeline.duration_s}
-                playhead={playhead}
-                onScrub={(t) => setPlayhead(snap(t))}
-                selectedClipId={selectedClipId}
-                onSelectClip={setSelectedClipId}
-                onReorder={(from, to) =>
-                  dispatch({ type: 'reorder', trackId: track.id, fromIndex: from, toIndex: to })
+            {/* Tracks — horizontally scrollable, vertically snug */}
+            <div
+              className="flex-1 overflow-auto"
+              onDragOver={(e) => {
+                if (e.dataTransfer.types.includes(ASSET_DRAG_MIME)) {
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = 'copy';
                 }
-                onTrim={(id, in_s, out_s) =>
-                  dispatch({
-                    type: 'trim',
-                    clipId: id,
-                    in_s: in_s === undefined ? undefined : snap(in_s),
-                    out_s: out_s === undefined ? undefined : snap(out_s),
-                  })
-                }
-                onEnvelope={(clipId, envelope) =>
-                  dispatch({ type: 'envelope', trackId: track.id, clipId, envelope })
-                }
-                waveformUrl={waveformUrlFor(episodeId, track.id)}
-              />
-            ))}
+              }}
+              onDrop={(e) => {
+                const id = e.dataTransfer.getData(ASSET_DRAG_MIME);
+                if (!id) return;
+                e.preventDefault();
+                // Map the drop x-position (relative to the scrollable
+                // container's left edge plus its horizontal scroll
+                // offset) into timeline seconds.
+                const target = e.currentTarget as HTMLDivElement;
+                const rect = target.getBoundingClientRect();
+                const localX = e.clientX - rect.left + target.scrollLeft;
+                // The track container reserves ~80px on the left for
+                // labels before the zoomed timeline area begins.
+                const xInTimeline = Math.max(0, localX - 80);
+                const dropSecs = xInTimeline / zoom;
+                void addImageOverlayFromAsset(id, dropSecs);
+              }}
+            >
+              <div
+                style={{
+                  minWidth: Math.max(timeline.duration_s * zoom + 80, 600),
+                }}
+                className="p-3"
+              >
+                <TimelineRuler
+                  duration={timeline.duration_s}
+                  zoom={zoom}
+                  playhead={playhead}
+                  onScrub={(t) => setPlayhead(snap(t))}
+                />
+                <div className="space-y-2 mt-1">
+                  {timeline.tracks.map((track) => (
+                    <TrackRow
+                      key={track.id}
+                      track={track}
+                      zoom={zoom}
+                      duration={timeline.duration_s}
+                      playhead={playhead}
+                      onScrub={(t) => setPlayhead(snap(t))}
+                      selectedClipId={selectedClipId}
+                      onSelectClip={setSelectedClipId}
+                      onReorder={(from, to) =>
+                        dispatch({
+                          type: 'reorder',
+                          trackId: track.id,
+                          fromIndex: from,
+                          toIndex: to,
+                        })
+                      }
+                      onTrim={(id, in_s, out_s) =>
+                        dispatch({
+                          type: 'trim',
+                          clipId: id,
+                          in_s: in_s === undefined ? undefined : snap(in_s),
+                          out_s:
+                            out_s === undefined ? undefined : snap(out_s),
+                        })
+                      }
+                      onEnvelope={(clipId, envelope) =>
+                        dispatch({
+                          type: 'envelope',
+                          trackId: track.id,
+                          clipId,
+                          envelope,
+                        })
+                      }
+                      waveformUrl={waveformUrlFor(episodeId, track.id)}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
-      </Card>
 
-      <div className="text-[10px] text-txt-muted flex flex-wrap gap-x-3 gap-y-1">
-        <span><kbd className="kbd">Space</kbd> play/pause</span>
-        <span><kbd className="kbd">←</kbd><kbd className="kbd">→</kbd> nudge playhead 0.1s</span>
-        <span><kbd className="kbd">Shift</kbd>+arrows 1s</span>
-        <span><kbd className="kbd">Home</kbd> / <kbd className="kbd">End</kbd> jump to edges</span>
-        <span><kbd className="kbd">S</kbd> split at playhead</span>
-        <span><kbd className="kbd">⌫</kbd> delete selected clip</span>
-        <span><kbd className="kbd">⌘Z</kbd> / <kbd className="kbd">⌘⇧Z</kbd> undo/redo</span>
+        {/* Right panel: Inspector / Captions / Assets */}
+        <RightPanel
+          activeTab={inspectorTab}
+          onTabChange={setInspectorTab}
+          episodeId={episodeId}
+          playhead={playhead}
+          selectedClip={selectedClip}
+          onUpdateOverlay={(patch) => {
+            if (!selectedClip) return;
+            dispatch({
+              type: 'update_overlay',
+              clipId: selectedClip.id,
+              patch,
+            });
+          }}
+          onDeleteClip={() => {
+            if (!selectedClip) return;
+            dispatch({ type: 'delete', clipId: selectedClip.id });
+            setSelectedClipId(null);
+          }}
+          onTrimClip={(in_s, out_s) => {
+            if (!selectedClip) return;
+            dispatch({
+              type: 'trim',
+              clipId: selectedClip.id,
+              in_s,
+              out_s,
+            });
+          }}
+          onPickAsset={(id) => void addImageOverlayFromAsset(id)}
+        />
       </div>
 
       {shortcutsOpen && (
@@ -783,6 +874,531 @@ export default function EpisodeEditor() {
           }
         }}
       />
+    </div>
+  );
+}
+
+// ─── Left tools rail ────────────────────────────────────────────
+
+interface ToolsRailProps {
+  onAddText: (preset: 'title' | 'subtitle' | 'caption' | 'lowerThird') => void;
+  onAddShape: (shape: 'rect' | 'circle' | 'line') => void;
+  onOpenAssetPicker: () => void;
+  onSplit: () => void;
+  onDelete: () => void;
+  snapEnabled: boolean;
+  snapStep: number;
+  onToggleSnap: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onOpenShortcuts: () => void;
+  hasSelection: boolean;
+}
+
+function ToolsRail({
+  onAddText,
+  onAddShape,
+  onOpenAssetPicker,
+  onSplit,
+  onDelete,
+  snapEnabled,
+  snapStep,
+  onToggleSnap,
+  onZoomIn,
+  onZoomOut,
+  onOpenShortcuts,
+  hasSelection,
+}: ToolsRailProps) {
+  const [activeFlyout, setActiveFlyout] = useState<'text' | 'shape' | null>(
+    null,
+  );
+
+  // Close flyout on outside click.
+  useEffect(() => {
+    if (!activeFlyout) return;
+    const handler = () => setActiveFlyout(null);
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, [activeFlyout]);
+
+  return (
+    <div className="w-14 shrink-0 border-r border-border bg-bg-surface flex flex-col py-2 gap-1">
+      <ToolButton
+        icon={Type}
+        label="Text"
+        active={activeFlyout === 'text'}
+        onClick={(e) => {
+          e.stopPropagation();
+          setActiveFlyout((prev) => (prev === 'text' ? null : 'text'));
+        }}
+        flyout={
+          activeFlyout === 'text' ? (
+            <Flyout>
+              <FlyoutItem
+                label="Title"
+                description="Large centered title"
+                onClick={() => {
+                  onAddText('title');
+                  setActiveFlyout(null);
+                }}
+              />
+              <FlyoutItem
+                label="Subtitle"
+                description="Medium centered text"
+                onClick={() => {
+                  onAddText('subtitle');
+                  setActiveFlyout(null);
+                }}
+              />
+              <FlyoutItem
+                label="Caption"
+                description="Text with background box"
+                onClick={() => {
+                  onAddText('caption');
+                  setActiveFlyout(null);
+                }}
+              />
+              <FlyoutItem
+                label="Lower third"
+                description="Caption style anchored to bottom"
+                onClick={() => {
+                  onAddText('lowerThird');
+                  setActiveFlyout(null);
+                }}
+              />
+            </Flyout>
+          ) : null
+        }
+      />
+      <ToolButton
+        icon={Square}
+        label="Shape"
+        active={activeFlyout === 'shape'}
+        onClick={(e) => {
+          e.stopPropagation();
+          setActiveFlyout((prev) => (prev === 'shape' ? null : 'shape'));
+        }}
+        flyout={
+          activeFlyout === 'shape' ? (
+            <Flyout>
+              <FlyoutItem
+                icon={Square}
+                label="Rectangle"
+                onClick={() => {
+                  onAddShape('rect');
+                  setActiveFlyout(null);
+                }}
+              />
+              <FlyoutItem
+                icon={Circle}
+                label="Circle"
+                onClick={() => {
+                  onAddShape('circle');
+                  setActiveFlyout(null);
+                }}
+              />
+              <FlyoutItem
+                icon={Slash}
+                label="Line"
+                onClick={() => {
+                  onAddShape('line');
+                  setActiveFlyout(null);
+                }}
+              />
+            </Flyout>
+          ) : null
+        }
+      />
+      <ToolButton
+        icon={ImageIcon}
+        label="Image"
+        onClick={onOpenAssetPicker}
+      />
+      <ToolButton
+        icon={Sticker}
+        label="Stamps"
+        onClick={onOpenAssetPicker}
+      />
+      <div className="mx-2 my-1 h-px bg-border" />
+      <ToolButton
+        icon={Scissors}
+        label="Split"
+        onClick={onSplit}
+        disabled={!hasSelection}
+      />
+      <ToolButton
+        icon={Trash2}
+        label="Delete"
+        onClick={onDelete}
+        disabled={!hasSelection}
+        danger
+      />
+      <div className="flex-1" />
+      <ToolButton
+        icon={ZoomIn}
+        label="Zoom in"
+        onClick={onZoomIn}
+      />
+      <ToolButton
+        icon={ZoomOut}
+        label="Zoom out"
+        onClick={onZoomOut}
+      />
+      <button
+        type="button"
+        onClick={onToggleSnap}
+        title={`Snap ${snapStep}s ${snapEnabled ? 'on' : 'off'}`}
+        className={[
+          'mx-2 rounded-md text-[9px] font-semibold uppercase tracking-wider py-1',
+          snapEnabled
+            ? 'bg-accent/15 text-accent border border-accent/30'
+            : 'bg-bg-elevated text-txt-tertiary border border-border hover:text-txt-primary',
+        ].join(' ')}
+      >
+        {snapStep}s
+      </button>
+      <ToolButton
+        icon={Keyboard}
+        label="Shortcuts (?)"
+        onClick={onOpenShortcuts}
+      />
+    </div>
+  );
+}
+
+function ToolButton({
+  icon: Icon,
+  label,
+  onClick,
+  active,
+  disabled,
+  danger,
+  flyout,
+}: {
+  icon: typeof Type;
+  label: string;
+  onClick: (e: React.MouseEvent) => void;
+  active?: boolean;
+  disabled?: boolean;
+  danger?: boolean;
+  flyout?: React.ReactNode;
+}) {
+  return (
+    <div className="relative flex justify-center">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        title={label}
+        aria-label={label}
+        className={[
+          'w-10 h-10 rounded-md flex items-center justify-center transition-colors duration-fast',
+          disabled
+            ? 'text-txt-muted cursor-not-allowed'
+            : active
+              ? 'bg-accent/15 text-accent'
+              : danger
+                ? 'text-txt-secondary hover:bg-error/10 hover:text-error'
+                : 'text-txt-secondary hover:bg-bg-hover hover:text-txt-primary',
+        ].join(' ')}
+      >
+        <Icon size={16} />
+      </button>
+      {flyout}
+    </div>
+  );
+}
+
+function Flyout({ children }: { children: React.ReactNode }) {
+  return (
+    <div
+      className="absolute left-full top-0 ml-2 min-w-56 rounded-lg border border-border bg-bg-surface shadow-xl z-30 py-1 text-sm"
+      onClick={(e) => e.stopPropagation()}
+      role="menu"
+    >
+      {children}
+    </div>
+  );
+}
+
+function FlyoutItem({
+  icon: Icon,
+  label,
+  description,
+  onClick,
+}: {
+  icon?: typeof Type;
+  label: string;
+  description?: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 px-3 py-2 text-left text-txt-secondary hover:bg-bg-hover hover:text-txt-primary transition-colors duration-fast"
+    >
+      {Icon && <Icon size={13} className="text-txt-tertiary shrink-0" />}
+      <div className="min-w-0">
+        <div className="text-xs font-medium">{label}</div>
+        {description && (
+          <div className="text-[10px] text-txt-muted truncate">
+            {description}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+// ─── Right panel: Inspector / Captions / Assets ─────────────────
+
+interface RightPanelProps {
+  activeTab: 'clip' | 'captions';
+  onTabChange: (t: 'clip' | 'captions') => void;
+  episodeId: string;
+  playhead: number;
+  selectedClip: EditTimelineClip | null;
+  onUpdateOverlay: (patch: Partial<EditTimelineClip>) => void;
+  onDeleteClip: () => void;
+  onTrimClip: (in_s?: number, out_s?: number) => void;
+  onPickAsset: (assetId: string) => void;
+}
+
+function RightPanel({
+  activeTab,
+  onTabChange,
+  episodeId,
+  playhead,
+  selectedClip,
+  onUpdateOverlay,
+  onDeleteClip,
+  onTrimClip,
+  onPickAsset,
+}: RightPanelProps) {
+  const [extendedTab, setExtendedTab] = useState<
+    'clip' | 'captions' | 'assets'
+  >(activeTab);
+
+  // Sync the parent's two-state tab with our three-state tab so the
+  // old "clip / captions" API still works when something outside the
+  // panel flips it.
+  useEffect(() => {
+    setExtendedTab(activeTab);
+  }, [activeTab]);
+
+  const setTab = (t: 'clip' | 'captions' | 'assets') => {
+    setExtendedTab(t);
+    if (t !== 'assets') onTabChange(t);
+  };
+
+  return (
+    <aside className="w-[340px] shrink-0 flex flex-col bg-bg-surface">
+      <div className="h-9 border-b border-border flex items-center px-2 gap-1 shrink-0">
+        {(
+          [
+            { id: 'clip', label: 'Inspector', icon: Layers },
+            { id: 'captions', label: 'Captions', icon: Type },
+            { id: 'assets', label: 'Assets', icon: ImageIcon },
+          ] as const
+        ).map((t) => {
+          const TIcon = t.icon;
+          const active = extendedTab === t.id;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => setTab(t.id)}
+              className={[
+                'flex items-center gap-1.5 px-2.5 py-1 rounded text-[11px] uppercase tracking-wider transition-colors duration-fast',
+                active
+                  ? 'bg-accent/15 text-accent'
+                  : 'text-txt-tertiary hover:text-txt-primary',
+              ].join(' ')}
+            >
+              <TIcon size={11} />
+              {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-3 min-h-0">
+        {extendedTab === 'captions' ? (
+          <CaptionsInspector episodeId={episodeId} playhead={playhead} />
+        ) : extendedTab === 'assets' ? (
+          <AssetsBrowser onPickAsset={onPickAsset} />
+        ) : selectedClip ? (
+          selectedClip.kind ? (
+            <OverlayInspector
+              clip={selectedClip}
+              onUpdate={onUpdateOverlay}
+              onDelete={onDeleteClip}
+            />
+          ) : (
+            <ClipInspector
+              clip={selectedClip}
+              onTrim={(in_s, out_s) => onTrimClip(in_s, out_s)}
+              onDelete={onDeleteClip}
+            />
+          )
+        ) : (
+          <div className="text-xs text-txt-muted leading-relaxed">
+            Select a clip in the timeline to inspect and edit it. Drag
+            images from the <strong className="text-txt-secondary">Assets</strong> tab
+            into the timeline to add them as overlays at the drop
+            position.
+            <div className="mt-3 text-[10px] text-txt-tertiary">
+              Shortcuts: <kbd className="kbd">Space</kbd> play ·{' '}
+              <kbd className="kbd">S</kbd> split ·{' '}
+              <kbd className="kbd">⌫</kbd> delete ·{' '}
+              <kbd className="kbd">⌘Z</kbd> undo
+            </div>
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+// ─── AssetsBrowser — drag source for the timeline ───────────────
+
+function AssetsBrowser({
+  onPickAsset,
+}: {
+  onPickAsset: (assetId: string) => void;
+}) {
+  const { toast } = useToast();
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const reload = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await assetsApi.list({ kind: 'image', limit: 200 });
+      setAssets(list);
+    } catch (err) {
+      toast.error('Failed to load assets', { description: formatError(err) });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void reload();
+  }, [reload]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return assets;
+    return assets.filter(
+      (a) =>
+        a.filename.toLowerCase().includes(q) ||
+        (a.description || '').toLowerCase().includes(q) ||
+        a.tags.some((t) => t.toLowerCase().includes(q)),
+    );
+  }, [assets, search]);
+
+  const onFile = async (file: File) => {
+    setUploading(true);
+    try {
+      const a = await assetsApi.upload(file);
+      setAssets((prev) => [a, ...prev]);
+      toast.success('Uploaded', { description: a.filename });
+    } catch (err) {
+      toast.error('Upload failed', { description: formatError(err) });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1">
+          <Search
+            size={11}
+            className="absolute left-2 top-1/2 -translate-y-1/2 text-txt-tertiary pointer-events-none"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Filter…"
+            className="w-full pl-7 pr-2 py-1.5 text-xs bg-bg-elevated border border-border rounded text-txt-primary placeholder:text-txt-tertiary focus:outline-none focus:border-accent"
+          />
+        </div>
+        <button
+          type="button"
+          disabled={uploading}
+          onClick={() => fileInputRef.current?.click()}
+          className="inline-flex items-center gap-1 rounded border border-border bg-bg-elevated px-2 py-1.5 text-[11px] text-txt-secondary hover:text-txt-primary hover:border-accent/40 transition-colors duration-fast disabled:opacity-50"
+          title="Upload image asset"
+        >
+          <Upload size={11} />
+          {uploading ? '…' : 'Upload'}
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void onFile(file);
+            e.target.value = '';
+          }}
+        />
+      </div>
+
+      {loading ? (
+        <div className="flex justify-center py-10">
+          <Spinner size="sm" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-xs text-txt-muted py-8 text-center">
+          {search
+            ? 'No assets match that filter.'
+            : 'No image assets yet. Upload PNGs, logos, stamps, or icons to drag into the timeline.'}
+        </div>
+      ) : (
+        <div className="grid grid-cols-3 gap-1.5">
+          {filtered.map((a) => (
+            <button
+              key={a.id}
+              type="button"
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(ASSET_DRAG_MIME, a.id);
+                e.dataTransfer.effectAllowed = 'copy';
+              }}
+              onClick={() => onPickAsset(a.id)}
+              className="group relative aspect-square rounded-md border border-border bg-bg-elevated overflow-hidden hover:border-accent/50 transition-colors duration-fast"
+              title={`${a.filename} — drag into timeline or click to add at playhead`}
+            >
+              <img
+                src={assetsApi.fileUrl(a.id)}
+                alt=""
+                className="w-full h-full object-cover"
+                draggable={false}
+              />
+              <div className="absolute inset-x-0 bottom-0 bg-black/70 px-1.5 py-0.5 text-[9px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                {a.filename}
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="text-[10px] text-txt-muted border-t border-border pt-2 leading-relaxed">
+        <strong className="text-txt-secondary">Tip:</strong> drag a thumbnail
+        onto the timeline to drop it as an image overlay at that exact time.
+        Clicking adds it at the current playhead.
+      </div>
     </div>
   );
 }

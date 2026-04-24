@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
 import { Layout } from '@/components/layout/Layout';
+import { EditorLayout } from '@/components/layout/EditorLayout';
 import { LicenseGate } from '@/components/LicenseGate';
 import { LoginGate } from '@/components/LoginGate';
 import { ToastProvider } from '@/components/ui/Toast';
@@ -78,6 +79,17 @@ function App() {
     <Suspense fallback={<PageLoadingFallback />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Fullscreen editor — no sidebar / header so the timeline has
+          the whole viewport. */}
+      <Route
+        element={
+          <LoginGate>
+            <EditorLayout />
+          </LoginGate>
+        }
+      >
+        <Route path="/episodes/:episodeId/edit" element={<EpisodeEditor />} />
+      </Route>
       <Route
         element={
           <LoginGate>
@@ -90,7 +102,6 @@ function App() {
         <Route path="/series/:seriesId" element={<SeriesDetail />} />
         <Route path="/episodes" element={<EpisodesList />} />
         <Route path="/episodes/:episodeId" element={<EpisodeDetail />} />
-        <Route path="/episodes/:episodeId/edit" element={<EpisodeEditor />} />
         <Route path="/episodes/:episodeId/shot-list" element={<ShotList />} />
         <Route path="/audiobooks" element={<Audiobooks />} />
         <Route path="/audiobooks/:audiobookId" element={<AudiobookDetail />} />
