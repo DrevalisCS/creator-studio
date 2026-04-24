@@ -22,14 +22,12 @@ import {
   Slash,
   Circle,
   Keyboard,
-  X,
   Upload,
   Search,
   MoveHorizontal,
 } from 'lucide-react';
 import { AssetPicker } from '@/components/assets/AssetPicker';
 import { Button } from '@/components/ui/Button';
-import { Card } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import { assets as assetsApi } from '@/lib/api';
@@ -425,18 +423,21 @@ export default function EpisodeEditor() {
 
   const addShapeOverlay = useCallback(
     (shape: 'rect' | 'circle' | 'line') => {
+      // The serialized timeline only knows ``rect`` / ``circle``, so a
+      // user-facing "line" choice is just a thin horizontal rect.
+      const isLine = shape === 'line';
       const id = `s-${Date.now()}`;
       dispatch({
         type: 'add_overlay',
         clip: {
           id,
           kind: 'shape',
-          shape,
+          shape: isLine ? 'rect' : shape,
           color: '#ffffff',
-          w: shape === 'line' ? 800 : shape === 'circle' ? 200 : 400,
-          h: shape === 'line' ? 4 : shape === 'circle' ? 200 : 200,
+          w: isLine ? 800 : shape === 'circle' ? 200 : 400,
+          h: isLine ? 4 : shape === 'circle' ? 200 : 200,
           x: '(w-w)/2',
-          y: shape === 'line' ? 'h-320' : 'h/2-h/4',
+          y: isLine ? 'h-320' : 'h/2-h/4',
           in_s: 0,
           out_s: 3,
           start_s: playhead,
