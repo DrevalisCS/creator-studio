@@ -41,7 +41,6 @@ import { SEOScorePanel } from '@/components/episode/SEOScorePanel';
 import { ThumbnailEditor } from '@/components/episode/ThumbnailEditor';
 import { Spinner } from '@/components/ui/Spinner';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
-import VideoEditor from '@/components/video/VideoEditor';
 import { JobProgressBar } from '@/components/jobs/JobProgressBar';
 import * as Popover from '@radix-ui/react-popover';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
@@ -871,16 +870,11 @@ function EpisodeDetail() {
               });
             })()}
           />
-          {/* Video Editor */}
-          {videoAsset && (
-            <div className="mt-4">
-              <VideoEditor
-                episodeId={episodeId!}
-                videoDuration={videoAsset.duration_seconds ?? 60}
-                onEditApplied={() => void fetchEpisode()}
-              />
-            </div>
-          )}
+          {/* The inline VideoEditor block that used to live here was
+              removed in v0.20.30 — the dedicated /episodes/:id/edit
+              route + "Edit" action button in the header (Scissors
+              icon) cover the same surface, and having two editors
+              on two pages complicated state sync. */}
         </div>
 
         {/* Right: Tabbed panel */}

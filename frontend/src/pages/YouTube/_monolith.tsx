@@ -293,61 +293,146 @@ function DashboardTab({
     return { config: cfg, data, connected: data !== null };
   });
 
-  // Per-channel upload counts
-  const uploadsByChannel = new Map<string, number>();
-  uploads.forEach((u) => {
-    const chId = (u as any).channel_id as string | undefined;
-    if (chId) uploadsByChannel.set(chId, (uploadsByChannel.get(chId) ?? 0) + 1);
-  });
-
-  // Last upload date per channel
-  const lastUploadByChannel = new Map<string, string>();
-  [...uploads]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .forEach((u) => {
-      const chId = (u as any).channel_id as string | undefined;
-      if (chId && !lastUploadByChannel.has(chId)) lastUploadByChannel.set(chId, u.created_at);
-    });
-
+  // ── Per-channel roll-up (v0.20.30 redesign) ─────────────────
+  // Build a per-channel aggregate using the flat ``uploads`` +
+  // ``stats`` feeds. Uploads carry ``channel_id``; stats are keyed by
+  // ``video_id``. Join the two to produce a single row per channel
+  // with uploads / views / likes / comments + last-upload timestamp.
+  interface ChannelRollup {
+    channel: YouTubeChannel;
+    uploadCount: number;
+    views: number;
+    likes: number;
+    comments: number;
+    lastUpload: string | null;
+  }
+  const statsByVideoIdForRollup = new Map<string, YouTubeVideoStats>(
+    stats.map((s) => [s.video_id, s]),
+  );
   const displayChannels = allChannels.length > 0 ? allChannels : [channel];
+  const channelRollups: ChannelRollup[] = displayChannels.map((ch) => {
+    const ups = uploads.filter((u) => (u as any).channel_id === ch.id);
+    let views = 0;
+    let likes = 0;
+    let comments = 0;
+    let lastUpload: string | null = null;
+    for (const u of ups) {
+      if (!lastUpload || u.created_at > lastUpload) lastUpload = u.created_at;
+      const s = u.youtube_video_id
+        ? statsByVideoIdForRollup.get(u.youtube_video_id)
+        : undefined;
+      if (s) {
+        views += s.views;
+        likes += s.likes;
+        comments += s.comments;
+      }
+    }
+    return {
+      channel: ch,
+      uploadCount: ups.length,
+      views,
+      likes,
+      comments,
+      lastUpload,
+    };
+  });
+  // Sort: most-viewed channels first — that's usually the one the
+  // operator wants to tend to.
+  channelRollups.sort((a, b) => b.views - a.views);
 
   return (
     <div className="space-y-6">
-      {/* Per-channel overview cards */}
+      {/* ── Per-channel overview cards (v0.20.30) ────────────────
+          Each card surfaces the four numbers that matter: uploads,
+          views, likes, comments. Sorted by views so top-performing
+          channels float to the top — the ones you actually want to
+          tend to first. The small sparkbar under the stats compares
+          each channel's views against the best performer so relative
+          size is scannable at a glance. */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {displayChannels.map((ch) => {
-          const count = uploadsByChannel.get(ch.id) ?? 0;
-          const lastDate = lastUploadByChannel.get(ch.id);
+        {channelRollups.map((r) => {
+          const topViews = channelRollups[0]?.views ?? 0;
+          const viewPct = topViews > 0 ? (r.views / topViews) * 100 : 0;
+          const engage = engagementRate(r.views, r.likes, r.comments);
           return (
-            <Card key={ch.id} padding="md">
-              <div className="flex items-start gap-3">
+            <Card
+              key={r.channel.id}
+              padding="md"
+              className="hover:border-accent/40 transition-colors"
+            >
+              <div className="flex items-start gap-3 mb-3">
                 <div className="w-10 h-10 rounded-full bg-accent-muted flex items-center justify-center shrink-0">
-                  <Youtube size={20} className="text-accent" />
+                  <Youtube size={18} className="text-accent" />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
                     <p className="text-sm font-semibold text-txt-primary truncate">
-                      {ch.channel_name}
+                      {r.channel.channel_name}
                     </p>
                     <Badge variant="success" dot>
-                      Connected
+                      Live
                     </Badge>
                   </div>
-                  <p className="text-xs text-txt-tertiary truncate mt-0.5">
-                    {ch.channel_id}
+                  <p className="text-[11px] text-txt-tertiary truncate mt-0.5 font-mono">
+                    {r.channel.channel_id}
                   </p>
-                  <div className="flex items-center gap-3 mt-2">
-                    <span className="text-xs text-txt-secondary">
-                      <span className="font-semibold text-txt-primary">{count}</span>{' '}
-                      upload{count !== 1 ? 's' : ''}
-                    </span>
-                    {lastDate && (
-                      <span className="text-xs text-txt-tertiary">
-                        Last: {formatDate(lastDate)}
-                      </span>
-                    )}
+                </div>
+              </div>
+
+              {/* Stat grid — 2x2 layout on the card so the four
+                  numbers are always visible without scrolling. */}
+              <div className="grid grid-cols-2 gap-2 mb-3">
+                <div className="rounded-md bg-bg-elevated/60 px-2.5 py-2">
+                  <div className="flex items-center gap-1 text-[10px] text-txt-tertiary uppercase tracking-wider">
+                    <Upload size={10} /> Uploads
+                  </div>
+                  <div className="text-lg font-semibold text-txt-primary mt-0.5 leading-none">
+                    {formatNumber(r.uploadCount)}
                   </div>
                 </div>
+                <div className="rounded-md bg-bg-elevated/60 px-2.5 py-2">
+                  <div className="flex items-center gap-1 text-[10px] text-txt-tertiary uppercase tracking-wider">
+                    <Eye size={10} /> Views
+                  </div>
+                  <div className="text-lg font-semibold text-txt-primary mt-0.5 leading-none">
+                    {formatNumber(r.views)}
+                  </div>
+                </div>
+                <div className="rounded-md bg-bg-elevated/60 px-2.5 py-2">
+                  <div className="flex items-center gap-1 text-[10px] text-txt-tertiary uppercase tracking-wider">
+                    <ThumbsUp size={10} /> Likes
+                  </div>
+                  <div className="text-lg font-semibold text-txt-primary mt-0.5 leading-none">
+                    {formatNumber(r.likes)}
+                  </div>
+                </div>
+                <div className="rounded-md bg-bg-elevated/60 px-2.5 py-2">
+                  <div className="flex items-center gap-1 text-[10px] text-txt-tertiary uppercase tracking-wider">
+                    <MessageSquare size={10} /> Comments
+                  </div>
+                  <div className="text-lg font-semibold text-txt-primary mt-0.5 leading-none">
+                    {formatNumber(r.comments)}
+                  </div>
+                </div>
+              </div>
+
+              {/* Relative-views sparkbar + engagement + last upload */}
+              <div className="h-1 rounded-full bg-bg-elevated overflow-hidden mb-2">
+                <div
+                  className="h-full rounded-full bg-accent transition-all"
+                  style={{ width: `${Math.max(2, viewPct)}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-txt-tertiary">
+                <span className="flex items-center gap-1">
+                  <Percent size={10} />
+                  {formatEngagement(engage)}
+                </span>
+                {r.lastUpload && (
+                  <span title={new Date(r.lastUpload).toLocaleString()}>
+                    Last: {formatDate(r.lastUpload)}
+                  </span>
+                )}
               </div>
             </Card>
           );
@@ -1770,22 +1855,77 @@ function YouTubePage() {
     }
   }, [toast, resolvedChannelId]);
 
-  // ---- Fetch stats for dashboard ----
-
+  // ---- Fetch stats for dashboard (per-channel batched) ----
+  //
+  // v0.20.30 — the previous implementation sent ALL video_ids (across
+  // every connected channel) with the first channel's UUID as the
+  // ``channel_id`` param. Each channel's OAuth token is only valid
+  // for that channel's videos, and the backend would fail on any
+  // video whose token didn't match → the whole request 500'd and
+  // NO stats rendered. Now we group uploads by their channel and
+  // fire one parallel request per channel, merging the results.
+  // Individual-channel failures (revoked token, rate limit, etc.)
+  // only drop that channel's stats; the others still populate.
   const fetchStats = useCallback(
     async (currentUploads: YouTubeUpload[]) => {
-      const completedUploads = currentUploads.filter(
+      const completed = currentUploads.filter(
         (u) => u.upload_status === 'done' && u.youtube_video_id,
       );
-      if (completedUploads.length === 0) return;
-      try {
-        const videoIds = completedUploads
-          .map((u) => u.youtube_video_id!)
-          .filter(Boolean);
-        const data = await youtubeApi.getVideoStats(videoIds, resolvedChannelId);
-        setStats(data);
-      } catch (err) {
-        toast.error('Failed to load video stats', { description: String(err) });
+      if (completed.length === 0) {
+        setStats([]);
+        return;
+      }
+      // Group video IDs by the upload's channel_id. Uploads whose
+      // channel_id is missing go into a fallback bucket using the
+      // resolved first-channel ID.
+      const byChannel = new Map<string, string[]>();
+      for (const u of completed) {
+        const chId = (u as any).channel_id || resolvedChannelId;
+        if (!chId) continue;
+        const vid = u.youtube_video_id!;
+        if (!byChannel.has(chId)) byChannel.set(chId, []);
+        byChannel.get(chId)!.push(vid);
+      }
+      if (byChannel.size === 0) return;
+
+      // Fire one request per channel in parallel, capping each
+      // batch at 50 IDs (YouTube's videos.list limit).
+      const results = await Promise.allSettled(
+        [...byChannel.entries()].flatMap(([channelId, ids]) => {
+          const chunks: string[][] = [];
+          for (let i = 0; i < ids.length; i += 50) {
+            chunks.push(ids.slice(i, i + 50));
+          }
+          return chunks.map((chunk) =>
+            youtubeApi.getVideoStats(chunk, channelId),
+          );
+        }),
+      );
+
+      const merged: YouTubeVideoStats[] = [];
+      const errors: string[] = [];
+      for (const r of results) {
+        if (r.status === 'fulfilled') {
+          merged.push(...r.value);
+        } else {
+          errors.push(String(r.reason).slice(0, 120));
+        }
+      }
+      // Dedupe by video_id in case a video appears in multiple batches.
+      const deduped = Array.from(
+        new Map(merged.map((s) => [s.video_id, s])).values(),
+      );
+      setStats(deduped);
+
+      if (errors.length > 0 && merged.length === 0) {
+        toast.error('Failed to load any video stats', {
+          description: errors[0] ?? 'YouTube API returned errors.',
+        });
+      } else if (errors.length > 0) {
+        toast.warning(
+          `${errors.length} channel${errors.length > 1 ? 's' : ''} failed to return stats`,
+          { description: 'Others loaded. Reconnect affected channels in Settings.' },
+        );
       }
     },
     [toast, resolvedChannelId],

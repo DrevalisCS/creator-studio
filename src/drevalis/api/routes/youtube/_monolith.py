@@ -1231,18 +1231,24 @@ async def get_video_analytics(
             detail="video_ids must contain at most 50 IDs per request",
         )
 
-    updated_tokens = await svc.refresh_tokens_if_needed(
-        channel.access_token_encrypted or "",
-        channel.refresh_token_encrypted,
-        channel.token_expiry,
-    )
-    if updated_tokens:
-        for key, value in updated_tokens.items():
-            setattr(channel, key, value)
-        await db.flush()
-        await db.commit()
-
+    # v0.20.30 — wrap token refresh in the same error-handling envelope
+    # as the stats call itself. Previously an expired refresh token (or
+    # a corrupted ciphertext after a key rotation) propagated as an
+    # unhandled exception → FastAPI returned an opaque 500 that the UI
+    # couldn't distinguish from a real server bug. Now it surfaces as
+    # a structured 502 with a helpful reason.
     try:
+        updated_tokens = await svc.refresh_tokens_if_needed(
+            channel.access_token_encrypted or "",
+            channel.refresh_token_encrypted,
+            channel.token_expiry,
+        )
+        if updated_tokens:
+            for key, value in updated_tokens.items():
+                setattr(channel, key, value)
+            await db.flush()
+            await db.commit()
+
         stats = await svc.get_video_stats(
             access_token_encrypted=channel.access_token_encrypted or "",
             refresh_token_encrypted=channel.refresh_token_encrypted,
@@ -1250,10 +1256,34 @@ async def get_video_analytics(
             video_ids=ids,
         )
     except Exception as exc:
-        logger.error("youtube_analytics_failed", error=str(exc), exc_info=True)
+        logger.error(
+            "youtube_analytics_failed",
+            channel_id=str(channel.id),
+            video_count=len(ids),
+            error_type=type(exc).__name__,
+            error=str(exc),
+            exc_info=True,
+        )
+        # Reason string carries just enough detail for the UI to show
+        # a useful message without leaking tokens. Most common cases:
+        # "invalid_grant" (refresh token expired — reconnect channel),
+        # "quotaExceeded" (wait for daily reset), "forbidden" (OAuth
+        # scope missing — reconnect with the needed scope).
+        reason = str(exc)[:240]
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to fetch video statistics: {exc}",
+            detail={
+                "error": "youtube_analytics_failed",
+                "reason": reason,
+                "channel_id": str(channel.id),
+                "hint": (
+                    "If this says 'invalid_grant' or 'unauthorized', the "
+                    "channel's OAuth token expired — disconnect and "
+                    "reconnect the channel in Settings. If it says "
+                    "'quotaExceeded', YouTube's daily quota is exhausted "
+                    "— retry tomorrow."
+                ),
+            },
         ) from exc
 
     return [VideoStatsResponse(**s) for s in stats]
