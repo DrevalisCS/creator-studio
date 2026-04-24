@@ -115,6 +115,14 @@ log "watching ${FLAG} (poll ${POLL_SECONDS}s)"
 while true; do
   if [[ -f "${FLAG}" ]]; then
     log "flag detected -- pulling new images"
+    # v0.20.22 — clear the flag BEFORE work begins. If the updater
+    # container gets recreated mid-pull (Docker Desktop's compose pull
+    # has been observed to trigger this when the updater's own image
+    # shows up in the set), the fresh updater instance would re-enter
+    # this same loop forever because the flag was still present.
+    # Clearing up front turns a mid-run kill into a clean "try again
+    # from the UI" rather than a hang.
+    rm -f "${FLAG}"
     write_status "pulling" "docker compose pull started"
 
     # v0.20.21 — pre-flight network check. Hit ghcr.io's /v2/ endpoint
@@ -146,14 +154,42 @@ while true; do
         ;;
     esac
 
-    # Capture pull output and its exit code. Can't use tee in a pipeline
-    # for the exit code (set -o pipefail is on, but the tee wouldn't
-    # reflect the pull's rc anyway — PIPESTATUS[0] is what we want).
-    set +o pipefail
-    docker compose "${compose_args[@]}" pull > /tmp/pull.log 2>&1
-    pull_rc=$?
-    set -o pipefail
-    cat /tmp/pull.log
+    # v0.20.22 — pull EVERY service except the updater itself, one by
+    # one, with visible progress + a hard timeout. Previously the pull
+    # ran silently against all services (including updater), which
+    # could self-terminate the container when Docker Desktop recreated
+    # it as the new updater image landed. Excluding updater from the
+    # in-app pull removes that race entirely. Per-service pulls also
+    # make stalls visible — log output shows which service is slow.
+    #
+    # Updater image itself still ships via one manual ``docker compose
+    # pull updater`` from the user's host when the updater code
+    # changes; that's documented in the release notes.
+    pull_rc=0
+    : > /tmp/pull.log
+    pullable=$(docker compose "${compose_args[@]}" config --services 2>/dev/null | grep -v '^updater$')
+    if [[ -z "${pullable}" ]]; then
+      write_status "failed" "could not enumerate compose services for pull"
+      log "could not enumerate services for pull -- aborting"
+      continue
+    fi
+    for svc in ${pullable}; do
+      log "pulling service: ${svc}"
+      write_status "pulling" "pulling ${svc}"
+      # ``timeout`` caps any single service pull at 10 minutes — large
+      # images plus a slow link can legitimately take a while, but past
+      # 10 min we want to fail loudly instead of the UI sitting on
+      # "pulling" forever.
+      set +o pipefail
+      timeout 600 docker compose "${compose_args[@]}" pull "${svc}" 2>&1 | tee -a /tmp/pull.log
+      rc=${PIPESTATUS[0]}
+      set -o pipefail
+      if [[ ${rc} -ne 0 ]]; then
+        pull_rc=${rc}
+        log "pull ${svc} FAILED (rc=${rc}) — aborting remaining pulls"
+        break
+      fi
+    done
 
     if [[ ${pull_rc} -eq 0 ]]; then
       write_status "pulled" "images pulled, about to restart services"
@@ -173,7 +209,6 @@ while true; do
       if [[ -z "${services_to_restart// /}" ]]; then
         write_status "failed" "could not enumerate compose services"
         log "could not enumerate services -- aborting"
-        rm -f "${FLAG}"
         continue
       fi
       log "restarting services (excluding self): ${services_to_restart}"
@@ -190,15 +225,19 @@ while true; do
     else
       # Put the tail of the actual pull log into the status JSON so
       # the UI can show the real error (missing image tag, ghcr auth,
-      # DNS failure, etc.) instead of a generic "pull failed".
+      # DNS failure, rc=124 for timeout, etc.) instead of a generic
+      # "pull failed".
       pull_tail=$(tail -n 5 /tmp/pull.log 2>/dev/null | tr '\n' ' ' | head -c 400)
-      write_status "failed" "docker compose pull failed (rc=${pull_rc}): ${pull_tail}"
-      log "pull FAILED (rc=${pull_rc}) -- flag cleared"
+      if [[ ${pull_rc} -eq 124 ]]; then
+        write_status "failed" "pull timed out after 10 minutes — ghcr.io or the local Docker daemon may be slow: ${pull_tail}"
+      else
+        write_status "failed" "docker compose pull failed (rc=${pull_rc}): ${pull_tail}"
+      fi
+      log "pull FAILED (rc=${pull_rc})"
       log "--- last lines of pull.log ---"
       tail -n 20 /tmp/pull.log 2>/dev/null || true
       log "--- end pull.log ---"
     fi
-    rm -f "${FLAG}"
     STARTED_AT=""
   fi
   sleep "${POLL_SECONDS}"
