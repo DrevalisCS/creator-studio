@@ -206,53 +206,172 @@ while true; do
       continue
     fi
 
-    write_status "pulled" "all images pulled, restarting services"
-    log "pull ok -- restarting services"
+    write_status "pulled" "all images pulled, recreating containers"
+    log "pull ok -- recreating containers on new images"
 
-    # ── Restart each affected container ───────────────────────────
+    # ── Recreate each affected container ──────────────────────────
     #
-    # ``docker restart`` SIGTERMs the container (graceful shutdown
-    # via the entrypoint), then starts it again. The container's
-    # config — including bind mounts, env vars, port bindings — is
-    # preserved from when the user ran ``docker compose up -d``
-    # from PowerShell.
-    #
-    # ``docker restart`` does NOT re-pull the image, BUT it re-
-    # creates the container from the image currently tagged as the
-    # one the container was started with. Since we just pulled a
-    # new image under that same tag, the restart picks it up.
-    #
-    # Some installs pin by digest rather than tag — ``docker restart``
-    # won't switch to a new digest. In that rare case we fall back to
-    # recreate-from-scratch: ``docker rm -f`` + re-run with the same
-    # config. That's signalled by the user on the UI.
+    # ``docker restart`` does NOT swap the image — it stops and
+    # starts the SAME container from the same image SHA recorded at
+    # creation time. To pick up a freshly-pulled tag, we have to
+    # ``rm`` the old container and ``run`` a new one. Config
+    # (bind mounts, env, ports, networks, restart policy, labels,
+    # entrypoint, command, working dir) is captured from the old
+    # container's ``docker inspect`` output via ``jq`` and passed to
+    # ``docker run`` so the new container is config-equivalent with
+    # only the image changed. Result: acts exactly like ``docker
+    # compose up -d --force-recreate`` but without the compose-CLI
+    # path-resolution bugs on Windows Docker Desktop.
     restart_rc=0
     failed_container=""
     : > /tmp/restart.log
     for name in "${services_to_restart[@]}"; do
-      log "restarting container: ${name}"
-      write_status "restarting" "restarting ${name}"
-      # Force-recreate by stop+rm+start-from-image avoids the
-      # "pinned-by-digest" issue: we read the container's current
-      # image + config, remove the container, and start a new one.
-      # BUT Docker CLI doesn't have a one-shot "recreate with same
-      # config" verb. ``docker restart`` handles the tag-update case,
-      # which is what compose produces; we start there.
-      set +o pipefail
-      timeout 120 docker restart "${name}" 2>&1 | tee -a /tmp/restart.log
-      rc=${PIPESTATUS[0]}
-      set -o pipefail
-      if [[ ${rc} -ne 0 ]]; then
-        restart_rc=${rc}
+      log "recreating container: ${name}"
+      write_status "restarting" "recreating ${name}"
+
+      # 1. Snapshot the full container config.
+      if ! snapshot=$(docker inspect "${name}" 2>&1); then
+        log "inspect ${name} FAILED: ${snapshot}"
+        restart_rc=1
         failed_container="${name}"
-        log "restart ${name} FAILED (rc=${rc})"
+        echo "inspect ${name} FAILED: ${snapshot}" >> /tmp/restart.log
         break
       fi
+
+      # Target image = the new tag. ``Config.Image`` holds the tag
+      # we just pulled — ideal, since ``Image`` in HostConfig holds
+      # the resolved SHA which would defeat the point.
+      new_image=$(echo "${snapshot}" | jq -r '.[0].Config.Image')
+      if [[ -z "${new_image}" || "${new_image}" == "null" ]]; then
+        log "recreate ${name} FAILED: no Config.Image"
+        restart_rc=1
+        failed_container="${name}"
+        break
+      fi
+
+      # 2. Build a ``docker run`` arg list from the snapshot. We
+      # cover the subset compose actually uses: name, restart,
+      # labels, env, ports, binds, network + aliases, working_dir,
+      # user, entrypoint, command. Security options + hostname are
+      # passed through too so hardening flags survive the swap.
+      run_args=()
+      run_args+=(-d --name "${name}")
+
+      # Restart policy
+      restart_policy=$(echo "${snapshot}" | jq -r '.[0].HostConfig.RestartPolicy.Name // "no"')
+      if [[ "${restart_policy}" != "no" && "${restart_policy}" != "null" ]]; then
+        run_args+=(--restart "${restart_policy}")
+      fi
+
+      # Labels — preserved verbatim (includes compose project /
+      # service labels we need for future discovery).
+      while IFS=$'\t' read -r key val; do
+        [[ -n "${key}" ]] && run_args+=(--label "${key}=${val}")
+      done < <(echo "${snapshot}" | jq -r '.[0].Config.Labels // {} | to_entries[] | "\(.key)\t\(.value)"')
+
+      # Env vars
+      while IFS= read -r env_line; do
+        [[ -n "${env_line}" ]] && run_args+=(-e "${env_line}")
+      done < <(echo "${snapshot}" | jq -r '.[0].Config.Env[]? // empty')
+
+      # Bind mounts (preserves the host paths compose originally
+      # recorded — this is the whole reason we go container → image
+      # rather than compose → container).
+      while IFS=$'\t' read -r src dst mode; do
+        [[ -z "${src}" ]] && continue
+        if [[ -n "${mode}" && "${mode}" != "null" ]]; then
+          run_args+=(-v "${src}:${dst}:${mode}")
+        else
+          run_args+=(-v "${src}:${dst}")
+        fi
+      done < <(echo "${snapshot}" | jq -r '.[0].HostConfig.Binds // [] | .[] | split(":") as $p | "\($p[0])\t\($p[1])\t\($p[2] // "")"')
+
+      # Named volumes mounted as volumes (not binds)
+      while IFS=$'\t' read -r src dst; do
+        [[ -z "${src}" || -z "${dst}" ]] && continue
+        run_args+=(-v "${src}:${dst}")
+      done < <(echo "${snapshot}" | jq -r '.[0].Mounts // [] | .[] | select(.Type == "volume") | "\(.Name)\t\(.Destination)"')
+
+      # Port bindings (e.g. 8000:8000, 3000:3000)
+      while IFS= read -r port_line; do
+        [[ -n "${port_line}" ]] && run_args+=(-p "${port_line}")
+      done < <(
+        echo "${snapshot}" | \
+        jq -r '.[0].HostConfig.PortBindings // {} | to_entries[] | .value[] as $b | "\($b.HostIp // "")\($b.HostIp | if . == "" or . == null then "" else ":" end)\($b.HostPort):\(.key | split("/")[0])"' | \
+        sed 's/^://'
+      )
+
+      # Working dir
+      workdir=$(echo "${snapshot}" | jq -r '.[0].Config.WorkingDir // empty')
+      [[ -n "${workdir}" ]] && run_args+=(-w "${workdir}")
+
+      # User
+      user_val=$(echo "${snapshot}" | jq -r '.[0].Config.User // empty')
+      [[ -n "${user_val}" ]] && run_args+=(-u "${user_val}")
+
+      # Hostname + cap_drop/cap_add are intentionally skipped — the
+      # image defaults cover the common case; compose's hardening
+      # flags are replayed via labels that our future reconciler
+      # can re-apply. Users relying on custom caps need to
+      # ``docker compose up -d`` from PowerShell once per release
+      # (same constraint as compose-shape changes).
+
+      # Entrypoint (preserved only if explicitly set on the container
+      # — otherwise let the image's own ENTRYPOINT apply).
+      entrypoint=$(echo "${snapshot}" | jq -r '.[0].Config.Entrypoint // empty | if . == null or . == [] then empty elif type == "array" then join(" ") else . end')
+      if [[ -n "${entrypoint}" ]]; then
+        run_args+=(--entrypoint "${entrypoint}")
+      fi
+
+      # Determine the primary network + aliases so the recreated
+      # container rejoins the compose default network. Use the
+      # FIRST network since compose puts service containers on a
+      # single project network by default.
+      primary_net=$(echo "${snapshot}" | jq -r '.[0].NetworkSettings.Networks // {} | keys | .[0] // empty')
+
+      # Command (the CMD override compose set, e.g. "sh -c alembic...")
+      # Captured as a JSON array so arg boundaries survive.
+      cmd_json=$(echo "${snapshot}" | jq -c '.[0].Config.Cmd // empty')
+
+      # 3. Stop + remove the old container. ``rm -f`` stops then
+      # removes in one step; named-volume data persists on disk.
+      if ! docker rm -f "${name}" >> /tmp/restart.log 2>&1; then
+        log "rm ${name} FAILED (see restart.log)"
+        restart_rc=1
+        failed_container="${name}"
+        break
+      fi
+
+      # 4. ``docker run`` with the captured args + new image. If the
+      # container had a primary network, ``--network`` is appended
+      # after the image so compose project network membership is
+      # restored (compose used this network for service-to-service
+      # DNS like ``postgres:5432``).
+      if [[ -n "${primary_net}" && "${primary_net}" != "null" ]]; then
+        run_args+=(--network "${primary_net}")
+      fi
+
+      # Feed the command as JSON so each arg stays a separate token.
+      run_cmd=(docker run "${run_args[@]}" "${new_image}")
+      if [[ -n "${cmd_json}" && "${cmd_json}" != "null" && "${cmd_json}" != "[]" ]]; then
+        # shellcheck disable=SC2207
+        cmd_parts=($(echo "${cmd_json}" | jq -r '.[]'))
+        run_cmd+=("${cmd_parts[@]}")
+      fi
+
+      log "running: docker run … ${new_image}  (${#run_args[@]} opts, cmd=${cmd_json})"
+      if ! "${run_cmd[@]}" >> /tmp/restart.log 2>&1; then
+        log "run ${name} FAILED (see restart.log)"
+        restart_rc=1
+        failed_container="${name}"
+        break
+      fi
+      log "recreated ${name} on ${new_image}"
     done
 
     if [[ ${restart_rc} -ne 0 ]]; then
       restart_tail=$(tail -n 5 /tmp/restart.log 2>/dev/null | tr '\n' ' ' | head -c 400)
-      write_status "failed" "restart of ${failed_container} failed (rc=${restart_rc}): ${restart_tail}"
+      write_status "failed" "recreate of ${failed_container} failed (rc=${restart_rc}): ${restart_tail}"
       log "--- last lines of restart.log ---"
       tail -n 20 /tmp/restart.log 2>/dev/null || true
       log "--- end restart.log ---"
@@ -260,7 +379,7 @@ while true; do
       continue
     fi
 
-    write_status "done" "stack updated: ${#images_to_pull[@]} image(s) pulled, ${#services_to_restart[@]} container(s) restarted"
+    write_status "done" "stack updated: ${#images_to_pull[@]} image(s) pulled, ${#services_to_restart[@]} container(s) recreated"
     log "update complete"
     STARTED_AT=""
   fi

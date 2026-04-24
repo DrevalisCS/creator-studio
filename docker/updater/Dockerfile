@@ -3,7 +3,7 @@
 # Docker socket + the project's compose file so `docker compose` Just Works.
 FROM docker:27-cli
 
-RUN apk add --no-cache bash curl
+RUN apk add --no-cache bash curl jq
 
 COPY update.sh /usr/local/bin/update.sh
 RUN chmod +x /usr/local/bin/update.sh
