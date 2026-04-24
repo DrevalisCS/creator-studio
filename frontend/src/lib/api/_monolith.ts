@@ -964,6 +964,12 @@ export const youtube = {
   disconnect: (channelId?: string) =>
     post<{ message: string }>(`/api/v1/youtube/disconnect${channelId ? `?channel_id=${channelId}` : ''}`, {}),
 
+  // Hard-delete a channel row plus its cascaded uploads. Use when the
+  // user wants the channel gone for good rather than merely
+  // disconnected (tokens cleared, row kept).
+  deleteChannel: (channelId: string) =>
+    del<{ message: string }>(`/api/v1/youtube/channels/${channelId}`),
+
   upload: (episodeId: string, data: YouTubeUploadRequest) =>
     post<YouTubeUpload>(`/api/v1/youtube/upload/${episodeId}`, data),
 

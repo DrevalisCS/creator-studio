@@ -1826,6 +1826,46 @@ function YouTubeSection() {
     }
   };
 
+  // Renew OAuth for an existing channel. The callback endpoint upserts
+  // by Google channel_id, so sending the user through the consent flow
+  // again will replace the expired tokens on the existing row — no
+  // need to disconnect first, and the channel's upload history + the
+  // series/audiobook FK assignments are preserved.
+  const handleReconnect = async (channelId: string) => {
+    try {
+      const data = await youtube.getAuthUrl();
+      // Remember which channel we're re-authing so that if the user
+      // returns we can show a hint. Non-fatal if sessionStorage is
+      // unavailable (private mode etc.).
+      try {
+        sessionStorage.setItem('youtube_reconnect_target', channelId);
+      } catch { /* ignore */ }
+      window.location.href = data.auth_url;
+    } catch (err) {
+      toast.error('Failed to start YouTube reconnection', {
+        description: String(err),
+      });
+    }
+  };
+
+  // Hard-delete a channel row. Destructive — also removes that
+  // channel's upload history via the FK cascade. Behind a confirm.
+  const handleRemove = async (channelId: string, name: string) => {
+    const ok = window.confirm(
+      `Remove "${name}" completely?\n\nThis deletes the channel AND its upload history from this workspace. It does NOT touch the videos on YouTube itself.`,
+    );
+    if (!ok) return;
+    try {
+      await youtube.deleteChannel(channelId);
+      toast.success(`Removed ${name}`);
+      setChannels((prev) => prev.filter((c) => c.id !== channelId));
+    } catch (err) {
+      toast.error('Failed to remove YouTube channel', {
+        description: String(err),
+      });
+    }
+  };
+
   const handleUpdateSchedule = async (
     channelId: string,
     uploadDays: string[] | null,
@@ -1866,20 +1906,49 @@ function YouTubeSection() {
       ) : (
         channels.map((ch) => (
           <Card key={ch.id} padding="md">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <Youtube size={18} className="text-red-500" />
-                <span className="text-sm font-semibold text-txt-primary">{ch.channel_name}</span>
-                <Badge variant="success" className="text-[10px]">Connected</Badge>
+            <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
+              <div className="flex items-center gap-2 min-w-0">
+                <Youtube size={18} className="text-red-500 shrink-0" />
+                <span className="text-sm font-semibold text-txt-primary truncate">
+                  {ch.channel_name}
+                </span>
+                {ch.is_active ? (
+                  <Badge variant="success" className="text-[10px]">Connected</Badge>
+                ) : (
+                  <Badge variant="warning" className="text-[10px]">Disconnected</Badge>
+                )}
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => void handleDisconnect(ch.id)}
-                className="text-txt-tertiary hover:text-error"
-              >
-                Disconnect
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleReconnect(ch.id)}
+                  className="text-txt-secondary hover:text-accent"
+                  title="Re-authorize this channel with Google (refreshes OAuth token)"
+                >
+                  Reconnect
+                </Button>
+                {ch.is_active && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void handleDisconnect(ch.id)}
+                    className="text-txt-tertiary hover:text-warning"
+                    title="Wipe OAuth tokens but keep upload history"
+                  >
+                    Disconnect
+                  </Button>
+                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void handleRemove(ch.id, ch.channel_name)}
+                  className="text-txt-tertiary hover:text-error"
+                  title="Permanently remove this channel and its upload history"
+                >
+                  <Trash2 size={13} />
+                </Button>
+              </div>
             </div>
 
             {/* Upload schedule */}

@@ -411,12 +411,61 @@ async def disconnect(
     summary="List all connected YouTube channels",
 )
 async def list_channels(
+    include_inactive: bool = Query(
+        False,
+        description="Include channels that have been disconnected",
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> list[YouTubeChannelResponse]:
-    """Return all connected YouTube channels."""
+    """Return connected YouTube channels.
+
+    By default only *active* (currently-connected) channels are returned.
+    A "disconnected" channel still exists in the database (so we can
+    preserve its upload history and re-upsert tokens on reconnect via the
+    OAuth callback), but it should not appear in the default list — the
+    UI would otherwise render stale, token-less rows that look broken.
+    Callers that genuinely need the full history (e.g. admin tooling)
+    can pass ``?include_inactive=true``.
+    """
     repo = YouTubeChannelRepository(db)
     channels = await repo.get_all_channels()
+    if not include_inactive:
+        channels = [c for c in channels if c.is_active]
     return [YouTubeChannelResponse.model_validate(c) for c in channels]
+
+
+# ── Delete (full removal) ────────────────────────────────────────────────
+
+
+@router.delete(
+    "/channels/{channel_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Permanently delete a YouTube channel connection",
+)
+async def delete_channel(
+    channel_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, str]:
+    """Hard-delete a channel row plus its cascaded upload history.
+
+    Differs from ``/disconnect`` which only wipes tokens and sets
+    ``is_active=False``. This endpoint is for operators who genuinely
+    want the channel (and all of its bookkeeping) gone — e.g. because
+    they connected the wrong Google account. Upload records pointing
+    at this channel cascade-delete via the FK constraint.
+    """
+    repo = YouTubeChannelRepository(db)
+    channel = await repo.get_by_id(channel_id)
+    if channel is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"YouTube channel {channel_id} not found",
+        )
+    name = channel.channel_name
+    await db.delete(channel)
+    await db.commit()
+    logger.info("youtube_channel_deleted", channel_id=str(channel_id))
+    return {"message": f"Deleted YouTube channel: {name}"}
 
 
 @router.put(

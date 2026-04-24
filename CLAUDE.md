@@ -332,8 +332,9 @@ All API routes are under `/api/v1/` with the following sub-routers:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `GET` | `/youtube/channels` | List all connected YouTube channels |
+| `GET` | `/youtube/channels` | List connected channels; filters inactive by default (`?include_inactive=true` for all) |
 | `PUT` | `/youtube/channels/{id}` | Update channel settings (upload_days, upload_time, display name) |
+| `DELETE` | `/youtube/channels/{id}` | Permanently delete a channel + cascade its upload history |
 | `DELETE` | `/youtube/videos/{video_id}` | Delete a YouTube video from the platform |
 
 ### Jobs Endpoints (new)
