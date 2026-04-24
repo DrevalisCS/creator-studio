@@ -1453,6 +1453,11 @@ export interface EditSession {
   timeline: EditTimeline;
   last_render_job_id: string | null;
   last_rendered_at: string | null;
+  // v0.20.20 — the finalized video path if the episode was already
+  // assembled. PreviewPlayer uses it as the default source so users
+  // can see their finished episode immediately instead of a black
+  // rectangle + "no scene at this position".
+  final_video_path?: string | null;
 }
 
 export interface CaptionWord {

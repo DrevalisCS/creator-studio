@@ -31,6 +31,7 @@ const Assets = lazy(() => import('@/pages/Assets'));
 const EpisodeEditor = lazy(() => import('@/pages/EpisodeEditor'));
 const ShotList = lazy(() => import('@/pages/ShotList'));
 const Login = lazy(() => import('@/pages/Login'));
+const SocialPlatform = lazy(() => import('@/pages/SocialPlatform'));
 
 // ---------------------------------------------------------------------------
 // Loading fallback
@@ -99,6 +100,7 @@ function App() {
         <Route path="/settings" element={<Settings />} />
         <Route path="/help" element={<Help />} />
         <Route path="/youtube" element={<YouTube />} />
+        <Route path="/social/:platform" element={<SocialPlatform />} />
         <Route path="/usage" element={<Usage />} />
         <Route path="/cloud-gpu" element={<CloudGPU />} />
         <Route path="/assets" element={<Assets />} />

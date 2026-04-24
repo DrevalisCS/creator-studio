@@ -42,6 +42,12 @@ class EditSessionResponse(BaseModel):
     timeline: dict[str, Any]
     last_render_job_id: UUID | None
     last_rendered_at: datetime | None
+    # v0.20.20 — surface the already-assembled final video path so the
+    # editor PreviewPlayer can show the finished episode as the
+    # default preview. Previously scenes (PNGs) were being fed to the
+    # <video> element → silent black rectangle until the user hit
+    # "Preview" to generate a proxy.
+    final_video_path: str | None = None
 
 
 class TimelineUpdate(BaseModel):
@@ -288,6 +294,14 @@ async def get_editor_session(
                     "reason": f"{type(exc).__name__}: {str(exc)[:200]}",
                 },
             ) from exc
+    # Look up the finalized video asset (if any) so the preview has
+    # something to play by default. The worker writes a "video" asset
+    # after the assembly step completes; until then, fall back to None
+    # and the client shows the "render a preview proxy" affordance.
+    asset_repo = MediaAssetRepository(db)
+    final_videos = await asset_repo.get_by_episode_and_type(episode_id, "video")
+    final_video_path = final_videos[-1].file_path if final_videos else None
+
     return EditSessionResponse.model_validate(
         {
             "id": session.id,
@@ -296,6 +310,7 @@ async def get_editor_session(
             "timeline": session.timeline,
             "last_render_job_id": session.last_render_job_id,
             "last_rendered_at": session.last_rendered_at,
+            "final_video_path": final_video_path,
         }
     )
 
@@ -323,6 +338,11 @@ async def save_editor_session(
     else:
         session = await repo.update(session.id, timeline=body.timeline) or session
     await db.commit()
+
+    asset_repo = MediaAssetRepository(db)
+    final_videos = await asset_repo.get_by_episode_and_type(episode_id, "video")
+    final_video_path = final_videos[-1].file_path if final_videos else None
+
     return EditSessionResponse.model_validate(
         {
             "id": session.id,
@@ -331,6 +351,7 @@ async def save_editor_session(
             "timeline": session.timeline,
             "last_render_job_id": session.last_render_job_id,
             "last_rendered_at": session.last_rendered_at,
+            "final_video_path": final_video_path,
         }
     )
 

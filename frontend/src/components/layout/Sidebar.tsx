@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Badge } from '@/components/ui/Badge';
-import { jobs as jobsApi } from '@/lib/api';
+import { jobs as jobsApi, social as socialApi, youtube as youtubeApi } from '@/lib/api';
 import {
   LayoutDashboard,
   Layers,
@@ -20,7 +20,27 @@ import {
   CalendarDays,
   Send,
   FolderOpen,
+  Music2,
+  Instagram,
+  Facebook,
+  Twitter,
 } from 'lucide-react';
+
+// Social-platform ↔ icon ↔ label map. Only platforms that have an
+// active account record in ``/api/v1/social/platforms`` render in the
+// sidebar — keeps the nav clean for users who haven't hooked them all
+// up yet. YouTube is separate (it has its own richer page) and is
+// conditional on ``/api/v1/youtube/status`` reporting ``connected``.
+const SOCIAL_NAV: Array<{
+  platform: string;
+  label: string;
+  icon: typeof Instagram;
+}> = [
+  { platform: 'tiktok', label: 'TikTok', icon: Music2 },
+  { platform: 'instagram', label: 'Instagram', icon: Instagram },
+  { platform: 'facebook', label: 'Facebook', icon: Facebook },
+  { platform: 'x', label: 'X', icon: Twitter },
+];
 
 // ---------------------------------------------------------------------------
 // Nav items — ordered by workflow frequency
@@ -38,10 +58,12 @@ const NAV_CONTENT_STUDIO = [
   { to: '/assets', icon: FolderOpen, label: 'Assets' },
 ] as const;
 
-// Publish — always visible (YouTube not conditional on connection)
-const NAV_PUBLISH = [
+// Publish — Calendar always visible. Platform-specific pages (YouTube,
+// TikTok, Instagram, Facebook, X) are rendered conditionally based on
+// which accounts are actually connected. See ``connectedSocials`` +
+// ``youtubeConnected`` state in the component body.
+const NAV_PUBLISH_STATIC = [
   { to: '/calendar', icon: CalendarDays, label: 'Calendar' },
-  { to: '/youtube', icon: Youtube, label: 'YouTube' },
 ] as const;
 
 // System — Jobs promoted (users need it when things break)
@@ -116,15 +138,44 @@ function Sidebar({ collapsed, onToggle }: SidebarProps) {
   // frequency navigation; color preferences belong in a dedicated
   // settings surface where they're configured once and left alone.
   const [genCount, setGenCount] = useState(0);
+  const [connectedSocials, setConnectedSocials] = useState<string[]>([]);
+  const [youtubeConnected, setYoutubeConnected] = useState(false);
 
   useEffect(() => {
     const poll = () => {
-      jobsApi.status()
-        .then(d => setGenCount(d.generating_episodes ?? 0))
+      jobsApi
+        .status()
+        .then((d) => setGenCount(d.generating_episodes ?? 0))
         .catch(() => {});
     };
     poll();
     const interval = setInterval(poll, 10000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Poll the connected-accounts list every 60s so freshly-added
+  // platforms show up in the nav without a full page refresh. Errors
+  // here are silent — an empty/unreachable social API just means no
+  // platform links render, which is correct fail-closed behavior.
+  useEffect(() => {
+    const loadSocials = async () => {
+      try {
+        const platforms = await socialApi.listPlatforms();
+        setConnectedSocials(
+          platforms.filter((p) => p.is_active).map((p) => p.platform),
+        );
+      } catch {
+        /* social API unavailable — leave list empty */
+      }
+      try {
+        const status = await youtubeApi.getStatus();
+        setYoutubeConnected(Boolean(status.connected));
+      } catch {
+        /* same — fail silently */
+      }
+    };
+    void loadSocials();
+    const interval = setInterval(() => void loadSocials(), 60_000);
     return () => clearInterval(interval);
   }, []);
 
@@ -206,11 +257,31 @@ function Sidebar({ collapsed, onToggle }: SidebarProps) {
           return <SidebarLink key={item.to} item={item} collapsed={collapsed} />;
         })}
 
-        {/* Publish — always visible */}
+        {/* Publish — Calendar + whichever platform accounts are connected */}
         <SectionHeader label="Publish" icon={Send} collapsed={collapsed} />
-        {NAV_PUBLISH.map((item) => (
+        {NAV_PUBLISH_STATIC.map((item) => (
           <SidebarLink key={item.to} item={item} collapsed={collapsed} />
         ))}
+        {youtubeConnected && (
+          <SidebarLink
+            key="/youtube"
+            item={{ to: '/youtube', icon: Youtube, label: 'YouTube' }}
+            collapsed={collapsed}
+          />
+        )}
+        {SOCIAL_NAV.filter((s) => connectedSocials.includes(s.platform)).map(
+          (s) => (
+            <SidebarLink
+              key={`/social/${s.platform}`}
+              item={{
+                to: `/social/${s.platform}`,
+                icon: s.icon,
+                label: s.label,
+              }}
+              collapsed={collapsed}
+            />
+          ),
+        )}
 
         {/* System */}
         <SectionHeader label="System" icon={Settings} collapsed={collapsed} />

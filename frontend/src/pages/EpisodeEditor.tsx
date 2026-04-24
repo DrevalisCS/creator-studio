@@ -472,6 +472,15 @@ export default function EpisodeEditor() {
                 ? `/storage/episodes/${episodeId}/output/proxy.mp4?v=${proxyReadyTs}`
                 : null
             }
+            finalVideoUrl={
+              // v0.20.20 — fall back to the already-assembled final
+              // video so the preview shows SOMETHING by default.
+              // Previously the player tried to play scene PNGs in a
+              // <video> element and silently showed nothing.
+              session?.final_video_path
+                ? `/storage/${session.final_video_path}`
+                : null
+            }
           />
         </Card>
 
@@ -872,6 +881,7 @@ function PreviewPlayer({
   playing,
   onPlayToggle,
   proxyUrl,
+  finalVideoUrl,
 }: {
   timeline: EditTimeline;
   playhead: number;
@@ -879,27 +889,36 @@ function PreviewPlayer({
   playing: boolean;
   onPlayToggle: () => void;
   proxyUrl: string | null;
+  finalVideoUrl: string | null;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const imageRef = useRef<HTMLImageElement | null>(null);
   const videoTrack = timeline.tracks.find((t) => t.kind === 'video');
   const activeClip = videoTrack?.clips.find(
     (c) => playhead >= c.start_s && playhead < c.end_s,
   );
   const localTime = activeClip ? playhead - activeClip.start_s + activeClip.in_s : 0;
 
-  // When a proxy MP4 exists, play it directly with absolute timeline
-  // seconds — no per-clip trimming. Otherwise fall back to per-scene
-  // playback of the raw storage files.
-  const srcUrl = proxyUrl ?? (activeClip?.asset_path ? `/storage/${activeClip.asset_path}` : undefined);
-  const effectiveLocalTime = proxyUrl ? playhead : localTime;
+  // Preview source priority (v0.20.20):
+  // 1. Freshly-rendered 480p proxy — reflects current edits.
+  // 2. Already-assembled final video — works immediately on open
+  //    without the user having to click Preview.
+  // 3. Per-scene slideshow of the raw PNG scenes as a last resort,
+  //    using an <img> because scene assets aren't video files.
+  const isProxyOrFinal = Boolean(proxyUrl || finalVideoUrl);
+  const videoSrc = proxyUrl ?? finalVideoUrl ?? null;
+  const sceneImageSrc = activeClip?.asset_path
+    ? `/storage/${activeClip.asset_path}`
+    : null;
 
   useEffect(() => {
     const v = videoRef.current;
-    if (!v || !srcUrl) return;
-    if (Math.abs(v.currentTime - effectiveLocalTime) > 0.25) v.currentTime = effectiveLocalTime;
+    if (!v || !videoSrc) return;
+    const targetTime = isProxyOrFinal ? playhead : localTime;
+    if (Math.abs(v.currentTime - targetTime) > 0.25) v.currentTime = targetTime;
     if (playing) void v.play().catch(() => undefined);
     else v.pause();
-  }, [playing, effectiveLocalTime, srcUrl]);
+  }, [playing, playhead, localTime, videoSrc, isProxyOrFinal]);
 
   // Advance playhead from the video element's currentTime when playing.
   useEffect(() => {
@@ -907,33 +926,51 @@ function PreviewPlayer({
     const v = videoRef.current;
     if (!v) return;
     const onTime = () => {
-      if (proxyUrl) {
-        // Proxy MP4 is the full timeline — currentTime == absolute timeline seconds.
+      if (isProxyOrFinal) {
         onPlayheadChange(v.currentTime);
-        return;
       }
-      if (!activeClip) return;
-      const delta = v.currentTime - activeClip.in_s;
-      onPlayheadChange(activeClip.start_s + delta);
     };
     v.addEventListener('timeupdate', onTime);
     return () => v.removeEventListener('timeupdate', onTime);
-  }, [playing, activeClip, onPlayheadChange, proxyUrl]);
+  }, [playing, onPlayheadChange, isProxyOrFinal]);
 
   return (
     <div className="w-full max-w-md">
-      <div className="aspect-[9/16] bg-black rounded-md overflow-hidden relative">
-        {srcUrl ? (
+      <div className="aspect-[9/16] bg-black rounded-md overflow-hidden relative group">
+        {videoSrc ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
           <video
             ref={videoRef}
-            src={srcUrl}
+            src={videoSrc}
             className="w-full h-full object-contain"
             onClick={onPlayToggle}
+            controls
+            playsInline
           />
+        ) : sceneImageSrc ? (
+          // Scene slideshow mode — the pipeline writes scenes as PNGs,
+          // not videos, so we render them in an <img>. Clicking toggles
+          // the play state, which advances through scenes via playhead.
+          <>
+            <img
+              ref={imageRef}
+              src={sceneImageSrc}
+              alt={`Scene at ${playhead.toFixed(1)}s`}
+              className="w-full h-full object-contain"
+              onClick={onPlayToggle}
+            />
+            <div className="absolute bottom-2 left-2 right-2 text-[11px] text-white/80 bg-black/60 rounded px-2 py-1 leading-tight pointer-events-none">
+              Scene slideshow · click <strong>Preview</strong> above to render a
+              proxy video, or generate the episode for a real playback track.
+            </div>
+          </>
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-txt-muted text-xs">
-            No scene at this position
+          <div className="w-full h-full flex flex-col items-center justify-center text-txt-muted text-xs p-4 text-center gap-2">
+            <div>No scene at this position.</div>
+            <div className="text-[10px] text-txt-tertiary">
+              Generate the episode first, or click <strong>Preview</strong>
+              above to render a scratch proxy from the current timeline.
+            </div>
           </div>
         )}
       </div>
