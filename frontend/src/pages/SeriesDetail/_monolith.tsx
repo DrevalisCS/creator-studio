@@ -1,10 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useUnsavedWarning } from '@/hooks/useUnsavedWarning';
 import {
   ArrowLeft,
   Plus,
-  Save,
   Trash2,
   Clock,
   Film,
@@ -24,6 +22,9 @@ import {
   Palette,
   Settings2,
   Wand2,
+  Check,
+  CloudOff,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
@@ -205,6 +206,66 @@ function CollapsibleSection({
 }
 
 // ---------------------------------------------------------------------------
+// Autosave status pill (v0.20.32)
+//
+// Small inline indicator that lives next to the breadcrumb and
+// reflects the state of the debounced background save. Appears to the
+// right of the breadcrumb trail so the user can glance at it without
+// leaving the page.
+// ---------------------------------------------------------------------------
+
+function AutosaveStatusPill({
+  status,
+}: {
+  status: 'idle' | 'saving' | 'saved' | 'error';
+}) {
+  if (status === 'idle') {
+    return (
+      <span
+        className="hidden sm:inline-flex items-center gap-1.5 text-[11px] text-txt-muted"
+        aria-hidden
+      >
+        Autosave on
+      </span>
+    );
+  }
+  if (status === 'saving') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full bg-bg-elevated border border-border px-2.5 py-1 text-[11px] text-txt-secondary"
+        role="status"
+        aria-live="polite"
+      >
+        <Loader2 size={11} className="animate-spin" />
+        Saving…
+      </span>
+    );
+  }
+  if (status === 'saved') {
+    return (
+      <span
+        className="inline-flex items-center gap-1.5 rounded-full bg-success/10 border border-success/30 px-2.5 py-1 text-[11px] text-success"
+        role="status"
+        aria-live="polite"
+      >
+        <Check size={11} />
+        Saved
+      </span>
+    );
+  }
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full bg-error/10 border border-error/30 px-2.5 py-1 text-[11px] text-error"
+      role="status"
+      aria-live="polite"
+    >
+      <CloudOff size={11} />
+      Save failed
+    </span>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Series Detail Page
 // ---------------------------------------------------------------------------
 
@@ -217,8 +278,19 @@ function SeriesDetail() {
   const [episodesList, setEpisodesList] = useState<EpisodeListItem[]>([]);
   const [workflows, setWorkflows] = useState<ComfyUIWorkflow[]>([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+
+  // ── Autosave state (v0.20.32) ────────────────────────────────
+  // `autosaveStatus` drives the status pill in the breadcrumb row.
+  // Goes: idle → saving → saved → (1.5s later) → idle. On error we
+  // land on "error" so the user knows their last change didn't make
+  // it to the server. A ref tracks whether we've seen the first
+  // successful fetch — edits before that shouldn't trigger a save.
+  const [autosaveStatus, setAutosaveStatus] = useState<
+    'idle' | 'saving' | 'saved' | 'error'
+  >('idle');
+  const hasLoadedOnce = useRef(false);
+  const savedSignatureRef = useRef<string>('');
 
   // Edit state — basic
   const [editName, setEditName] = useState('');
@@ -261,20 +333,6 @@ function SeriesDetail() {
   const [editStyleStrength, setEditStyleStrength] = useState(0.5);
   const [editStyleLora, setEditStyleLora] = useState('');
 
-  // Warn about unsaved settings changes
-  const hasUnsavedSettings = useMemo(() => {
-    if (!seriesData) return false;
-    return (
-      editName !== seriesData.name ||
-      editDescription !== (seriesData.description ?? '') ||
-      editDuration !== String(seriesData.target_duration_seconds) ||
-      editStyle !== (seriesData.visual_style ?? '') ||
-      editCharacter !== (seriesData.character_description ?? '') ||
-      editMusicEnabled !== seriesData.music_enabled ||
-      editSceneMode !== (seriesData.scene_mode ?? 'image')
-    );
-  }, [seriesData, editName, editDescription, editDuration, editStyle, editCharacter, editMusicEnabled, editSceneMode]);
-  useUnsavedWarning(hasUnsavedSettings);
 
   // Create episode dialog
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -348,6 +406,9 @@ function SeriesDetail() {
       setEditStyleAssetIds((sLock?.asset_ids ?? []).join(', '));
       setEditStyleStrength(Number(sLock?.strength ?? 0.5));
       setEditStyleLora(sLock?.lora ?? '');
+      // Mark baseline so the next tick's useEffect doesn't fire an
+      // autosave just because we rehydrated state from the server.
+      hasLoadedOnce.current = true;
     } catch (err) {
       toast.error('Failed to load series', { description: String(err) });
     } finally {
@@ -379,58 +440,112 @@ function SeriesDetail() {
     };
   }, []);
 
-  const handleSave = async () => {
-    if (!seriesId) return;
-    setSaving(true);
-    try {
-      await seriesApi.update(seriesId, {
-        name: editName.trim() || undefined,
-        description: editDescription.trim() || undefined,
-        target_duration_seconds: Number(editDuration) as 15 | 30 | 60,
-        visual_style: editStyle || undefined,
-        character_description: editCharacter || undefined,
-        default_language: editLanguage || undefined,
-        caption_style: editCaptionStyle,
-        scene_mode: editSceneMode,
-        music_enabled: editMusicEnabled,
-        music_mood: editMusicMood || undefined,
-        music_volume_db: editMusicVolume,
-        video_comfyui_workflow_id: editVideoWorkflowId || undefined,
-        youtube_channel_id: editYoutubeChannelId || undefined,
-        content_format: editContentFormat,
-        target_duration_minutes: editContentFormat === 'longform' ? editTargetMinutes : undefined,
-        scenes_per_chapter: editContentFormat === 'longform' ? editScenesPerChapter : undefined,
-        visual_consistency_prompt: editVisualConsistency || undefined,
-        aspect_ratio: editAspectRatio,
-        character_lock: editCharacterAssetIds.trim()
-          ? {
-              asset_ids: editCharacterAssetIds
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean),
-              strength: editCharacterStrength,
-              lora: editCharacterLora || null,
-            }
-          : null,
-        style_lock: editStyleAssetIds.trim()
-          ? {
-              asset_ids: editStyleAssetIds
-                .split(',')
-                .map((s) => s.trim())
-                .filter(Boolean),
-              strength: editStyleStrength,
-              lora: editStyleLora || null,
-            }
-          : null,
-      } as any);
-      toast.success('Series saved');
-      void fetchData();
-    } catch (err) {
-      toast.error('Failed to save series', { description: String(err) });
-    } finally {
-      setSaving(false);
+  // Build the update payload from current edit state. Used by both
+  // the debounced autosave and any direct persistence call (e.g. after
+  // template apply). Kept as a pure builder so deps are explicit.
+  const buildPayload = useCallback(
+    () => ({
+      name: editName.trim() || undefined,
+      description: editDescription.trim() || undefined,
+      target_duration_seconds: Number(editDuration) as 15 | 30 | 60,
+      visual_style: editStyle || undefined,
+      character_description: editCharacter || undefined,
+      default_language: editLanguage || undefined,
+      caption_style: editCaptionStyle,
+      scene_mode: editSceneMode,
+      music_enabled: editMusicEnabled,
+      music_mood: editMusicMood || undefined,
+      music_volume_db: editMusicVolume,
+      video_comfyui_workflow_id: editVideoWorkflowId || undefined,
+      youtube_channel_id: editYoutubeChannelId || undefined,
+      content_format: editContentFormat,
+      target_duration_minutes:
+        editContentFormat === 'longform' ? editTargetMinutes : undefined,
+      scenes_per_chapter:
+        editContentFormat === 'longform' ? editScenesPerChapter : undefined,
+      visual_consistency_prompt: editVisualConsistency || undefined,
+      aspect_ratio: editAspectRatio,
+      character_lock: editCharacterAssetIds.trim()
+        ? {
+            asset_ids: editCharacterAssetIds
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            strength: editCharacterStrength,
+            lora: editCharacterLora || null,
+          }
+        : null,
+      style_lock: editStyleAssetIds.trim()
+        ? {
+            asset_ids: editStyleAssetIds
+              .split(',')
+              .map((s) => s.trim())
+              .filter(Boolean),
+            strength: editStyleStrength,
+            lora: editStyleLora || null,
+          }
+        : null,
+    }),
+    [
+      editName,
+      editDescription,
+      editDuration,
+      editStyle,
+      editCharacter,
+      editLanguage,
+      editCaptionStyle,
+      editSceneMode,
+      editMusicEnabled,
+      editMusicMood,
+      editMusicVolume,
+      editVideoWorkflowId,
+      editYoutubeChannelId,
+      editContentFormat,
+      editTargetMinutes,
+      editScenesPerChapter,
+      editVisualConsistency,
+      editAspectRatio,
+      editCharacterAssetIds,
+      editCharacterStrength,
+      editCharacterLora,
+      editStyleAssetIds,
+      editStyleStrength,
+      editStyleLora,
+    ],
+  );
+
+  // Debounced autosave. Fires ~600ms after the last edit. The
+  // signature hash keeps us from spamming saves when unrelated state
+  // (toasts, dialog open flags) triggers a re-render.
+  const payload = useMemo(() => buildPayload(), [buildPayload]);
+  const signature = useMemo(() => JSON.stringify(payload), [payload]);
+
+  useEffect(() => {
+    if (!seriesId || !hasLoadedOnce.current) return;
+    if (savedSignatureRef.current === '') {
+      // First pass after load — seed the baseline, no save.
+      savedSignatureRef.current = signature;
+      return;
     }
-  };
+    if (savedSignatureRef.current === signature) return;
+
+    const timer = setTimeout(async () => {
+      setAutosaveStatus('saving');
+      try {
+        await seriesApi.update(seriesId, payload as any);
+        savedSignatureRef.current = signature;
+        setAutosaveStatus('saved');
+        setTimeout(() => {
+          setAutosaveStatus((cur) => (cur === 'saved' ? 'idle' : cur));
+        }, 1500);
+      } catch (err) {
+        setAutosaveStatus('error');
+        toast.error('Autosave failed', { description: String(err) });
+      }
+    }, 600);
+
+    return () => clearTimeout(timer);
+  }, [signature, payload, seriesId, toast]);
 
   const handleDelete = async () => {
     if (!seriesId) return;
@@ -602,13 +717,16 @@ function SeriesDetail() {
 
   return (
     <div className="space-y-6">
-      {/* Breadcrumb + Back */}
-      <Breadcrumb
-        items={[
-          { label: 'Series', to: '/series' },
-          { label: editName || seriesData.name || 'Series Detail' },
-        ]}
-      />
+      {/* Breadcrumb + autosave status pill (v0.20.32) */}
+      <div className="flex items-center justify-between gap-4">
+        <Breadcrumb
+          items={[
+            { label: 'Series', to: '/series' },
+            { label: editName || seriesData.name || 'Series Detail' },
+          ]}
+        />
+        <AutosaveStatusPill status={autosaveStatus} />
+      </div>
 
       {/* Two-column layout (lg+): sticky rail nav + scrollable content.
           Collapses to a single column below lg. */}
@@ -1002,10 +1120,9 @@ function SeriesDetail() {
                     Character reference lock
                   </div>
                   <p className="text-[11px] text-txt-muted mb-2">
-                    Pin a face or character across scenes. Upload portrait
-                    assets on the Assets page and paste their UUIDs here.
-                    Workflows with IPAdapter-FaceID slots consume these;
-                    others ignore them.
+                    Pin a face or character across scenes. Pick portrait
+                    assets from your library — workflows with
+                    IPAdapter-FaceID slots consume them; others ignore them.
                   </p>
                   <AssetLockPicker
                     ids={editCharacterAssetIds}
@@ -1045,7 +1162,8 @@ function SeriesDetail() {
                     Style reference lock
                   </div>
                   <p className="text-[11px] text-txt-muted mb-2">
-                    Pin a look (lighting, palette, film grain). Same asset-UUIDs-plus-strength pattern.
+                    Pin a look (lighting, palette, film grain). Same
+                    picker, separate strength.
                   </p>
                   <AssetLockPicker
                     ids={editStyleAssetIds}
@@ -1157,19 +1275,6 @@ function SeriesDetail() {
           )}
         </div>
       </CollapsibleSection>
-
-      {/* Global save button */}
-      <div className="flex justify-end">
-        <Button
-          variant="primary"
-          size="lg"
-          loading={saving}
-          onClick={() => void handleSave()}
-        >
-          <Save size={16} />
-          Save All Changes
-        </Button>
-      </div>
 
       {/* Episodes section (v0.20.31 redesign) */}
       <section id="section-episodes" />
