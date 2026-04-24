@@ -85,20 +85,22 @@ fi
 
 if [[ -n "${HOST_PROJECT_DIR}" && "${HOST_PROJECT_DIR}" != "/project" ]]; then
   log "host project directory resolved via docker inspect: ${HOST_PROJECT_DIR}"
-  compose_args=(--project-directory "${HOST_PROJECT_DIR}")
+  # The compose CLI runs INSIDE this updater container, so the --file
+  # argument must point at a path readable from here (``/project/…``).
+  # --project-directory is used by the daemon to resolve relative bind
+  # mounts in the compose file — set it to the REAL host path so
+  # Docker records ``C:\Users\...\storage`` instead of ``/project/
+  # storage`` on bind-mount sources.
+  compose_args=(
+    --file /project/docker-compose.yml
+    --project-directory "${HOST_PROJECT_DIR}"
+  )
 else
   # Fallback for bare-Linux installs where /project IS the host path
   # (no path translation needed) or for environments where docker
   # inspect on our own ID is denied.
   log "host project directory fallback: /project (Linux-native or inspect denied)"
   compose_args=(--project-directory /project)
-fi
-
-# Same for the compose file path — if the discovered host dir is a
-# Windows path, feed docker compose the explicit file location so
-# there's no ambiguity about which yml to read.
-if [[ -n "${HOST_PROJECT_DIR}" && "${HOST_PROJECT_DIR}" != "/project" ]]; then
-  compose_args+=(--file "${HOST_PROJECT_DIR}/docker-compose.yml")
 fi
 
 if [[ -n "${PROJECT_NAME}" ]]; then
