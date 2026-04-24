@@ -128,6 +128,20 @@ export const THEME_PRESETS: ThemePreset[] = [
     iconStroke: 1.5,
     shadowStyle: 'flat',
   },
+  {
+    id: 'aurora',
+    name: 'Aurora',
+    description: 'Violet · DM Sans · soft shadows · friendly corners. Creative studio vibe.',
+    accentDark: '#A78BFA',
+    accentLight: '#8B5CF6',
+    accentDarkHover: '#C4B5FD',
+    accentLightHover: '#7C3AED',
+    fontDisplay: '"DM Sans", "Outfit", system-ui, sans-serif',
+    fontSans: '"Inter", "DM Sans", system-ui, -apple-system, sans-serif',
+    radiusBase: 12,
+    iconStroke: 2,
+    shadowStyle: 'soft',
+  },
 ];
 
 // Back-compat shim: pages that imported ``ACCENT_COLORS`` still work —
