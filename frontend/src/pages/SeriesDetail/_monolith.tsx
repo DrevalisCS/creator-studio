@@ -13,6 +13,7 @@ import {
   Settings2,
   Wand2,
   ChevronDown,
+  ChevronRight,
   Smartphone,
   Monitor,
   Music2,
