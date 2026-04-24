@@ -40,6 +40,8 @@ export type {
   LicenseStatus,
   UpdateStatus,
   UpdateProgress,
+  ChangelogEntry,
+  ChangelogResponse,
   ActivationEntry,
   ActivationsResponse,
   OnboardingStatus,
