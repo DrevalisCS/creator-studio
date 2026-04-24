@@ -9,22 +9,26 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI
 
+# needs to resolve ``AsyncSession = Depends(get_db)`` at wiring time.
+# ``from __future__ import annotations`` turns every annotation into a
+# string; FastAPI's type-hint resolver then calls ``get_type_hints()``
+# which fails to resolve a TYPE_CHECKING-only name at runtime and falls
+# back to treating ``db`` as a query parameter — every editor endpoint
+# then 500s on session.execute because ``db`` is a missing string.
 from drevalis.core.deps import get_db
 from drevalis.core.redis import get_arq_pool
 from drevalis.repositories.episode import EpisodeRepository
 from drevalis.repositories.media_asset import MediaAssetRepository
 from drevalis.repositories.video_edit_session import VideoEditSessionRepository
 from drevalis.schemas.script import EpisodeScript
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 

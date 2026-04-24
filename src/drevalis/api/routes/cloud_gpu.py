@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Path, status
 from pydantic import BaseModel, Field
+from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI Depends
 
 from drevalis.core.deps import get_db, get_settings
 from drevalis.core.license.features import fastapi_dep_require_feature
@@ -27,8 +28,6 @@ from drevalis.services.cloud_gpu import (
 )
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from drevalis.core.config import Settings
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)

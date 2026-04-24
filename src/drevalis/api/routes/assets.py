@@ -34,13 +34,12 @@ import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI Depends
 
 from drevalis.core.deps import get_db, get_settings
 from drevalis.repositories.asset import AssetRepository
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from drevalis.core.config import Settings
     from drevalis.models.asset import Asset
 

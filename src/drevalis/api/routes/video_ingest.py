@@ -23,14 +23,13 @@ from uuid import UUID, uuid4
 import structlog
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI Depends
 
 from drevalis.core.deps import get_db, get_settings
 from drevalis.core.redis import get_arq_pool
 from drevalis.repositories.asset import AssetRepository, VideoIngestJobRepository
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from drevalis.core.config import Settings
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)

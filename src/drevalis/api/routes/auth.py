@@ -26,6 +26,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI Depends
 
 from drevalis.core.deps import get_db, get_settings
 from drevalis.models.user import User
@@ -41,9 +42,8 @@ from drevalis.services.team import (
 # ``email-validator`` (pydantic[email]) which isn't in the runtime image.
 _EMAIL_RE = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
 
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
+if TYPE_CHECKING:
     from drevalis.core.config import Settings
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)

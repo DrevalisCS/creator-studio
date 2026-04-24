@@ -9,20 +9,18 @@ not retroactively affect series that used it.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI Depends
 
 from drevalis.core.deps import get_db
 from drevalis.models.character_pack import CharacterPack
 from drevalis.repositories.series import SeriesRepository
-
-if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 

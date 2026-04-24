@@ -23,6 +23,7 @@ import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI Depends
 
 from drevalis.core.deps import get_db, get_settings
 from drevalis.models.ab_test import ABTest
@@ -30,8 +31,6 @@ from drevalis.models.episode import Episode
 from drevalis.repositories.youtube import YouTubeUploadRepository
 
 if TYPE_CHECKING:
-    from sqlalchemy.ext.asyncio import AsyncSession
-
     from drevalis.core.config import Settings
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
