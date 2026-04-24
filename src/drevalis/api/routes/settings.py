@@ -171,7 +171,12 @@ async def storage_usage(
             # Keep the line if it covers our storage path OR is a
             # parent of it (so we capture overlay layers that would
             # otherwise hide the real bind).
-            if mount_point == path_str or path_str.startswith(mount_point.rstrip("/") + "/") or mount_point == "/" or mount_point == "":
+            if (
+                mount_point == path_str
+                or path_str.startswith(mount_point.rstrip("/") + "/")
+                or mount_point == "/"
+                or mount_point == ""
+            ):
                 mountinfo_lines.append(line)
     except (OSError, UnicodeDecodeError):
         pass
