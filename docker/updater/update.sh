@@ -117,7 +117,30 @@ while true; do
     log "flag detected -- pulling new images"
     write_status "pulling" "docker compose pull started"
 
-    if docker compose "${compose_args[@]}" pull 2>&1 | tee /tmp/pull.log; then
+    # v0.20.17 — pre-flight network check. Helps distinguish "pull
+    # failed because of a yaml typo" from "pull failed because your
+    # install can't reach ghcr.io". Registry doesn't require auth to
+    # hit /v2/; a 200 response proves DNS+TLS+TCP are working.
+    if ! curl -fsS --max-time 8 -o /dev/null \
+        -w "ghcr_status=%{http_code}\n" https://ghcr.io/v2/ 2>/tmp/curl.err; then
+      err_detail=$(head -c 300 /tmp/curl.err 2>/dev/null | tr '\n' ' ')
+      write_status "failed" "cannot reach ghcr.io (network / DNS): ${err_detail}"
+      log "preflight ghcr.io unreachable — ${err_detail}"
+      rm -f "${FLAG}"
+      continue
+    fi
+    log "preflight ghcr.io reachable"
+
+    # Capture pull output and its exit code. Can't use tee in a pipeline
+    # for the exit code (set -o pipefail is on, but the tee wouldn't
+    # reflect the pull's rc anyway — PIPESTATUS[0] is what we want).
+    set +o pipefail
+    docker compose "${compose_args[@]}" pull > /tmp/pull.log 2>&1
+    pull_rc=$?
+    set -o pipefail
+    cat /tmp/pull.log
+
+    if [[ ${pull_rc} -eq 0 ]]; then
       write_status "pulled" "images pulled, about to restart services"
       log "pull ok -- restarting stack"
 
@@ -150,8 +173,15 @@ while true; do
         log "restart FAILED"
       fi
     else
-      write_status "failed" "docker compose pull failed; check updater logs + network access to ghcr.io"
-      log "pull FAILED -- flag cleared, retry from UI if needed"
+      # Put the tail of the actual pull log into the status JSON so
+      # the UI can show the real error (missing image tag, ghcr auth,
+      # DNS failure, etc.) instead of a generic "pull failed".
+      pull_tail=$(tail -n 5 /tmp/pull.log 2>/dev/null | tr '\n' ' ' | head -c 400)
+      write_status "failed" "docker compose pull failed (rc=${pull_rc}): ${pull_tail}"
+      log "pull FAILED (rc=${pull_rc}) -- flag cleared"
+      log "--- last lines of pull.log ---"
+      tail -n 20 /tmp/pull.log 2>/dev/null || true
+      log "--- end pull.log ---"
     fi
     rm -f "${FLAG}"
     STARTED_AT=""
