@@ -81,7 +81,7 @@ async def _wait_for_redis(
             return
         except socket.gaierror as exc:
             last_err = f"DNS lookup failed for {host}: {exc}"
-        except (OSError, TimeoutError, asyncio.TimeoutError) as exc:
+        except (OSError, TimeoutError) as exc:
             last_err = f"connect to {host}:{port} failed: {type(exc).__name__}: {exc}"
 
         if time.monotonic() >= deadline:
@@ -123,7 +123,7 @@ def main() -> None:
     # drevalis.workers.settings.WorkerSettings`` would. Importing
     # the CLI here (instead of execv'ing) keeps the structlog setup
     # we may have configured by then in scope.
-    from arq.cli import cli  # type: ignore[import-not-found]
+    from arq.cli import cli
 
     sys.argv = ["arq", "drevalis.workers.settings.WorkerSettings"]
     cli()

@@ -67,10 +67,29 @@ OPTIONAL SOUND EFFECTS:
   ambient or impact sound effect (e.g. footsteps, thunder, door slam,
   busy street). The audiobook generator will synthesise a short audio
   clip and splice it in at exactly that point.
-- Keep ``dur`` between 1 and 8 seconds. Default if omitted: 4s.
+- Keep ``dur`` between 1 and 8 seconds for sequential effects.
+  Default if omitted: 4s.
 - Use SFX sparingly — 1-3 per chapter is plenty. Don't replace
   narration with sound effects; layer them where they enhance a
   scene's atmosphere or punctuate a beat.
+
+OPTIONAL OVERLAY SFX (sound effect UNDER the next dialogue):
+- Add ``| under=next`` to layer the SFX UNDER the next voice block
+  with sidechain ducking, instead of playing it sequentially.
+- Use ``| under=4`` to overlay under multiple voice blocks (here,
+  the next 4 blocks).
+- Tune the duck depth with ``| duck=-15`` (more negative = quieter
+  SFX during dialogue, default -12).
+- Great for ambient beds during conversations: rain under a porch
+  scene, traffic under a street argument, fireplace crackle under
+  a confession.
+
+Example overlay SFX:
+
+[SFX: heavy rain on a tin roof | dur=12 | under=3 | duck=-15]
+[Jack] We need to talk.
+[Rosie] About what?
+[Jack] You know what.
 
 Example format:
 ## Chapter 1: The Beginning

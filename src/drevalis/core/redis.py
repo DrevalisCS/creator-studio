@@ -67,7 +67,7 @@ async def _wait_for_redis_dns(
             return
         except socket.gaierror as exc:
             last_err = f"DNS lookup failed for {host}: {exc}"
-        except (OSError, TimeoutError, asyncio.TimeoutError) as exc:
+        except (OSError, TimeoutError) as exc:
             last_err = f"connect to {host}:{port} failed: {type(exc).__name__}: {exc}"
 
         if time.monotonic() >= deadline:

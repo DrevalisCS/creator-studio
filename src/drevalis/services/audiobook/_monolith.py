@@ -52,6 +52,13 @@ class AudioChunk:
     speaker: str
     block_index: int
     chunk_index: int
+    # SFX overlay metadata — populated only when this chunk is an
+    # SFX clip with an ``under=...`` modifier. The concatenator
+    # treats overlay SFX as a sidechain layer on subsequent voice
+    # chunks instead of an inline chunk in the timeline.
+    overlay_voice_blocks: int | None = None
+    overlay_seconds: float | None = None
+    overlay_duck_db: float = -12.0
 
 
 @dataclass
@@ -421,6 +428,9 @@ class AudiobookService:
             speaker="__SFX__",
             block_index=block_index,
             chunk_index=0,
+            overlay_voice_blocks=block.get("under_voice_blocks"),
+            overlay_seconds=block.get("under_seconds"),
+            overlay_duck_db=float(block.get("duck_db", -12.0) or -12.0),
         )
 
     # ══════════════════════════════════════════════════════════════════════
@@ -444,7 +454,7 @@ class AudiobookService:
         per_chapter_music: bool = False,
         image_generation_enabled: bool = False,
         output_format: str = "audio_only",
-    ) -> list["AudiobookService.PreflightWarning"]:
+    ) -> list[AudiobookService.PreflightWarning]:
         """Validate inputs cheaply and return any blockers / hints.
 
         Runs in <1s and surfaces every condition that would otherwise
@@ -1111,10 +1121,26 @@ class AudiobookService:
 
             [SFX: description]
             [SFX: description | dur=5 | influence=0.4 | loop]
+            [SFX: description | dur=8 | under=next | duck=-12]
+            [SFX: description | dur=20 | under=4 | duck=-15]
 
-        ``dur`` defaults to 4s (clamped 0.5 - 22s by the SFX
-        provider). ``influence`` defaults to provider default.
-        ``loop`` is a valueless flag.
+        Modifiers:
+            ``dur`` / ``duration``  — seconds, default 4, clamped 0.5-22
+            ``influence``           — 0.0-1.0 prompt adherence
+            ``loop``                — valueless flag
+            ``under=next``          — overlay under the next voice block
+            ``under=N``             — overlay under the next N seconds
+                                       of voice (across blocks)
+            ``duck`` / ``duck_db``  — dB to attenuate the SFX while
+                                       voice is speaking on top
+                                       (default -12, more negative =
+                                       quieter SFX during dialogue)
+
+        Without an ``under`` modifier, the SFX is *sequential* —
+        played at exactly its script position, voice resumes after.
+        With ``under``, the SFX is *overlay* — written to disk now
+        but spliced in by the concatenator on top of subsequent
+        voice chunks with sidechain ducking.
 
         Untagged text defaults to ``[Narrator]``.
         """
@@ -1156,6 +1182,13 @@ class AudiobookService:
                 duration = 4.0
                 influence: float | None = None
                 loop = False
+                # Overlay modifiers — None means "sequential
+                # placement, no overlay". under_voice_blocks=int OR
+                # under_seconds=float describes how much subsequent
+                # voice the SFX should ride under.
+                under_voice_blocks: int | None = None
+                under_seconds: float | None = None
+                duck_db = -12.0
                 for mod in parts[1:]:
                     if not mod:
                         continue
@@ -1173,6 +1206,30 @@ class AudiobookService:
                                 influence = float(v)
                             elif k == "loop":
                                 loop = v.lower() in ("1", "true", "yes")
+                            elif k == "under":
+                                vl = v.lower()
+                                if vl in ("next", "1"):
+                                    under_voice_blocks = 1
+                                elif vl == "all":
+                                    # "all remaining voice blocks in
+                                    # the chapter" — handled via a
+                                    # very large block count.
+                                    under_voice_blocks = 999
+                                else:
+                                    # Numeric: treat as seconds when
+                                    # >2 (a single voice block of
+                                    # duration ≤2s is unusual);
+                                    # otherwise as block count.
+                                    try:
+                                        n = float(v)
+                                        if n.is_integer() and n <= 5:
+                                            under_voice_blocks = int(n)
+                                        else:
+                                            under_seconds = n
+                                    except ValueError:
+                                        pass
+                            elif k in ("duck", "duck_db"):
+                                duck_db = float(v)
                         except ValueError:
                             pass
                 blocks.append(
@@ -1182,6 +1239,11 @@ class AudiobookService:
                         "duration": duration,
                         "loop": loop,
                         "prompt_influence": influence,
+                        # Overlay metadata — both None for the
+                        # sequential default.
+                        "under_voice_blocks": under_voice_blocks,
+                        "under_seconds": under_seconds,
+                        "duck_db": duck_db,
                     }
                 )
                 continue
@@ -1468,6 +1530,12 @@ class AudiobookService:
     # Context-aware audio concatenation
     # ══════════════════════════════════════════════════════════════════════
 
+    def _is_overlay_sfx(self, chunk: AudioChunk) -> bool:
+        return chunk.speaker == "__SFX__" and (
+            chunk.overlay_voice_blocks is not None
+            or chunk.overlay_seconds is not None
+        )
+
     async def _concatenate_with_context(
         self, chunks: list[AudioChunk], output: Path
     ) -> list[ChapterTiming]:
@@ -1478,10 +1546,32 @@ class AudiobookService:
         - Between speakers: 400 ms
         - Within same speaker: 150 ms
 
+        SFX chunks marked with overlay metadata
+        (``[SFX: ... | under=...]``) are NOT placed in the inline
+        timeline — they are mixed under subsequent voice chunks in
+        a second pass with sidechain ducking.
+
         Returns chapter timing metadata.
         """
         if not chunks:
             raise RuntimeError("No audio chunks to concatenate")
+
+        # Partition: inline vs overlay-SFX. For each overlay, remember
+        # its position in the original list so we can compute its
+        # start offset against the inline timeline below.
+        inline_chunks: list[AudioChunk] = []
+        overlays: list[tuple[int, AudioChunk]] = []
+        for orig_idx, chunk in enumerate(chunks):
+            if self._is_overlay_sfx(chunk):
+                overlays.append((orig_idx, chunk))
+            else:
+                inline_chunks.append(chunk)
+
+        if not inline_chunks:
+            # All chunks were overlay SFX with no voice — fall back
+            # to treating them as inline so we still produce audio.
+            inline_chunks = list(chunks)
+            overlays = []
 
         concat_list = output.parent / "_concat_list.txt"
 
@@ -1510,13 +1600,12 @@ class AudiobookService:
 
         # Build concat list with context-aware silence
         lines: list[str] = []
-        # Track which silence to insert between chunks
-        for i, chunk in enumerate(chunks):
+        for i, chunk in enumerate(inline_chunks):
             safe_path = str(chunk.path).replace("\\", "/")
             lines.append(f"file '{safe_path}'")
 
-            if i < len(chunks) - 1:
-                next_chunk = chunks[i + 1]
+            if i < len(inline_chunks) - 1:
+                next_chunk = inline_chunks[i + 1]
                 if chunk.chapter_index != next_chunk.chapter_index:
                     pause = PAUSE_BETWEEN_CHAPTERS
                 elif chunk.speaker != next_chunk.speaker:
@@ -1563,8 +1652,29 @@ class AudiobookService:
             stderr_text = stderr.decode("utf-8", errors="replace")
             raise RuntimeError(f"Failed to concatenate chunks: {stderr_text[:300]}")
 
-        # Compute chapter timings by summing chunk durations
-        chapter_timings = await self._compute_chapter_timings(chunks)
+        # Compute chapter timings by summing chunk durations.
+        # Overlay SFX don't influence the timeline so timings come
+        # from the inline list only.
+        chapter_timings = await self._compute_chapter_timings(inline_chunks)
+
+        # ── Overlay SFX pass ────────────────────────────────────
+        # Mix overlay SFX onto the inline base with a sidechain
+        # ducker so the SFX rides under the next voice block(s).
+        if overlays:
+            try:
+                await self._mix_overlay_sfx(
+                    base_path=output,
+                    chunks_in_order=chunks,
+                    inline_chunks=inline_chunks,
+                    overlays=overlays,
+                )
+            except Exception as exc:  # noqa: BLE001
+                # Never lose the audiobook because an overlay mix
+                # failed — log and continue with the bare inline.
+                log.warning(
+                    "audiobook.overlay_sfx.mix_failed",
+                    error=f"{type(exc).__name__}: {str(exc)[:200]}",
+                )
 
         # Cleanup temp files
         concat_list.unlink(missing_ok=True)
@@ -1572,6 +1682,175 @@ class AudiobookService:
             sil.unlink(missing_ok=True)
 
         return chapter_timings
+
+    async def _mix_overlay_sfx(
+        self,
+        base_path: Path,
+        chunks_in_order: list[AudioChunk],
+        inline_chunks: list[AudioChunk],
+        overlays: list[tuple[int, AudioChunk]],
+    ) -> None:
+        """Mix overlay SFX onto the inline audiobook base.
+
+        For each overlay, computes its start offset in the inline
+        timeline (= cumulative duration of all inline chunks +
+        between-chunk silences up to and including the gap that
+        precedes the next inline chunk after the overlay's script
+        position), then sidechain-ducks it and amix-es onto the
+        running track.
+        """
+        # Build position lookup: original_index -> position in inline
+        # list. Overlays themselves are not in inline; we use the
+        # next inline chunk after the overlay as the start anchor.
+        orig_to_inline: dict[int, int] = {}
+        inline_set: set[int] = set()
+        running_inline_idx = 0
+        for orig_idx, chunk in enumerate(chunks_in_order):
+            if chunk in inline_chunks[running_inline_idx : running_inline_idx + 1]:
+                orig_to_inline[orig_idx] = running_inline_idx
+                inline_set.add(orig_idx)
+                running_inline_idx += 1
+                if running_inline_idx >= len(inline_chunks):
+                    break
+        # Re-walk to be safe (above loop assumes inline_chunks
+        # appears in same relative order — which it does, but
+        # guarding against future refactor).
+        if len(orig_to_inline) != len(inline_chunks):
+            orig_to_inline = {}
+            inline_set = set()
+            j = 0
+            for orig_idx, chunk in enumerate(chunks_in_order):
+                if j < len(inline_chunks) and chunk is inline_chunks[j]:
+                    orig_to_inline[orig_idx] = j
+                    inline_set.add(orig_idx)
+                    j += 1
+
+        # Pre-compute durations + cumulative inline starts.
+        inline_durations: list[float] = []
+        for c in inline_chunks:
+            inline_durations.append(await self.ffmpeg.get_duration(c.path))
+
+        # Position-on-disk of inline chunk i (in seconds) =
+        # sum(inline_durations[:i]) + sum(silences before each
+        # boundary up to i). Compute on demand.
+        def inline_start(i: int) -> float:
+            t = 0.0
+            for k in range(i):
+                t += inline_durations[k]
+                # Add silence between chunks k and k+1 (already
+                # written to disk between the chunks during concat).
+                a, b = inline_chunks[k], inline_chunks[k + 1]
+                if a.chapter_index != b.chapter_index:
+                    t += PAUSE_BETWEEN_CHAPTERS
+                elif a.speaker != b.speaker:
+                    t += PAUSE_BETWEEN_SPEAKERS
+                else:
+                    t += PAUSE_WITHIN_SPEAKER
+            return t
+
+        # For each overlay, find the next inline chunk after its
+        # original position; that's our start anchor.
+        overlay_plans: list[tuple[Path, float, float, float]] = []
+        for orig_idx, sfx_chunk in overlays:
+            # Find next inline orig_idx > this one.
+            next_inline_orig: int | None = None
+            for j in range(orig_idx + 1, len(chunks_in_order)):
+                if j in inline_set:
+                    next_inline_orig = j
+                    break
+            if next_inline_orig is None:
+                # Overlay was after every voice chunk — start at
+                # end of last inline chunk.
+                start = sum(inline_durations) + sum(
+                    PAUSE_BETWEEN_CHAPTERS
+                    if inline_chunks[k].chapter_index != inline_chunks[k + 1].chapter_index
+                    else (
+                        PAUSE_BETWEEN_SPEAKERS
+                        if inline_chunks[k].speaker != inline_chunks[k + 1].speaker
+                        else PAUSE_WITHIN_SPEAKER
+                    )
+                    for k in range(len(inline_chunks) - 1)
+                )
+            else:
+                start = inline_start(orig_to_inline[next_inline_orig])
+
+            sfx_dur = await self.ffmpeg.get_duration(sfx_chunk.path)
+            overlay_plans.append(
+                (sfx_chunk.path, start, sfx_dur, float(sfx_chunk.overlay_duck_db))
+            )
+
+        if not overlay_plans:
+            return
+
+        # Mix overlays one-by-one onto the base. Doing them all in a
+        # single filter_complex is theoretically faster but the per-
+        # overlay sidechain compressor wiring gets unwieldy; one
+        # pass per overlay is much easier to debug and the cost is
+        # bounded (a 1h audiobook with 10 overlays is 10 ffmpeg
+        # passes, each <2s of CPU).
+        tmp_dir = base_path.parent
+        for i, (sfx_path, start_sec, sfx_dur, duck_db) in enumerate(overlay_plans):
+            start_ms = max(0, int(start_sec * 1000))
+            mixed = tmp_dir / f"_overlay_pass_{i:03d}.wav"
+            # adelay → place SFX at the right timestamp
+            # apad      → ensure the SFX is at least as long as the base segment
+            # sidechaincompress → duck the SFX wherever the base voice is loud
+            # amix      → final mix (duration=longest keeps base intact)
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(base_path),
+                "-i",
+                str(sfx_path),
+                "-filter_complex",
+                (
+                    f"[1:a]adelay={start_ms}|{start_ms},apad,"
+                    f"atrim=0:{start_sec + sfx_dur:.2f},"
+                    f"volume={duck_db:.1f}dB[sfxprep];"
+                    "[sfxprep][0:a]sidechaincompress=threshold=0.05:"
+                    "ratio=8:attack=50:release=300[ducked];"
+                    "[0:a][ducked]amix=inputs=2:duration=longest:"
+                    "dropout_transition=0[out]"
+                ),
+                "-map",
+                "[out]",
+                "-ar",
+                "44100",
+                "-ac",
+                "2",
+                "-c:a",
+                "pcm_s16le",
+                str(mixed),
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, err = await proc.communicate()
+            if proc.returncode != 0 or not mixed.exists():
+                log.warning(
+                    "audiobook.overlay_sfx.pass_failed",
+                    pass_index=i,
+                    sfx_path=str(sfx_path),
+                    start_sec=start_sec,
+                    rc=proc.returncode,
+                    stderr=err.decode("utf-8", errors="replace")[:300],
+                )
+                mixed.unlink(missing_ok=True)
+                continue
+            # Replace the base atomically. tmp.replace ≥ rename; on
+            # Windows it requires the destination to be writable —
+            # we just wrote it, so it is.
+            mixed.replace(base_path)
+            log.info(
+                "audiobook.overlay_sfx.mixed",
+                pass_index=i,
+                start_sec=round(start_sec, 2),
+                duration_sec=round(sfx_dur, 2),
+                duck_db=duck_db,
+            )
 
     async def _compute_chapter_timings(self, chunks: list[AudioChunk]) -> list[ChapterTiming]:
         """Compute chapter start/end times from chunk audio durations."""
@@ -1939,7 +2218,7 @@ class AudiobookService:
                 "-f",
                 "lavfi",
                 "-i",
-                f"anullsrc=r=24000:cl=mono",
+                "anullsrc=r=24000:cl=mono",
                 "-t",
                 f"{seconds:.1f}",
                 "-c:a",

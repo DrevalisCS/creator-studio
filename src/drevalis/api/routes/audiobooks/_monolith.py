@@ -988,7 +988,6 @@ async def music_preview(
     from drevalis.services.comfyui import ComfyUIPool, ComfyUIService
     from drevalis.services.ffmpeg import FFmpegService
     from drevalis.services.storage import LocalStorage
-    from drevalis.services.tts import TTSService
 
     repo = AudiobookRepository(db)
     ab = await repo.get_by_id(audiobook_id)
@@ -1001,13 +1000,20 @@ async def music_preview(
     storage = LocalStorage(base_path=settings.storage_base_path)
     pool = ComfyUIPool()
     await pool.sync_from_db(db)
-    comfyui_svc = ComfyUIService(pool=pool) if pool._servers else None
+    comfyui_svc = ComfyUIService(pool=pool, storage=storage) if pool._servers else None
 
     pool_redis = get_pool()
     redis = Redis(connection_pool=pool_redis)
     try:
+        # render_music_preview only uses storage + ffmpeg + comfyui;
+        # the TTS service isn't touched on this code path. We pass
+        # ``None`` via a typing.cast through ``Any`` to avoid pulling
+        # the full Piper/ElevenLabs/Edge stack into the request just
+        # to mix a 30s preview.
+        from typing import cast
+
         svc = AudiobookService(
-            tts_service=TTSService(),
+            tts_service=cast(Any, None),
             ffmpeg_service=FFmpegService(),
             storage=storage,
             db_session=db,
