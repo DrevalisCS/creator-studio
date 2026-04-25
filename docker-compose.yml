@@ -142,7 +142,13 @@ services:
         limits:
           cpus: "20"
           memory: 32G
-    command: python -m arq drevalis.workers.settings.WorkerSettings
+    # Use our wrapper instead of ``python -m arq`` directly: it
+    # waits for redis DNS to register + TCP to accept before
+    # invoking arq, so a slow Docker-DNS race after ``compose up``
+    # doesn't immediately crash the worker with
+    # ``socket.gaierror: [Errno -5] No address associated with
+    # hostname``.
+    command: python -m drevalis.workers
     healthcheck:
       test: ["CMD-SHELL", "pgrep -f 'arq' || exit 1"]
       interval: 30s
