@@ -2021,20 +2021,15 @@ function YouTubePage() {
 
   return (
     <div className="space-y-5">
-      {/* Page header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-accent-muted flex items-center justify-center">
-            <Youtube size={18} className="text-accent" />
-          </div>
-          <div>
-            <h1 className="text-xl font-bold text-txt-primary">YouTube</h1>
-            {connected && allChannels.length > 0 && (
-              <p className="text-xs text-txt-secondary">
-                {allChannels.length} channel{allChannels.length !== 1 ? 's' : ''} connected
-              </p>
-            )}
-          </div>
+      {/* Banner already shows "YouTube"; keep the channel filter +
+          connection status only. */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div className="flex items-center gap-3 flex-wrap">
+          {connected && allChannels.length > 0 && (
+            <p className="text-xs text-txt-secondary">
+              {allChannels.length} channel{allChannels.length !== 1 ? 's' : ''} connected
+            </p>
+          )}
           {/* Channel filter */}
           {connected && allChannels.length > 1 && (
             <select
