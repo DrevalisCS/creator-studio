@@ -111,9 +111,7 @@ class AudiobookService:
             return
         if flag:
             log.info("audiobook.generate.cancelled_by_user", audiobook_id=str(audiobook_id))
-            raise asyncio.CancelledError(
-                f"Audiobook {audiobook_id} cancelled by user"
-            )
+            raise asyncio.CancelledError(f"Audiobook {audiobook_id} cancelled by user")
 
     async def _clear_cancel_flag(self, audiobook_id: UUID) -> None:
         if not self.redis:
@@ -254,9 +252,7 @@ class AudiobookService:
                     return True
                 # Provider returned without raising but produced no
                 # usable file — treat as a soft failure.
-                last_exc = RuntimeError(
-                    "Provider returned but no audio file was written"
-                )
+                last_exc = RuntimeError("Provider returned but no audio file was written")
             except Exception as exc:  # noqa: BLE001
                 last_exc = exc
             if attempt < max_attempts:
@@ -275,9 +271,7 @@ class AudiobookService:
             "audiobook.tts.chunk_exhausted",
             max_attempts=max_attempts,
             chunk_path=str(chunk_path),
-            error=f"{type(last_exc).__name__}: {str(last_exc)[:200]}"
-            if last_exc
-            else "unknown",
+            error=f"{type(last_exc).__name__}: {str(last_exc)[:200]}" if last_exc else "unknown",
         )
         return False
 
@@ -517,9 +511,7 @@ class AudiobookService:
                 )
             # If AceStep (ComfyUI) is the only way to fulfil this mood,
             # warn when no ComfyUI server is registered.
-            if not self.comfyui_service or not getattr(
-                self.comfyui_service._pool, "_servers", {}
-            ):
+            if not self.comfyui_service or not getattr(self.comfyui_service._pool, "_servers", {}):
                 warnings.append(
                     W(
                         "music_no_comfyui",
@@ -530,9 +522,7 @@ class AudiobookService:
 
         # --- Image generation ---------------------------------------------
         if image_generation_enabled:
-            if not self.comfyui_service or not getattr(
-                self.comfyui_service._pool, "_servers", {}
-            ):
+            if not self.comfyui_service or not getattr(self.comfyui_service._pool, "_servers", {}):
                 warnings.append(
                     W(
                         "images_no_comfyui",
@@ -689,10 +679,7 @@ class AudiobookService:
                     "audiobook.generate.multi_voice",
                     audiobook_id=str(audiobook_id),
                     chapter=ch_idx,
-                    speakers=[
-                        b.get("speaker", "SFX")
-                        for b in voice_blocks
-                    ],
+                    speakers=[b.get("speaker", "SFX") for b in voice_blocks],
                     sfx_count=sum(1 for b in voice_blocks if b.get("kind") == "sfx"),
                 )
                 chunks = await self._generate_multi_voice(
@@ -1262,11 +1249,7 @@ class AudiobookService:
 
         # Drop empty voice blocks but always keep SFX blocks (they
         # carry their own non-text payload).
-        return [
-            b
-            for b in blocks
-            if b.get("kind") == "sfx" or b.get("text")
-        ]
+        return [b for b in blocks if b.get("kind") == "sfx" or b.get("text")]
 
     # ══════════════════════════════════════════════════════════════════════
     # TTS generation (returns AudioChunk list)
@@ -1532,8 +1515,7 @@ class AudiobookService:
 
     def _is_overlay_sfx(self, chunk: AudioChunk) -> bool:
         return chunk.speaker == "__SFX__" and (
-            chunk.overlay_voice_blocks is not None
-            or chunk.overlay_seconds is not None
+            chunk.overlay_voice_blocks is not None or chunk.overlay_seconds is not None
         )
 
     async def _concatenate_with_context(
@@ -1775,9 +1757,7 @@ class AudiobookService:
                 start = inline_start(orig_to_inline[next_inline_orig])
 
             sfx_dur = await self.ffmpeg.get_duration(sfx_chunk.path)
-            overlay_plans.append(
-                (sfx_chunk.path, start, sfx_dur, float(sfx_chunk.overlay_duck_db))
-            )
+            overlay_plans.append((sfx_chunk.path, start, sfx_dur, float(sfx_chunk.overlay_duck_db)))
 
         if not overlay_plans:
             return
@@ -2564,6 +2544,7 @@ class AudiobookService:
         # fallback doesn't clobber chapter-(N-1)'s. Hash keeps it
         # deterministic for the "regenerate same chapter" retry case.
         import hashlib
+
         slug = hashlib.sha1(title.encode("utf-8", errors="replace")).hexdigest()[:8]
         card_path = output_dir / f"title_card_{slug}.jpg"
 

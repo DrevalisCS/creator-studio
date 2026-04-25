@@ -950,9 +950,7 @@ async def cancel_audiobook(
     pool = get_pool()
     redis = Redis(connection_pool=pool)
     try:
-        await redis.set(
-            f"cancel:audiobook:{audiobook_id}", "1", ex=3600
-        )
+        await redis.set(f"cancel:audiobook:{audiobook_id}", "1", ex=3600)
     finally:
         await redis.aclose()
 

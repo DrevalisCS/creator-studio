@@ -1209,9 +1209,7 @@ class ComfyUIElevenLabsSoundEffectsProvider:
         else:
             workflow = self._build_workflow(description, duration, loop)
 
-        client = ComfyUIClient(
-            base_url=self.comfyui_base_url, api_key=self.comfyui_api_key
-        )
+        client = ComfyUIClient(base_url=self.comfyui_base_url, api_key=self.comfyui_api_key)
         try:
             extra_data: dict[str, Any] = {}
             if self.comfyui_api_key:
@@ -1231,9 +1229,7 @@ class ComfyUIElevenLabsSoundEffectsProvider:
                 delay = min(delay * 1.5, 5.0)
 
             if history is None:
-                raise RuntimeError(
-                    f"ComfyUI ElevenLabs SFX timed out after {total_waited:.0f}s"
-                )
+                raise RuntimeError(f"ComfyUI ElevenLabs SFX timed out after {total_waited:.0f}s")
 
             exec_status = history.get("status", {})
             if exec_status.get("status_str") == "error":
@@ -1265,9 +1261,7 @@ class ComfyUIElevenLabsSoundEffectsProvider:
                     break
 
             if audio_info is None:
-                raise RuntimeError(
-                    "ComfyUI ElevenLabs SFX completed but no audio output found"
-                )
+                raise RuntimeError("ComfyUI ElevenLabs SFX completed but no audio output found")
 
             filename = audio_info.get("filename", "")
             subfolder = audio_info.get("subfolder", "")
