@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, AlertTriangle, Activity } from 'lucide-react';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 interface UsageDaily {
   day: string;
@@ -79,32 +80,71 @@ export default function UsagePage() {
     ? Math.max(1, ...Object.values(data.totals.per_step_seconds))
     : 1;
 
+  // Backfill missing days so the chart spans the full window header
+  // range. The metrics endpoint only returns rows for days with
+  // pipeline activity, so a 30-day window with activity on 14 days
+  // renders as a 14-day strip — which mismatches the date range
+  // displayed in the page header. Build a complete day-by-day series
+  // (zero-filled for idle days) keyed off start_date / end_date.
+  const fullDaily: UsageDaily[] = (() => {
+    if (!data) return [];
+    const byDay = new Map(data.daily.map((d) => [d.day, d]));
+    const out: UsageDaily[] = [];
+    const start = new Date(`${data.start_date}T00:00:00Z`);
+    const end = new Date(`${data.end_date}T00:00:00Z`);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return data.daily;
+    }
+    const cursor = new Date(start);
+    // Hard cap to prevent runaway loops if the window is malformed.
+    let safety = 366;
+    while (cursor.getTime() <= end.getTime() && safety-- > 0) {
+      const key = cursor.toISOString().slice(0, 10);
+      out.push(
+        byDay.get(key) ?? {
+          day: key,
+          episodes: 0,
+          pipeline_runs: 0,
+          pipeline_seconds: 0,
+          failures: 0,
+        },
+      );
+      cursor.setUTCDate(cursor.getUTCDate() + 1);
+    }
+    return out;
+  })();
+
+  const hasAnyComputeActivity = data ? data.totals.pipeline_runs > 0 : false;
+  const hasTokenInstrumentation = data ? data.totals.tokens_total > 0 : false;
+
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-txt-primary">Usage &amp; compute</h1>
-          <p className="mt-1 text-sm text-txt-secondary">
-            Pipeline runtime + episode counts derived from the generation-jobs table. Token
-            counts and GPU minutes aren't instrumented yet — see notes below.
-          </p>
-        </div>
-        <div className="flex gap-1">
-          {([30, 90] as const).map((d) => (
-            <button
-              key={d}
-              onClick={() => setDays(d)}
-              className={`text-xs px-2.5 py-1 rounded border ${
-                days === d
-                  ? 'border-accent/40 text-accent bg-accent/10'
-                  : 'border-border text-txt-secondary hover:text-txt-primary'
-              }`}
-            >
-              {d}d
-            </button>
-          ))}
-        </div>
-      </header>
+      <PageHeader
+        subtitle={
+          <>
+            Pipeline runtime and episode counts derived from the generation-jobs table.
+            See &ldquo;What&rsquo;s not tracked&rdquo; below for current instrumentation gaps.
+          </>
+        }
+        actions={
+          <div className="flex gap-1">
+            {([30, 90] as const).map((d) => (
+              <button
+                key={d}
+                onClick={() => setDays(d)}
+                className={`text-xs px-2.5 py-1 rounded border ${
+                  days === d
+                    ? 'border-accent/40 text-accent bg-accent/10'
+                    : 'border-border text-txt-secondary hover:text-txt-primary'
+                }`}
+              >
+                {d}d
+              </button>
+            ))}
+          </div>
+        }
+      />
+      {/* spacer kept by PageHeader's mb-5 — no duplicate header below */}
 
       {loading && (
         <div className="flex items-center gap-2 text-sm text-txt-muted">
@@ -123,16 +163,21 @@ export default function UsagePage() {
             {data.start_date} → {data.end_date}
           </p>
 
-          {/* Totals */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+          {/* Totals — token tile is hidden until instrumentation lands so
+              we don't display a misleading "0" with an asterisk. */}
+          <div
+            className={`grid grid-cols-2 gap-3 ${hasTokenInstrumentation ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}
+          >
             <KPI label="Episodes generated" value={fmtNumber(data.totals.episodes_generated)} />
             <KPI label="Pipeline runs" value={fmtNumber(data.totals.pipeline_runs)} />
             <KPI label="Compute time" value={fmtSeconds(data.totals.pipeline_seconds)} />
-            <KPI
-              label="LLM tokens"
-              value={fmtNumber(data.totals.tokens_total)}
-              sub={`${fmtNumber(data.totals.tokens_prompt)} in · ${fmtNumber(data.totals.tokens_completion)} out`}
-            />
+            {hasTokenInstrumentation && (
+              <KPI
+                label="LLM tokens"
+                value={fmtNumber(data.totals.tokens_total)}
+                sub={`${fmtNumber(data.totals.tokens_prompt)} in · ${fmtNumber(data.totals.tokens_completion)} out`}
+              />
+            )}
             <KPI
               label="Failure rate"
               value={`${(data.totals.failure_rate * 100).toFixed(1)}%`}
@@ -145,35 +190,45 @@ export default function UsagePage() {
             <h2 className="text-sm font-semibold text-txt-primary mb-3 flex items-center gap-2">
               <Activity size={14} /> Daily compute time
             </h2>
-            {data.daily.length === 0 ? (
+            {!hasAnyComputeActivity ? (
               <p className="text-sm text-txt-muted">No pipeline activity in this window.</p>
             ) : (
               <div className="flex items-end gap-1 h-40">
-                {data.daily.map((d) => (
-                  <div
-                    key={d.day}
-                    className="flex-1 flex flex-col items-center justify-end gap-1 group relative"
-                  >
+                {fullDaily.map((d) => {
+                  const empty = d.pipeline_seconds === 0;
+                  return (
                     <div
-                      className="w-full rounded-t bg-accent/30 hover:bg-accent/50 transition-colors"
-                      style={{
-                        height: `${Math.max(3, (d.pipeline_seconds / maxSeconds) * 100)}%`,
-                      }}
-                      title={`${d.day}: ${fmtSeconds(d.pipeline_seconds)} · ${d.episodes} episodes`}
-                    />
-                    <div className="absolute bottom-full mb-1 hidden group-hover:block bg-bg-base border border-border rounded px-2 py-1 text-[10px] whitespace-nowrap z-10">
-                      <div className="text-txt-primary font-semibold">{d.day}</div>
-                      <div className="text-txt-secondary">
-                        {fmtSeconds(d.pipeline_seconds)} · {d.episodes} ep.
+                      key={d.day}
+                      className="flex-1 flex flex-col items-center justify-end gap-1 group relative"
+                    >
+                      <div
+                        className={`w-full rounded-t transition-colors ${
+                          empty
+                            ? 'bg-white/[0.04]'
+                            : 'bg-accent/30 hover:bg-accent/50'
+                        }`}
+                        style={{
+                          // Empty days render as a thin baseline — visible
+                          // enough to show the date axis is contiguous,
+                          // dim enough not to look like activity.
+                          height: empty ? '2px' : `${Math.max(3, (d.pipeline_seconds / maxSeconds) * 100)}%`,
+                        }}
+                        title={`${d.day}: ${fmtSeconds(d.pipeline_seconds)} · ${d.episodes} episodes`}
+                      />
+                      <div className="absolute bottom-full mb-1 hidden group-hover:block bg-bg-base border border-border rounded px-2 py-1 text-[10px] whitespace-nowrap z-10">
+                        <div className="text-txt-primary font-semibold">{d.day}</div>
+                        <div className="text-txt-secondary">
+                          {fmtSeconds(d.pipeline_seconds)} · {d.episodes} ep.
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
             <div className="flex justify-between text-[10px] text-txt-tertiary mt-1">
-              <span>{data.daily[0]?.day ?? ''}</span>
-              <span>{data.daily[data.daily.length - 1]?.day ?? ''}</span>
+              <span>{fullDaily[0]?.day ?? data.start_date}</span>
+              <span>{fullDaily[fullDaily.length - 1]?.day ?? data.end_date}</span>
             </div>
           </section>
 

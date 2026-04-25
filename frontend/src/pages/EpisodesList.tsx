@@ -8,6 +8,9 @@ import {
   Copy,
   Trash2,
   Square,
+  Search,
+  X,
+  CheckSquare,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
@@ -40,6 +43,14 @@ const STATUS_TABS = [
   { value: 'failed', label: 'Failed' },
 ] as const;
 
+const SORT_OPTIONS = [
+  { value: 'newest', label: 'Newest' },
+  { value: 'oldest', label: 'Oldest' },
+  { value: 'title', label: 'Title (A→Z)' },
+  { value: 'duration', label: 'Duration' },
+] as const;
+type SortKey = (typeof SORT_OPTIONS)[number]['value'];
+
 // ---------------------------------------------------------------------------
 // Episodes List Page
 // ---------------------------------------------------------------------------
@@ -53,6 +64,16 @@ function EpisodesList() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState('');
   const [seriesFilter, setSeriesFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [sort, setSort] = useState<SortKey>('newest');
+
+  // Bulk-select mode — toggled from the toolbar. While active, each
+  // card renders a checkbox overlay and a sticky bottom action bar
+  // shows count + bulk Generate / Delete affordances.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [bulkBusy, setBulkBusy] = useState(false);
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
   // Create episode dialog
   const showCreate = searchParams.get('create') === 'true';
@@ -194,6 +215,117 @@ function EpisodesList() {
     }
   };
 
+  // Filtered + sorted view — server returns episodes filtered by
+  // status/series; search + sort are client-side over that result.
+  const visibleEpisodes = (() => {
+    let list = episodesList;
+    const q = search.trim().toLowerCase();
+    if (q) {
+      list = list.filter((ep) => {
+        const haystack =
+          (ep.title ?? '').toLowerCase() +
+          ' ' +
+          ((ep as { topic?: string }).topic ?? '').toLowerCase();
+        return haystack.includes(q);
+      });
+    }
+    const sorted = [...list];
+    switch (sort) {
+      case 'newest':
+        sorted.sort(
+          (a, b) =>
+            new Date(b.created_at ?? 0).getTime() -
+            new Date(a.created_at ?? 0).getTime(),
+        );
+        break;
+      case 'oldest':
+        sorted.sort(
+          (a, b) =>
+            new Date(a.created_at ?? 0).getTime() -
+            new Date(b.created_at ?? 0).getTime(),
+        );
+        break;
+      case 'title':
+        sorted.sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''));
+        break;
+      case 'duration':
+        sorted.sort(
+          (a, b) =>
+            ((b as { duration_seconds?: number | null }).duration_seconds ?? 0) -
+            ((a as { duration_seconds?: number | null }).duration_seconds ?? 0),
+        );
+        break;
+    }
+    return sorted;
+  })();
+
+  // Toggle selection for one card; respect selectMode being on.
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllVisible = () => {
+    setSelectedIds(new Set(visibleEpisodes.map((ep) => ep.id)));
+  };
+
+  const exitSelectMode = () => {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  };
+
+  const handleBulkGenerate = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    // Only generate items that are draft / failed; everything else is
+    // a no-op the backend would reject.
+    const eligible = episodesList.filter(
+      (ep) =>
+        selectedIds.has(ep.id) &&
+        (ep.status === 'draft' || ep.status === 'failed'),
+    );
+    if (eligible.length === 0) {
+      toast.error('Nothing to generate', {
+        description: 'Selected episodes are not in a draft or failed state.',
+      });
+      return;
+    }
+    setBulkBusy(true);
+    try {
+      await Promise.all(eligible.map((ep) => episodesApi.generate(ep.id)));
+      toast.success('Episodes queued', {
+        description: `${eligible.length} of ${ids.length} selected enqueued`,
+      });
+      exitSelectMode();
+      void fetchData();
+    } catch (err) {
+      toast.error('Bulk generate failed', { description: String(err) });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    setBulkBusy(true);
+    try {
+      await Promise.all(ids.map((id) => episodesApi.delete(id)));
+      toast.success('Episodes deleted', { description: `${ids.length} removed` });
+      setBulkDeleteOpen(false);
+      exitSelectMode();
+      void fetchData();
+    } catch (err) {
+      toast.error('Bulk delete failed', { description: String(err) });
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   // Count drafts for the "Generate All Draft" button
   const draftCount = episodesList.filter((ep) => ep.status === 'draft').length;
 
@@ -212,16 +344,22 @@ function EpisodesList() {
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-display font-bold text-txt-primary">Episodes</h2>
-          <p className="mt-1 text-sm text-txt-secondary">
-            Browse and manage all episodes across your series.
-          </p>
-        </div>
+    <div className="pb-20">
+      {/* Header — banner already shows "Episodes"; this row carries the
+          subtitle and the page-level CTAs. */}
+      <div className="flex items-center justify-between mb-5 gap-3 flex-wrap">
+        <p className="text-sm text-txt-secondary">
+          Browse and manage all episodes across your series.
+        </p>
         <div className="flex items-center gap-2">
+          <Button
+            variant={selectMode ? 'primary' : 'ghost'}
+            size="sm"
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+          >
+            <CheckSquare size={14} />
+            {selectMode ? 'Cancel' : 'Select'}
+          </Button>
           {draftCount > 0 && (
             <Button
               variant="secondary"
@@ -278,8 +416,10 @@ function EpisodesList() {
         })}
       </div>
 
-      {/* Series filter */}
-      <div className="flex items-center gap-3 mb-6">
+      {/* Toolbar — series filter + search + sort. The filter funnels
+          the server query (status / series); search and sort act on
+          the result set on the client. */}
+      <div className="flex items-center gap-2 mb-5 flex-wrap">
         <Filter size={14} className="text-txt-tertiary" />
         <div className="w-48">
           <Select
@@ -288,33 +428,103 @@ function EpisodesList() {
             onChange={(e) => setSeriesFilter(e.target.value)}
           />
         </div>
-        <span className="text-xs text-txt-tertiary ml-2">
-          {episodesList.length}{' '}
-          {episodesList.length === 1 ? 'episode' : 'episodes'}
+        <div className="relative flex-1 min-w-[180px] max-w-[320px]">
+          <Search
+            size={13}
+            className="absolute left-2.5 top-1/2 -translate-y-1/2 text-txt-tertiary pointer-events-none"
+          />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search title or topic..."
+            className="w-full h-9 pl-7 pr-7 bg-bg-base border border-white/[0.08] rounded-md text-sm text-txt-primary placeholder:text-txt-tertiary focus:outline-none focus:border-accent/40"
+          />
+          {search && (
+            <button
+              onClick={() => setSearch('')}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-white/[0.06] text-txt-tertiary hover:text-txt-primary"
+              aria-label="Clear search"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+        <div className="w-44">
+          <Select
+            options={SORT_OPTIONS as unknown as { value: string; label: string }[]}
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortKey)}
+          />
+        </div>
+        <span className="text-xs text-txt-tertiary ml-auto">
+          {visibleEpisodes.length === episodesList.length
+            ? `${episodesList.length} ${episodesList.length === 1 ? 'episode' : 'episodes'}`
+            : `${visibleEpisodes.length} of ${episodesList.length}`}
         </span>
       </div>
 
       {/* Grid */}
-      {episodesList.length === 0 ? (
+      {visibleEpisodes.length === 0 ? (
         <div className="empty-state py-16">
           <Film size={40} />
           <p className="text-sm font-display">No episodes found</p>
           <p className="text-xs font-display">
-            {statusFilter || seriesFilter
-              ? 'Try clearing your filters'
+            {statusFilter || seriesFilter || search
+              ? 'Try clearing your filters or search'
               : 'Create your first episode to get started'}
           </p>
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {episodesList.map((ep) => (
-            <div key={ep.id} className="relative group">
+          {visibleEpisodes.map((ep) => (
+            <div
+              key={ep.id}
+              className={[
+                'relative group',
+                selectMode && selectedIds.has(ep.id)
+                  ? 'ring-2 ring-accent/60 rounded-xl'
+                  : '',
+              ].join(' ')}
+            >
               <EpisodeCard
                 episode={ep}
                 stepProgress={latestByEpisode[ep.id]}
               />
-              {/* Per-episode action buttons overlay */}
-              <div className="absolute top-2 right-2 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+              {/* Selection mode — full-card overlay swallows the
+                  underlying Card's navigate-on-click and converts it
+                  to a selection toggle. The overlay sits above the
+                  Card but below the action buttons. */}
+              {selectMode && (
+                <button
+                  type="button"
+                  className="absolute inset-0 z-10 cursor-pointer rounded-xl"
+                  aria-label={`${selectedIds.has(ep.id) ? 'Unselect' : 'Select'} ${ep.title}`}
+                  aria-pressed={selectedIds.has(ep.id)}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    toggleSelected(ep.id);
+                  }}
+                />
+              )}
+              {/* Selection checkbox visual indicator */}
+              {selectMode && (
+                <div className="absolute top-2 left-2 z-20 pointer-events-none">
+                  <span
+                    className={[
+                      'flex items-center justify-center w-6 h-6 rounded border-2 backdrop-blur-sm',
+                      selectedIds.has(ep.id)
+                        ? 'bg-accent border-accent text-white'
+                        : 'bg-black/40 border-white/40',
+                    ].join(' ')}
+                  >
+                    {selectedIds.has(ep.id) && <CheckSquare size={12} />}
+                  </span>
+                </div>
+              )}
+              {/* Per-episode action buttons overlay (hidden in select mode) */}
+              <div className={`absolute top-2 right-2 flex items-center gap-1 transition-opacity z-10 ${selectMode ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'}`}>
                 {(ep.status === 'draft' || ep.status === 'failed') && (
                   <button
                     onClick={(e) => {
@@ -406,6 +616,69 @@ function EpisodesList() {
             onClick={() => void handleCreate()}
           >
             Create Episode
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      {/* Floating bulk-action bar — only visible while select mode is on */}
+      {selectMode && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-fixed">
+          <div className="flex items-center gap-3 bg-bg-elevated/95 backdrop-blur-xl border border-white/[0.1] rounded-full pl-4 pr-2 py-2 shadow-lg">
+            <span className="text-sm text-txt-primary font-medium tabular-nums">
+              {selectedIds.size} selected
+            </span>
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              className="text-xs text-accent hover:underline"
+            >
+              Select all visible
+            </button>
+            <div className="h-5 w-px bg-white/[0.1]" />
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={selectedIds.size === 0 || bulkBusy}
+              onClick={() => void handleBulkGenerate()}
+            >
+              <Play size={14} /> Generate
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={selectedIds.size === 0 || bulkBusy}
+              onClick={() => setBulkDeleteOpen(true)}
+              className="text-error hover:bg-error/10"
+            >
+              <Trash2 size={14} /> Delete
+            </Button>
+            <Button variant="ghost" size="sm" onClick={exitSelectMode}>
+              <X size={14} />
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Bulk delete confirmation */}
+      <Dialog
+        open={bulkDeleteOpen}
+        onClose={() => setBulkDeleteOpen(false)}
+        title={`Delete ${selectedIds.size} episode${selectedIds.size === 1 ? '' : 's'}?`}
+      >
+        <p className="text-sm text-txt-secondary">
+          This permanently deletes the selected episodes and all generated
+          media. This cannot be undone.
+        </p>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setBulkDeleteOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="destructive"
+            loading={bulkBusy}
+            onClick={() => void handleBulkDelete()}
+          >
+            <Trash2 size={14} /> Delete {selectedIds.size}
           </Button>
         </DialogFooter>
       </Dialog>

@@ -49,6 +49,45 @@ function StateBadge({ state }: { state: string }) {
   }
 }
 
+// Tier visual treatment — prevents tier text from looking like a
+// generic label among the other key-value rows. Each tier gets its
+// own gradient-tinted pill so "Studio" reads as a status, not a word.
+function TierBadge({ label }: { label: string }) {
+  const lower = label.toLowerCase();
+  let cls = 'border-white/10 bg-white/[0.04] text-txt-primary';
+  if (lower.includes('lifetime')) {
+    cls = 'border-amber-400/40 bg-amber-400/[0.08] text-amber-200';
+  } else if (lower.includes('studio')) {
+    cls = 'border-violet-400/40 bg-violet-400/[0.08] text-violet-200';
+  } else if (lower.includes('pro')) {
+    cls = 'border-accent/40 bg-accent/[0.08] text-accent';
+  } else if (lower.includes('creator')) {
+    cls = 'border-sky-400/40 bg-sky-400/[0.08] text-sky-200';
+  }
+  return (
+    <span
+      className={`inline-flex items-center px-2 py-0.5 rounded-full border text-[11px] font-semibold uppercase tracking-wider ${cls}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+// snake_case → Title Case for feature pills. "basic_generation" should
+// read as "Basic Generation" not as a Python identifier.
+function humanizeFeature(key: string): string {
+  return key
+    .split(/[_\s-]+/)
+    .map((s) => (s ? s.charAt(0).toUpperCase() + s.slice(1).toLowerCase() : s))
+    .join(' ');
+}
+
+function daysUntil(date: Date | null): number | null {
+  if (!date) return null;
+  const ms = date.getTime() - Date.now();
+  return Math.ceil(ms / (24 * 3600 * 1000));
+}
+
 function tsToRelative(ts: number | null | undefined): string {
   if (!ts) return '-';
   const ms = ts < 1e12 ? ts * 1000 : ts; // unix seconds -> ms if needed
@@ -228,6 +267,13 @@ export function LicenseSection() {
   const periodEnd = status?.period_end ? new Date(status.period_end) : null;
   const exp = status?.exp ? new Date(status.exp) : null;
   const isLifetime = status?.license_type === 'lifetime_pro';
+  // Warn the user 14 days out so a lapsed renewal doesn't surprise
+  // them. We use the hard expiry rather than the period_end because
+  // that's the cliff that actually locks the app (period_end has 7d
+  // grace beyond it).
+  const expDays = daysUntil(exp);
+  const expSoon = !isLifetime && expDays !== null && expDays >= 0 && expDays <= 14;
+  const expPast = !isLifetime && expDays !== null && expDays < 0;
   const updateWindowEnds = status?.update_window_expires_at
     ? new Date(status.update_window_expires_at)
     : null;
@@ -255,11 +301,9 @@ export function LicenseSection() {
           </div>
           <div className="text-right">
             <div className="text-xs text-txt-secondary mb-1">Tier</div>
-            <div className="text-sm font-semibold text-txt-primary capitalize">
-              {isLifetime ? 'Lifetime (Pro)' : (status?.tier ?? '—')}
-            </div>
+            <TierBadge label={isLifetime ? 'Lifetime (Pro)' : (status?.tier ?? '—')} />
             {isLifetime && (
-              <div className="text-[11px] text-amber-300 mt-0.5">
+              <div className="text-[11px] text-amber-300 mt-1">
                 {updateWindowEnds
                   ? `Updates included until ${updateWindowEnds.toLocaleDateString()}`
                   : 'Never expires'}
@@ -285,7 +329,11 @@ export function LicenseSection() {
             <div className="text-xs text-txt-secondary mb-1">
               {isLifetime ? 'Updates included until' : 'Hard expiry (+ 7d grace)'}
             </div>
-            <div className="text-sm text-txt-primary">
+            <div
+              className={`text-sm ${
+                expPast ? 'text-error' : expSoon ? 'text-amber-300' : 'text-txt-primary'
+              }`}
+            >
               {isLifetime
                 ? updateWindowEnds
                   ? updateWindowEnds.toLocaleDateString()
@@ -294,6 +342,20 @@ export function LicenseSection() {
                   ? exp.toLocaleDateString()
                   : '—'}
             </div>
+            {!isLifetime && expSoon && (
+              <div className="text-[11px] text-amber-300 mt-0.5 flex items-center gap-1">
+                <AlertTriangle size={11} />
+                {expDays === 0
+                  ? 'Expires today'
+                  : `${expDays} day${expDays === 1 ? '' : 's'} left`}
+              </div>
+            )}
+            {!isLifetime && expPast && (
+              <div className="text-[11px] text-error mt-0.5 flex items-center gap-1">
+                <AlertTriangle size={11} />
+                Expired
+              </div>
+            )}
           </div>
           <div>
             <div className="text-xs text-txt-secondary mb-1">Seat cap</div>
@@ -304,11 +366,19 @@ export function LicenseSection() {
           <div>
             <div className="text-xs text-txt-secondary mb-1">Features</div>
             <div className="text-xs text-txt-primary flex flex-wrap gap-1">
-              {(status?.features ?? []).map((f) => (
-                <span key={f} className="px-1.5 py-0.5 rounded bg-bg-hover text-txt-secondary">
-                  {f}
-                </span>
-              )) || '—'}
+              {(status?.features ?? []).length === 0 ? (
+                <span className="text-txt-muted">—</span>
+              ) : (
+                (status?.features ?? []).map((f) => (
+                  <span
+                    key={f}
+                    className="px-1.5 py-0.5 rounded bg-bg-hover text-txt-secondary"
+                    title={f}
+                  >
+                    {humanizeFeature(f)}
+                  </span>
+                ))
+              )}
             </div>
           </div>
         </div>

@@ -17,6 +17,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { PageHeader } from '@/components/ui/PageHeader';
 
 interface ProviderStatus {
   name: string;
@@ -173,13 +174,12 @@ export default function CloudGPUPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <header className="flex items-start justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-txt-primary">Cloud GPU</h1>
-          <p className="mt-1 text-sm text-txt-secondary">
+      <PageHeader
+        subtitle={
+          <>
             Launch on-demand GPU pods across RunPod, Vast.ai, and Lambda
             Labs. Use them to offload ComfyUI scene generation or host a
-            vLLM endpoint when your local GPU isn't enough. All pod
+            vLLM endpoint when your local GPU isn&rsquo;t enough. All pod
             management lives on this page — add or update the provider
             API keys in{' '}
             <Link
@@ -190,58 +190,81 @@ export default function CloudGPUPage() {
               <Key size={11} />
             </Link>
             .
-          </p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={() => void refresh()}>
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
-        </Button>
-      </header>
+          </>
+        }
+        actions={
+          <Button variant="ghost" size="sm" onClick={() => void refresh()}>
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+          </Button>
+        }
+      />
 
-      {/* Provider status strip */}
-      <section className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      {/* Provider status strip — equal-height cards, status pill on top
+          row, action row pinned to the bottom. Internal key names like
+          ``vastai_api_key`` are hidden when not connected (they leaked
+          implementation detail into the UI); instead we surface the
+          link to Settings → API Keys. */}
+      <section className="grid grid-cols-1 md:grid-cols-3 gap-3 items-stretch">
         {providers.map((p) => (
           <div
             key={p.name}
-            className={`rounded-lg border p-4 flex items-center justify-between gap-3 ${
+            className={`rounded-lg border p-4 flex flex-col gap-3 h-full ${
               p.configured ? 'border-border bg-bg-elevated' : 'border-amber-500/30 bg-amber-500/5'
             }`}
           >
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
                 <Cpu size={14} className={p.configured ? 'text-accent' : 'text-amber-400'} />
-                <span className="font-semibold text-sm text-txt-primary">{p.display_name}</span>
-                {p.configured ? (
-                  <span className="text-[10px] text-accent border border-accent/30 rounded px-1.5 py-0.5 flex items-center gap-1">
-                    <Check size={10} /> Connected
-                  </span>
-                ) : (
-                  <span className="text-[10px] text-amber-300 border border-amber-400/30 rounded px-1.5 py-0.5 flex items-center gap-1">
-                    <X size={10} /> Not connected
-                  </span>
-                )}
+                <span className="font-semibold text-sm text-txt-primary truncate">{p.display_name}</span>
               </div>
-              <p className="text-[11px] text-txt-muted mt-1 font-mono">
-                API key: <span className="text-txt-secondary">{p.api_key_name}</span>
-              </p>
-              {!p.configured && (
-                <a
-                  href={p.docs_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[11px] text-accent hover:underline inline-flex items-center gap-1 mt-1"
-                >
-                  Get an API key <ExternalLink size={10} />
-                </a>
+              {p.configured ? (
+                <span className="shrink-0 text-[10px] text-accent border border-accent/30 rounded px-1.5 py-0.5 inline-flex items-center gap-1 whitespace-nowrap">
+                  <Check size={10} /> Connected
+                </span>
+              ) : (
+                <span className="shrink-0 text-[10px] text-amber-300 border border-amber-400/30 rounded px-1.5 py-0.5 inline-flex items-center gap-1 whitespace-nowrap">
+                  <X size={10} /> Not connected
+                </span>
               )}
             </div>
-            <Button
-              variant={p.configured ? 'primary' : 'ghost'}
-              size="sm"
-              disabled={!p.configured}
-              onClick={() => void openLaunch(p.name)}
-            >
-              <Plus size={12} /> Launch
-            </Button>
+
+            {p.configured ? (
+              // Concrete pricing cue — pulled from the GPU catalogue
+              // when the launch modal opens; until then we just show
+              // the tagline so each card has parallel content.
+              <p className="text-[11px] text-txt-muted">
+                On-demand GPU pods · pay-per-hour
+              </p>
+            ) : (
+              <Link
+                to="/settings"
+                className="text-[11px] text-accent hover:underline inline-flex items-center gap-1 self-start"
+              >
+                <Key size={11} /> Add API key in Settings
+              </Link>
+            )}
+
+            {!p.configured && (
+              <a
+                href={p.docs_url}
+                target="_blank"
+                rel="noreferrer"
+                className="text-[11px] text-txt-secondary hover:text-accent hover:underline inline-flex items-center gap-1 self-start"
+              >
+                Get an API key from {p.display_name} <ExternalLink size={10} />
+              </a>
+            )}
+
+            <div className="mt-auto pt-2 flex justify-end">
+              <Button
+                variant={p.configured ? 'primary' : 'ghost'}
+                size="sm"
+                disabled={!p.configured}
+                onClick={() => void openLaunch(p.name)}
+              >
+                <Plus size={12} /> Launch
+              </Button>
+            </div>
           </div>
         ))}
       </section>

@@ -18,8 +18,11 @@ function getPageTitle(pathname: string): string {
   if (pathname.startsWith('/audiobooks/')) return 'Audiobook Detail';
   if (pathname === '/assets') return 'Assets';
   if (pathname === '/youtube') return 'YouTube';
+  if (pathname.startsWith('/social/')) return 'Social';
   if (pathname === '/calendar') return 'Calendar';
   if (pathname === '/jobs') return 'Jobs';
+  if (pathname === '/usage') return 'Usage & Compute';
+  if (pathname === '/cloud-gpu') return 'Cloud GPU';
   if (pathname === '/logs') return 'Event Log';
   if (pathname === '/settings') return 'Settings';
   if (pathname === '/help') return 'Help';

@@ -23,6 +23,11 @@ class ProgressWebSocket {
   private retryCount = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private closed = false;
+  // Tracks whether we've ever successfully reached the server. When we
+  // never have, we cap at a much lower retry budget — a 403 handshake
+  // (e.g. WS auth not configured) would otherwise produce dozens of
+  // console errors before giving up.
+  private everConnected = false;
 
   constructor(
     private url: string,
@@ -39,6 +44,7 @@ class ProgressWebSocket {
 
       this.ws.onopen = () => {
         this.retryCount = 0;
+        this.everConnected = true;
         this.options.onOpen?.();
       };
 
@@ -51,8 +57,15 @@ class ProgressWebSocket {
         }
       };
 
-      this.ws.onclose = () => {
+      this.ws.onclose = (event) => {
         this.options.onClose?.();
+        // Permanent auth/policy failures (4001=Unauthorized, 4003=Forbidden,
+        // 1008=Policy violation) — never retry. Browser console is already
+        // shouting; further reconnects just amplify the noise and burn CPU.
+        if (event.code === 4001 || event.code === 4003 || event.code === 1008) {
+          this.closed = true;
+          return;
+        }
         this.scheduleReconnect();
       };
 
@@ -68,11 +81,18 @@ class ProgressWebSocket {
   private scheduleReconnect() {
     if (this.closed) return;
 
-    const maxRetries = this.options.maxRetries ?? 10;
-    if (this.retryCount >= maxRetries) return;
+    // If we never managed a successful handshake, the endpoint is almost
+    // certainly broken (auth wall, missing route, wrong port). Cap at 3
+    // attempts so a misconfigured WS doesn't spam errors forever.
+    const configuredMax = this.options.maxRetries ?? 10;
+    const maxRetries = this.everConnected ? configuredMax : Math.min(configuredMax, 3);
+    if (this.retryCount >= maxRetries) {
+      this.closed = true;
+      return;
+    }
 
     const interval = this.options.reconnectInterval ?? 3000;
-    const backoff = Math.min(interval * Math.pow(1.5, this.retryCount), 30000);
+    const backoff = Math.min(interval * Math.pow(2, this.retryCount), 60000);
     this.retryCount++;
 
     this.reconnectTimeout = setTimeout(() => {

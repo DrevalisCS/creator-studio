@@ -176,17 +176,12 @@ function Jobs() {
 
   return (
     <div>
-      {/* Header */}
+      {/* Header — Header banner already shows the page title; keep this
+          row for the page-level subtitle and the destructive action. */}
       <div className="flex items-center justify-between mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-txt-primary flex items-center gap-2">
-            <ListChecks size={24} className="text-accent" />
-            Job Manager
-          </h2>
-          <p className="text-sm text-txt-secondary mt-1">
-            Monitor and control all generation tasks
-          </p>
-        </div>
+        <p className="text-sm text-txt-secondary">
+          Monitor and control all generation tasks.
+        </p>
         <div className="flex gap-2">
           {hasActiveJobs && (
             <Button
@@ -266,25 +261,16 @@ function Jobs() {
                     Episode
                   </th>
                   <th className="text-left px-4 py-2.5 text-txt-tertiary font-medium text-xs uppercase tracking-wider">
-                    Series
-                  </th>
-                  <th className="text-left px-4 py-2.5 text-txt-tertiary font-medium text-xs uppercase tracking-wider">
-                    Step
-                  </th>
-                  <th className="text-left px-4 py-2.5 text-txt-tertiary font-medium text-xs uppercase tracking-wider">
-                    Status
+                    Step / Status
                   </th>
                   <th className="text-left px-4 py-2.5 text-txt-tertiary font-medium text-xs uppercase tracking-wider">
                     Progress
                   </th>
                   <th className="text-left px-4 py-2.5 text-txt-tertiary font-medium text-xs uppercase tracking-wider">
-                    Duration
+                    Timing
                   </th>
                   <th className="text-left px-4 py-2.5 text-txt-tertiary font-medium text-xs uppercase tracking-wider">
                     Error
-                  </th>
-                  <th className="text-left px-4 py-2.5 text-txt-tertiary font-medium text-xs uppercase tracking-wider">
-                    Created
                   </th>
                   <th className="text-right px-4 py-2.5 text-txt-tertiary font-medium text-xs uppercase tracking-wider">
                     Actions
@@ -297,40 +283,42 @@ function Jobs() {
                     key={job.id}
                     className="hover:bg-bg-hover transition-colors"
                   >
-                    {/* Episode */}
-                    <td className="px-4 py-2.5">
+                    {/* Episode + Series stacked — episode title primary,
+                        series name as a softer subline below. Halves the
+                        column count without losing context. */}
+                    <td className="px-4 py-2.5 align-top">
                       <button
                         onClick={() =>
                           navigate(`/episodes/${job.episode_id}`)
                         }
-                        className="text-accent hover:underline text-left truncate block max-w-[200px]"
+                        className="text-accent hover:underline text-left truncate block max-w-[260px] text-sm"
                         title={job.episode_title || job.episode_id}
                       >
                         {job.episode_title || job.episode_id.slice(0, 8)}
                       </button>
+                      {job.series_name && (
+                        <span
+                          className="text-[11px] text-txt-tertiary truncate block max-w-[260px]"
+                          title={job.series_name}
+                        >
+                          {job.series_name}
+                        </span>
+                      )}
                     </td>
 
-                    {/* Series */}
-                    <td className="px-4 py-2.5">
-                      <span className="text-txt-secondary text-xs truncate block max-w-[120px]">
-                        {job.series_name || '-'}
-                      </span>
-                    </td>
-
-                    {/* Step */}
-                    <td className="px-4 py-2.5">
-                      <Badge variant={job.step}>{job.step}</Badge>
-                    </td>
-
-                    {/* Status */}
-                    <td className="px-4 py-2.5">
-                      <Badge variant={job.status} dot>
-                        {job.status}
-                      </Badge>
+                    {/* Step + Status stacked together — both are short,
+                        same-row pills, and they always read together. */}
+                    <td className="px-4 py-2.5 align-top">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <Badge variant={job.step}>{job.step}</Badge>
+                        <Badge variant={job.status} dot>
+                          {job.status}
+                        </Badge>
+                      </div>
                     </td>
 
                     {/* Progress */}
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5 align-top">
                       {job.status === 'running' ? (
                         <div className="flex items-center gap-2">
                           <div className="w-20 h-1.5 bg-bg-elevated rounded-full overflow-hidden">
@@ -355,17 +343,22 @@ function Jobs() {
                       )}
                     </td>
 
-                    {/* Duration */}
-                    <td className="px-4 py-2.5">
-                      <span className="text-xs text-txt-tertiary">
+                    {/* Timing — duration on top, created relative below.
+                        Created moves into this cell instead of taking
+                        its own column. */}
+                    <td className="px-4 py-2.5 align-top">
+                      <span className="text-xs text-txt-secondary block tabular-nums">
                         {job.started_at
                           ? getElapsedStr(job.started_at, job.completed_at)
                           : '-'}
                       </span>
+                      <span className="text-[11px] text-txt-tertiary">
+                        {formatTimestamp(job.created_at)}
+                      </span>
                     </td>
 
                     {/* Error */}
-                    <td className="px-4 py-2.5">
+                    <td className="px-4 py-2.5 align-top">
                       {job.error_message ? (
                         <span
                           className="text-xs text-red-400 truncate block max-w-[200px]"
@@ -380,15 +373,8 @@ function Jobs() {
                       )}
                     </td>
 
-                    {/* Created */}
-                    <td className="px-4 py-2.5">
-                      <span className="text-xs text-txt-tertiary">
-                        {formatTimestamp(job.created_at)}
-                      </span>
-                    </td>
-
                     {/* Actions */}
-                    <td className="px-4 py-2.5 text-right">
+                    <td className="px-4 py-2.5 text-right align-top">
                       {(job.status === 'running' ||
                         job.status === 'queued') && (
                         <Button

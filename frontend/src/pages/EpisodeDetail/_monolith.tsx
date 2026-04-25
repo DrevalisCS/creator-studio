@@ -1140,7 +1140,9 @@ function EpisodeDetail() {
                 }
                 className="accent-accent"
               />
-              <span className="flex-1 capitalize text-txt-primary">{p}</span>
+              <span className="flex-1 text-txt-primary">
+                {p === 'youtube' ? 'YouTube' : p === 'tiktok' ? 'TikTok' : 'Instagram'}
+              </span>
               {p === 'youtube' && (
                 <span className="text-[11px] text-txt-muted">all tiers</span>
               )}
