@@ -4,6 +4,8 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { Badge } from '@/components/ui/Badge';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { PageHeader } from '@/components/ui/PageHeader';
 import { metricsApi } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
@@ -80,20 +82,10 @@ function Logs() {
 
   return (
     <div>
-      {/* Header */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
-              <Terminal size={20} className="text-accent" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-txt-primary">Event Log</h2>
-              <p className="text-sm text-txt-secondary">
-                Recent pipeline execution events
-              </p>
-            </div>
-          </div>
+      {/* Banner already shows "Event Log"; subtitle + actions only. */}
+      <PageHeader
+        subtitle="Recent pipeline execution events."
+        actions={
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 cursor-pointer">
               <input
@@ -109,8 +101,8 @@ function Logs() {
               Refresh
             </Button>
           </div>
-        </div>
-      </div>
+        }
+      />
 
       {/* Stats summary */}
       {events.length > 0 && (
@@ -158,11 +150,11 @@ function Logs() {
 
         <div className="font-mono text-xs max-h-[65vh] overflow-y-auto p-4 scrollbar-thin">
           {events.length === 0 ? (
-            <div className="text-center py-12 text-txt-tertiary">
-              <Terminal size={32} className="mx-auto mb-3 opacity-30" />
-              <p>No pipeline events recorded yet.</p>
-              <p className="text-[10px] mt-1">Events appear here as episodes are generated.</p>
-            </div>
+            <EmptyState
+              icon={Terminal}
+              title="No pipeline events recorded yet"
+              description="Events appear here as episodes are generated."
+            />
           ) : (
             <div className="space-y-0">
               {events.map((e, i) => (

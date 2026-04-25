@@ -503,42 +503,32 @@ function Audiobooks() {
 
   return (
     <div>
-      {/* -- Hero Section -------------------------------------------------- */}
-      <div className="mb-8">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-accent/20 flex items-center justify-center">
-              <Mic size={20} className="text-accent" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-bold text-txt-primary">Text to Voice Studio</h2>
-              <p className="text-sm text-txt-secondary">
-                Transform any text into natural speech. Create audiobooks, voiceovers, podcasts.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={openAiDialog}>
-              <Sparkles size={14} />
-              AI Create
-            </Button>
-            <Button
-              variant={showCreator ? 'secondary' : 'primary'}
-              onClick={() => setShowCreator(!showCreator)}
-            >
-              {showCreator ? (
-                <>
-                  <X size={14} />
-                  Close
-                </>
-              ) : (
-                <>
-                  <Plus size={14} />
-                  New Audiobook
-                </>
-              )}
-            </Button>
-          </div>
+      {/* Banner already shows "Text to Voice"; keep subtitle + CTAs only. */}
+      <div className="flex items-center justify-between mb-8 gap-3 flex-wrap">
+        <p className="text-sm text-txt-secondary">
+          Transform any text into natural speech. Create audiobooks, voiceovers, podcasts.
+        </p>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" onClick={openAiDialog}>
+            <Sparkles size={14} />
+            AI Create
+          </Button>
+          <Button
+            variant={showCreator ? 'secondary' : 'primary'}
+            onClick={() => setShowCreator(!showCreator)}
+          >
+            {showCreator ? (
+              <>
+                <X size={14} />
+                Close
+              </>
+            ) : (
+              <>
+                <Plus size={14} />
+                New Audiobook
+              </>
+            )}
+          </Button>
         </div>
       </div>
 
