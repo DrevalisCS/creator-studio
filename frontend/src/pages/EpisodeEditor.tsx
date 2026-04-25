@@ -270,6 +270,38 @@ export default function EpisodeEditor() {
   const [rightPanelTab, setRightPanelTab] = useState<
     'clip' | 'captions' | 'assets' | 'stamps' | undefined
   >(undefined);
+
+  // Preview / timeline split (v0.21.1) — percentage of the center
+  // column allocated to the preview. Persisted in localStorage so
+  // returning users don't have to re-resize. Default 58% gives
+  // enough timeline to see four tracks without scrolling on a 1080p
+  // display while leaving the preview comfortably large.
+  const [previewPct, setPreviewPct] = useState<number>(() => {
+    if (typeof window === 'undefined') return 58;
+    const stored = window.localStorage.getItem('drevalis.editor.previewPct');
+    const parsed = stored ? parseFloat(stored) : NaN;
+    return Number.isFinite(parsed) && parsed >= 25 && parsed <= 80
+      ? parsed
+      : 58;
+  });
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        'drevalis.editor.previewPct',
+        String(previewPct),
+      );
+    } catch {
+      /* ignore */
+    }
+  }, [previewPct]);
+  // Drag-state for the splitter between preview and timeline.
+  const splitContainerRef = useRef<HTMLDivElement | null>(null);
+  const draggingSplit = useRef(false);
+
+  // Aspect ratio of the playable source (read from the <video>
+  // element's natural dimensions when available). Defaults to 9:16
+  // for shorts which is the most common case.
+  const [previewAspect, setPreviewAspect] = useState<string>('9 / 16');
   const [previewingProxy, setPreviewingProxy] = useState(false);
   const [proxyReadyTs, setProxyReadyTs] = useState<number | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -679,12 +711,46 @@ export default function EpisodeEditor() {
           hasSelection={!!selectedClipId}
         />
 
-        {/* Center column: preview on top (bounded), timeline below */}
-        <div className="flex-1 flex flex-col min-w-0 border-r border-border">
-          {/* Preview — flex-1 so it takes remaining space in this
-              column but never pushes the timeline off-screen, since
-              the timeline has its own fixed height allocation below. */}
-          <div className="flex-1 min-h-0 flex items-center justify-center bg-black/40 p-4 relative">
+        {/* Center column: preview on top, draggable splitter, timeline
+            below. The split is user-resizable and stored in local
+            storage so the next visit remembers it. The preview
+            container uses ``aspectRatio`` + ``maxHeight: 100%`` so
+            the video scales to fit without pushing into the
+            timeline, regardless of viewport height. */}
+        <div
+          ref={splitContainerRef}
+          className="flex-1 flex flex-col min-w-0 border-r border-border"
+          onMouseMove={(e) => {
+            if (!draggingSplit.current || !splitContainerRef.current) return;
+            const rect = splitContainerRef.current.getBoundingClientRect();
+            const local = e.clientY - rect.top;
+            const pct = (local / rect.height) * 100;
+            // Clamp 25–80% so neither half collapses entirely.
+            setPreviewPct(Math.min(80, Math.max(25, pct)));
+          }}
+          onMouseUp={() => {
+            if (draggingSplit.current) {
+              draggingSplit.current = false;
+              document.body.style.cursor = '';
+              document.body.style.userSelect = '';
+            }
+          }}
+          onMouseLeave={() => {
+            if (draggingSplit.current) {
+              draggingSplit.current = false;
+              document.body.style.cursor = '';
+              document.body.style.userSelect = '';
+            }
+          }}
+        >
+          {/* Preview — height driven by the user-resizable split. The
+              inner box uses CSS aspect-ratio + max constraints so the
+              video always fits the available space (no overflow into
+              the timeline). */}
+          <div
+            className="min-h-0 flex items-center justify-center bg-black/40 p-3 relative"
+            style={{ height: `${previewPct}%` }}
+          >
             <PreviewPlayer
               timeline={timeline}
               playhead={playhead}
@@ -701,11 +767,55 @@ export default function EpisodeEditor() {
                   ? `/storage/${session.final_video_path}`
                   : null
               }
+              aspectRatio={previewAspect}
+              onAspectDetected={setPreviewAspect}
             />
+            {/* Reset-split button — quick way back to the default if
+                the user has dragged into a corner. Sits in the
+                bottom-right of the preview area. */}
+            <button
+              type="button"
+              onClick={() => setPreviewPct(58)}
+              className="absolute bottom-2 right-2 rounded bg-bg-elevated/80 border border-border px-2 py-0.5 text-[10px] text-txt-tertiary hover:text-txt-primary hover:border-accent/40 transition-colors duration-fast backdrop-blur-sm"
+              title="Reset preview / timeline split"
+            >
+              Fit
+            </button>
           </div>
 
-          {/* Timeline strip — fixed height, always visible */}
-          <div className="h-[40%] min-h-[260px] border-t border-border bg-bg-surface flex flex-col">
+          {/* Splitter handle — drag to resize. Visual indicator on
+              hover; cursor swaps to row-resize. */}
+          <div
+            role="separator"
+            aria-orientation="horizontal"
+            aria-label="Resize preview and timeline"
+            tabIndex={0}
+            onMouseDown={(e) => {
+              draggingSplit.current = true;
+              document.body.style.cursor = 'row-resize';
+              document.body.style.userSelect = 'none';
+              e.preventDefault();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setPreviewPct((p) => Math.max(25, p - 2));
+              } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setPreviewPct((p) => Math.min(80, p + 2));
+              }
+            }}
+            className="h-1.5 bg-border hover:bg-accent/40 active:bg-accent transition-colors duration-fast cursor-row-resize relative shrink-0 group focus:outline-none focus:bg-accent/40"
+          >
+            <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-0.5 bg-txt-muted/50 group-hover:bg-accent rounded-full pointer-events-none" />
+          </div>
+
+          {/* Timeline strip — fills the remaining column space below
+              the splitter. min-h prevents collapse to zero when the
+              user drags the split handle hard. */}
+          <div
+            className="flex-1 min-h-[180px] border-t border-border bg-bg-surface flex flex-col"
+          >
             {/* Mini controls bar above the tracks */}
             <div className="h-9 px-3 flex items-center gap-2 shrink-0 border-b border-border">
               <Button
@@ -1725,6 +1835,8 @@ function PreviewPlayer({
   onPlayToggle,
   proxyUrl,
   finalVideoUrl,
+  aspectRatio = '9 / 16',
+  onAspectDetected,
 }: {
   timeline: EditTimeline;
   playhead: number;
@@ -1733,6 +1845,8 @@ function PreviewPlayer({
   onPlayToggle: () => void;
   proxyUrl: string | null;
   finalVideoUrl: string | null;
+  aspectRatio?: string;
+  onAspectDetected?: (ratio: string) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const imageRef = useRef<HTMLImageElement | null>(null);
@@ -1777,16 +1891,50 @@ function PreviewPlayer({
     return () => v.removeEventListener('timeupdate', onTime);
   }, [playing, onPlayheadChange, isProxyOrFinal]);
 
+  // Detect aspect ratio when the video metadata loads. The browser
+  // figures out the right size for whichever dimension is the
+  // constraining one (h-full vs w-full); telling the parent the
+  // ratio means the inner box doesn't need a hardcoded
+  // ``aspect-[9/16]`` that breaks for 16:9 / 1:1 episodes.
+  const onLoadedMeta = useCallback(() => {
+    const v = videoRef.current;
+    if (!v || !onAspectDetected) return;
+    if (v.videoWidth > 0 && v.videoHeight > 0) {
+      onAspectDetected(`${v.videoWidth} / ${v.videoHeight}`);
+    }
+  }, [onAspectDetected]);
+
   return (
-    <div className="w-full max-w-md">
-      <div className="aspect-[9/16] bg-black rounded-md overflow-hidden relative group">
+    // The outer wrapper takes all available space (h-full w-full)
+    // from its parent and centers a fit-to-bounds inner box. The
+    // inner box uses CSS aspect-ratio plus max-h/max-w 100% so the
+    // browser naturally picks the largest size that fits without
+    // overflowing in EITHER dimension. This is the trick that keeps
+    // the video from spilling into the timeline regardless of
+    // viewport height.
+    <div className="w-full h-full flex items-center justify-center min-h-0">
+      <div
+        className="bg-black rounded-md overflow-hidden relative group shadow-lg"
+        style={{
+          aspectRatio: aspectRatio,
+          maxHeight: '100%',
+          maxWidth: '100%',
+          // Without an explicit height, flex parents collapse the box
+          // to its content height. ``height: 100%`` plus
+          // ``maxHeight: 100%`` and aspect-ratio lets the browser
+          // shrink width proportionally when the parent is too narrow.
+          height: '100%',
+          width: 'auto',
+        }}
+      >
         {videoSrc ? (
           // eslint-disable-next-line jsx-a11y/media-has-caption
           <video
             ref={videoRef}
             src={videoSrc}
-            className="w-full h-full object-contain"
+            className="w-full h-full object-contain bg-black"
             onClick={onPlayToggle}
+            onLoadedMetadata={onLoadedMeta}
             controls
             playsInline
           />
