@@ -18,7 +18,18 @@ function getPageTitle(pathname: string): string {
   if (pathname.startsWith('/audiobooks/')) return 'Audiobook Detail';
   if (pathname === '/assets') return 'Assets';
   if (pathname === '/youtube') return 'YouTube';
-  if (pathname.startsWith('/social/')) return 'Social';
+  if (pathname.startsWith('/social/')) {
+    // Show the platform name in the banner (e.g. "TikTok") so the
+    // header matches the page contents instead of a generic "Social".
+    const slug = pathname.split('/')[2] ?? '';
+    const map: Record<string, string> = {
+      tiktok: 'TikTok',
+      instagram: 'Instagram',
+      facebook: 'Facebook',
+      x: 'X',
+    };
+    return map[slug] ?? 'Social';
+  }
   if (pathname === '/calendar') return 'Calendar';
   if (pathname === '/jobs') return 'Jobs';
   if (pathname === '/usage') return 'Usage & Compute';

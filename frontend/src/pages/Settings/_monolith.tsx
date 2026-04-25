@@ -37,6 +37,7 @@ import {
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SocialConnectWizard } from '@/components/social/SocialConnectWizard';
 import { LicenseSection } from '@/pages/Settings/sections/LicenseSection';
 import { UpdatesSection } from '@/pages/Settings/sections/UpdatesSection';
 import { BackupSection } from '@/pages/Settings/sections/BackupSection';
@@ -1867,6 +1868,10 @@ function YouTubeSection() {
     upload_days: string[] | null; upload_time: string | null;
   }>>([]);
   const [loading, setLoading] = useState(true);
+  // First-time-setup wizard. Walks the user through getting OAuth
+  // credentials from Google Cloud Console and storing them, then
+  // launches the consent flow in a popup.
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const fetchChannels = async () => {
     try {
@@ -1886,7 +1891,14 @@ function YouTubeSection() {
     try {
       const data = await youtube.getAuthUrl();
       window.location.href = data.auth_url;
-    } catch (err) {
+    } catch (err: unknown) {
+      // 503 → credentials missing. Fall through to the wizard rather
+      // than the cryptic toast we used to show.
+      const status = (err as { status?: number })?.status;
+      if (status === 503 || status === 400) {
+        setWizardOpen(true);
+        return;
+      }
       toast.error('Failed to start YouTube connection', { description: String(err) });
     }
   };
@@ -1965,17 +1977,31 @@ function YouTubeSection() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
         <h3 className="text-lg font-semibold text-txt-primary">YouTube Channels</h3>
-        <Button variant="primary" size="sm" onClick={() => void handleConnect()}>
-          <Youtube size={14} /> Connect Channel
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setWizardOpen(true)}>
+            Setup wizard
+          </Button>
+          <Button variant="primary" size="sm" onClick={() => void handleConnect()}>
+            <Youtube size={14} /> Connect Channel
+          </Button>
+        </div>
       </div>
 
       {channels.length === 0 ? (
         <Card padding="md">
           <p className="text-sm text-txt-secondary">
-            No YouTube channels connected. Click "Connect Channel" to authorize a YouTube account.
+            No YouTube channels connected. First time? Use{' '}
+            <button
+              type="button"
+              onClick={() => setWizardOpen(true)}
+              className="text-accent hover:underline"
+            >
+              Setup wizard
+            </button>{' '}
+            to get your Google OAuth credentials and authorize a channel in
+            one flow. Already have credentials? Click <strong>Connect Channel</strong>.
           </p>
         </Card>
       ) : (
@@ -2068,6 +2094,16 @@ function YouTubeSection() {
           </Card>
         ))
       )}
+
+      <SocialConnectWizard
+        open={wizardOpen}
+        platform="youtube"
+        onClose={() => setWizardOpen(false)}
+        onConnected={() => {
+          setWizardOpen(false);
+          void fetchChannels();
+        }}
+      />
     </div>
   );
 }
@@ -2120,6 +2156,10 @@ function PlatformCard({
   const [refreshToken, setRefreshToken] = useState('');
   const [publicVideoBaseUrl, setPublicVideoBaseUrl] = useState('');
   const [connecting, setConnecting] = useState(false);
+  // TikTok wizard — first-time-setup walkthrough (gets credentials,
+  // stores them, runs OAuth in a popup). Other OAuth platforms can
+  // adopt the same pattern as we add wizard specs for them.
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const needsAccountId = platform.id === 'facebook' || platform.id === 'instagram';
   const needsPublicUrl = platform.id === 'instagram';
@@ -2136,7 +2176,17 @@ function PlatformCard({
           const data = await socialApi.tiktokAuthUrl();
           window.location.href = data.auth_url;
         }
-      } catch (err) {
+      } catch (err: unknown) {
+        const status = (err as { status?: number })?.status;
+        // Credentials missing → fall through to wizard.
+        if (
+          platform.id === 'tiktok' &&
+          (status === 400 || status === 503)
+        ) {
+          setWizardOpen(true);
+          setConnecting(false);
+          return;
+        }
         setConnectError(err instanceof Error ? err.message : 'Failed to start OAuth flow.');
         setConnecting(false);
       }
@@ -2239,6 +2289,16 @@ function PlatformCard({
           ) : (
             <>
               <Badge variant="neutral">Not connected</Badge>
+              {platform.id === 'tiktok' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setWizardOpen(true)}
+                  title="Walks you through getting TikTok OAuth credentials"
+                >
+                  Setup wizard
+                </Button>
+              )}
               <Button
                 variant="secondary"
                 size="sm"
@@ -2422,6 +2482,18 @@ function PlatformCard({
             </Button>
           </div>
         </div>
+      )}
+
+      {/* Setup wizard — wired up for TikTok today; the spec map in
+          SocialConnectWizard can extend to Instagram/Facebook/X as
+          their OAuth credential flows are added. */}
+      {platform.id === 'tiktok' && (
+        <SocialConnectWizard
+          open={wizardOpen}
+          platform="tiktok"
+          onClose={() => setWizardOpen(false)}
+          onConnected={() => setWizardOpen(false)}
+        />
       )}
     </Card>
   );

@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
+import { SocialConnectWizard } from '@/components/social/SocialConnectWizard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -206,10 +207,11 @@ function PlatformBadge({ platform }: { platform: string }) {
 
 interface NotConnectedBannerProps {
   onConnect: () => void;
+  onWizard: () => void;
   connecting: boolean;
 }
 
-function NotConnectedBanner({ onConnect, connecting }: NotConnectedBannerProps) {
+function NotConnectedBanner({ onConnect, onWizard, connecting }: NotConnectedBannerProps) {
   return (
     <div className="flex flex-col items-center justify-center py-24 gap-5">
       <div className="w-16 h-16 rounded-full bg-accent-muted flex items-center justify-center">
@@ -219,15 +221,21 @@ function NotConnectedBanner({ onConnect, connecting }: NotConnectedBannerProps) 
         <h2 className="text-lg font-semibold text-txt-primary">
           YouTube not connected
         </h2>
-        <p className="text-sm text-txt-secondary mt-1 max-w-xs">
+        <p className="text-sm text-txt-secondary mt-1 max-w-sm">
           Connect your YouTube channel to upload videos, manage playlists, and
-          view analytics.
+          view analytics. First-time setup uses a guided wizard that walks you
+          through getting your Google OAuth credentials.
         </p>
       </div>
-      <Button variant="primary" loading={connecting} onClick={onConnect}>
-        <Youtube size={14} />
-        Connect YouTube
-      </Button>
+      <div className="flex items-center gap-2">
+        <Button variant="primary" onClick={onWizard}>
+          <Youtube size={14} />
+          Setup wizard
+        </Button>
+        <Button variant="ghost" loading={connecting} onClick={onConnect}>
+          I have credentials &mdash; connect
+        </Button>
+      </div>
     </div>
   );
 }
@@ -1723,6 +1731,12 @@ function YouTubePage() {
   const [uploadsLoading, setUploadsLoading] = useState(false);
   const [playlistsLoading, setPlaylistsLoading] = useState(false);
   const [connecting, setConnecting] = useState(false);
+  // Connect-wizard for users who haven't yet pasted YouTube OAuth
+  // credentials into Settings. The plain ``Connect YouTube`` button
+  // assumes credentials already exist and 503s otherwise; the wizard
+  // walks the user through getting them. We open the wizard when the
+  // unconfigured-credentials error surfaces.
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
 
@@ -1942,8 +1956,18 @@ function YouTubePage() {
     try {
       const { auth_url } = await youtubeApi.getAuthUrl();
       window.location.href = auth_url;
-    } catch (err) {
-      toast.error('Failed to start YouTube OAuth', { description: String(err) });
+    } catch (err: unknown) {
+      // 503 / 400 from /auth-url means credentials aren't configured
+      // yet — fall through to the wizard so the user can paste them
+      // in without having to context-switch into Settings.
+      const status = (err as { status?: number })?.status;
+      if (status === 503 || status === 400) {
+        setWizardOpen(true);
+      } else {
+        toast.error('Failed to start YouTube OAuth', {
+          description: String(err),
+        });
+      }
       setConnecting(false);
     }
   }, [toast]);
@@ -2024,6 +2048,7 @@ function YouTubePage() {
       {!connected ? (
         <NotConnectedBanner
           onConnect={() => void handleConnect()}
+          onWizard={() => setWizardOpen(true)}
           connecting={connecting}
         />
       ) : (
@@ -2128,6 +2153,21 @@ function YouTubePage() {
           })()}
         </>
       )}
+
+      {/* Connect-wizard — opened from the not-connected banner OR
+          surfaced automatically when /auth-url 503s because the
+          OAuth credentials haven't been pasted into Settings yet. */}
+      <SocialConnectWizard
+        open={wizardOpen}
+        platform="youtube"
+        onClose={() => setWizardOpen(false)}
+        onConnected={() => {
+          setWizardOpen(false);
+          // Re-fetch status so the banner flips to the connected
+          // dashboard without a manual page refresh.
+          void fetchStatus();
+        }}
+      />
     </div>
   );
 }

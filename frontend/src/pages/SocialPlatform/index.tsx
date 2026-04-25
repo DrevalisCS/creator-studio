@@ -24,6 +24,10 @@ import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { useToast } from '@/components/ui/Toast';
 import {
+  SocialConnectWizard,
+  type SocialPlatform as WizardPlatform,
+} from '@/components/social/SocialConnectWizard';
+import {
   social as socialApi,
   type SocialPlatform,
   type SocialUpload,
@@ -46,8 +50,13 @@ function PlatformPage() {
   const [uploads, setUploads] = useState<SocialUpload[]>([]);
   const [stats, setStats] = useState<SocialPlatformStats | null>(null);
   const [loading, setLoading] = useState(true);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const label = PLATFORM_LABELS[platform] ?? platform;
+  // Only YouTube + TikTok have a wizard spec today; the others fall
+  // back to "open Settings" until their OAuth flows are wired.
+  const wizardPlatform: WizardPlatform | null =
+    platform === 'tiktok' ? 'tiktok' : null;
 
   useEffect(() => {
     let cancelled = false;
@@ -129,12 +138,18 @@ function PlatformPage() {
           {label} is not connected
         </h1>
         <p className="text-sm text-txt-secondary mb-6">
-          Connect your {label} account in Settings → Social Media to see
-          uploads, stats, and run cross-platform publishing from here.
+          {wizardPlatform
+            ? `First time? Use the setup wizard to get your ${label} OAuth credentials and connect in one flow.`
+            : `Connect your ${label} account in Settings → Social Media to see uploads, stats, and run cross-platform publishing from here.`}
         </p>
         <div className="flex items-center justify-center gap-3">
+          {wizardPlatform && (
+            <Button variant="primary" onClick={() => setWizardOpen(true)}>
+              Setup wizard
+            </Button>
+          )}
           <Link to="/settings">
-            <Button variant="primary">Open Settings</Button>
+            <Button variant={wizardPlatform ? 'ghost' : 'primary'}>Open Settings</Button>
           </Link>
           <Link to="/">
             <Button variant="ghost">
@@ -143,6 +158,18 @@ function PlatformPage() {
             </Button>
           </Link>
         </div>
+        {wizardPlatform && (
+          <SocialConnectWizard
+            open={wizardOpen}
+            platform={wizardPlatform}
+            onClose={() => setWizardOpen(false)}
+            onConnected={() => {
+              setWizardOpen(false);
+              // Reload so the connected account picks up.
+              window.location.reload();
+            }}
+          />
+        )}
       </div>
     );
   }
