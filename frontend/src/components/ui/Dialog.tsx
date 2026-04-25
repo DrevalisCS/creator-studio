@@ -1,4 +1,5 @@
 import { useEffect, useRef, type ReactNode, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 // ---------------------------------------------------------------------------
@@ -78,12 +79,27 @@ function Dialog({
 
   if (!open) return null;
 
-  return (
+  // Render via portal directly into document.body so the dialog
+  // escapes every layout stacking context. Otherwise ancestors that
+  // create a containing block for ``position: fixed`` (Sidebar +
+  // Header both use ``backdrop-blur-xl``, which promotes them via
+  // the backdrop-filter property) trap the overlay inside the page
+  // area and let themselves render *on top* of the dialog — visible
+  // as a "blurred bar at the edges" plus action buttons that look
+  // clickable but actually sit behind the sidebar/header layer.
+  if (typeof document === 'undefined') return null;
+
+  const dialog = (
     <div className="fixed inset-0 z-modal flex items-center justify-center p-4">
-      {/* Backdrop */}
+      {/* Backdrop — solid-ish overlay (no backdrop-filter) so the
+          content underneath isn't smeared into the dialog body
+          through the panel's translucent surface. The previous
+          ``bg-bg-overlay`` token plus the panel's own
+          ``backdrop-blur-xl`` produced the "blurred bar around the
+          edges" effect users were seeing. */}
       <div
         ref={overlayRef}
-        className="absolute inset-0 bg-bg-overlay animate-fade-in"
+        className="absolute inset-0 bg-black/60 animate-fade-in"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -102,7 +118,12 @@ function Dialog({
         className={[
           'relative w-full rounded-xl animate-scale-in flex flex-col',
           'max-h-[calc(100vh-2rem)]',
-          'bg-bg-surface/90 backdrop-blur-xl border border-white/[0.08]',
+          // Opaque surface — no backdrop-filter. ``backdrop-blur`` on
+          // a position:fixed panel was leaking the page underneath
+          // *through* the panel and producing a blurred fringe at
+          // the edges; with ``bg-bg-surface`` solid the panel is a
+          // clean window over the backdrop.
+          'bg-bg-surface border border-white/[0.08]',
           'shadow-glass',
           maxWidthClasses[maxWidth],
           className,
@@ -136,6 +157,8 @@ function Dialog({
       </div>
     </div>
   );
+
+  return createPortal(dialog, document.body);
 }
 
 // ---------------------------------------------------------------------------
@@ -159,7 +182,10 @@ function DialogFooter({
       className={[
         'sticky bottom-0 -mx-6 -mb-6 mt-6 px-6 pt-4 pb-6',
         'flex items-center justify-end gap-2 flex-wrap',
-        'bg-bg-surface/95 backdrop-blur border-t border-white/[0.06]',
+        // Opaque so it occludes scrolled content above it. The
+        // earlier ``bg-bg-surface/95 backdrop-blur`` showed scrolled
+        // content faintly through the footer.
+        'bg-bg-surface border-t border-white/[0.06]',
         'rounded-b-xl',
         className,
       ].join(' ')}
