@@ -348,8 +348,41 @@ class MusicService:
             extra_data: dict[str, str] = {}
             if self.comfyui_api_key:
                 extra_data["api_key_comfy_org"] = self.comfyui_api_key
+                extra_data["auth_token_comfy_org"] = self.comfyui_api_key
 
-            prompt_id = await client.queue_prompt(workflow, extra_data=extra_data or None)
+            try:
+                prompt_id = await client.queue_prompt(workflow, extra_data=extra_data or None)
+            except Exception as exc:  # noqa: BLE001
+                # The most common AceStep failure is a missing model
+                # file — ComfyUI rejects the prompt at validation
+                # time with ``Value not in list: clip_name2: 'X'
+                # not in [...]`` etc. Surface it with the env-var
+                # override hint so the operator can fix without
+                # editing source.
+                err_text = str(exc)
+                if (
+                    "Value not in list" in err_text
+                    or "prompt_outputs_failed_validation" in err_text
+                ):
+                    log.error(
+                        "music.comfyui_acestep.model_missing",
+                        error=err_text[:600],
+                        hint=(
+                            "ComfyUI doesn't have one of the AceStep model "
+                            "files this workflow expects. Either install "
+                            "the missing files (see the AceStep README) or "
+                            "override the names via env vars: "
+                            "ACESTEP_CLIP_NAME_1, ACESTEP_CLIP_NAME_2, "
+                            "ACESTEP_UNET_NAME, ACESTEP_VAE_NAME — set "
+                            "each to a filename ComfyUI actually has."
+                        ),
+                    )
+                    return None
+                log.error(
+                    "music.comfyui_acestep.queue_failed",
+                    error=err_text[:400],
+                )
+                return None
 
             # Poll with exponential backoff.  AceStep can take several minutes
             # on slower hardware; use a 10-minute ceiling to match the pipeline.
@@ -450,6 +483,29 @@ class MusicService:
         """
         workflow = copy.deepcopy(_ACESTEP_WORKFLOW_TEMPLATE)
         duration_int = int(duration_seconds)
+
+        # AceStep DualCLIPLoader picks two qwen-ace15 clip files. The
+        # template hard-coded ``qwen_1.7b_ace15.safetensors`` for the
+        # second slot, which 400'd on installs that only have the
+        # 0.6b + 4b pair (the more common AceStep distribution since
+        # late 2025). Both filenames are now overridable via env so
+        # operators with different model layouts don't have to fork
+        # this code:
+        #
+        #   ACESTEP_CLIP_NAME_1   default ``qwen_0.6b_ace15.safetensors``
+        #   ACESTEP_CLIP_NAME_2   default ``qwen_4b_ace15.safetensors``
+        #   ACESTEP_UNET_NAME     default ``acestep_v1.5_turbo.safetensors``
+        #   ACESTEP_VAE_NAME      default ``ace_1.5_vae.safetensors``
+        import os as _os
+
+        clip_1 = _os.environ.get("ACESTEP_CLIP_NAME_1", "qwen_0.6b_ace15.safetensors")
+        clip_2 = _os.environ.get("ACESTEP_CLIP_NAME_2", "qwen_4b_ace15.safetensors")
+        unet_name = _os.environ.get("ACESTEP_UNET_NAME", "acestep_v1.5_turbo.safetensors")
+        vae_name = _os.environ.get("ACESTEP_VAE_NAME", "ace_1.5_vae.safetensors")
+        workflow["105"]["inputs"]["clip_name1"] = clip_1
+        workflow["105"]["inputs"]["clip_name2"] = clip_2
+        workflow["104"]["inputs"]["unet_name"] = unet_name
+        workflow["106"]["inputs"]["vae_name"] = vae_name
 
         # TextEncodeAceStepAudio1.5 -- mood tags, duration, seed
         workflow["94"]["inputs"]["tags"] = tags
