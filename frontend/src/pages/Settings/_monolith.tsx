@@ -36,6 +36,7 @@ import {
   Palette,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { LicenseSection } from '@/pages/Settings/sections/LicenseSection';
 import { UpdatesSection } from '@/pages/Settings/sections/UpdatesSection';
 import { BackupSection } from '@/pages/Settings/sections/BackupSection';
@@ -451,10 +452,11 @@ function ComfyUISection() {
       </div>
 
       {servers.length === 0 ? (
-        <div className="empty-state py-12">
-          <Server size={32} />
-          <p className="text-sm">No ComfyUI servers configured</p>
-        </div>
+        <EmptyState
+          icon={Server}
+          title="No ComfyUI servers configured"
+          description="Add a server above to start generating scenes."
+        />
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {servers.map((srv) => (
@@ -871,14 +873,14 @@ function VoiceSection() {
       </div>
 
       {filteredProfiles.length === 0 ? (
-        <div className="empty-state py-12">
-          <Mic2 size={32} />
-          <p className="text-sm">
-            {filter === 'all'
+        <EmptyState
+          icon={Mic2}
+          title={
+            filter === 'all'
               ? 'No voice profiles configured'
-              : `No ${filter} voice profiles`}
-          </p>
-        </div>
+              : `No ${filter} voice profiles`
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filteredProfiles.map((p) => (
@@ -1451,10 +1453,11 @@ function LLMSection() {
       </div>
 
       {configs.length === 0 ? (
-        <div className="empty-state py-12">
-          <Brain size={32} />
-          <p className="text-sm">No LLM configurations yet</p>
-        </div>
+        <EmptyState
+          icon={Brain}
+          title="No LLM configurations yet"
+          description="Add an endpoint above (LM Studio, Ollama, OpenAI, or Anthropic) to power scripts."
+        />
       ) : (
         <div className="grid grid-cols-2 gap-3">
           {configs.map((c) => (
@@ -3068,17 +3071,17 @@ function TemplatesSection() {
 
       {/* Empty state */}
       {templates.length === 0 && (
-        <div className="empty-state py-16">
-          <Layers size={36} />
-          <p className="text-sm">No templates yet</p>
-          <p className="text-xs text-txt-tertiary mt-1">
-            Create a template to reuse settings across multiple series.
-          </p>
-          <Button variant="primary" size="sm" className="mt-4" onClick={openCreateDialog}>
-            <Plus size={14} />
-            Create First Template
-          </Button>
-        </div>
+        <EmptyState
+          icon={Layers}
+          title="No templates yet"
+          description="Create a template to reuse settings across multiple series."
+          action={
+            <Button variant="primary" size="sm" onClick={openCreateDialog}>
+              <Plus size={14} />
+              Create First Template
+            </Button>
+          }
+        />
       )}
 
       {/* Templates grid */}
