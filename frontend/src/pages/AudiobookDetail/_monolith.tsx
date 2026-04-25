@@ -161,6 +161,7 @@ function AudiobookDetail() {
   // Delete dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
 
   // Voice editing
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
@@ -453,6 +454,27 @@ function AudiobookDetail() {
     }
   };
 
+  // ── Cancel in-progress generation ──────────────────────────────────
+  // Sets a Redis flag the worker polls between major steps. Actual
+  // stop lands at the next boundary (typically <30s during TTS,
+  // sub-second outside it). Optimistic toast — actual status flip to
+  // ``failed`` with "Cancelled by user" comes via the polling loop.
+  const handleCancelGeneration = async () => {
+    if (!audiobookId) return;
+    setCancelling(true);
+    try {
+      await audiobooksApi.cancel(audiobookId);
+      toast.success('Cancel signal sent', {
+        description: 'The job will stop at the next step boundary.',
+      });
+      void fetchAudiobook();
+    } catch (err) {
+      toast.error('Failed to cancel', { description: String(err) });
+    } finally {
+      setCancelling(false);
+    }
+  };
+
   // ── Full text editing ─────────────────────────────────────────────
 
   const startEditFullText = () => {
@@ -688,14 +710,26 @@ function AudiobookDetail() {
         </div>
       </div>
 
-      {/* Generating indicator */}
+      {/* Generating indicator + Cancel button */}
       {isGenerating && (
         <Card padding="md" className="mb-6 border-accent/30">
           <div className="flex items-center gap-3">
             <Spinner size="sm" />
-            <span className="text-sm text-txt-secondary">
+            <span className="text-sm text-txt-secondary flex-1">
               Generating audio... This page will refresh automatically when done.
             </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              loading={cancelling}
+              onClick={() => void handleCancelGeneration()}
+              className="text-error hover:bg-error-muted"
+              title="Stop the generation at the next step boundary"
+              aria-label="Cancel audiobook generation"
+            >
+              <XCircle size={14} />
+              Cancel
+            </Button>
           </div>
         </Card>
       )}

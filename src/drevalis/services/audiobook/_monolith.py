@@ -84,6 +84,39 @@ class AudiobookService:
         self.redis = redis
 
     # ══════════════════════════════════════════════════════════════════════
+    # Cancellation
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # Mirrors the episode pipeline's pattern: the API endpoint sets
+    # ``cancel:audiobook:{id}`` in Redis with a short TTL; long-running
+    # steps inside ``generate()`` poll this between chapters and raise
+    # ``asyncio.CancelledError`` on a hit. The flag is cleared once
+    # the audiobook reaches a terminal status so a subsequent
+    # generation of the same audiobook doesn't see the stale signal.
+
+    async def _check_cancelled(self, audiobook_id: UUID) -> None:
+        """Raise ``CancelledError`` if a cancel flag is set for this audiobook."""
+        if not self.redis:
+            return
+        try:
+            flag = await self.redis.get(f"cancel:audiobook:{audiobook_id}")
+        except Exception:
+            return
+        if flag:
+            log.info("audiobook.generate.cancelled_by_user", audiobook_id=str(audiobook_id))
+            raise asyncio.CancelledError(
+                f"Audiobook {audiobook_id} cancelled by user"
+            )
+
+    async def _clear_cancel_flag(self, audiobook_id: UUID) -> None:
+        if not self.redis:
+            return
+        try:
+            await self.redis.delete(f"cancel:audiobook:{audiobook_id}")
+        except Exception:
+            pass
+
+    # ══════════════════════════════════════════════════════════════════════
     # Progress broadcasting
     # ══════════════════════════════════════════════════════════════════════
 
@@ -260,6 +293,11 @@ class AudiobookService:
         all_chunks: list[AudioChunk] = []
         total_chapters = len(chapters)
         for ch_idx, chapter in enumerate(chapters):
+            # Honour the user's Cancel button between chapters. The
+            # in-flight TTS / ComfyUI calls aren't interruptible, but
+            # we won't queue another chapter once the flag is set.
+            await self._check_cancelled(audiobook_id)
+
             chapter_text = chapter["text"]
             voice_blocks = self._parse_voice_blocks(chapter_text)
 
@@ -310,6 +348,7 @@ class AudiobookService:
             )
 
         # 3. Concatenate all chunks with context-aware silence gaps
+        await self._check_cancelled(audiobook_id)
         await self._broadcast_progress(audiobook_id, "mixing", 50, "Concatenating audio...")
         final_audio = abs_dir / "audiobook.wav"
         chapter_timings = await self._concatenate_with_context(all_chunks, final_audio)
@@ -362,6 +401,7 @@ class AudiobookService:
 
         # 6. Optionally add background music
         if music_enabled and (music_mood or per_chapter_music):
+            await self._check_cancelled(audiobook_id)
             await self._broadcast_progress(audiobook_id, "music", 70, "Adding background music...")
             try:
                 if per_chapter_music and chapter_timings:
@@ -422,6 +462,7 @@ class AudiobookService:
                 )
 
         # 6b. Generate captions from audio
+        await self._check_cancelled(audiobook_id)
         await self._broadcast_progress(audiobook_id, "captions", 85, "Generating captions...")
         captions_ass_path: Path | None = None
         captions_ass_rel: str | None = None
@@ -530,6 +571,7 @@ class AudiobookService:
             )
 
         # 8. Handle output format
+        await self._check_cancelled(audiobook_id)
         await self._broadcast_progress(audiobook_id, "assembly", 90, "Assembling video...")
 
         if output_format in ("audio_image", "audio_video"):

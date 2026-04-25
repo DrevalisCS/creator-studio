@@ -834,12 +834,18 @@ class ComfyUIElevenLabsTTSProvider:
         self.output_format = output_format
 
     def _build_workflow(self, text: str, voice_name: str) -> dict[str, Any]:
-        """Build a minimal ComfyUI workflow for ElevenLabs TTS.
+        """Build a ComfyUI API workflow for ElevenLabs TTS.
 
-        The ``ElevenLabsTextToDialogue`` node requires hidden
-        ``api_key_comfy_org`` and ``auth_token_comfy_org`` inputs
-        that the browser UI auto-injects from the logged-in session.
-        When calling via API we must supply them explicitly.
+        Standard ComfyUI API format: each node has ``inputs``
+        (param-name → value or [src_node_id, src_output_index]
+        link), ``class_type``, and an optional ``_meta`` block.
+
+        The previous implementation used dotted keys
+        (``inputs.text1`` / ``inputs.voice1``) and an extra
+        ``inputs: "1"`` selector field which are NOT valid for the
+        API workflow format — those are widget remnants from the
+        browser UI export. ComfyUI silently rejected the prompt and
+        the worker timed out polling for output.
         """
         return {
             "1": {
@@ -849,15 +855,15 @@ class ComfyUIElevenLabsTTSProvider:
             },
             "2": {
                 "inputs": {
+                    # Direct field names — the actual node API.
+                    "text": text,
+                    "voice": ["1", 0],
+                    "model": self.model,
                     "stability": self.stability,
                     "apply_text_normalization": "auto",
-                    "model": self.model,
-                    "inputs": "1",
-                    "inputs.text1": text,
                     "language_code": "",
                     "seed": 0,
                     "output_format": self.output_format,
-                    "inputs.voice1": ["1", 0],
                 },
                 "class_type": "ElevenLabsTextToDialogue",
                 "_meta": {"title": "ElevenLabs Text to Dialogue"},
@@ -866,7 +872,6 @@ class ComfyUIElevenLabsTTSProvider:
                 "inputs": {
                     "filename_prefix": "audio/tts_output",
                     "quality": "V0",
-                    "audioUI": "",
                     "audio": ["2", 0],
                 },
                 "class_type": "SaveAudioMP3",

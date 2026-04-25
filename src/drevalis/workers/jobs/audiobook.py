@@ -14,6 +14,7 @@ Helpers
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from typing import TYPE_CHECKING, Any
 
@@ -349,9 +350,24 @@ async def generate_audiobook(
                 except Exception:
                     pass
 
+            await service._clear_cancel_flag(parsed_id)
             duration = result["duration_seconds"]
             log.info("job_complete", status="success", duration_seconds=duration)
             return {"audiobook_id": audiobook_id, "status": "success", "duration": duration}
+        except asyncio.CancelledError as exc:
+            # User hit Cancel — mark as failed with a clean message
+            # (not "cancelled" because the audiobook status enum
+            # doesn't include that value; failed + explicit message
+            # is the convention used by the episode pipeline too).
+            await ab_repo.update(
+                parsed_id,
+                status="failed",
+                error_message="Cancelled by user",
+            )
+            await session.commit()
+            await service._clear_cancel_flag(parsed_id)
+            log.info("job_cancelled", reason=str(exc)[:200])
+            return {"audiobook_id": audiobook_id, "status": "cancelled"}
         except Exception as exc:
             await ab_repo.update(
                 parsed_id,
@@ -359,6 +375,7 @@ async def generate_audiobook(
                 error_message=str(exc)[:2000],
             )
             await session.commit()
+            await service._clear_cancel_flag(parsed_id)
 
             log.error("job_failed", error=str(exc), exc_info=True)
             return {"audiobook_id": audiobook_id, "status": "failed", "error": str(exc)}
@@ -877,6 +894,7 @@ async def generate_ai_audiobook(
             )
             await session.commit()
 
+            await service._clear_cancel_flag(parsed_id)
             duration = gen_result["duration_seconds"]
             log.info("job_complete", status="success", duration_seconds=duration)
             return {
@@ -885,6 +903,24 @@ async def generate_ai_audiobook(
                 "duration": duration,
             }
 
+    except asyncio.CancelledError as exc:
+        log.info("ai_audiobook_cancelled", reason=str(exc)[:200])
+        async with session_factory() as session:
+            ab_repo = AudiobookRepository(session)
+            await ab_repo.update(
+                parsed_id,
+                status="failed",
+                error_message="Cancelled by user",
+            )
+            await session.commit()
+        # Best-effort flag clear (no service instance handy here).
+        try:
+            redis_client = ctx.get("redis")
+            if redis_client is not None:
+                await redis_client.delete(f"cancel:audiobook:{audiobook_id}")
+        except Exception:
+            pass
+        return {"status": "cancelled", "audiobook_id": audiobook_id}
     except Exception as exc:
         log.error("audio_generation_failed", error=str(exc), exc_info=True)
         async with session_factory() as session:

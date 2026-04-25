@@ -914,6 +914,56 @@ async def update_audiobook_voices(
 
 
 @router.post(
+    "/{audiobook_id}/cancel",
+    status_code=status.HTTP_200_OK,
+    summary="Cancel an in-progress audiobook generation",
+)
+async def cancel_audiobook(
+    audiobook_id: UUID,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Set the cancel flag for a running audiobook generation.
+
+    The arq job inside ``AudiobookService.generate`` polls
+    ``cancel:audiobook:{id}`` between major steps (per-chapter TTS,
+    mixing, music, captions, video) and raises ``CancelledError`` on
+    a hit. The job handler catches that, marks the audiobook as
+    ``failed`` with ``Cancelled by user``, and clears the flag.
+
+    Returns immediately — actual cancellation lands at the next
+    step boundary (typically <30s during TTS, sub-second outside it).
+    """
+    repo = AudiobookRepository(db)
+    audiobook = await repo.get_by_id(audiobook_id)
+    if audiobook is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audiobook {audiobook_id} not found",
+        )
+    if audiobook.status != "generating":
+        return {
+            "message": "Audiobook is not generating; nothing to cancel.",
+            "audiobook_id": str(audiobook_id),
+            "status": audiobook.status,
+        }
+
+    pool = get_pool()
+    redis = Redis(connection_pool=pool)
+    try:
+        await redis.set(
+            f"cancel:audiobook:{audiobook_id}", "1", ex=3600
+        )
+    finally:
+        await redis.aclose()
+
+    log.info("audiobook.cancel.signalled", audiobook_id=str(audiobook_id))
+    return {
+        "message": "Cancel signal sent. The job will stop at the next step boundary.",
+        "audiobook_id": str(audiobook_id),
+    }
+
+
+@router.post(
     "/{audiobook_id}/regenerate",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Regenerate the entire audiobook audio",

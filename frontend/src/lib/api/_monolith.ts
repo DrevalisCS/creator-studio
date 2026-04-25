@@ -746,6 +746,15 @@ export const audiobooks = {
   cancelScriptJob: (jobId: string) =>
     post<{ message: string }>(`/api/v1/audiobooks/script-job/${jobId}/cancel`, {}),
 
+  // Cancel an in-progress audiobook generation. Sets a Redis flag
+  // the worker polls between major steps; the actual stop lands at
+  // the next boundary.
+  cancel: (audiobookId: string) =>
+    post<{ message: string; audiobook_id: string }>(
+      `/api/v1/audiobooks/${audiobookId}/cancel`,
+      {},
+    ),
+
   createAI: (data: {
     concept: string;
     characters: Array<{
