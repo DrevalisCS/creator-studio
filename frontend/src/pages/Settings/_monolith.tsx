@@ -73,27 +73,59 @@ import type {
 // Settings Sections Nav
 // ---------------------------------------------------------------------------
 
-const SECTIONS = [
-  { id: 'license', label: 'License', icon: KeyRound },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'team', label: 'Team', icon: Users },
-  { id: 'updates', label: 'Updates', icon: ArrowUpCircle },
-  { id: 'backup', label: 'Backup', icon: Archive },
-  { id: 'health', label: 'Health', icon: CheckCircle2 },
-  { id: 'comfyui', label: 'ComfyUI Servers', icon: Server },
-  { id: 'voice', label: 'Voice Profiles', icon: Mic2 },
-  { id: 'llm', label: 'LLM Configs', icon: Brain },
-  { id: 'storage', label: 'Storage', icon: HardDrive },
-  { id: 'ffmpeg', label: 'FFmpeg', icon: Film },
-  { id: 'templates', label: 'Templates', icon: LayoutTemplate },
-  { id: 'social', label: 'Social Media', icon: Globe },
-  { id: 'apikeys', label: 'API Keys', icon: Key },
-  // Cloud GPU management moved out of Settings in v0.20.40 — it now
-  // lives at its own /cloud-gpu page so there's a single place to
-  // manage pods across RunPod, Vast.ai, and Lambda Labs. API keys for
-  // those providers still live under "API Keys" above.
+// Settings is grouped semantically rather than as a flat 14-item list —
+// account/billing first, then appearance, then service integrations,
+// then system internals. The flat layout was fatiguing and put related
+// items (e.g. ComfyUI / LLM / Voice / API Keys — all integrations)
+// nowhere near each other in the nav.
+const SECTION_GROUPS = [
+  {
+    id: 'account',
+    label: 'Account & Billing',
+    sections: [
+      { id: 'license', label: 'License', icon: KeyRound },
+      { id: 'team', label: 'Team', icon: Users },
+    ],
+  },
+  {
+    id: 'appearance-group',
+    label: 'Appearance',
+    sections: [
+      { id: 'appearance', label: 'Theme', icon: Palette },
+    ],
+  },
+  {
+    id: 'integrations',
+    label: 'Integrations',
+    sections: [
+      { id: 'llm', label: 'LLM Configs', icon: Brain },
+      { id: 'comfyui', label: 'ComfyUI Servers', icon: Server },
+      { id: 'voice', label: 'Voice Profiles', icon: Mic2 },
+      { id: 'social', label: 'Social Media', icon: Globe },
+      { id: 'apikeys', label: 'API Keys', icon: Key },
+    ],
+  },
+  {
+    id: 'system',
+    label: 'System',
+    sections: [
+      { id: 'health', label: 'Health', icon: CheckCircle2 },
+      { id: 'storage', label: 'Storage', icon: HardDrive },
+      { id: 'ffmpeg', label: 'FFmpeg', icon: Film },
+      { id: 'backup', label: 'Backup', icon: Archive },
+      { id: 'updates', label: 'Updates', icon: ArrowUpCircle },
+    ],
+  },
+  {
+    id: 'content',
+    label: 'Content',
+    sections: [
+      { id: 'templates', label: 'Templates', icon: LayoutTemplate },
+    ],
+  },
 ] as const;
 
+const SECTIONS = SECTION_GROUPS.flatMap((g) => g.sections);
 type SectionId = (typeof SECTIONS)[number]['id'];
 
 // ---------------------------------------------------------------------------
@@ -105,17 +137,18 @@ function Settings() {
 
   return (
     <div>
-      <div className="mb-6">
-        <h2 className="text-2xl font-bold text-txt-primary">Settings</h2>
-        <p className="mt-1 text-sm text-txt-secondary">
-          Configure backend services, voice profiles, and system settings.
-        </p>
-      </div>
+      {/* Banner already shows "Settings" — keep subtitle only. */}
+      <p className="text-sm text-txt-secondary mb-6">
+        Configure backend services, voice profiles, and system settings.
+      </p>
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
-        {/* Left nav — stacks horizontally below md, vertical on md+ */}
+        {/* Left nav — grouped sections with collapsible-style headers.
+            On mobile (<md) the whole nav becomes a horizontal scroll
+            row so we flatten the groups into a single strip. */}
         <div className="md:col-span-3">
-          <nav className="flex md:flex-col gap-0.5 overflow-x-auto md:overflow-visible -mx-4 md:mx-0 px-4 md:px-0 snap-x md:snap-none">
+          {/* Mobile: flat horizontal scroll list */}
+          <nav className="flex md:hidden gap-0.5 overflow-x-auto -mx-4 px-4 snap-x">
             {SECTIONS.map((section) => {
               const isActive = activeSection === section.id;
               return (
@@ -123,7 +156,7 @@ function Settings() {
                   key={section.id}
                   onClick={() => setActiveSection(section.id)}
                   className={[
-                    'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-fast text-left whitespace-nowrap shrink-0 md:w-full snap-start',
+                    'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-fast text-left whitespace-nowrap shrink-0 snap-start',
                     isActive
                       ? 'bg-accent-muted text-accent'
                       : 'text-txt-secondary hover:text-txt-primary hover:bg-bg-hover',
@@ -134,6 +167,34 @@ function Settings() {
                 </button>
               );
             })}
+          </nav>
+          {/* Desktop: grouped vertical nav */}
+          <nav className="hidden md:flex md:flex-col gap-3">
+            {SECTION_GROUPS.map((group) => (
+              <div key={group.id} className="space-y-0.5">
+                <div className="px-3 pb-1 text-[10px] font-display font-bold uppercase tracking-[0.15em] text-txt-tertiary">
+                  {group.label}
+                </div>
+                {group.sections.map((section) => {
+                  const isActive = activeSection === section.id;
+                  return (
+                    <button
+                      key={section.id}
+                      onClick={() => setActiveSection(section.id)}
+                      className={[
+                        'flex items-center gap-2.5 px-3 py-2 rounded-md text-sm font-medium transition-colors duration-fast text-left w-full',
+                        isActive
+                          ? 'bg-accent-muted text-accent'
+                          : 'text-txt-secondary hover:text-txt-primary hover:bg-bg-hover',
+                      ].join(' ')}
+                    >
+                      <section.icon size={16} />
+                      {section.label}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </nav>
         </div>
 
