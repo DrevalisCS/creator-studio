@@ -800,6 +800,23 @@ class EdgeTTSProvider:
 # ComfyUI ElevenLabs provider (cloud via ComfyUI nodes)
 # ---------------------------------------------------------------------------
 
+# Surfaced when the ElevenLabs API node returns
+# ``Unauthorized: Please login first to use this node.`` even though
+# the user is logged into ComfyUI in their browser. Browser session
+# auth is per-tab; the worker's HTTP request is a separate session
+# and needs its own credentials.
+_AUTH_HINT = (
+    "ComfyUI ElevenLabs node refused authentication: {raw}. "
+    "Being logged into ComfyUI in your browser does NOT authenticate "
+    "Drevalis's worker — the worker submits prompts as a separate HTTP "
+    "session. Fix: open ComfyUI in your browser, F12 → Application → "
+    "Local Storage → http://<comfyui-host>:8188, copy the value of "
+    "``comfy_api_token`` (or similar JWT-looking key), then paste it "
+    "into Drevalis Settings → ComfyUI Servers → edit your server → "
+    "API Key. Drevalis will send it as both ``api_key_comfy_org`` and "
+    "``auth_token_comfy_org`` plus an Authorization: Bearer header."
+)
+
 
 class ComfyUIElevenLabsTTSProvider:
     """ElevenLabs TTS routed through ComfyUI custom nodes.
@@ -919,7 +936,16 @@ class ComfyUIElevenLabsTTSProvider:
         try:
             extra_data: dict[str, Any] = {}
             if server_key:
+                # ComfyUI's API-node auth is checked via TWO separate
+                # ``extra_data`` fields depending on the node's
+                # implementation: ``api_key_comfy_org`` (paid API key)
+                # and ``auth_token_comfy_org`` (browser session JWT).
+                # The Drevalis settings UI only exposes ONE field, so
+                # we send the same value as both — whichever the
+                # node checks will be satisfied. The Bearer header on
+                # the HTTP request itself is set by ComfyUIClient.
                 extra_data["api_key_comfy_org"] = server_key
+                extra_data["auth_token_comfy_org"] = server_key
             prompt_id = await client.queue_prompt(workflow, extra_data=extra_data)
 
             # Poll for completion (exponential backoff)
@@ -944,10 +970,19 @@ class ComfyUIElevenLabsTTSProvider:
                 error_msg = "ComfyUI workflow execution failed"
                 for msg_type, msg_data in messages:
                     if msg_type == "execution_error" and isinstance(msg_data, dict):
+                        raw = msg_data.get("exception_message", "unknown error")
+                        # ComfyUI API-node auth failures come back as
+                        # ``Unauthorized: Please login first to use this
+                        # node.`` — a confusing message because the user
+                        # IS logged into ComfyUI in their browser, but
+                        # the worker's HTTP call is a separate session.
+                        # Surface a clear actionable hint instead of
+                        # the bare upstream string.
+                        if "Unauthorized" in raw or "login first" in raw.lower():
+                            raise RuntimeError(_AUTH_HINT.format(raw=raw))
                         error_msg = (
                             f"ComfyUI ElevenLabs error on node "
-                            f"'{msg_data.get('node_type', '?')}': "
-                            f"{msg_data.get('exception_message', 'unknown error')}"
+                            f"'{msg_data.get('node_type', '?')}': {raw}"
                         )
                         break
                 raise RuntimeError(error_msg)
@@ -1213,7 +1248,12 @@ class ComfyUIElevenLabsSoundEffectsProvider:
         try:
             extra_data: dict[str, Any] = {}
             if self.comfyui_api_key:
+                # See ComfyUIElevenLabsTTSProvider for the rationale —
+                # API nodes check either ``api_key_comfy_org`` or
+                # ``auth_token_comfy_org`` depending on the node, so
+                # we send the single configured token as both.
                 extra_data["api_key_comfy_org"] = self.comfyui_api_key
+                extra_data["auth_token_comfy_org"] = self.comfyui_api_key
             prompt_id = await client.queue_prompt(workflow, extra_data=extra_data)
 
             delay = 1.0
@@ -1237,10 +1277,12 @@ class ComfyUIElevenLabsSoundEffectsProvider:
                 error_msg = "ComfyUI workflow execution failed"
                 for msg_type, msg_data in messages:
                     if msg_type == "execution_error" and isinstance(msg_data, dict):
+                        raw = msg_data.get("exception_message", "unknown error")
+                        if "Unauthorized" in raw or "login first" in raw.lower():
+                            raise RuntimeError(_AUTH_HINT.format(raw=raw))
                         error_msg = (
                             f"ComfyUI ElevenLabs SFX error on node "
-                            f"'{msg_data.get('node_type', '?')}': "
-                            f"{msg_data.get('exception_message', 'unknown error')}"
+                            f"'{msg_data.get('node_type', '?')}': {raw}"
                         )
                         break
                 raise RuntimeError(error_msg)
