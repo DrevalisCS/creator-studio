@@ -440,6 +440,13 @@ function Calendar() {
   // user can read every post on a heavily-scheduled day instead of
   // staring at "+N more"). Keyed by ISO yyyy-mm-dd.
   const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  // View mode — Month grid is the default; List flattens every post
+  // in the visible window into a single sorted feed (better for users
+  // who think in "what's coming next" rather than dates).
+  const [view, setView] = useState<'month' | 'list'>('month');
+  // Quick filters — empty string means "all". Filters apply across
+  // all views.
+  const [platformFilter, setPlatformFilter] = useState<string>('');
 
   // ---------------------------------------------------------------------------
   // Data fetching
@@ -651,8 +658,15 @@ function Calendar() {
 
   const isCurrentMonth = (date: Date) => date.getMonth() === currentMonth;
 
+  // Filtered post universe — every code path below reads from this
+  // so a single filter strip applies across Month, List, and the
+  // Upcoming rail uniformly.
+  const filteredPosts = platformFilter
+    ? posts.filter((p) => p.platform === platformFilter)
+    : posts;
+
   const postsForDay = (date: Date): ScheduledPost[] =>
-    posts.filter((p) => isSameDay(new Date(p.scheduled_at), date));
+    filteredPosts.filter((p) => isSameDay(new Date(p.scheduled_at), date));
 
   return (
     <div className="flex gap-6 h-full" aria-label="Content Calendar">
@@ -660,28 +674,64 @@ function Calendar() {
       {/* Main calendar                                                        */}
       {/* ------------------------------------------------------------------ */}
       <div className="flex-1 min-w-0 space-y-4">
-        {/* Header */}
-        <div className="flex items-center justify-between">
+        {/* Header — title + view toggle on the left, navigation +
+            filters + rail toggle on the right. */}
+        <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
             <CalendarDays size={20} className="text-accent" aria-hidden="true" />
             <h1 className="text-xl font-bold text-txt-primary">Content Calendar</h1>
+            <div className="ml-2 inline-flex rounded-md border border-border p-0.5 bg-bg-elevated">
+              {(['month', 'list'] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setView(v)}
+                  className={[
+                    'text-xs px-2.5 py-1 rounded font-medium transition-colors',
+                    view === v
+                      ? 'bg-accent/15 text-accent'
+                      : 'text-txt-secondary hover:text-txt-primary',
+                  ].join(' ')}
+                >
+                  {v === 'month' ? 'Month' : 'List'}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={goToPrev} aria-label="Previous month">
-              <ChevronLeft size={16} />
-            </Button>
-            <button
-              onClick={goToToday}
-              className="px-3 py-1.5 text-sm font-medium text-txt-secondary hover:text-txt-primary hover:bg-bg-hover rounded-md transition-colors"
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Platform filter — applies to every view. */}
+            <select
+              value={platformFilter}
+              onChange={(e) => setPlatformFilter(e.target.value)}
+              className="text-xs h-8 px-2 bg-bg-base border border-white/[0.08] rounded text-txt-primary focus:outline-none focus:border-accent/40"
+              aria-label="Filter by platform"
             >
-              Today
-            </button>
-            <Button variant="ghost" size="sm" onClick={goToNext} aria-label="Next month">
-              <ChevronRight size={16} />
-            </Button>
-            <span className="text-base font-semibold text-txt-primary min-w-[160px] text-center">
-              {MONTH_NAMES[currentMonth]} {currentYear}
-            </span>
+              <option value="">All platforms</option>
+              {PLATFORM_OPTIONS.map((p) => (
+                <option key={p.value} value={p.value}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+            {view === 'month' && (
+              <>
+                <Button variant="ghost" size="sm" onClick={goToPrev} aria-label="Previous month">
+                  <ChevronLeft size={16} />
+                </Button>
+                <button
+                  onClick={goToToday}
+                  className="px-3 py-1.5 text-sm font-medium text-txt-secondary hover:text-txt-primary hover:bg-bg-hover rounded-md transition-colors"
+                >
+                  Today
+                </button>
+                <Button variant="ghost" size="sm" onClick={goToNext} aria-label="Next month">
+                  <ChevronRight size={16} />
+                </Button>
+                <span className="text-base font-semibold text-txt-primary min-w-[160px] text-center">
+                  {MONTH_NAMES[currentMonth]} {currentYear}
+                </span>
+              </>
+            )}
             <Button
               variant="ghost"
               size="sm"
@@ -694,12 +744,89 @@ function Calendar() {
           </div>
         </div>
 
-        {/* Calendar grid */}
+        {/* Calendar grid (Month) or flat list (List). */}
         <Card padding="none">
           {loading ? (
             <div className="flex items-center justify-center py-24" aria-busy="true">
               <Spinner size="lg" />
             </div>
+          ) : view === 'list' ? (
+            (() => {
+              const sorted = [...filteredPosts].sort(
+                (a, b) =>
+                  new Date(a.scheduled_at).getTime() -
+                  new Date(b.scheduled_at).getTime(),
+              );
+              if (sorted.length === 0) {
+                return (
+                  <div className="py-16 text-center text-sm text-txt-muted">
+                    No scheduled posts in this view.
+                  </div>
+                );
+              }
+              // Group by ISO date so the list has natural day headers.
+              const groups = new Map<string, ScheduledPost[]>();
+              for (const p of sorted) {
+                const key = new Date(p.scheduled_at).toISOString().slice(0, 10);
+                const arr = groups.get(key) ?? [];
+                arr.push(p);
+                groups.set(key, arr);
+              }
+              return (
+                <ul className="divide-y divide-border" aria-label="Scheduled posts">
+                  {Array.from(groups.entries()).map(([dayKey, dayPosts]) => {
+                    const d = new Date(`${dayKey}T00:00:00`);
+                    const isTodayGroup = isSameDay(d, new Date());
+                    return (
+                      <li key={dayKey}>
+                        <div
+                          className={`px-4 py-2 text-xs font-semibold uppercase tracking-wider ${
+                            isTodayGroup ? 'text-accent' : 'text-txt-tertiary'
+                          } bg-bg-elevated/40`}
+                        >
+                          {d.toLocaleDateString(undefined, {
+                            weekday: 'long',
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                          {isTodayGroup && ' · Today'}
+                        </div>
+                        <ul className="divide-y divide-border/60">
+                          {dayPosts.map((post) => (
+                            <li
+                              key={post.id}
+                              className="flex items-center gap-3 px-4 py-2.5 hover:bg-bg-hover"
+                            >
+                              <span
+                                className={`shrink-0 w-2 h-2 rounded-full ${PLATFORM_COLORS[post.platform] ?? 'bg-gray-500'}`}
+                                aria-hidden="true"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-sm text-txt-primary truncate">
+                                  {post.title}
+                                </div>
+                                <div className="text-[11px] text-txt-tertiary mt-0.5">
+                                  {formatTime(post.scheduled_at)} ·{' '}
+                                  {platformLabel(post.platform)} · {post.status}
+                                </div>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleCancel(post.id)}
+                                className="shrink-0 p-1 rounded text-txt-tertiary hover:text-error hover:bg-error/10"
+                                aria-label={`Cancel ${post.title}`}
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            </li>
+                          ))}
+                        </ul>
+                      </li>
+                    );
+                  })}
+                </ul>
+              );
+            })()
           ) : (
             <div className="overflow-hidden rounded-xl">
               {/* Day-of-week headers */}
