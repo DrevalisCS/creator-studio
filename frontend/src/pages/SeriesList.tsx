@@ -7,6 +7,7 @@ import { Select } from '@/components/ui/Select';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
 import { Spinner } from '@/components/ui/Spinner';
 import { SeriesCard } from '@/components/series/SeriesCard';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { series as seriesApi, voiceProfiles as voiceProfilesApi } from '@/lib/api';
 import type { SeriesListItem, SeriesCreate, SeriesGenerateResponse, VoiceProfile } from '@/types';
@@ -176,32 +177,34 @@ function SeriesList() {
 
       {/* Grid */}
       {seriesList.length === 0 ? (
-        <div className="empty-state py-16">
-          <Layers size={40} />
-          <p className="text-sm font-display">No series yet</p>
-          <p className="text-xs font-display">Create your first series to start generating episodes</p>
-          <div className="flex items-center gap-2 mt-3">
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                resetAiForm();
-                setAiDialogOpen(true);
-              }}
-            >
-              <Sparkles size={14} />
-              AI Generate
-            </Button>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setDialogOpen(true)}
-            >
-              <Plus size={14} />
-              Create Series
-            </Button>
-          </div>
-        </div>
+        <EmptyState
+          icon={Layers}
+          title="No series yet"
+          description="Create your first series to start generating episodes."
+          action={
+            <div className="flex items-center gap-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => {
+                  resetAiForm();
+                  setAiDialogOpen(true);
+                }}
+              >
+                <Sparkles size={14} />
+                AI Generate
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setDialogOpen(true)}
+              >
+                <Plus size={14} />
+                Create Series
+              </Button>
+            </div>
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {seriesList.map((s) => (

@@ -18,6 +18,7 @@ import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Input';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
 import { Spinner } from '@/components/ui/Spinner';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { EpisodeCard } from '@/components/episodes/EpisodeCard';
 import { useActiveJobsProgress } from '@/lib/websocket';
 import { useToast } from '@/components/ui/Toast';
@@ -466,15 +467,23 @@ function EpisodesList() {
 
       {/* Grid */}
       {visibleEpisodes.length === 0 ? (
-        <div className="empty-state py-16">
-          <Film size={40} />
-          <p className="text-sm font-display">No episodes found</p>
-          <p className="text-xs font-display">
-            {statusFilter || seriesFilter || search
-              ? 'Try clearing your filters or search'
-              : 'Create your first episode to get started'}
-          </p>
-        </div>
+        <EmptyState
+          icon={Film}
+          title="No episodes found"
+          description={
+            statusFilter || seriesFilter || search
+              ? 'Try clearing your filters or search.'
+              : 'Create your first episode to get started.'
+          }
+          action={
+            !statusFilter && !seriesFilter && !search ? (
+              <Button variant="primary" onClick={() => setCreateDialogOpen(true)}>
+                <Plus size={14} />
+                New Episode
+              </Button>
+            ) : null
+          }
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {visibleEpisodes.map((ep) => (

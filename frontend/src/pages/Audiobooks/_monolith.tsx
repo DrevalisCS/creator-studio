@@ -30,6 +30,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
 import { audiobooks as audiobooksApi, voiceProfiles as voiceProfilesApi } from '@/lib/api';
 import type { Audiobook, AudiobookCreate, VoiceProfile } from '@/types';
@@ -1175,23 +1176,25 @@ function Audiobooks() {
 
       {/* -- Audiobook List ------------------------------------------------ */}
       {audiobookList.length === 0 ? (
-        <div className="empty-state py-16">
-          <Mic size={48} className="mx-auto mb-3 opacity-30" />
-          <p className="text-lg font-medium">No audiobooks yet</p>
-          <p className="text-sm text-txt-tertiary mt-1">Create your first text-to-voice project</p>
-          {!showCreator && (
-            <div className="flex items-center gap-2 mt-4 justify-center">
-              <Button variant="secondary" onClick={openAiDialog}>
-                <Sparkles size={14} />
-                AI Create
-              </Button>
-              <Button variant="primary" onClick={() => setShowCreator(true)}>
-                <Plus size={14} />
-                Create Audiobook
-              </Button>
-            </div>
-          )}
-        </div>
+        <EmptyState
+          icon={Mic}
+          title="No audiobooks yet"
+          description="Create your first text-to-voice project."
+          action={
+            !showCreator ? (
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={openAiDialog}>
+                  <Sparkles size={14} />
+                  AI Create
+                </Button>
+                <Button variant="primary" onClick={() => setShowCreator(true)}>
+                  <Plus size={14} />
+                  Create Audiobook
+                </Button>
+              </div>
+            ) : null
+          }
+        />
       ) : (
         <div className="space-y-3">
           {audiobookList.map((ab) => (

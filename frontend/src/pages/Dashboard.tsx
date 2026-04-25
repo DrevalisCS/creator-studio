@@ -19,6 +19,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { EpisodeCard } from '@/components/episodes/EpisodeCard';
 import { JobProgressBar } from '@/components/jobs/JobProgressBar';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import {
   episodes as episodesApi,
@@ -337,16 +338,16 @@ function Dashboard() {
             </CardHeader>
             <CardContent className="px-2 pb-3">
               {activityEpisodes.length === 0 ? (
-                <div className="empty-state py-8">
-                  <Film size={28} />
-                  <p className="text-sm font-display">No episodes yet</p>
-                  <p className="text-xs mb-3">
-                    Create a series and generate your first episode
-                  </p>
-                  <Button size="sm" variant="primary" onClick={() => navigate('/series')}>
-                    Create a series
-                  </Button>
-                </div>
+                <EmptyState
+                  icon={Film}
+                  title="No episodes yet"
+                  description="Create a series and generate your first episode."
+                  action={
+                    <Button size="sm" variant="primary" onClick={() => navigate('/series')}>
+                      Create a series
+                    </Button>
+                  }
+                />
               ) : (
                 <div className="space-y-0.5">
                   {activityEpisodes.map((ep) => (
@@ -462,21 +463,21 @@ function Dashboard() {
         </div>
 
         {recentEpisodes.length === 0 ? (
-          <div className="empty-state py-12">
-            <Film size={36} />
-            <p className="text-sm font-display">No episodes yet</p>
-            <p className="text-xs mb-3">
-              Create a series and generate your first episode
-            </p>
-            <div className="flex gap-2 justify-center">
-              <Button size="sm" variant="primary" onClick={() => navigate('/series')}>
-                Create a series
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => navigate('/help')}>
-                Read the Help
-              </Button>
-            </div>
-          </div>
+          <EmptyState
+            icon={Film}
+            title="No episodes yet"
+            description="Create a series and generate your first episode."
+            action={
+              <div className="flex gap-2 justify-center">
+                <Button size="sm" variant="primary" onClick={() => navigate('/series')}>
+                  Create a series
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => navigate('/help')}>
+                  Read the Help
+                </Button>
+              </div>
+            }
+          />
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {recentEpisodes.map((ep) => (
