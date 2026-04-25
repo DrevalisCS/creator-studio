@@ -79,22 +79,19 @@ def _redis_settings_from_config() -> RedisSettings:
 
     password = parsed.password
 
-    # arq's defaults are aggressive (conn_timeout=1, conn_retries=5,
-    # conn_retry_delay=1) — together that gives the worker about 6
-    # seconds to reach Redis at startup. On a multi-container update
-    # (frontend + app + worker + redis all restart simultaneously)
-    # Redis can take 10-30 seconds to load its RDB and start
-    # accepting connections, so the worker would crash with
-    # ``redis.exceptions.TimeoutError`` and the supervisor would
-    # restart-loop it. Bumped to ~5 minutes of patience: 30s
-    # per attempt × 10 attempts × 2s between attempts.
+    # Modest bump over arq's defaults (1s timeout, 5×1s retries =
+    # ~6s) so Redis getting slammed during a fresh boot doesn't
+    # immediately crash the worker. Total worst case ~35s — fits
+    # comfortably inside the 30s ``start_period`` *plus* a restart
+    # cycle if compose chooses to retry. Going much higher just
+    # delays the eventual crash without making it less likely.
     return RedisSettings(
         host=host,
         port=port,
         database=database,
         password=password,
-        conn_timeout=30,
-        conn_retries=10,
+        conn_timeout=5,
+        conn_retries=5,
         conn_retry_delay=2,
     )
 

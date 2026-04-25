@@ -94,7 +94,14 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      # 120s gives the FastAPI lifespan room to: run alembic
+      # migrations (which can take 30-60s on a large DB after a
+      # multi-version jump), open the asyncpg pool, init the Redis
+      # arq pool (with up to ~35s of arq retry budget), and bind
+      # the uvicorn socket — all before docker starts marking the
+      # container unhealthy and tearing down dependents like
+      # frontend / worker.
+      start_period: 120s
     deploy:
       resources:
         limits:
@@ -141,7 +148,11 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 30s
+      # Matches the Redis arq retry budget (~35s) plus headroom for
+      # alembic + module import. Without this, arq's slow first
+      # connect could exceed the previous 30s window and supervised
+      # restart-loop the worker before it ever managed to bind.
+      start_period: 90s
     security_opt:
       - no-new-privileges:true
     cap_drop:
