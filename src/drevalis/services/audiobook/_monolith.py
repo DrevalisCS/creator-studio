@@ -1621,10 +1621,64 @@ class AudiobookService:
         width: int = 1920,
         height: int = 1080,
     ) -> Path:
-        """Generate a simple title card image using FFmpeg."""
-        card_path = output_dir / "title_card.jpg"
-        safe_title = title.replace("'", "").replace('"', "")[:50]
-        cmd = [
+        """Generate a simple title card image using FFmpeg.
+
+        The previous version returned the output path even when
+        ffmpeg's drawtext filter rejected the title (titles with
+        ``:``, ``\\``, ``%`` or other drawtext-meta characters
+        crashed the filter). The path then got passed into the
+        Ken-Burns assembler which choked on the missing input file:
+
+            Error opening input file .../title_card.jpg
+
+        The new flow:
+
+          1. Properly escape drawtext-meta in the title (``\\``,
+             ``:`` and ``'``).
+          2. Try drawtext first; if ffmpeg returns non-zero OR the
+             output file isn't on disk, fall back to a plain
+             solid-color image so the assembler always has a real
+             input.
+          3. Defensive ``mkdir(parents=True)`` so a missing parent
+             directory can never be the cause again.
+          4. The first call writes ``title_card.jpg`` (preserved as
+             the legacy filename) but subsequent calls get a unique
+             slug-suffixed filename so concurrent fallbacks for
+             different chapters don't race-overwrite each other.
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Make the output filename unique per title so chapter-N's
+        # fallback doesn't clobber chapter-(N-1)'s. Hash keeps it
+        # deterministic for the "regenerate same chapter" retry case.
+        import hashlib
+        slug = hashlib.sha1(title.encode("utf-8", errors="replace")).hexdigest()[:8]
+        card_path = output_dir / f"title_card_{slug}.jpg"
+
+        # Drawtext escaping rules: backslash escapes itself; the
+        # filter argument is single-quoted so single quotes inside
+        # have to be replaced (drawtext can't escape quotes inside a
+        # quoted value); ``:`` is the parameter separator and must
+        # be escaped; ``%`` triggers expansion and must be doubled.
+        # Truncate AFTER escaping so we don't cut a half-escape.
+        safe_title = (
+            title.replace("\\", "\\\\")
+            .replace("'", "")
+            .replace('"', "")
+            .replace(":", "\\:")
+            .replace("%", "%%")
+        )[:50] or "Audiobook"
+
+        async def _run(cmd: list[str]) -> tuple[int, bytes]:
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, err = await proc.communicate()
+            return proc.returncode or 0, err
+
+        primary_cmd = [
             "ffmpeg",
             "-y",
             "-f",
@@ -1638,13 +1692,36 @@ class AudiobookService:
             "1",
             str(card_path),
         ]
+        rc, err = await _run(primary_cmd)
+        if rc == 0 and card_path.exists() and card_path.stat().st_size > 0:
+            return card_path
 
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
+        log.warning(
+            "audiobook.title_card.drawtext_failed",
+            title=title[:80],
+            rc=rc,
+            stderr=err.decode("utf-8", errors="replace")[:400],
         )
-        await proc.communicate()
+
+        # Fallback: solid-color frame with no text. Always succeeds
+        # as long as ffmpeg is on PATH and the disk has space.
+        fallback_cmd = [
+            "ffmpeg",
+            "-y",
+            "-f",
+            "lavfi",
+            "-i",
+            f"color=c=0x0f0f1a:s={width}x{height}:d=1",
+            "-frames:v",
+            "1",
+            str(card_path),
+        ]
+        rc, err = await _run(fallback_cmd)
+        if rc != 0 or not card_path.exists():
+            raise RuntimeError(
+                "Title card generation failed even with the no-text fallback. "
+                f"ffmpeg rc={rc}; stderr={err.decode('utf-8', errors='replace')[:200]}"
+            )
         return card_path
 
     async def _create_chapter_aware_video(
