@@ -964,6 +964,88 @@ async def cancel_audiobook(
 
 
 @router.post(
+    "/{audiobook_id}/music-preview",
+    status_code=status.HTTP_200_OK,
+    summary="Render a 30s music preview to sanity-check before commit",
+)
+async def music_preview(
+    audiobook_id: UUID,
+    mood: str = Query(..., min_length=1, description="Music mood (matches MusicService keywords)"),
+    seconds: float = Query(30.0, ge=5.0, le=120.0),
+    volume_db: float = Query(-14.0, ge=-30.0, le=0.0),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Mix a short preview snippet so the user can hear the mood +
+    ducking behaviour before committing to a full generation run.
+
+    Reuses the audiobook's existing voiceover (``audiobook.wav``)
+    when one exists, or mixes against silence. Output written to
+    ``audiobooks/{id}/music_preview.wav`` and accessible via the
+    static ``/storage/`` mount.
+    """
+    from drevalis.services.audiobook import AudiobookService
+    from drevalis.services.comfyui import ComfyUIPool, ComfyUIService
+    from drevalis.services.ffmpeg import FFmpegService
+    from drevalis.services.storage import LocalStorage
+    from drevalis.services.tts import TTSService
+
+    repo = AudiobookRepository(db)
+    ab = await repo.get_by_id(audiobook_id)
+    if ab is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audiobook {audiobook_id} not found",
+        )
+
+    storage = LocalStorage(base_path=settings.storage_base_path)
+    pool = ComfyUIPool()
+    await pool.sync_from_db(db)
+    comfyui_svc = ComfyUIService(pool=pool) if pool._servers else None
+
+    pool_redis = get_pool()
+    redis = Redis(connection_pool=pool_redis)
+    try:
+        svc = AudiobookService(
+            tts_service=TTSService(),
+            ffmpeg_service=FFmpegService(),
+            storage=storage,
+            db_session=db,
+            comfyui_service=comfyui_svc,
+            redis=redis,
+        )
+        preview_path = await svc.render_music_preview(
+            audiobook_id=audiobook_id,
+            mood=mood,
+            volume_db=volume_db,
+            seconds=seconds,
+        )
+    finally:
+        await redis.aclose()
+
+    if not preview_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Could not render preview — MusicService returned no track. "
+                "Either the mood is missing from the curated library and no "
+                "ComfyUI server is registered for AceStep generation, or the "
+                "ffmpeg mix failed. Check the worker logs for "
+                "'audiobook.music.no_track_resolved'."
+            ),
+        )
+
+    rel = f"audiobooks/{audiobook_id}/music_preview.wav"
+    return {
+        "audiobook_id": str(audiobook_id),
+        "mood": mood,
+        "seconds": seconds,
+        "url": f"/storage/{rel}",
+        "rel_path": rel,
+    }
+
+
+@router.post(
     "/{audiobook_id}/regenerate",
     status_code=status.HTTP_202_ACCEPTED,
     summary="Regenerate the entire audiobook audio",

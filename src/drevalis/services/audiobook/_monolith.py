@@ -193,6 +193,364 @@ class AudiobookService:
         return deleted
 
     # ══════════════════════════════════════════════════════════════════════
+    # TTS chunk synthesis with retry + loudnorm
+    # ══════════════════════════════════════════════════════════════════════
+
+    async def _synthesize_chunk_with_retry(
+        self,
+        provider: Any,
+        text: str,
+        voice_id: str,
+        chunk_path: Path,
+        *,
+        speed: float,
+        pitch: float,
+        max_attempts: int = 3,
+    ) -> bool:
+        """Run ``provider.synthesize`` with bounded retry + post-loudnorm.
+
+        Per-chunk retry isolates a single transient failure (cloud
+        TTS 5xx, ComfyUI queue eviction, brief network blip) from
+        torpedoing the whole chapter, which previously meant losing
+        199 successful chunks because chunk 200 hit a one-off blip.
+
+        After a successful synth, we run ffmpeg ``loudnorm`` to
+        EBU R128 ``I=-16 LUFS / TP=-1.5`` on the chunk in place.
+        Multi-voice audiobooks otherwise have a noticeable
+        chunk-to-chunk loudness wobble: each provider hands back
+        audio at its own default level (Edge ≈ -22 LUFS, ElevenLabs
+        ≈ -16, Piper varies by voice). Normalising per-chunk
+        flattens that into a uniform broadcast level before concat.
+
+        Returns True if a real audio file landed on disk; False if we
+        exhausted retries (caller is expected to fall back to
+        ``_generate_silence`` so the timing structure stays intact).
+        """
+        last_exc: Exception | None = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                await provider.synthesize(
+                    text,
+                    voice_id,
+                    chunk_path,
+                    speed=speed,
+                    pitch=pitch,
+                )
+                if chunk_path.exists() and chunk_path.stat().st_size > 100:
+                    await self._normalise_chunk_loudness(chunk_path)
+                    if attempt > 1:
+                        log.info(
+                            "audiobook.tts.chunk_recovered",
+                            attempt=attempt,
+                            chunk_path=str(chunk_path),
+                        )
+                    return True
+                # Provider returned without raising but produced no
+                # usable file — treat as a soft failure.
+                last_exc = RuntimeError(
+                    "Provider returned but no audio file was written"
+                )
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+            if attempt < max_attempts:
+                # Exponential backoff capped at 5s. Small first wait
+                # so a single jitter doesn't add a second per chunk.
+                delay = min(0.5 * (2 ** (attempt - 1)), 5.0)
+                log.warning(
+                    "audiobook.tts.chunk_retry",
+                    attempt=attempt,
+                    next_delay=delay,
+                    error=f"{type(last_exc).__name__}: {str(last_exc)[:160]}",
+                )
+                await asyncio.sleep(delay)
+
+        log.error(
+            "audiobook.tts.chunk_exhausted",
+            max_attempts=max_attempts,
+            chunk_path=str(chunk_path),
+            error=f"{type(last_exc).__name__}: {str(last_exc)[:200]}"
+            if last_exc
+            else "unknown",
+        )
+        return False
+
+    async def _normalise_chunk_loudness(self, chunk_path: Path) -> None:
+        """Run ffmpeg loudnorm on the chunk, in place.
+
+        Failure here is non-fatal — the un-normalised chunk is
+        better than no chunk. We log + move on.
+        """
+        tmp = chunk_path.with_suffix(".norm.wav")
+        cmd = [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(chunk_path),
+            "-af",
+            "loudnorm=I=-16:TP=-1.5:LRA=11",
+            "-ar",
+            "24000",
+            "-ac",
+            "1",
+            "-c:a",
+            "pcm_s16le",
+            str(tmp),
+        ]
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        _, err = await proc.communicate()
+        if proc.returncode == 0 and tmp.exists() and tmp.stat().st_size > 100:
+            try:
+                tmp.replace(chunk_path)
+            except OSError as exc:
+                log.warning(
+                    "audiobook.tts.loudnorm_replace_failed",
+                    error=str(exc)[:120],
+                )
+                tmp.unlink(missing_ok=True)
+        else:
+            log.warning(
+                "audiobook.tts.loudnorm_failed",
+                rc=proc.returncode,
+                stderr=err.decode("utf-8", errors="replace")[:200],
+            )
+            tmp.unlink(missing_ok=True)
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Sound effects ([SFX: ...] tag handling)
+    # ══════════════════════════════════════════════════════════════════════
+
+    def _resolve_sfx_provider(self) -> Any | None:
+        """Build a ComfyUIElevenLabsSoundEffectsProvider on the
+        first registered ComfyUI server, or ``None`` if no server
+        is available. SFX blocks gracefully degrade to silence in
+        that case so the audiobook still completes.
+        """
+        if self.comfyui_service is None:
+            return None
+        try:
+            servers = getattr(self.comfyui_service._pool, "_servers", {})
+            if not servers:
+                return None
+            first_id = next(iter(servers))
+            client = servers[first_id][0]
+            base_url = getattr(client, "base_url", None)
+            api_key = getattr(client, "api_key", None)
+            if not base_url:
+                return None
+        except Exception as exc:
+            log.warning("audiobook.sfx.provider_resolve_failed", error=str(exc)[:120])
+            return None
+
+        from drevalis.services.tts import ComfyUIElevenLabsSoundEffectsProvider
+
+        return ComfyUIElevenLabsSoundEffectsProvider(
+            comfyui_base_url=base_url,
+            comfyui_api_key=api_key,
+        )
+
+    async def _generate_sfx_chunk(
+        self,
+        block: dict[str, Any],
+        output_dir: Path,
+        chapter_index: int,
+        block_index: int,
+    ) -> AudioChunk | None:
+        """Generate a single SFX chunk for a parsed [SFX:] block.
+
+        Returns the AudioChunk on success, or None if the SFX
+        provider isn't available / the call failed (the chapter
+        still completes — SFX is enrichment, not a hard requirement).
+        """
+        description = block.get("description", "").strip()
+        if not description:
+            return None
+        duration = float(block.get("duration", 4.0) or 4.0)
+        loop = bool(block.get("loop", False))
+        prompt_influence = block.get("prompt_influence")
+
+        # Cache by chapter + block index so a retry doesn't re-pay
+        # the SFX cost.
+        chunk_path = output_dir / f"ch{chapter_index:03d}_sfx_{block_index:04d}.wav"
+        if chunk_path.exists() and chunk_path.stat().st_size > 100:
+            log.info(
+                "audiobook.sfx.cached",
+                chapter_index=chapter_index,
+                block_index=block_index,
+                description=description[:80],
+            )
+        else:
+            provider = self._resolve_sfx_provider()
+            if provider is None:
+                log.warning(
+                    "audiobook.sfx.no_provider",
+                    description=description[:80],
+                    hint="No ComfyUI server registered; SFX will be silent.",
+                )
+                await self._generate_silence(chunk_path, duration=duration)
+            else:
+                try:
+                    log.info(
+                        "audiobook.sfx.generate.start",
+                        description=description[:120],
+                        duration=duration,
+                    )
+                    await provider.synthesize_sfx(
+                        description=description,
+                        duration=duration,
+                        output_path=chunk_path,
+                        loop=loop,
+                        prompt_influence=prompt_influence,
+                    )
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "audiobook.sfx.generate.failed",
+                        description=description[:120],
+                        error=f"{type(exc).__name__}: {str(exc)[:200]}",
+                    )
+                    await self._generate_silence(chunk_path, duration=duration)
+
+        if not chunk_path.exists():
+            return None
+        return AudioChunk(
+            path=chunk_path,
+            chapter_index=chapter_index,
+            speaker="__SFX__",
+            block_index=block_index,
+            chunk_index=0,
+        )
+
+    # ══════════════════════════════════════════════════════════════════════
+    # Preflight
+    # ══════════════════════════════════════════════════════════════════════
+
+    @dataclass
+    class PreflightWarning:
+        code: str
+        message: str
+        severity: str  # "info" | "warning" | "error"
+
+    async def preflight(
+        self,
+        text: str,
+        voice_profile: Any | None,
+        *,
+        voice_casting: dict[str, str] | None = None,
+        music_enabled: bool = False,
+        music_mood: str | None = None,
+        per_chapter_music: bool = False,
+        image_generation_enabled: bool = False,
+        output_format: str = "audio_only",
+    ) -> list["AudiobookService.PreflightWarning"]:
+        """Validate inputs cheaply and return any blockers / hints.
+
+        Runs in <1s and surfaces every condition that would otherwise
+        only trip the user up 30+ minutes into a real generation
+        (missing voice profiles, empty / untagged text, ComfyUI not
+        wired up when image gen or AceStep music is on, etc.).
+
+        Severity ``error`` items will block ``generate``; the worker
+        layer can choose to refuse-with-message rather than starting.
+        """
+        warnings: list[AudiobookService.PreflightWarning] = []
+        W = AudiobookService.PreflightWarning
+
+        # --- Text shape ----------------------------------------------------
+        if not text or not text.strip():
+            warnings.append(W("empty_text", "Audiobook text is empty.", "error"))
+            return warnings  # everything else depends on text
+        if len(text.strip()) < 80:
+            warnings.append(
+                W(
+                    "very_short_text",
+                    f"Text is only {len(text.strip())} chars. Generation will work but the result will be a few seconds long.",
+                    "warning",
+                )
+            )
+
+        # --- Voice profile -------------------------------------------------
+        if voice_profile is None:
+            warnings.append(
+                W(
+                    "no_voice_profile",
+                    "No voice profile is assigned. Pick one in the audiobook settings before generating.",
+                    "error",
+                )
+            )
+
+        # --- Voice casting / [Speaker] tags --------------------------------
+        speaker_tags = re.findall(r"\[([^\]]+)\]", text)
+        unique_speakers = sorted(set(speaker_tags))
+        if voice_casting and unique_speakers:
+            missing = [s for s in unique_speakers if s not in voice_casting]
+            if missing:
+                warnings.append(
+                    W(
+                        "voice_casting_missing",
+                        f"voice_casting has no entry for: {', '.join(missing)}. These speakers will fall back to the default voice.",
+                        "warning",
+                    )
+                )
+
+        # --- Music ---------------------------------------------------------
+        if music_enabled:
+            if not music_mood and not per_chapter_music:
+                warnings.append(
+                    W(
+                        "music_no_mood",
+                        "music_enabled is true but no music_mood is set and per_chapter_music is off.",
+                        "warning",
+                    )
+                )
+            # If AceStep (ComfyUI) is the only way to fulfil this mood,
+            # warn when no ComfyUI server is registered.
+            if not self.comfyui_service or not getattr(
+                self.comfyui_service._pool, "_servers", {}
+            ):
+                warnings.append(
+                    W(
+                        "music_no_comfyui",
+                        "Music is enabled but no ComfyUI server is registered for AceStep generation. The curated library will be tried first; missing moods will be silent.",
+                        "info",
+                    )
+                )
+
+        # --- Image generation ---------------------------------------------
+        if image_generation_enabled:
+            if not self.comfyui_service or not getattr(
+                self.comfyui_service._pool, "_servers", {}
+            ):
+                warnings.append(
+                    W(
+                        "images_no_comfyui",
+                        "image_generation_enabled is true but no ComfyUI server is registered. Chapter images will fall back to title cards.",
+                        "warning",
+                    )
+                )
+
+        # --- Output format vs assets --------------------------------------
+        if output_format not in ("audio_only", "audio_image", "audio_video"):
+            warnings.append(
+                W(
+                    "unknown_output_format",
+                    f"Unknown output_format {output_format!r} — falling back to audio_only.",
+                    "warning",
+                )
+            )
+
+        log.info(
+            "audiobook.preflight",
+            warning_count=len(warnings),
+            errors=[w.code for w in warnings if w.severity == "error"],
+            warnings=[w.code for w in warnings if w.severity == "warning"],
+            info=[w.code for w in warnings if w.severity == "info"],
+        )
+        return warnings
+
+    # ══════════════════════════════════════════════════════════════════════
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
@@ -309,16 +667,27 @@ class AudiobookService:
                 f"Generating speech for chapter {ch_idx + 1}/{total_chapters}...",
             )
 
-            if voice_casting and len(voice_blocks) > 1:
+            has_sfx = any(b.get("kind") == "sfx" for b in voice_blocks)
+            multi_voice_active = bool(voice_casting) and len(voice_blocks) > 1
+            if multi_voice_active or has_sfx:
+                # SFX blocks must preserve sequential order with voice
+                # blocks, so route through the multi-voice path even
+                # when only one speaker exists. The voice-casting map
+                # may be empty in that case — _generate_multi_voice
+                # falls back to ``default_voice_profile`` per block.
                 log.info(
                     "audiobook.generate.multi_voice",
                     audiobook_id=str(audiobook_id),
                     chapter=ch_idx,
-                    speakers=[b["speaker"] for b in voice_blocks],
+                    speakers=[
+                        b.get("speaker", "SFX")
+                        for b in voice_blocks
+                    ],
+                    sfx_count=sum(1 for b in voice_blocks if b.get("kind") == "sfx"),
                 )
                 chunks = await self._generate_multi_voice(
                     blocks=voice_blocks,
-                    voice_casting=voice_casting,
+                    voice_casting=voice_casting or {},
                     default_voice_profile=voice_profile,
                     output_dir=abs_dir,
                     chapter_index=ch_idx,
@@ -729,17 +1098,39 @@ class AudiobookService:
     # ══════════════════════════════════════════════════════════════════════
 
     def _parse_voice_blocks(self, text: str) -> list[dict[str, str]]:
-        """Parse ``[Speaker]`` tagged text into blocks.
+        """Parse ``[Speaker]`` and ``[SFX: ...]`` tagged text into blocks.
+
+        Each block dict has either ``kind="voice"`` (with
+        ``speaker``/``text``) or ``kind="sfx"`` (with
+        ``description`` and optional ``duration`` /
+        ``prompt_influence`` / ``loop`` keys).
+
+        SFX tag grammar (compatible with the existing speaker tag
+        regex so unknown ``[Foo]`` doesn't get silently treated as
+        a sound effect):
+
+            [SFX: description]
+            [SFX: description | dur=5 | influence=0.4 | loop]
+
+        ``dur`` defaults to 4s (clamped 0.5 - 22s by the SFX
+        provider). ``influence`` defaults to provider default.
+        ``loop`` is a valueless flag.
 
         Untagged text defaults to ``[Narrator]``.
-        Returns a list of ``{"speaker": ..., "text": ...}`` dicts.
         """
-        blocks: list[dict[str, str]] = []
+        blocks: list[dict[str, Any]] = []
         current_speaker = "Narrator"
         current_text: list[str] = []
 
-        for line in text.split("\n"):
-            line = line.strip()
+        def _flush_voice() -> None:
+            if not current_text:
+                return
+            joined = "\n".join(current_text).strip()
+            if joined:
+                blocks.append({"kind": "voice", "speaker": current_speaker, "text": joined})
+
+        for raw_line in text.split("\n"):
+            line = raw_line.strip()
             if not line:
                 if current_text:
                     current_text.append("")
@@ -748,25 +1139,72 @@ class AudiobookService:
             if line.startswith("##"):
                 continue
 
+            # SFX tag — handled before generic [Speaker] match so
+            # ``SFX`` isn't accidentally treated as a speaker name.
+            sfx_m = re.match(
+                r"^\[\s*SFX\s*:\s*([^\]]+?)\s*\]\s*$",
+                line,
+                flags=re.IGNORECASE,
+            )
+            if sfx_m:
+                _flush_voice()
+                current_text = []
+                payload = sfx_m.group(1)
+                # Pipe-separated key=value modifiers after the desc.
+                parts = [p.strip() for p in payload.split("|")]
+                description = parts[0]
+                duration = 4.0
+                influence: float | None = None
+                loop = False
+                for mod in parts[1:]:
+                    if not mod:
+                        continue
+                    if mod.lower() == "loop":
+                        loop = True
+                        continue
+                    if "=" in mod:
+                        k, v = mod.split("=", 1)
+                        k = k.strip().lower()
+                        v = v.strip()
+                        try:
+                            if k in ("dur", "duration"):
+                                duration = float(v)
+                            elif k in ("influence", "prompt_influence"):
+                                influence = float(v)
+                            elif k == "loop":
+                                loop = v.lower() in ("1", "true", "yes")
+                        except ValueError:
+                            pass
+                blocks.append(
+                    {
+                        "kind": "sfx",
+                        "description": description,
+                        "duration": duration,
+                        "loop": loop,
+                        "prompt_influence": influence,
+                    }
+                )
+                continue
+
             match = re.match(r"^\[([^\]]+)\]\s*(.*)", line)
             if match:
-                if current_text:
-                    joined = "\n".join(current_text).strip()
-                    if joined:
-                        blocks.append({"speaker": current_speaker, "text": joined})
-                    current_text = []
+                _flush_voice()
+                current_text = []
                 current_speaker = match.group(1).strip()
                 if match.group(2).strip():
                     current_text.append(match.group(2).strip())
             else:
                 current_text.append(line)
 
-        if current_text:
-            joined = "\n".join(current_text).strip()
-            if joined:
-                blocks.append({"speaker": current_speaker, "text": joined})
+        _flush_voice()
 
-        return [b for b in blocks if b["text"]]
+        # Drop empty voice blocks but always keep SFX blocks (they
+        # carry their own non-text payload).
+        return [
+            b
+            for b in blocks
+            if b.get("kind") == "sfx" or b.get("text")
+        ]
 
     # ══════════════════════════════════════════════════════════════════════
     # TTS generation (returns AudioChunk list)
@@ -816,21 +1254,20 @@ class AudiobookService:
                     "audiobook.generate.chunk_cached", chapter_index=chapter_index, chunk_index=i
                 )
             else:
-                try:
-                    await provider.synthesize(
-                        chunk,
-                        voice_id,
-                        chunk_path,
-                        speed=speed,
-                        pitch=pitch,
-                    )
-                except Exception as exc:
+                ok = await self._synthesize_chunk_with_retry(
+                    provider,
+                    chunk,
+                    voice_id,
+                    chunk_path,
+                    speed=speed,
+                    pitch=pitch,
+                )
+                if not ok:
                     log.warning(
                         "audiobook.generate.tts_chunk_failed",
                         chapter_index=chapter_index,
                         chunk_index=i,
                         chunk_length=len(chunk),
-                        error=str(exc)[:200],
                     )
                     await self._generate_silence(chunk_path)
 
@@ -889,6 +1326,20 @@ class AudiobookService:
         }
 
         for i, block in enumerate(blocks):
+            # SFX block — generate via the dedicated provider and
+            # splice the resulting WAV in at this position so its
+            # placement in the script is preserved exactly.
+            if block.get("kind") == "sfx":
+                sfx_chunk = await self._generate_sfx_chunk(
+                    block=block,
+                    output_dir=output_dir,
+                    chapter_index=chapter_index,
+                    block_index=i,
+                )
+                if sfx_chunk is not None:
+                    result.append(sfx_chunk)
+                continue
+
             speaker = block["speaker"]
             voice_profile_id = (
                 voice_casting.get(speaker)
@@ -927,15 +1378,15 @@ class AudiobookService:
                         chunk_index=j,
                     )
                 else:
-                    try:
-                        await provider.synthesize(
-                            chunk,
-                            voice_id,
-                            chunk_path,
-                            speed=speed,
-                            pitch=pitch,
-                        )
-                    except Exception as exc:
+                    ok = await self._synthesize_chunk_with_retry(
+                        provider,
+                        chunk,
+                        voice_id,
+                        chunk_path,
+                        speed=speed,
+                        pitch=pitch,
+                    )
+                    if not ok:
                         log.warning(
                             "audiobook.generate.tts_chunk_failed",
                             chapter_index=chapter_index,
@@ -943,7 +1394,6 @@ class AudiobookService:
                             speaker=speaker,
                             chunk_index=j,
                             chunk_length=len(chunk),
-                            error=str(exc)[:200],
                         )
                         await self._generate_silence(chunk_path)
 
@@ -1325,6 +1775,47 @@ class AudiobookService:
     # Background music
     # ══════════════════════════════════════════════════════════════════════
 
+    def _resolve_music_service(self) -> Any | None:
+        """Construct a MusicService that can ALSO call AceStep via ComfyUI.
+
+        Earlier versions instantiated MusicService without
+        ``comfyui_base_url`` / ``comfyui_api_key``, so AceStep
+        generation never ran for audiobooks — every request fell
+        straight through to the curated library, which could be
+        empty for moods we hadn't pre-stocked. The first registered
+        ComfyUI server on the pool is used; the music backend is
+        cheap to run alongside image / TTS workloads.
+        """
+        from drevalis.services.music import MusicService
+
+        storage_base = getattr(self.storage, "base_path", None)
+        if storage_base is None:
+            log.warning("audiobook.music.no_storage_base")
+            return None
+
+        comfyui_url: str | None = None
+        comfyui_key: str | None = None
+        if self.comfyui_service is not None:
+            try:
+                servers = getattr(self.comfyui_service._pool, "_servers", {})
+                if servers:
+                    first_id = next(iter(servers))
+                    client = servers[first_id][0]
+                    comfyui_url = getattr(client, "base_url", None)
+                    comfyui_key = getattr(client, "api_key", None)
+            except Exception as exc:
+                log.warning(
+                    "audiobook.music.comfyui_url_resolve_failed",
+                    error=str(exc)[:120],
+                )
+
+        return MusicService(
+            storage_base_path=storage_base,
+            ffmpeg_path="ffmpeg",
+            comfyui_base_url=comfyui_url,
+            comfyui_api_key=comfyui_key,
+        )
+
     async def _add_music(
         self,
         audio_path: Path,
@@ -1339,17 +1830,15 @@ class AudiobookService:
         Returns the path to the mixed file, or *audio_path* unchanged
         if no music is available.
         """
-        from drevalis.services.music import MusicService
-
-        storage_base = getattr(self.storage, "base_path", None)
-        if storage_base is None:
-            log.warning("audiobook.music.no_storage_base")
-            return audio_path
-
-        music_svc = MusicService(
-            storage_base_path=storage_base,
-            ffmpeg_path="ffmpeg",
+        log.info(
+            "audiobook.music.requested",
+            mood=mood,
+            duration_seconds=duration,
+            volume_db=volume_db,
         )
+        music_svc = self._resolve_music_service()
+        if music_svc is None:
+            return audio_path
 
         music_path = await music_svc.get_music_for_episode(
             mood=mood,
@@ -1357,12 +1846,23 @@ class AudiobookService:
             episode_id=uuid4(),
         )
         if not music_path:
-            log.info("audiobook.music.no_music_available", mood=mood)
+            log.warning(
+                "audiobook.music.no_track_resolved",
+                mood=mood,
+                duration_seconds=duration,
+                hint=(
+                    "MusicService returned no track. Either the mood is missing "
+                    "from the curated library AND no ComfyUI server is registered "
+                    "for AceStep generation, or the requested duration was 0. "
+                    "Check Settings → ComfyUI Servers."
+                ),
+            )
             return audio_path
 
         log.info(
-            "audiobook.music.mixing",
+            "audiobook.music.track_resolved",
             music_path=str(music_path),
+            mood=mood,
             volume_db=volume_db,
         )
 
@@ -1396,8 +1896,107 @@ class AudiobookService:
             stderr_text = stderr.decode("utf-8", errors="replace")
             raise RuntimeError(f"Failed to mix background music: {stderr_text[:300]}")
 
-        log.info("audiobook.music.mix_done", output=str(output_path))
+        log.info(
+            "audiobook.music.mix_done",
+            output=str(output_path),
+            duration_seconds=duration,
+            mood=mood,
+        )
         return output_path
+
+    async def render_music_preview(
+        self,
+        audiobook_id: UUID,
+        mood: str,
+        volume_db: float = -14.0,
+        seconds: float = 30.0,
+    ) -> Path:
+        """Render a short mixed preview so users can sanity-check music
+        before committing to a full generation run.
+
+        Mixes the resolved music track (from the library or AceStep)
+        under the audiobook's existing voiceover when one exists, or
+        under a synthesised silent track otherwise. Output:
+        ``audiobooks/{id}/music_preview.wav``. Always overwrites.
+        """
+        rel_dir = f"audiobooks/{audiobook_id}"
+        abs_dir = self.storage.resolve_path(rel_dir)
+        abs_dir.mkdir(parents=True, exist_ok=True)
+        preview_path = abs_dir / "music_preview.wav"
+
+        existing_voice = abs_dir / "audiobook.wav"
+        if existing_voice.exists():
+            voice_input: Path = existing_voice
+            trim_voice = True
+        else:
+            # No voice yet — synthesise a silent ``seconds`` baseline
+            # so the preview still demonstrates loudness + ducking
+            # behaviour against silence.
+            voice_input = abs_dir / "_preview_silence.wav"
+            silence_cmd = [
+                "ffmpeg",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                f"anullsrc=r=24000:cl=mono",
+                "-t",
+                f"{seconds:.1f}",
+                "-c:a",
+                "pcm_s16le",
+                str(voice_input),
+            ]
+            sproc = await asyncio.create_subprocess_exec(
+                *silence_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await sproc.communicate()
+            trim_voice = False
+
+        # Trim voice to ``seconds`` if it exists; otherwise we already
+        # produced exactly ``seconds`` of silence above.
+        clip_voice = abs_dir / "_preview_voice_clip.wav"
+        if trim_voice:
+            trim_cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(voice_input),
+                "-t",
+                f"{seconds:.1f}",
+                "-c:a",
+                "pcm_s16le",
+                str(clip_voice),
+            ]
+            tproc = await asyncio.create_subprocess_exec(
+                *trim_cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await tproc.communicate()
+        else:
+            # Voice IS the silence file — just rename our reference.
+            clip_voice = voice_input
+
+        await self._add_music(
+            audio_path=clip_voice,
+            output_path=preview_path,
+            mood=mood,
+            volume_db=volume_db,
+            duration=seconds,
+        )
+
+        # Best-effort cleanup of the intermediate silence file.
+        try:
+            if not trim_voice and voice_input.exists():
+                voice_input.unlink()
+            if trim_voice and clip_voice.exists():
+                clip_voice.unlink()
+        except Exception:
+            pass
+
+        return preview_path
 
     async def _add_chapter_music(
         self,
@@ -1416,17 +2015,9 @@ class AudiobookService:
         fallback), trims to chapter duration, crossfades between chapters,
         and mixes the resulting continuous music track under the voiceover.
         """
-        from drevalis.services.music import MusicService
-
-        storage_base = getattr(self.storage, "base_path", None)
-        if storage_base is None:
-            log.warning("audiobook.chapter_music.no_storage_base")
+        music_svc = self._resolve_music_service()
+        if music_svc is None:
             return audio_path
-
-        music_svc = MusicService(
-            storage_base_path=storage_base,
-            ffmpeg_path="ffmpeg",
-        )
 
         music_dir = audio_path.parent / "music"
         music_dir.mkdir(parents=True, exist_ok=True)

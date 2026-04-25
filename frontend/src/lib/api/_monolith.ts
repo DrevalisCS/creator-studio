@@ -755,6 +755,19 @@ export const audiobooks = {
       {},
     ),
 
+  // Render a short music preview so the user can hear the mood +
+  // ducking behaviour before committing to a full generation run.
+  musicPreview: (
+    audiobookId: string,
+    mood: string,
+    seconds = 30,
+    volumeDb = -14,
+  ) =>
+    post<{ audiobook_id: string; mood: string; seconds: number; url: string; rel_path: string }>(
+      `/api/v1/audiobooks/${audiobookId}/music-preview?mood=${encodeURIComponent(mood)}&seconds=${seconds}&volume_db=${volumeDb}`,
+      {},
+    ),
+
   createAI: (data: {
     concept: string;
     characters: Array<{

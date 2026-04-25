@@ -6,6 +6,7 @@ continue to work unchanged.
 """
 
 from drevalis.services.tts._monolith import (
+    ComfyUIElevenLabsSoundEffectsProvider,
     ComfyUIElevenLabsTTSProvider,
     EdgeTTSProvider,
     ElevenLabsTTSProvider,
@@ -24,6 +25,7 @@ from drevalis.services.tts._monolith import (
 )
 
 __all__ = [
+    "ComfyUIElevenLabsSoundEffectsProvider",
     "ComfyUIElevenLabsTTSProvider",
     "EdgeTTSProvider",
     "ElevenLabsTTSProvider",

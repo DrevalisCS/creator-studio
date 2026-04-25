@@ -162,6 +162,11 @@ function AudiobookDetail() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  const [musicPreviewLoading, setMusicPreviewLoading] = useState(false);
+  const [musicPreviewUrl, setMusicPreviewUrl] = useState<string | null>(null);
+  // Cache-bust query string so the <audio> element actually re-fetches
+  // a freshly-rendered preview that lives at the same URL.
+  const [musicPreviewBust, setMusicPreviewBust] = useState(0);
 
   // Voice editing
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
@@ -451,6 +456,25 @@ function AudiobookDetail() {
       toast.error('Failed to start regeneration', { description: String(err) });
     } finally {
       setRegenerating(false);
+    }
+  };
+
+  // ── Music preview ─────────────────────────────────────────────────
+  // Renders a 30s mix on the server (curated library + AceStep
+  // fallback) and surfaces it inline so the user can sanity-check
+  // mood + ducking before committing to a full generation.
+  const handleMusicPreview = async () => {
+    if (!audiobookId || !settingsMusicMood) return;
+    setMusicPreviewLoading(true);
+    try {
+      const r = await audiobooksApi.musicPreview(audiobookId, settingsMusicMood);
+      setMusicPreviewUrl(r.url);
+      setMusicPreviewBust(Date.now());
+      toast.success('Music preview ready');
+    } catch (err) {
+      toast.error('Music preview failed', { description: String(err) });
+    } finally {
+      setMusicPreviewLoading(false);
     }
   };
 
@@ -1287,7 +1311,7 @@ function AudiobookDetail() {
               Enable background music
             </label>
             {settingsMusicEnabled && (
-              <div className="mt-2">
+              <div className="mt-2 space-y-2">
                 <Select
                   label="Music Mood"
                   value={settingsMusicMood}
@@ -1303,6 +1327,27 @@ function AudiobookDetail() {
                     { value: 'epic', label: 'Epic' },
                   ]}
                 />
+                {/* Music preview — sanity-check the mix BEFORE
+                    committing to a multi-hour generation. */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={!settingsMusicMood || musicPreviewLoading}
+                    loading={musicPreviewLoading}
+                    onClick={() => void handleMusicPreview()}
+                    title="Render a 30s mix to hear the mood + ducking"
+                  >
+                    Preview music (30s)
+                  </Button>
+                  {musicPreviewUrl && (
+                    <audio
+                      src={`${musicPreviewUrl}?t=${musicPreviewBust}`}
+                      controls
+                      className="h-8 flex-1"
+                    />
+                  )}
+                </div>
               </div>
             )}
           </div>

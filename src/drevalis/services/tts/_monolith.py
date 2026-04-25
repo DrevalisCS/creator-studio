@@ -1103,6 +1103,218 @@ class ComfyUIElevenLabsTTSProvider:
 
 
 # ---------------------------------------------------------------------------
+# ElevenLabs Text-to-Sound-Effects via ComfyUI
+# ---------------------------------------------------------------------------
+
+
+class ComfyUIElevenLabsSoundEffectsProvider:
+    """Generate sound effects (NOT speech) via the ElevenLabs SFX node.
+
+    Uses the ``ElevenLabsTextToSoundEffects`` + ``SaveAudioMP3`` node
+    pair installed in ComfyUI. Returns the path to a WAV file (we
+    convert the MP3 ComfyUI hands back so the audiobook concat path
+    can use the result directly).
+
+    Unlike a TTS provider this is NOT a ``TTSProvider`` Protocol
+    implementation — the call signature is intentionally different
+    (``description + duration`` rather than ``text + voice``).
+    """
+
+    def __init__(
+        self,
+        comfyui_base_url: str,
+        comfyui_api_key: str | None = None,
+        model: str = "eleven_sfx_v2",
+        output_format: str = "mp3_44100_192",
+        prompt_influence: float = 0.3,
+    ) -> None:
+        self.comfyui_base_url = comfyui_base_url
+        self.comfyui_api_key = comfyui_api_key
+        self.model = model
+        self.output_format = output_format
+        self.prompt_influence = prompt_influence
+
+    def _build_workflow(
+        self,
+        description: str,
+        duration: float,
+        loop: bool,
+    ) -> dict[str, Any]:
+        """Build the ComfyUI workflow JSON.
+
+        Mirrors the dotted-key schema the SFX node expects (``model``
+        plus ``model.duration`` / ``model.loop`` / ``model.prompt_influence``).
+        Same widget-export convention as the TextToDialogue node — see
+        ``ComfyUIElevenLabsTTSProvider._build_workflow`` for the
+        cautionary tale on "cleaning these up".
+        """
+        # Clamp duration to ElevenLabs' 22s SFX cap.
+        clamped = max(0.5, min(float(duration), 22.0))
+        return {
+            "136": {
+                "inputs": {
+                    "text": description,
+                    "model": self.model,
+                    "model.duration": clamped,
+                    "model.loop": bool(loop),
+                    "model.prompt_influence": float(self.prompt_influence),
+                    "output_format": self.output_format,
+                },
+                "class_type": "ElevenLabsTextToSoundEffects",
+                "_meta": {"title": "ElevenLabs Text to Sound Effects"},
+            },
+            "137": {
+                "inputs": {
+                    "filename_prefix": "audio/sfx_output",
+                    "quality": "V0",
+                    "audioUI": "",
+                    "audio": ["136", 0],
+                },
+                "class_type": "SaveAudioMP3",
+                "_meta": {"title": "Save Audio (MP3)"},
+            },
+        }
+
+    async def synthesize_sfx(
+        self,
+        description: str,
+        duration: float,
+        output_path: Path,
+        *,
+        loop: bool = False,
+        prompt_influence: float | None = None,
+    ) -> TTSResult:
+        """Generate an SFX clip and write it to ``output_path`` as WAV.
+
+        Returns a TTSResult so the caller can stitch the clip
+        alongside voice chunks using the same downstream code paths.
+        """
+        from drevalis.services.comfyui import ComfyUIClient
+
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        log.info(
+            "comfyui_elevenlabs_sfx.synthesize.start",
+            description=description[:120],
+            duration=duration,
+            loop=loop,
+        )
+
+        if prompt_influence is not None:
+            saved = self.prompt_influence
+            self.prompt_influence = prompt_influence
+            try:
+                workflow = self._build_workflow(description, duration, loop)
+            finally:
+                self.prompt_influence = saved
+        else:
+            workflow = self._build_workflow(description, duration, loop)
+
+        client = ComfyUIClient(
+            base_url=self.comfyui_base_url, api_key=self.comfyui_api_key
+        )
+        try:
+            extra_data: dict[str, Any] = {}
+            if self.comfyui_api_key:
+                extra_data["api_key_comfy_org"] = self.comfyui_api_key
+            prompt_id = await client.queue_prompt(workflow, extra_data=extra_data)
+
+            delay = 1.0
+            total_waited = 0.0
+            history = None
+            # SFX runs much faster than voice; 5min cap is plenty.
+            while total_waited < 300:
+                await asyncio.sleep(delay)
+                total_waited += delay
+                history = await client.get_history(prompt_id)
+                if history is not None:
+                    break
+                delay = min(delay * 1.5, 5.0)
+
+            if history is None:
+                raise RuntimeError(
+                    f"ComfyUI ElevenLabs SFX timed out after {total_waited:.0f}s"
+                )
+
+            exec_status = history.get("status", {})
+            if exec_status.get("status_str") == "error":
+                messages = exec_status.get("messages", [])
+                error_msg = "ComfyUI workflow execution failed"
+                for msg_type, msg_data in messages:
+                    if msg_type == "execution_error" and isinstance(msg_data, dict):
+                        error_msg = (
+                            f"ComfyUI ElevenLabs SFX error on node "
+                            f"'{msg_data.get('node_type', '?')}': "
+                            f"{msg_data.get('exception_message', 'unknown error')}"
+                        )
+                        break
+                raise RuntimeError(error_msg)
+
+            outputs = history.get("outputs", {})
+            audio_info: dict[str, Any] | None = None
+            for _node_id, node_output in outputs.items():
+                for key in ("audio", "audios", "files"):
+                    items = node_output.get(key, [])
+                    if isinstance(items, list) and items:
+                        for item in items:
+                            if isinstance(item, dict) and "filename" in item:
+                                audio_info = item
+                                break
+                    if audio_info:
+                        break
+                if audio_info:
+                    break
+
+            if audio_info is None:
+                raise RuntimeError(
+                    "ComfyUI ElevenLabs SFX completed but no audio output found"
+                )
+
+            filename = audio_info.get("filename", "")
+            subfolder = audio_info.get("subfolder", "")
+            folder_type = audio_info.get("type", "output")
+            audio_bytes = await client.download_image(filename, subfolder, folder_type)
+
+            mp3_path = output_path.with_suffix(".mp3")
+            mp3_path.write_bytes(audio_bytes)
+
+            # MP3 → WAV @ 24kHz mono so it slots into the audiobook
+            # concat pipeline without a second pass.
+            proc = await asyncio.create_subprocess_exec(
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(mp3_path),
+                "-ar",
+                "24000",
+                "-ac",
+                "1",
+                str(output_path),
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            _, stderr = await proc.communicate()
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"FFmpeg MP3->WAV conversion failed: {stderr.decode('utf-8', errors='replace')[:300]}"
+                )
+            mp3_path.unlink(missing_ok=True)
+
+            duration_actual, sample_rate = _wav_info(output_path)
+            log.info(
+                "comfyui_elevenlabs_sfx.synthesize.done",
+                duration_seconds=duration_actual,
+            )
+            return TTSResult(
+                audio_path=str(output_path),
+                duration_seconds=duration_actual,
+                sample_rate=sample_rate,
+                word_timestamps=None,
+            )
+        finally:
+            await client.close()
+
+
+# ---------------------------------------------------------------------------
 # TTSService -- high-level orchestrator
 # ---------------------------------------------------------------------------
 

@@ -62,10 +62,22 @@ CRITICAL FORMATTING RULES:
 - Each speaker change requires a new [Speaker] tag on a new line
 - Use ## Chapter Title for chapter breaks
 
+OPTIONAL SOUND EFFECTS:
+- Use ``[SFX: description | dur=N]`` on its own line to drop in an
+  ambient or impact sound effect (e.g. footsteps, thunder, door slam,
+  busy street). The audiobook generator will synthesise a short audio
+  clip and splice it in at exactly that point.
+- Keep ``dur`` between 1 and 8 seconds. Default if omitted: 4s.
+- Use SFX sparingly — 1-3 per chapter is plenty. Don't replace
+  narration with sound effects; layer them where they enhance a
+  scene's atmosphere or punctuate a beat.
+
 Example format:
 ## Chapter 1: The Beginning
 
 [Narrator] The rain hadn't stopped for three days. The city was drowning.
+
+[SFX: heavy rain on a city window | dur=3]
 
 [Jack] I need a drink.
 
@@ -308,6 +320,32 @@ async def generate_audiobook(
             comfyui_service=ctx.get("comfyui_service"),
             redis=ctx.get("redis"),
         )
+
+        # Pre-flight audit so the operator gets ALL the bad news up
+        # front instead of one issue at a time. Errors abort; warnings
+        # are surfaced into the audiobook's error_message field for
+        # later reference but generation still runs.
+        warnings = await service.preflight(
+            text=audiobook.text,
+            voice_profile=voice_profile,
+            voice_casting=audiobook.voice_casting,
+            music_enabled=audiobook.music_enabled,
+            music_mood=audiobook.music_mood,
+            per_chapter_music=False,
+            image_generation_enabled=audiobook.image_generation_enabled,
+            output_format=audiobook.output_format,
+        )
+        errors = [w for w in warnings if w.severity == "error"]
+        if errors:
+            msg = "; ".join(f"{w.code}: {w.message}" for w in errors)
+            await ab_repo.update(parsed_id, status="failed", error_message=msg[:2000])
+            await session.commit()
+            log.error("preflight_blocked", errors=[w.code for w in errors])
+            return {
+                "audiobook_id": audiobook_id,
+                "status": "failed",
+                "error": msg,
+            }
 
         try:
             result = await service.generate(
