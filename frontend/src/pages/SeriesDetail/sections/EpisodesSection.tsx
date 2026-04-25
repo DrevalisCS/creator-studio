@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { EpisodeCard } from '@/components/episodes/EpisodeCard';
+import { EmptyState } from '@/components/ui/EmptyState';
 import type { EpisodeListItem } from '@/types';
 
 // Status-grouped "kanban-lite" view with a toggle back to the flat
@@ -185,14 +186,16 @@ export function EpisodesSection({
       </div>
 
       {episodes.length === 0 ? (
-        <div className="empty-state py-12">
-          <Film size={36} />
-          <p className="text-sm">No episodes in this series</p>
-          <Button variant="primary" size="sm" className="mt-3" onClick={onCreate}>
-            <Plus size={14} />
-            Create First Episode
-          </Button>
-        </div>
+        <EmptyState
+          icon={Film}
+          title="No episodes in this series"
+          action={
+            <Button variant="primary" size="sm" onClick={onCreate}>
+              <Plus size={14} />
+              Create First Episode
+            </Button>
+          }
+        />
       ) : view === 'kanban' ? (
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
