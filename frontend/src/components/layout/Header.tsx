@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Activity, ChevronDown, LogOut, User as UserIcon } from 'lucide-react';
+import { Activity, ChevronDown, LogOut, User as UserIcon, Search, Command } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { auth } from '@/lib/api';
 
@@ -85,6 +85,34 @@ function Header({ activeJobCount, sidebarCollapsed }: HeaderProps) {
 
       {/* Right actions */}
       <div className="flex items-center gap-3">
+        {/* ⌘K hint — fires the global keydown handler in Layout via
+            a synthesized keyboard event so users who don't know the
+            shortcut have a discoverable affordance. */}
+        <button
+          type="button"
+          onClick={() => {
+            // Dispatch a Ctrl+K keydown so the global handler in
+            // Layout.tsx opens the palette. Avoids prop-drilling
+            // setPaletteOpen through Header just for this button.
+            const ev = new KeyboardEvent('keydown', {
+              key: 'k',
+              ctrlKey: true,
+              bubbles: true,
+            });
+            window.dispatchEvent(ev);
+          }}
+          className="hidden md:inline-flex items-center gap-2 px-2.5 py-1 rounded-md border border-white/[0.06] text-xs text-txt-tertiary hover:text-txt-primary hover:border-white/[0.12] transition-colors"
+          aria-label="Open command palette (Ctrl+K)"
+          title="Command palette — Ctrl+K"
+        >
+          <Search size={12} />
+          <span>Search</span>
+          <span className="ml-2 inline-flex items-center gap-0.5 text-txt-muted">
+            <Command size={10} />
+            <span>K</span>
+          </span>
+        </button>
+
         {/* Active jobs indicator */}
         {activeJobCount > 0 && (
           <a

@@ -6,6 +6,7 @@ import { MobileNav } from './MobileNav';
 import { ActivityMonitor } from '@/components/ActivityMonitor';
 import { OnboardingGate } from '@/components/onboarding/OnboardingGate';
 import { DemoBanner } from '@/components/DemoBanner';
+import { CommandPalette } from '@/components/CommandPalette';
 import { useAuthMode } from '@/lib/useAuth';
 import { jobs as jobsApi } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
@@ -17,8 +18,26 @@ import { useTheme } from '@/lib/theme';
 function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [activeJobCount, setActiveJobCount] = useState(0);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const { demoMode } = useAuthMode();
   const { activityDock } = useTheme();
+
+  // Global ⌘K / Ctrl+K — opens the command palette from anywhere in
+  // the app shell. Help has its own content-scoped palette; this one
+  // jumps between routes + actions. The "/" shortcut is reserved for
+  // page-local search inputs, so we don't bind it globally here.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen((v) => !v);
+      } else if (e.key === 'Escape' && paletteOpen) {
+        setPaletteOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [paletteOpen]);
 
   // Padding the <main> needs so the Activity Monitor doesn't cover
   // content. The rail widths are CSS-driven (ActivityMonitor sets
@@ -106,6 +125,9 @@ function Layout() {
       {/* First-run onboarding wizard (renders nothing when dismissed or when
           the critical three — ComfyUI/LLM/voice — are already configured) */}
       <OnboardingGate />
+
+      {/* Global command palette — ⌘K / Ctrl+K from anywhere */}
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }
