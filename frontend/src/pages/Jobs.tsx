@@ -387,6 +387,7 @@ function Jobs() {
                           onClick={() => void handleCancelJob(job.id)}
                           disabled={cancelling.has(job.id)}
                           title="Cancel this job"
+                          aria-label={`Cancel ${job.step} job for ${job.episode_title || 'episode'}`}
                         >
                           {cancelling.has(job.id) ? (
                             <RefreshCw

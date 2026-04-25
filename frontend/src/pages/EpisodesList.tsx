@@ -536,48 +536,56 @@ function EpisodesList() {
               <div className={`absolute top-2 right-2 flex items-center gap-1 transition-opacity z-10 ${selectMode ? 'opacity-0 pointer-events-none' : 'opacity-0 group-hover:opacity-100'}`}>
                 {(ep.status === 'draft' || ep.status === 'failed') && (
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       void handleGenerateEpisode(ep.id);
                     }}
-                    className="p-1.5 rounded bg-accent/90 text-white hover:bg-accent transition-colors"
+                    className="p-1.5 rounded bg-accent/90 text-white hover:bg-accent transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                     title="Generate"
+                    aria-label={`Generate ${ep.title}`}
                   >
                     <Play size={12} />
                   </button>
                 )}
                 {ep.status === 'generating' && (
                   <button
+                    type="button"
                     onClick={(e) => {
                       e.stopPropagation();
                       void handleCancelEpisode(ep.id);
                     }}
-                    className="p-1.5 rounded bg-red-600/80 text-white hover:bg-red-500 transition-colors"
+                    className="p-1.5 rounded bg-red-600/80 text-white hover:bg-red-500 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-300"
                     title="Cancel Generation"
+                    aria-label={`Cancel generation of ${ep.title}`}
                   >
                     <Square size={12} />
                   </button>
                 )}
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     void handleDuplicateEpisode(ep.id);
                   }}
-                  className="p-1.5 rounded bg-black/60 text-white hover:bg-black/80 backdrop-blur-sm transition-colors"
+                  className="p-1.5 rounded bg-black/60 text-white hover:bg-black/80 backdrop-blur-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent"
                   title="Duplicate"
+                  aria-label={`Duplicate ${ep.title}`}
                   disabled={duplicatingId === ep.id}
                 >
                   <Copy size={12} />
                 </button>
                 <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setDeletingEpisodeId(ep.id);
                     setDeletingEpisodeTitle(ep.title);
                     setDeleteDialogOpen(true);
                   }}
-                  className="p-1.5 rounded bg-black/60 text-red-400 hover:bg-red-600/80 hover:text-white backdrop-blur-sm transition-colors"
+                  className="p-1.5 rounded bg-black/60 text-red-400 hover:bg-red-600/80 hover:text-white backdrop-blur-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-red-400"
                   title="Delete"
+                  aria-label={`Delete ${ep.title}`}
                 >
                   <Trash2 size={12} />
                 </button>

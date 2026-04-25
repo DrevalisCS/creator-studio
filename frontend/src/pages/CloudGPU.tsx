@@ -330,6 +330,7 @@ export default function CloudGPUPage() {
                         disabled={isBusy}
                         onClick={() => void podAction(pod, 'stop')}
                         title="Stop (keeps pod, billing pauses on some providers)"
+                        aria-label={`Stop pod ${pod.name}`}
                       >
                         <Square size={12} />
                       </Button>
@@ -340,6 +341,8 @@ export default function CloudGPUPage() {
                         variant="ghost"
                         disabled={isBusy}
                         onClick={() => void podAction(pod, 'start')}
+                        title="Start pod"
+                        aria-label={`Start pod ${pod.name}`}
                       >
                         <Play size={12} />
                       </Button>
@@ -354,6 +357,8 @@ export default function CloudGPUPage() {
                         }
                       }}
                       className="text-error hover:bg-error/10"
+                      title="Delete pod"
+                      aria-label={`Delete pod ${pod.name}`}
                     >
                       <Trash2 size={12} />
                     </Button>
