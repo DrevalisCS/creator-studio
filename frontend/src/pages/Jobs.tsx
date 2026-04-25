@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Card } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Spinner';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { jobs as jobsApi } from '@/lib/api';
 import type { GenerationJobExtended } from '@/types';
 
@@ -241,17 +242,19 @@ function Jobs() {
       {/* Job table */}
       <Card padding="none">
         {filteredJobs.length === 0 ? (
-          <div className="p-12 text-center">
-            <AlertTriangle
-              size={32}
-              className="mx-auto mb-3 text-txt-tertiary"
-            />
-            <p className="text-sm text-txt-secondary">
-              {filter === 'all'
-                ? 'No generation jobs found.'
-                : `No ${filter} jobs found.`}
-            </p>
-          </div>
+          <EmptyState
+            icon={AlertTriangle}
+            title={
+              filter === 'all'
+                ? 'No generation jobs yet'
+                : `No ${filter} jobs`
+            }
+            description={
+              filter === 'all'
+                ? 'Generation jobs will appear here once you start an episode.'
+                : 'Try a different filter — there may be jobs in other states.'
+            }
+          />
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">

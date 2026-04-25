@@ -18,6 +18,7 @@ import { Dialog, DialogFooter } from '@/components/ui/Dialog';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
 
 interface ProviderStatus {
   name: string;
@@ -276,9 +277,11 @@ export default function CloudGPUPage() {
           <p className="text-[11px] text-txt-muted">Polling every 30 s</p>
         </div>
         {pods.length === 0 ? (
-          <div className="py-10 text-center text-sm text-txt-muted">
-            No active pods. Click <strong>Launch</strong> on a connected provider above.
-          </div>
+          <EmptyState
+            icon={Cpu}
+            title="No active pods"
+            description="Click Launch on a connected provider above to spin up a GPU pod."
+          />
         ) : (
           <div className="divide-y divide-border">
             {pods.map((pod) => {
