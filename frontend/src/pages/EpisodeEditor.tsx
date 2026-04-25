@@ -684,7 +684,6 @@ export default function EpisodeEditor() {
         <ToolsRail
           onAddText={addTextOverlay}
           onAddShape={addShapeOverlay}
-          onOpenAssetPicker={() => setAssetPickerOpen(true)}
           onOpenAssetsTab={() => setRightPanelTab('assets')}
           onOpenStampsTab={() => setRightPanelTab('stamps')}
           onSplit={() => {
@@ -1063,7 +1062,6 @@ export default function EpisodeEditor() {
 interface ToolsRailProps {
   onAddText: (preset: 'title' | 'subtitle' | 'caption' | 'lowerThird') => void;
   onAddShape: (shape: 'rect' | 'circle' | 'line') => void;
-  onOpenAssetPicker: () => void;
   onOpenAssetsTab: () => void;
   onOpenStampsTab: () => void;
   onSplit: () => void;
@@ -1080,7 +1078,6 @@ interface ToolsRailProps {
 function ToolsRail({
   onAddText,
   onAddShape,
-  onOpenAssetPicker,
   onOpenAssetsTab,
   onOpenStampsTab,
   onSplit,
