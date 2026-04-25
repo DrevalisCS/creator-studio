@@ -22,6 +22,7 @@ import {
   ImageOff,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { StatCard } from '@/components/ui/StatCard';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Input } from '@/components/ui/Input';
@@ -439,63 +440,33 @@ function DashboardTab({
         })}
       </div>
 
-      {/* YouTube aggregate stats cards */}
+      {/* YouTube aggregate stats — shared StatCard for visual parity
+          with Dashboard / Logs / Settings. */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card padding="md">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-accent-muted flex items-center justify-center shrink-0">
-              <Upload size={16} className="text-accent" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-txt-primary">
-                {formatNumber(uploads.length)}
-              </p>
-              <p className="text-xs text-txt-secondary">Total Uploads</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card padding="md">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-info-muted flex items-center justify-center shrink-0">
-              <Eye size={16} className="text-info" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-txt-primary">
-                {formatNumber(totalViews)}
-              </p>
-              <p className="text-xs text-txt-secondary">Total Views</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card padding="md">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-success-muted flex items-center justify-center shrink-0">
-              <ThumbsUp size={16} className="text-success" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-txt-primary">
-                {formatNumber(totalLikes)}
-              </p>
-              <p className="text-xs text-txt-secondary">Total Likes</p>
-            </div>
-          </div>
-        </Card>
-
-        <Card padding="md">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-lg bg-warning-muted flex items-center justify-center shrink-0">
-              <Percent size={16} className="text-warning" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-txt-primary">
-                {formatEngagement(overallEngagement)}
-              </p>
-              <p className="text-xs text-txt-secondary">Engagement Rate</p>
-            </div>
-          </div>
-        </Card>
+        <StatCard
+          label="Total Uploads"
+          value={formatNumber(uploads.length)}
+          icon={<Upload size={20} />}
+          color="#A78BFA"
+        />
+        <StatCard
+          label="Total Views"
+          value={formatNumber(totalViews)}
+          icon={<Eye size={20} />}
+          color="#60A5FA"
+        />
+        <StatCard
+          label="Total Likes"
+          value={formatNumber(totalLikes)}
+          icon={<ThumbsUp size={20} />}
+          color="#34D399"
+        />
+        <StatCard
+          label="Engagement Rate"
+          value={formatEngagement(overallEngagement)}
+          icon={<Percent size={20} />}
+          color="#FBBF24"
+        />
       </div>
 
       {/* Cross-platform performance */}
@@ -1374,30 +1345,16 @@ function AnalyticsTab({ uploads, loading, channelMap, channelId }: AnalyticsTabP
         )}
       </Card>
 
-      {/* Summary cards */}
+      {/* Summary cards — same StatCard as the dashboard tab so the
+          visual treatment is identical across YouTube tabs. */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Card padding="md">
-          <p className="text-xs text-txt-tertiary">Total Videos</p>
-          <p className="text-2xl font-bold text-txt-primary">{stats.length}</p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs text-txt-tertiary">Total Views</p>
-          <p className="text-2xl font-bold text-txt-primary">
-            {formatNumber(totalViews)}
-          </p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs text-txt-tertiary">Total Likes</p>
-          <p className="text-2xl font-bold text-txt-primary">
-            {formatNumber(totalLikes)}
-          </p>
-        </Card>
-        <Card padding="md">
-          <p className="text-xs text-txt-tertiary">Engagement Rate</p>
-          <p className="text-2xl font-bold text-txt-primary">
-            {formatEngagement(overallEngagement)}
-          </p>
-        </Card>
+        <StatCard label="Total Videos" value={stats.length} />
+        <StatCard label="Total Views" value={formatNumber(totalViews)} />
+        <StatCard label="Total Likes" value={formatNumber(totalLikes)} />
+        <StatCard
+          label="Engagement Rate"
+          value={formatEngagement(overallEngagement)}
+        />
       </div>
 
       {/* Video table */}

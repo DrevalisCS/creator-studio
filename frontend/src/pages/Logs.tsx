@@ -1,11 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Terminal, RefreshCw } from 'lucide-react';
+import { Terminal, RefreshCw, CheckCircle2, XCircle, Clock } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { StatCard } from '@/components/ui/StatCard';
 import { metricsApi } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
@@ -104,39 +105,43 @@ function Logs() {
         }
       />
 
-      {/* Stats summary */}
-      {events.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-          <Card padding="md">
-            <div className="text-xs text-txt-tertiary">Total Events</div>
-            <div className="text-2xl font-bold text-txt-primary">{events.length}</div>
-          </Card>
-          <Card padding="md">
-            <div className="text-xs text-txt-tertiary">Successful</div>
-            <div className="text-2xl font-bold text-green-400">
-              {events.filter((e) => e.success).length}
-            </div>
-          </Card>
-          <Card padding="md">
-            <div className="text-xs text-txt-tertiary">Failed</div>
-            <div className="text-2xl font-bold text-red-400">
-              {events.filter((e) => !e.success).length}
-            </div>
-          </Card>
-          <Card padding="md">
-            <div className="text-xs text-txt-tertiary">Avg Duration</div>
-            <div className="text-2xl font-bold text-txt-primary">
-              {events.length > 0
-                ? (
-                    events.reduce((sum, e) => sum + (e.duration_seconds || 0), 0) /
-                    events.length
-                  ).toFixed(1)
-                : '0'}
-              s
-            </div>
-          </Card>
-        </div>
-      )}
+      {/* Stats summary — uses the shared StatCard so the visual
+          treatment matches the Dashboard tiles. */}
+      {events.length > 0 && (() => {
+        const successCount = events.filter((e) => e.success).length;
+        const failedCount = events.filter((e) => !e.success).length;
+        const avgDuration =
+          events.reduce((sum, e) => sum + (e.duration_seconds || 0), 0) /
+          events.length;
+        return (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <StatCard
+              label="Total Events"
+              value={events.length}
+              icon={<Terminal size={20} />}
+              color="#EDEDEF"
+            />
+            <StatCard
+              label="Successful"
+              value={successCount}
+              icon={<CheckCircle2 size={20} />}
+              color="#34D399"
+            />
+            <StatCard
+              label="Failed"
+              value={failedCount}
+              icon={<XCircle size={20} />}
+              color="#F87171"
+            />
+            <StatCard
+              label="Avg Duration"
+              value={`${avgDuration.toFixed(1)}s`}
+              icon={<Clock size={20} />}
+              color="#00D4AA"
+            />
+          </div>
+        );
+      })()}
 
       {/* Event log */}
       <Card padding="none">
