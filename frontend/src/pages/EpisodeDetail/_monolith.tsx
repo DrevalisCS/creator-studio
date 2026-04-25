@@ -41,6 +41,7 @@ import { Dialog, DialogFooter } from '@/components/ui/Dialog';
 import { SEOScorePanel } from '@/components/episode/SEOScorePanel';
 import { ThumbnailEditor } from '@/components/episode/ThumbnailEditor';
 import { Spinner } from '@/components/ui/Spinner';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { VideoPlayer } from '@/components/video/VideoPlayer';
 import { JobProgressBar } from '@/components/jobs/JobProgressBar';
 import * as Popover from '@radix-ui/react-popover';
@@ -1386,11 +1387,11 @@ function ScriptTab({
 
   if (!episode.script) {
     return (
-      <div className="empty-state py-12">
-        <FileText size={32} />
-        <p className="text-sm">No script generated yet</p>
-        <p className="text-xs">Generate the episode to create a script</p>
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="No script generated yet"
+        description="Generate the episode to create a script."
+      />
     );
   }
 
@@ -1410,11 +1411,11 @@ function ScriptTab({
             Edit Raw JSON
           </Button>
         </div>
-        <div className="empty-state py-12">
-          <FileText size={32} />
-          <p className="text-sm">Script has no scenes</p>
-          <p className="text-xs">Edit the raw JSON to add scene data</p>
-        </div>
+        <EmptyState
+          icon={FileText}
+          title="Script has no scenes"
+          description="Edit the raw JSON to add scene data."
+        />
         {showRawEditor && (
           <RawJsonEditor
             text={rawText}
@@ -1826,13 +1827,11 @@ function ScenesTab({
 
   if (scenes.length === 0) {
     return (
-      <div className="empty-state py-12">
-        <ImageOff size={32} className="text-txt-tertiary" />
-        <p className="text-sm text-txt-tertiary">No scenes generated yet</p>
-        <p className="text-xs text-txt-tertiary">
-          Generate the script and scenes to see thumbnails here
-        </p>
-      </div>
+      <EmptyState
+        icon={ImageOff}
+        title="No scenes generated yet"
+        description="Generate the script and scenes to see thumbnails here."
+      />
     );
   }
 
@@ -2116,11 +2115,11 @@ function CaptionsTab({
 
   if (!captionsAsset) {
     return (
-      <div className="empty-state py-12">
-        <Subtitles size={32} />
-        <p className="text-sm">No captions generated yet</p>
-        <p className="text-xs">Captions will appear after the captions step completes</p>
-      </div>
+      <EmptyState
+        icon={Subtitles}
+        title="No captions generated yet"
+        description="Captions will appear after the captions step completes."
+      />
     );
   }
 
@@ -2682,13 +2681,11 @@ function MusicTab({
         </h4>
 
         {!loadingTracks && tracks.length === 0 ? (
-          <div className="empty-state py-8">
-            <Music size={28} className="text-txt-tertiary" />
-            <p className="text-sm text-txt-tertiary">No tracks generated yet</p>
-            <p className="text-xs text-txt-tertiary">
-              Choose a mood above and click Generate
-            </p>
-          </div>
+          <EmptyState
+            icon={Music}
+            title="No tracks generated yet"
+            description="Choose a mood above and click Generate."
+          />
         ) : (
           <div className="space-y-2" aria-live="polite">
             {tracks.map((track) => {
