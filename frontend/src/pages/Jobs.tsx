@@ -188,7 +188,7 @@ function Jobs() {
             <Button
               variant="ghost"
               size="sm"
-              className="text-red-400 hover:text-red-300"
+              className="text-error hover:text-error/80"
               onClick={() => void handleCancelAll()}
               loading={cancellingAll}
             >
@@ -364,7 +364,7 @@ function Jobs() {
                     <td className="px-4 py-2.5 align-top">
                       {job.error_message ? (
                         <span
-                          className="text-xs text-red-400 truncate block max-w-[200px]"
+                          className="text-xs text-error truncate block max-w-[200px]"
                           title={job.error_message}
                         >
                           {job.error_message.length > 60
@@ -383,7 +383,7 @@ function Jobs() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-red-400 hover:text-red-300"
+                          className="text-error hover:text-error/80"
                           onClick={() => void handleCancelJob(job.id)}
                           disabled={cancelling.has(job.id)}
                           title="Cancel this job"

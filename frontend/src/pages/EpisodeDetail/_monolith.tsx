@@ -657,7 +657,7 @@ function EpisodeDetail() {
           <Button
             variant="ghost"
             size="sm"
-            className="text-red-400 hover:text-red-300"
+            className="text-error hover:text-error/80"
             loading={cancelling}
             onClick={() => setCancelDialogOpen(true)}
           >
@@ -759,7 +759,7 @@ function EpisodeDetail() {
                     <Popover.Close asChild>
                       <button
                         onClick={() => setUploadDialogOpen(true)}
-                        className="flex items-center gap-2 w-full text-left px-3 py-2.5 text-sm text-red-400 hover:bg-bg-hover border-t border-border"
+                        className="flex items-center gap-2 w-full text-left px-3 py-2.5 text-sm text-error hover:bg-bg-hover border-t border-border"
                       >
                         <Upload size={14} /> Upload to YouTube
                       </button>
@@ -781,7 +781,7 @@ function EpisodeDetail() {
           <Button
             variant="ghost"
             size="sm"
-            className="text-red-400 hover:text-red-300"
+            className="text-error hover:text-error/80"
             onClick={() => setDeleteDialogOpen(true)}
           >
             <Trash2 size={14} />
@@ -1621,7 +1621,7 @@ function ScriptTab({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="text-red-400 hover:text-red-300"
+                  className="text-error hover:text-error/80"
                   onClick={() => setDeleteConfirmScene(sceneNumber)}
                 >
                   <Trash2 size={12} />

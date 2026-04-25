@@ -167,13 +167,13 @@ function Logs() {
                   key={i}
                   className={[
                     'py-1.5 border-b border-border/20 flex items-center gap-3',
-                    e.success ? 'text-txt-secondary' : 'text-red-400',
+                    e.success ? 'text-txt-secondary' : 'text-error',
                   ].join(' ')}
                 >
                   <span className="text-txt-tertiary w-20 shrink-0">
                     {new Date(e.timestamp).toLocaleTimeString()}
                   </span>
-                  <span className={e.success ? 'text-green-400' : 'text-red-400'}>
+                  <span className={e.success ? 'text-success' : 'text-error'}>
                     {e.success ? '\u2713' : '\u2717'}
                   </span>
                   <span className={`w-20 shrink-0 ${getStepColor(e.step)}`}>{e.step}</span>

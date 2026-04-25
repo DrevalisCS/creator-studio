@@ -575,7 +575,7 @@ function Audiobooks() {
                   {aiCharacters.length > 1 && (
                     <button
                       onClick={() => removeCharacter(i)}
-                      className="text-red-400 hover:text-red-300 px-1 shrink-0"
+                      className="text-error hover:text-error/80 px-1 shrink-0"
                     >
                       <X size={14} />
                     </button>
