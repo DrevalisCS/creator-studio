@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { RefreshCw, AlertTriangle, Activity } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { StatCard } from '@/components/ui/StatCard';
 
 interface UsageDaily {
   day: string;
@@ -163,22 +164,23 @@ export default function UsagePage() {
             {data.start_date} → {data.end_date}
           </p>
 
-          {/* Totals — token tile is hidden until instrumentation lands so
-              we don't display a misleading "0" with an asterisk. */}
+          {/* Totals — shared StatCard. Token tile hidden until
+              instrumentation lands so we don't display a misleading
+              "0" with an asterisk. */}
           <div
             className={`grid grid-cols-2 gap-3 ${hasTokenInstrumentation ? 'md:grid-cols-5' : 'md:grid-cols-4'}`}
           >
-            <KPI label="Episodes generated" value={fmtNumber(data.totals.episodes_generated)} />
-            <KPI label="Pipeline runs" value={fmtNumber(data.totals.pipeline_runs)} />
-            <KPI label="Compute time" value={fmtSeconds(data.totals.pipeline_seconds)} />
+            <StatCard label="Episodes generated" value={fmtNumber(data.totals.episodes_generated)} />
+            <StatCard label="Pipeline runs" value={fmtNumber(data.totals.pipeline_runs)} />
+            <StatCard label="Compute time" value={fmtSeconds(data.totals.pipeline_seconds)} />
             {hasTokenInstrumentation && (
-              <KPI
+              <StatCard
                 label="LLM tokens"
                 value={fmtNumber(data.totals.tokens_total)}
                 sub={`${fmtNumber(data.totals.tokens_prompt)} in · ${fmtNumber(data.totals.tokens_completion)} out`}
               />
             )}
-            <KPI
+            <StatCard
               label="Failure rate"
               value={`${(data.totals.failure_rate * 100).toFixed(1)}%`}
               sub={`${data.totals.failures} failed / ${data.totals.pipeline_runs} runs`}
@@ -284,12 +286,3 @@ export default function UsagePage() {
   );
 }
 
-function KPI({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-lg border border-border bg-bg-elevated p-4">
-      <p className="text-[11px] text-txt-tertiary uppercase tracking-wider">{label}</p>
-      <p className="text-2xl font-bold text-txt-primary mt-1 font-display">{value}</p>
-      {sub && <p className="text-[11px] text-txt-muted mt-1">{sub}</p>}
-    </div>
-  );
-}
