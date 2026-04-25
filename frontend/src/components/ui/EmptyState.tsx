@@ -1,19 +1,27 @@
-import { type ComponentType, type ReactNode, type HTMLAttributes } from 'react';
+import { type ReactNode, type HTMLAttributes, type ElementType } from 'react';
 
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
 
-interface EmptyStateProps extends HTMLAttributes<HTMLDivElement> {
+// Accept any component-like that takes a size and className. We use
+// ElementType (rather than ComponentType<{...}>) because lucide-react
+// exports its icons as ForwardRefExoticComponent, whose propTypes are
+// incompatible with a narrowly-typed ComponentType — TS rejects the
+// assignment even though every lucide icon does in fact accept
+// `size` and `className` at runtime.
+type IconLike = ElementType;
+
+interface EmptyStateProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
   /**
    * Lucide-react (or any compatible) icon component.
    * Rendered at 48px. Receives `size` and `className` props.
    */
-  icon?: ComponentType<{ size?: number; className?: string }>;
-  /** Primary heading — required */
-  title: string;
+  icon?: IconLike;
+  /** Primary heading — required (string or richer ReactNode). */
+  title: ReactNode;
   /** Supporting copy — optional, capped at max-w-xs */
-  description?: string;
+  description?: ReactNode;
   /** Call-to-action slot — pass a <Button> or any ReactNode */
   action?: ReactNode;
   className?: string;

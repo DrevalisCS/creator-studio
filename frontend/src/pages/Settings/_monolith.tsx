@@ -79,7 +79,35 @@ import type {
 // then system internals. The flat layout was fatiguing and put related
 // items (e.g. ComfyUI / LLM / Voice / API Keys — all integrations)
 // nowhere near each other in the nav.
-const SECTION_GROUPS = [
+type SectionId =
+  | 'license'
+  | 'team'
+  | 'appearance'
+  | 'llm'
+  | 'comfyui'
+  | 'voice'
+  | 'social'
+  | 'apikeys'
+  | 'health'
+  | 'storage'
+  | 'ffmpeg'
+  | 'backup'
+  | 'updates'
+  | 'templates';
+
+interface SectionDef {
+  id: SectionId;
+  label: string;
+  icon: typeof KeyRound;
+}
+
+interface SectionGroupDef {
+  id: string;
+  label: string;
+  sections: SectionDef[];
+}
+
+const SECTION_GROUPS: SectionGroupDef[] = [
   {
     id: 'account',
     label: 'Account & Billing',
@@ -91,9 +119,7 @@ const SECTION_GROUPS = [
   {
     id: 'appearance-group',
     label: 'Appearance',
-    sections: [
-      { id: 'appearance', label: 'Theme', icon: Palette },
-    ],
+    sections: [{ id: 'appearance', label: 'Theme', icon: Palette }],
   },
   {
     id: 'integrations',
@@ -120,14 +146,11 @@ const SECTION_GROUPS = [
   {
     id: 'content',
     label: 'Content',
-    sections: [
-      { id: 'templates', label: 'Templates', icon: LayoutTemplate },
-    ],
+    sections: [{ id: 'templates', label: 'Templates', icon: LayoutTemplate }],
   },
-] as const;
+];
 
-const SECTIONS = SECTION_GROUPS.flatMap((g) => g.sections);
-type SectionId = (typeof SECTIONS)[number]['id'];
+const SECTIONS: SectionDef[] = SECTION_GROUPS.flatMap((g) => g.sections);
 
 // ---------------------------------------------------------------------------
 // Settings Page

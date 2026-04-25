@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Film,
@@ -20,6 +20,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { EpisodeCard } from '@/components/episodes/EpisodeCard';
 import { JobProgressBar } from '@/components/jobs/JobProgressBar';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { StatCard } from '@/components/ui/StatCard';
 import { useToast } from '@/components/ui/Toast';
 import {
   episodes as episodesApi,
@@ -46,36 +47,6 @@ function timeAgo(dateStr: string): string {
   if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
   if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`;
   return new Date(dateStr).toLocaleDateString();
-}
-
-// ---------------------------------------------------------------------------
-// Stat Card
-// ---------------------------------------------------------------------------
-
-interface StatCardProps {
-  label: string;
-  value: number;
-  icon: ReactNode;
-  color: string;
-}
-
-function StatCard({ label, value, icon, color }: StatCardProps) {
-  return (
-    <Card padding="md" className="edge-highlight">
-      <div className="flex items-center gap-4">
-        <div
-          className="w-11 h-11 rounded-xl flex items-center justify-center shrink-0 icon-hover"
-          style={{ backgroundColor: `${color}12`, color }}
-        >
-          {icon}
-        </div>
-        <div>
-          <p className="text-2xl font-display font-bold text-txt-primary tracking-tight">{value}</p>
-          <p className="text-xs font-display font-medium text-txt-tertiary tracking-wide uppercase">{label}</p>
-        </div>
-      </div>
-    </Card>
-  );
 }
 
 // ---------------------------------------------------------------------------

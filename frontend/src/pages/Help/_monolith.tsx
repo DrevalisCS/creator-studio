@@ -29,7 +29,6 @@ import {
   Star,
   Hash,
   Clock,
-  Command,
   Link2,
   Rocket,
   Wrench,
