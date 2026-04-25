@@ -125,14 +125,12 @@ export default function AssetsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-txt-primary">Assets</h2>
-          <p className="mt-1 text-sm text-txt-secondary">
-            Upload reference images, B-roll, music, logos. Reference anywhere in the pipeline —
-            series style conditioning, per-scene overrides, ingest source clips.
-          </p>
-        </div>
+      {/* Banner already shows "Assets"; subtitle + CTAs only. */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <p className="text-sm text-txt-secondary max-w-2xl">
+          Upload reference images, B-roll, music, logos. Reference anywhere in the pipeline —
+          series style conditioning, per-scene overrides, ingest source clips.
+        </p>
         <div className="flex gap-2">
           <Button variant="ghost" size="sm" onClick={() => void refresh()}>
             <RefreshCw className="w-3.5 h-3.5 mr-1" />
