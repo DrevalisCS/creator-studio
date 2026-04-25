@@ -865,8 +865,15 @@ function Calendar() {
                     <div
                       key={day.toISOString()}
                       role="gridcell"
+                      tabIndex={inMonth ? 0 : -1}
                       aria-label={`${day.toLocaleDateString()}${dayPosts.length > 0 ? `, ${dayPosts.length} post${dayPosts.length !== 1 ? 's' : ''}` : ''}`}
                       onClick={() => handleDayClick(day)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          handleDayClick(day);
+                        }
+                      }}
                       onDragOver={(e) => handleDayDragOver(e, day)}
                       onDragLeave={(e) => handleDayDragLeave(e, day)}
                       onDrop={(e) => void handleDayDrop(e, day)}

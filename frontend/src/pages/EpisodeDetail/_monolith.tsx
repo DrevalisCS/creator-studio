@@ -939,6 +939,7 @@ function EpisodeDetail() {
             {activeTab === 'script' && (
               <ScriptTab
                 episode={episode}
+                scenes={scenes}
                 onRefresh={fetchEpisode}
                 episodeId={episodeId!}
                 voiceProfiles={voiceProfiles}
@@ -1342,6 +1343,7 @@ interface EditedScene {
 
 function ScriptTab({
   episode,
+  scenes,
   onRefresh,
   episodeId,
   voiceProfiles,
@@ -1349,12 +1351,21 @@ function ScriptTab({
   setEpVoiceId,
 }: {
   episode: Episode;
+  scenes: SceneDataExtended[];
   onRefresh: () => void;
   episodeId: string;
   voiceProfiles: VoiceProfile[];
   epVoiceId: string;
   setEpVoiceId: (v: string) => void;
 }) {
+  // Map scene number → image URL so each script segment can render
+  // its corresponding generated thumbnail next to the editable text.
+  // Was previously text-only — users had to flip to the Scenes tab to
+  // see what each narration block actually looked like.
+  const sceneImageBySceneNumber = new Map<number, string>();
+  for (const s of scenes) {
+    if (s.imageUrl) sceneImageBySceneNumber.set(s.sceneNumber, s.imageUrl);
+  }
   const { toast } = useToast();
   const [revoicingInline, setRevoicingInline] = useState(false);
   const [editedScenes, setEditedScenes] = useState<Record<number, EditedScene>>({});
@@ -1617,26 +1628,54 @@ function ScriptTab({
               </div>
             </div>
 
-            {/* Narration (editable) */}
-            <div className="mb-3">
-              <label className="text-xs text-txt-tertiary">Narration</label>
-              <Textarea
-                value={editedScenes[idx]?.narration ?? narration}
-                onChange={(e) => updateEditedScene(idx, 'narration', e.target.value)}
-                className="mt-1 text-sm min-h-[60px]"
-                rows={2}
-              />
-            </div>
+            {/* Body — thumbnail on the left when one exists, edit
+                fields on the right. On narrow screens we stack so the
+                fields aren't squeezed. */}
+            <div className="flex flex-col sm:flex-row gap-3">
+              {(() => {
+                const img = sceneImageBySceneNumber.get(sceneNumber);
+                return (
+                  <div className="sm:w-32 shrink-0">
+                    <div className="aspect-video rounded-md bg-bg-base border border-border overflow-hidden">
+                      {img ? (
+                        <img
+                          src={img}
+                          alt={`Scene ${sceneNumber}`}
+                          className="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center">
+                          <ImageOff size={16} className="text-txt-tertiary" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+              <div className="flex-1 min-w-0 space-y-3">
+                {/* Narration (editable) */}
+                <div>
+                  <label className="text-xs text-txt-tertiary">Narration</label>
+                  <Textarea
+                    value={editedScenes[idx]?.narration ?? narration}
+                    onChange={(e) => updateEditedScene(idx, 'narration', e.target.value)}
+                    className="mt-1 text-sm min-h-[60px]"
+                    rows={2}
+                  />
+                </div>
 
-            {/* Visual Prompt (editable) */}
-            <div className="mb-3">
-              <label className="text-xs text-txt-tertiary">Visual Prompt</label>
-              <Textarea
-                value={editedScenes[idx]?.visual_prompt ?? visualPrompt}
-                onChange={(e) => updateEditedScene(idx, 'visual_prompt', e.target.value)}
-                className="mt-1 text-xs font-mono min-h-[60px]"
-                rows={2}
-              />
+                {/* Visual Prompt (editable) */}
+                <div>
+                  <label className="text-xs text-txt-tertiary">Visual Prompt</label>
+                  <Textarea
+                    value={editedScenes[idx]?.visual_prompt ?? visualPrompt}
+                    onChange={(e) => updateEditedScene(idx, 'visual_prompt', e.target.value)}
+                    className="mt-1 text-xs font-mono min-h-[60px]"
+                    rows={2}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* Duration + Keywords */}

@@ -4,22 +4,39 @@ import type { EpisodeStatus, JobStatus } from '@/types';
 // ---------------------------------------------------------------------------
 // Variant map
 // ---------------------------------------------------------------------------
+//
+// Canonical semantic variants — every domain alias below routes back
+// to one of these six. Use these directly in new code; the domain
+// aliases (draft/review/queued/etc.) exist so the call site can pass
+// e.g. `<Badge variant={episode.status} />` without a translation
+// step at every render.
+//
+//   neutral    — passive / inactive / no-action-needed (draft, queued)
+//   accent     — work in progress / live activity      (generating, running)
+//   info       — review needed / informational         (review)
+//   warning    — needs attention / soft warning        (editing, degraded)
+//   success    — completed successfully                (exported, done, ok)
+//   error      — failed / unhealthy                    (failed, unreachable)
+//
+// Pipeline-step variants (script/voice/scenes/...) are intentionally
+// outside this scheme because they encode workflow phase, not status —
+// they get their own per-step palette tokens.
 
 const statusVariants: Record<string, string> = {
-  // Episode statuses
-  draft: 'bg-bg-hover text-txt-secondary',
-  generating: 'bg-accent-muted text-accent',
-  review: 'bg-info-muted text-info',
-  editing: 'bg-warning-muted text-warning',
-  exported: 'bg-success-muted text-success',
-  failed: 'bg-error-muted text-error',
+  // Episode statuses → semantic mapping
+  draft: 'bg-bg-hover text-txt-secondary',          // → neutral
+  generating: 'bg-accent-muted text-accent',        // → accent
+  review: 'bg-info-muted text-info',                // → info
+  editing: 'bg-warning-muted text-warning',         // → warning
+  exported: 'bg-success-muted text-success',        // → success
+  failed: 'bg-error-muted text-error',              // → error
 
-  // Job statuses
-  queued: 'bg-bg-hover text-txt-secondary',
-  running: 'bg-accent-muted text-accent',
-  done: 'bg-success-muted text-success',
+  // Job statuses → semantic mapping
+  queued: 'bg-bg-hover text-txt-secondary',         // → neutral
+  running: 'bg-accent-muted text-accent',           // → accent
+  done: 'bg-success-muted text-success',            // → success
 
-  // Pipeline step colors
+  // Pipeline step colors — workflow phase, not status. See note above.
   script: 'bg-step-muted-script text-step-script',
   voice: 'bg-step-muted-voice text-step-voice',
   scenes: 'bg-step-muted-scenes text-step-scenes',
@@ -27,13 +44,13 @@ const statusVariants: Record<string, string> = {
   assembly: 'bg-step-muted-assembly text-step-assembly',
   thumbnail: 'bg-step-muted-thumbnail text-step-thumbnail',
 
-  // Service health
-  ok: 'bg-success-muted text-success',
-  degraded: 'bg-warning-muted text-warning',
-  unreachable: 'bg-error-muted text-error',
-  unhealthy: 'bg-error-muted text-error',
+  // Service health → semantic mapping
+  ok: 'bg-success-muted text-success',              // → success
+  degraded: 'bg-warning-muted text-warning',        // → warning
+  unreachable: 'bg-error-muted text-error',         // → error
+  unhealthy: 'bg-error-muted text-error',           // → error
 
-  // Generic
+  // Canonical semantic variants — prefer these in new code
   info: 'bg-info-muted text-info',
   success: 'bg-success-muted text-success',
   warning: 'bg-warning-muted text-warning',
