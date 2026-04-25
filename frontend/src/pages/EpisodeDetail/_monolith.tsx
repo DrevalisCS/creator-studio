@@ -30,6 +30,7 @@ import {
   Search,
   Scissors,
   ListChecks,
+  MoreHorizontal,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
@@ -552,6 +553,11 @@ function EpisodeDetail() {
 
         {episode.status === 'review' && (
           <>
+            {/* Primary actions — Edit + Storyboard, the two things a
+                user typically does next. The pipeline-tweaking actions
+                (Reassemble, Re-voice, SEO, Schedule) live behind the
+                "More" menu so the toolbar fits at 1280px without
+                clipping. */}
             <Button
               variant="primary"
               size="sm"
@@ -570,54 +576,79 @@ function EpisodeDetail() {
               <ListChecks size={14} />
               Shot list
             </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={reassembling}
-              onClick={() => void handleReassemble()}
-            >
-              <RefreshCw size={14} />
-              Reassemble
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={revoicing}
-              onClick={() => void handleRegenerateVoice()}
-            >
-              <Mic size={14} />
-              Re-voice
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              loading={seoLoading}
-              onClick={() => void handleSeo()}
-              aria-label="Generate SEO optimization for this episode"
-            >
-              <Search size={14} />
-              SEO
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              onClick={() => {
-                const script = (episode.script ?? {}) as Record<string, unknown>;
-                const pad = (n: number) => String(n).padStart(2, '0');
-                const now = new Date();
-                now.setDate(now.getDate() + 1);
-                now.setHours(12, 0, 0, 0);
-                const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T12:00`;
-                setSchedDatetime(iso);
-                setSchedTitle((script['title'] as string) || episode.title || '');
-                setSchedPlatform('youtube');
-                setSchedPrivacy('public');
-                setScheduleDialogOpen(true);
-              }}
-            >
-              <CalendarDays size={14} />
-              Schedule
-            </Button>
+            <Popover.Root>
+              <Popover.Trigger asChild>
+                <Button variant="secondary" size="sm" aria-label="More pipeline actions">
+                  <MoreHorizontal size={14} />
+                  More
+                  <ChevronDown size={12} />
+                </Button>
+              </Popover.Trigger>
+              <Popover.Portal>
+                <Popover.Content
+                  align="start"
+                  sideOffset={4}
+                  className="w-52 bg-bg-surface border border-border rounded-lg shadow-xl z-[50] py-1 animate-fade-in"
+                >
+                  <Popover.Close asChild>
+                    <button
+                      type="button"
+                      onClick={() => void handleReassemble()}
+                      disabled={reassembling}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-txt-primary hover:bg-bg-hover disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} />
+                      {reassembling ? 'Reassembling…' : 'Reassemble'}
+                    </button>
+                  </Popover.Close>
+                  <Popover.Close asChild>
+                    <button
+                      type="button"
+                      onClick={() => void handleRegenerateVoice()}
+                      disabled={revoicing}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-txt-primary hover:bg-bg-hover disabled:opacity-50"
+                    >
+                      <Mic size={14} />
+                      {revoicing ? 'Re-voicing…' : 'Re-voice'}
+                    </button>
+                  </Popover.Close>
+                  <Popover.Close asChild>
+                    <button
+                      type="button"
+                      onClick={() => void handleSeo()}
+                      disabled={seoLoading}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-txt-primary hover:bg-bg-hover disabled:opacity-50"
+                      aria-label="Generate SEO optimization for this episode"
+                    >
+                      <Search size={14} />
+                      {seoLoading ? 'Generating SEO…' : 'SEO'}
+                    </button>
+                  </Popover.Close>
+                  <Popover.Close asChild>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const script = (episode.script ?? {}) as Record<string, unknown>;
+                        const pad = (n: number) => String(n).padStart(2, '0');
+                        const now = new Date();
+                        now.setDate(now.getDate() + 1);
+                        now.setHours(12, 0, 0, 0);
+                        const iso = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}T12:00`;
+                        setSchedDatetime(iso);
+                        setSchedTitle((script['title'] as string) || episode.title || '');
+                        setSchedPlatform('youtube');
+                        setSchedPrivacy('public');
+                        setScheduleDialogOpen(true);
+                      }}
+                      className="w-full flex items-center gap-2 px-3 py-2 text-sm text-txt-primary hover:bg-bg-hover"
+                    >
+                      <CalendarDays size={14} />
+                      Schedule
+                    </button>
+                  </Popover.Close>
+                </Popover.Content>
+              </Popover.Portal>
+            </Popover.Root>
           </>
         )}
 

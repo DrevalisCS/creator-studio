@@ -7,6 +7,9 @@ import {
   Plus,
   Clock,
   Trash2,
+  PanelRightClose,
+  PanelRightOpen,
+  X,
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -429,6 +432,14 @@ function Calendar() {
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
   const [episodes, setEpisodes] = useState<EpisodeListItem[]>([]);
+  // Right Upcoming rail can be collapsed to reclaim grid space; the
+  // calendar then uses the full main area. Persisted only in this
+  // component's lifetime — cheap toggle, no need for localStorage.
+  const [upcomingCollapsed, setUpcomingCollapsed] = useState(false);
+  // Day cell that's currently expanded into a full popover (so the
+  // user can read every post on a heavily-scheduled day instead of
+  // staring at "+N more"). Keyed by ISO yyyy-mm-dd.
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
 
   // ---------------------------------------------------------------------------
   // Data fetching
@@ -671,6 +682,15 @@ function Calendar() {
             <span className="text-base font-semibold text-txt-primary min-w-[160px] text-center">
               {MONTH_NAMES[currentMonth]} {currentYear}
             </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setUpcomingCollapsed((v) => !v)}
+              aria-label={upcomingCollapsed ? 'Show upcoming panel' : 'Hide upcoming panel'}
+              title={upcomingCollapsed ? 'Show upcoming panel' : 'Hide upcoming panel'}
+            >
+              {upcomingCollapsed ? <PanelRightOpen size={16} /> : <PanelRightClose size={16} />}
+            </Button>
           </div>
         </div>
 
@@ -764,9 +784,17 @@ function Calendar() {
                           />
                         ))}
                         {dayPosts.length > 3 && (
-                          <p className="text-[10px] text-txt-tertiary px-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedDay(dayKey);
+                            }}
+                            className="text-[10px] text-accent hover:underline px-1 self-start"
+                            aria-label={`Show all ${dayPosts.length} posts on ${day.toLocaleDateString()}`}
+                          >
                             +{dayPosts.length - 3} more
-                          </p>
+                          </button>
                         )}
                       </div>
                     </div>
@@ -792,18 +820,101 @@ function Calendar() {
       {/* ------------------------------------------------------------------ */}
       {/* Right sidebar — upcoming list                                        */}
       {/* ------------------------------------------------------------------ */}
-      <div className="w-72 shrink-0">
-        <Card padding="md" className="h-full">
-          <UpcomingPanel
-            posts={posts}
-            onSchedule={() => {
-              setSelectedDay(null);
-              setScheduleDialogOpen(true);
-            }}
-            onCancel={handleCancel}
-          />
-        </Card>
-      </div>
+      {!upcomingCollapsed && (
+        <div className="w-72 shrink-0">
+          <Card padding="md" className="h-full">
+            <UpcomingPanel
+              posts={posts}
+              onSchedule={() => {
+                setSelectedDay(null);
+                setScheduleDialogOpen(true);
+              }}
+              onCancel={handleCancel}
+            />
+          </Card>
+        </div>
+      )}
+
+      {/* "+N more" expansion — modal-ish overlay anchored by a backdrop.
+          Lists every post on the chosen day so the user can act on
+          anything without click-and-pray on the small day cells. */}
+      {expandedDay && (() => {
+        const dayPosts = posts.filter(
+          (p) => new Date(p.scheduled_at).toISOString().slice(0, 10) === expandedDay,
+        );
+        const dayDate = new Date(`${expandedDay}T00:00:00`);
+        return (
+          <div
+            className="fixed inset-0 z-modal flex items-center justify-center bg-black/40 backdrop-blur-sm p-4"
+            onClick={() => setExpandedDay(null)}
+            role="dialog"
+            aria-label={`Posts on ${dayDate.toLocaleDateString()}`}
+          >
+            <div
+              className="w-full max-w-sm rounded-xl border border-border bg-bg-surface shadow-2xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+                <div>
+                  <h3 className="text-sm font-semibold text-txt-primary">
+                    {dayDate.toLocaleDateString(undefined, {
+                      weekday: 'long',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </h3>
+                  <p className="text-xs text-txt-tertiary mt-0.5">
+                    {dayPosts.length} scheduled post{dayPosts.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setExpandedDay(null)}
+                  className="rounded p-1 text-txt-muted hover:text-txt-primary"
+                  aria-label="Close"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+              <ul className="max-h-[60vh] overflow-y-auto divide-y divide-border">
+                {dayPosts
+                  .sort(
+                    (a, b) =>
+                      new Date(a.scheduled_at).getTime() -
+                      new Date(b.scheduled_at).getTime(),
+                  )
+                  .map((post) => (
+                    <li key={post.id} className="px-4 py-2.5 flex items-center gap-3">
+                      <span
+                        className={`shrink-0 w-2 h-2 rounded-full ${PLATFORM_COLORS[post.platform] ?? 'bg-gray-500'}`}
+                        aria-hidden="true"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm text-txt-primary truncate">
+                          {post.title}
+                        </div>
+                        <div className="text-[11px] text-txt-tertiary mt-0.5">
+                          {formatTime(post.scheduled_at)} ·{' '}
+                          {platformLabel(post.platform)} · {post.status}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleCancel(post.id);
+                        }}
+                        className="shrink-0 p-1 rounded text-txt-tertiary hover:text-error hover:bg-error/10"
+                        aria-label={`Cancel ${post.title}`}
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ------------------------------------------------------------------ */}
       {/* Schedule dialog                                                      */}

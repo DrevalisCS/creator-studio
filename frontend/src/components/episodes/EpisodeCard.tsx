@@ -42,6 +42,14 @@ function EpisodeCard({
 
   const isGenerating = episode.status === 'generating';
 
+  // Cards always render the thumbnail in 16:9. Shorts (9:16) source
+  // images are letterboxed on a dark surface via object-contain so the
+  // card grid stays uniform — the previous 9:16 cards left a vertical
+  // strip of dead space between the image and the title row.
+  const isShortsThumb = (episode as { content_format?: string }).content_format === 'shorts';
+  const hasFinishedThumb =
+    episode.status === 'review' || episode.status === 'exported';
+
   return (
     <Card
       interactive
@@ -50,29 +58,40 @@ function EpisodeCard({
       onClick={() => navigate(`/episodes/${episode.id}`)}
       aria-label={`Episode: ${episode.title} — ${episode.status}`}
     >
-      {/* 9:16 Thumbnail area */}
-      <div className="aspect-video-short bg-gradient-to-b from-bg-elevated to-bg-base relative overflow-hidden rounded-t-xl max-h-48 thumb-zoom">
-        {episode.status === 'review' || episode.status === 'exported' ? (
+      {/* 16:9 Thumbnail area — uniform card heights regardless of the
+          underlying episode aspect ratio. */}
+      <div className="aspect-video bg-gradient-to-b from-bg-elevated to-bg-base relative overflow-hidden rounded-t-xl thumb-zoom">
+        {hasFinishedThumb ? (
           <img
             src={`/storage/episodes/${episode.id}/output/thumbnail.jpg`}
             alt={episode.title}
-            className="w-full h-full object-cover"
+            className={`w-full h-full ${isShortsThumb ? 'object-contain' : 'object-cover'}`}
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />
         ) : null}
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          {episode.status !== 'review' && episode.status !== 'exported' && (
+        {!hasFinishedThumb && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <Film size={28} className="text-txt-tertiary opacity-40" />
-          )}
-        </div>
-        {/* Bottom gradient overlay */}
-        <div className="absolute inset-x-0 bottom-0 h-12 bg-gradient-to-t from-bg-surface/90 to-transparent pointer-events-none" />
+          </div>
+        )}
+        {/* In-flight progress badge top-right — visible without hovering
+            so a glance at the grid shows what's running. */}
+        {isGenerating && (
+          <div className="absolute top-2 right-2">
+            <Badge variant={episode.status} dot>
+              generating
+            </Badge>
+          </div>
+        )}
       </div>
 
       {/* Content */}
       <div className="p-3">
         <div className="flex items-start justify-between gap-2">
-          <h4 className="text-sm font-display font-medium text-txt-primary text-truncate flex-1">
+          <h4
+            className="text-sm font-display font-medium text-txt-primary flex-1 line-clamp-2 leading-snug min-h-[2.5em]"
+            title={episode.title}
+          >
             {episode.title}
           </h4>
           <div className="flex items-center gap-1 shrink-0">
@@ -90,9 +109,11 @@ function EpisodeCard({
                 {((episode.metadata_!.seo as Record<string, unknown>).virality_score as number)}/10
               </Badge>
             )}
-            <Badge variant={episode.status} dot>
-              {episode.status}
-            </Badge>
+            {!isGenerating && (
+              <Badge variant={episode.status} dot>
+                {episode.status}
+              </Badge>
+            )}
           </div>
         </div>
 

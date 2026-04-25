@@ -580,28 +580,17 @@ function Help() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Page header */}
+      {/* Page header — banner already shows "Help"; this row carries
+          subtitle + actions only. The header search button is gone:
+          the central Hub search and the ⌘K palette are the two real
+          search affordances, both still present below. */}
       <div className="flex items-center justify-between mb-5 gap-4 flex-wrap">
-        <div className="min-w-0">
-          <h2 className="text-2xl font-bold text-txt-primary">Help & Documentation</h2>
-          <p className="mt-1 text-sm text-txt-secondary">
-            Every feature in Drevalis Creator Studio, grouped by what you're
-            trying to do — search, browse, or press{' '}
-            <Kbd>⌘ K</Kbd> to jump anywhere.
-          </p>
-        </div>
+        <p className="text-sm text-txt-secondary min-w-0">
+          Every feature in Drevalis Creator Studio, grouped by what you&rsquo;re
+          trying to do — search, browse, or press{' '}
+          <Kbd>⌘ K</Kbd> to jump anywhere.
+        </p>
         <div className="flex items-center gap-2">
-          <button
-            onClick={() => setPaletteOpen(true)}
-            className="inline-flex items-center gap-2 rounded-md border border-border bg-bg-elevated px-3 py-1.5 text-xs text-txt-tertiary hover:border-accent/40 hover:text-txt-primary transition-colors duration-fast"
-            aria-label="Open search (Ctrl+K)"
-          >
-            <Search size={12} />
-            <span>Search…</span>
-            <span className="ml-3 inline-flex items-center gap-1 text-txt-muted">
-              <Command size={10} /> K
-            </span>
-          </button>
           <button
             onClick={() => void rerunOnboarding()}
             className="text-xs px-3 py-1.5 rounded-md border border-border text-txt-secondary hover:text-txt-primary hover:border-white/20 transition-colors"
