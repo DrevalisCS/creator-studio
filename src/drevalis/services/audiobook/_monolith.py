@@ -1244,14 +1244,9 @@ class AudiobookService:
         # Use explicit indices when given (single-chapter regen case)
         # so the output filename targets the correct slot.
         effective_indices = (
-            chapter_indices
-            if chapter_indices is not None
-            else list(range(len(chapters)))
+            chapter_indices if chapter_indices is not None else list(range(len(chapters)))
         )
-        tasks = [
-            _gen_one(idx, ch)
-            for idx, ch in zip(effective_indices, chapters, strict=True)
-        ]
+        tasks = [_gen_one(idx, ch) for idx, ch in zip(effective_indices, chapters, strict=True)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         image_paths: list[Path] = []
