@@ -401,12 +401,17 @@ async def generate_audiobook(
             )
             await session.commit()
 
-            # Clean up TTS chunk files AFTER successful DB commit
-            for chunk_path in result.get("_chunk_paths", []):
-                try:
-                    chunk_path.unlink(missing_ok=True)
-                except Exception:
-                    pass
+            # NOTE: TTS chunk files used to be deleted here once the
+            # final mix landed in the DB. Removed in v0.25.1 — the
+            # multi-track audiobook editor lists / replays / remixes
+            # those exact files, so wiping them broke the editor
+            # ("No clips found") and forced a full re-TTS for any
+            # post-generation tweak. Chunks are tiny (~50 KB each at
+            # 24 kHz mono PCM); a 200-chunk audiobook holds ~10 MB
+            # of cache — well worth it for instant remix + the
+            # editor experience. Trigger an explicit cleanup via a
+            # future "Compact" button if disk usage becomes an issue
+            # for someone with hundreds of finished audiobooks.
 
             await service._clear_cancel_flag(parsed_id)
             duration = result["duration_seconds"]

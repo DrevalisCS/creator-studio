@@ -402,11 +402,27 @@ export default function AudiobookEditor() {
             {tracks.voice.length === 0 &&
               tracks.sfx.length === 0 &&
               tracks.music.length === 0 && (
-                <Card padding="lg" className="mt-6 text-center">
+                <Card padding="lg" className="mt-6 text-center space-y-3">
                   <p className="text-sm text-txt-secondary">
-                    No clips found. Generate the audiobook first, then come
-                    back here to fine-tune the mix.
+                    No clips on disk for this audiobook.
                   </p>
+                  <p className="text-[12px] text-txt-tertiary leading-relaxed max-w-md mx-auto">
+                    Audiobooks generated before v0.25.1 had their per-chunk
+                    audio files deleted after the final mix landed (a
+                    cleanup step that pre-dated the editor). Newer
+                    versions keep the chunks so the editor can list and
+                    remix them. Click <strong>Regenerate</strong> on the
+                    audiobook detail page to rebuild the per-chunk
+                    cache; from then on the editor will work without
+                    a full re-TTS for tweaks.
+                  </p>
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => navigate(`/audiobooks/${audiobookId}`)}
+                  >
+                    Back to audiobook
+                  </Button>
                 </Card>
               )}
           </div>
