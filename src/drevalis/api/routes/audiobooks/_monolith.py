@@ -1091,11 +1091,58 @@ async def regenerate_audiobook(
     }
 
 
+@router.get(
+    "/{audiobook_id}/clips",
+    status_code=status.HTTP_200_OK,
+    summary="List every cached audio clip for the multi-track editor",
+)
+async def list_clips(
+    audiobook_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Return per-track clip lists + the current per-clip overrides.
+
+    The audiobook editor uses this to render its timeline. Clips are
+    discovered by walking the audiobook's storage directory; no
+    separate registry is persisted because the filename schema is
+    deterministic (see ``AudiobookService._CLIP_PATTERNS``).
+    """
+    from drevalis.services.audiobook import AudiobookService
+    from drevalis.services.ffmpeg import FFmpegService
+    from drevalis.services.storage import LocalStorage
+
+    repo = AudiobookRepository(db)
+    ab = await repo.get_by_id(audiobook_id)
+    if ab is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audiobook {audiobook_id} not found",
+        )
+
+    storage = LocalStorage(base_path=settings.storage_base_path)
+    from typing import cast
+
+    svc = AudiobookService(
+        tts_service=cast(Any, None),
+        ffmpeg_service=FFmpegService(),
+        storage=storage,
+        db_session=db,
+        comfyui_service=None,
+    )
+    payload = await svc.list_clips(audiobook_id)
+    overrides = (ab.track_mix or {}).get("clips") or {}
+    payload["overrides"] = overrides
+    return payload
+
+
 class TrackMixPayload(BaseModel):
-    """User-tweakable per-track mix offsets.
+    """User-tweakable per-track mix offsets + per-clip overrides.
 
     All fields optional; missing fields fall back to the existing
-    audiobook record value (or passthrough defaults).
+    audiobook record value (or passthrough defaults). The ``clips``
+    field is the editor's per-clip override surface — keys are clip
+    IDs returned by ``GET /audiobooks/{id}/clips``.
     """
 
     voice_db: float | None = Field(default=None, ge=-30, le=20)
@@ -1104,6 +1151,7 @@ class TrackMixPayload(BaseModel):
     voice_mute: bool | None = None
     music_mute: bool | None = None
     sfx_mute: bool | None = None
+    clips: dict[str, dict[str, Any]] | None = None
 
 
 @router.post(

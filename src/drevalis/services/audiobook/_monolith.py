@@ -198,6 +198,133 @@ class AudiobookService:
         return deleted
 
     # ══════════════════════════════════════════════════════════════════════
+    # Clip listing — used by the Audiobook Editor (v0.25.0)
+    # ══════════════════════════════════════════════════════════════════════
+    #
+    # Walks the audiobook's storage dir and emits a structured list
+    # of every cached audio clip the editor can address. Filenames
+    # are deterministic (see ``_generate_single_voice``,
+    # ``_generate_multi_voice``, ``_generate_sfx_chunk``,
+    # ``_add_chapter_music``) so we can derive stable, URL-safe
+    # clip IDs without persisting a separate registry.
+
+    _CLIP_PATTERNS: tuple[tuple[str, str], ...] = (
+        # single-voice voice chunks: ch003_chunk_0007.wav
+        ("voice_single", r"^ch(?P<ch>\d{3})_chunk_(?P<i>\d{4})\.wav$"),
+        # multi-voice voice chunks: ch003_block_0002_chunk_0007.wav
+        (
+            "voice_multi",
+            r"^ch(?P<ch>\d{3})_block_(?P<b>\d{4})_chunk_(?P<j>\d{4})\.wav$",
+        ),
+        # SFX: ch003_sfx_0002.wav
+        ("sfx", r"^ch(?P<ch>\d{3})_sfx_(?P<b>\d{4})\.wav$"),
+    )
+
+    async def list_clips(self, audiobook_id: UUID) -> dict[str, Any]:
+        """Return all addressable clips for the audiobook + persisted overrides.
+
+        Output shape::
+
+            {
+              "tracks": {
+                "voice": [Clip, ...],
+                "sfx":   [Clip, ...],
+                "music": [Clip, ...]
+              },
+              "overrides": { "<clip_id>": {gain_db, mute}, ... }
+            }
+
+        Each ``Clip`` carries ``id`` (URL-safe), ``kind``, ``chapter``,
+        ``filename``, ``duration_seconds``, ``url`` (under /storage),
+        and ``label`` (display string).
+        """
+        from re import compile as _re_compile
+
+        rel_dir = f"audiobooks/{audiobook_id}"
+        abs_dir = Path(self.storage.resolve_path(rel_dir))
+        result: dict[str, Any] = {
+            "tracks": {"voice": [], "sfx": [], "music": []},
+            "overrides": {},
+        }
+        if not abs_dir.exists():
+            return result
+
+        compiled = [(kind, _re_compile(pat)) for kind, pat in self._CLIP_PATTERNS]
+
+        async def _emit(track: str, path: Path, kind: str, label: str, chapter: int) -> None:
+            try:
+                duration = await self.ffmpeg.get_duration(path)
+            except Exception:
+                duration = 0.0
+            clip_id = path.stem  # already URL-safe alnum + underscore
+            result["tracks"][track].append(
+                {
+                    "id": clip_id,
+                    "kind": kind,
+                    "chapter": chapter,
+                    "filename": path.name,
+                    "duration_seconds": round(duration, 3),
+                    "url": f"/storage/{rel_dir}/{path.name}",
+                    "label": label,
+                }
+            )
+
+        # Voice + SFX clips live directly under the audiobook dir.
+        for child in sorted(abs_dir.iterdir()):
+            if not child.is_file() or child.suffix != ".wav":
+                continue
+            for kind, regex in compiled:
+                m = regex.match(child.name)
+                if not m:
+                    continue
+                ch = int(m.group("ch"))
+                if kind == "voice_single":
+                    label = f"Ch {ch + 1} · chunk {int(m.group('i')) + 1}"
+                    await _emit("voice", child, kind, label, ch)
+                elif kind == "voice_multi":
+                    label = (
+                        f"Ch {ch + 1} · block {int(m.group('b')) + 1}"
+                        f" · chunk {int(m.group('j')) + 1}"
+                    )
+                    await _emit("voice", child, kind, label, ch)
+                elif kind == "sfx":
+                    label = f"Ch {ch + 1} · SFX {int(m.group('b')) + 1}"
+                    await _emit("sfx", child, kind, label, ch)
+                break
+
+        # Per-chapter music tracks are written to ``music/``.
+        music_dir = abs_dir / "music"
+        if music_dir.exists():
+            music_re = _re_compile(r"^ch(?P<ch>\d{3})_music\.wav$")
+            for child in sorted(music_dir.iterdir()):
+                m = music_re.match(child.name)
+                if not m:
+                    continue
+                ch = int(m.group("ch"))
+                # Use a path-aware id so it doesn't collide with voice clip stems.
+                try:
+                    duration = await self.ffmpeg.get_duration(child)
+                except Exception:
+                    duration = 0.0
+                result["tracks"]["music"].append(
+                    {
+                        "id": f"music_{child.stem}",
+                        "kind": "music",
+                        "chapter": ch,
+                        "filename": child.name,
+                        "duration_seconds": round(duration, 3),
+                        "url": f"/storage/{rel_dir}/music/{child.name}",
+                        "label": f"Ch {ch + 1} · music",
+                    }
+                )
+
+        # Sort each track by chapter then filename for stable display.
+        for tk in result["tracks"].values():
+            tk.sort(key=lambda c: (c["chapter"], c["filename"]))
+
+        return result
+
+    # ══════════════════════════════════════════════════════════════════════
     # TTS chunk synthesis with retry + loudnorm
     # ══════════════════════════════════════════════════════════════════════
 
@@ -608,6 +735,10 @@ class AudiobookService:
         # gain offsets without threading them through every helper.
         # Default = passthrough.
         mix = track_mix or {}
+        # Stash the full mix dict so the concat path can read
+        # ``track_mix.clips`` per-clip overrides without changing
+        # signatures down the call stack.
+        self._track_mix_full = mix
         self._voice_gain_db = float(mix.get("voice_db", 0.0) or 0.0)
         self._music_gain_db = float(mix.get("music_db", 0.0) or 0.0)
         self._sfx_gain_db = float(mix.get("sfx_db", 0.0) or 0.0)
@@ -1598,10 +1729,88 @@ class AudiobookService:
                 raise RuntimeError(f"Failed to generate silence: {stderr_text[:300]}")
             silence_files[dur] = sil_path
 
+        # Per-clip overrides from ``track_mix.clips`` (v0.25.0). The
+        # editor writes ``{clip_id: {gain_db, mute}}`` entries; we
+        # apply them here by either skipping the clip (mute) or
+        # writing a gain-adjusted copy and substituting the path.
+        clip_overrides: dict[str, dict[str, Any]] = {}
+        try:
+            mix = getattr(self, "_track_mix_full", None) or {}
+            clip_overrides = dict(mix.get("clips") or {})
+        except Exception:
+            clip_overrides = {}
+
+        adjusted_dir = output.parent / "_adjusted"
+        if clip_overrides:
+            adjusted_dir.mkdir(parents=True, exist_ok=True)
+
+        async def _apply_clip_override(chunk: AudioChunk) -> Path | None:
+            override = clip_overrides.get(chunk.path.stem)
+            if not override:
+                return chunk.path
+            if override.get("mute"):
+                # Substitute a silence file the length of this chunk so
+                # downstream timing stays exact.
+                try:
+                    dur = await self.ffmpeg.get_duration(chunk.path)
+                except Exception:
+                    dur = 0.0
+                if dur <= 0:
+                    return None
+                sil = adjusted_dir / f"{chunk.path.stem}_muted.wav"
+                proc = await asyncio.create_subprocess_exec(
+                    "ffmpeg",
+                    "-y",
+                    "-f",
+                    "lavfi",
+                    "-i",
+                    "anullsrc=r=24000:cl=mono",
+                    "-t",
+                    f"{dur:.3f}",
+                    "-c:a",
+                    "pcm_s16le",
+                    str(sil),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                await proc.communicate()
+                return sil if sil.exists() else chunk.path
+            gain_db = float(override.get("gain_db", 0.0) or 0.0)
+            if abs(gain_db) < 0.01:
+                return chunk.path
+            adjusted = adjusted_dir / f"{chunk.path.stem}_g{int(gain_db * 10):+d}.wav"
+            if not adjusted.exists():
+                proc = await asyncio.create_subprocess_exec(
+                    "ffmpeg",
+                    "-y",
+                    "-i",
+                    str(chunk.path),
+                    "-af",
+                    f"volume={gain_db:+.2f}dB",
+                    "-c:a",
+                    "pcm_s16le",
+                    str(adjusted),
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE,
+                )
+                _, err = await proc.communicate()
+                if proc.returncode != 0:
+                    log.warning(
+                        "audiobook.clip_override.failed",
+                        clip_id=chunk.path.stem,
+                        gain_db=gain_db,
+                        stderr=err.decode("utf-8", errors="replace")[:200],
+                    )
+                    return chunk.path
+            return adjusted
+
         # Build concat list with context-aware silence
         lines: list[str] = []
         for i, chunk in enumerate(inline_chunks):
-            safe_path = str(chunk.path).replace("\\", "/")
+            effective_path = await _apply_clip_override(chunk)
+            if effective_path is None:
+                continue
+            safe_path = str(effective_path).replace("\\", "/")
             lines.append(f"file '{safe_path}'")
 
             if i < len(inline_chunks) - 1:

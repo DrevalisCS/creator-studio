@@ -62,6 +62,18 @@ const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 // Error class
 // ---------------------------------------------------------------------------
 
+// AudiobookClip — emitted by GET /audiobooks/{id}/clips, consumed
+// by the AudiobookEditor timeline (v0.25.0).
+export interface AudiobookClip {
+  id: string;
+  kind: 'voice_single' | 'voice_multi' | 'sfx' | 'music';
+  chapter: number;
+  filename: string;
+  duration_seconds: number;
+  url: string;
+  label: string;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -768,10 +780,10 @@ export const audiobooks = {
       {},
     ),
 
-  // Re-render the audio mix with new per-track gain offsets.
-  // Reuses every cached TTS / SFX / image asset; only re-runs concat
-  // + ducking + master loudnorm so it completes in seconds even on
-  // a multi-hour audiobook.
+  // Re-render the audio mix with new per-track gain offsets +
+  // (v0.25.0) per-clip overrides. Reuses every cached TTS / SFX /
+  // image asset; only re-runs concat + ducking + master loudnorm
+  // so it completes in seconds even on a multi-hour audiobook.
   remix: (
     audiobookId: string,
     payload: {
@@ -781,13 +793,26 @@ export const audiobooks = {
       voice_mute?: boolean;
       music_mute?: boolean;
       sfx_mute?: boolean;
+      clips?: Record<string, { gain_db?: number; mute?: boolean }>;
     },
   ) =>
     post<{
       message: string;
       audiobook_id: string;
-      track_mix: Record<string, number | boolean>;
+      track_mix: Record<string, number | boolean | object>;
     }>(`/api/v1/audiobooks/${audiobookId}/remix`, payload),
+
+  // List every cached audio clip — drives the multi-track timeline
+  // editor (v0.25.0).
+  listClips: (audiobookId: string) =>
+    get<{
+      tracks: {
+        voice: AudiobookClip[];
+        sfx: AudiobookClip[];
+        music: AudiobookClip[];
+      };
+      overrides: Record<string, { gain_db?: number; mute?: boolean }>;
+    }>(`/api/v1/audiobooks/${audiobookId}/clips`),
 
   createAI: (data: {
     concept: string;
