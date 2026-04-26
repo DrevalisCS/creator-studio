@@ -801,21 +801,74 @@ class EdgeTTSProvider:
 # ---------------------------------------------------------------------------
 
 # Surfaced when the ElevenLabs API node returns
-# ``Unauthorized: Please login first to use this node.`` even though
-# the user is logged into ComfyUI in their browser. Browser session
-# auth is per-tab; the worker's HTTP request is a separate session
-# and needs its own credentials.
+# ``Unauthorized: Please login first to use this node.``
+# Two distinct ComfyUI-Org credentials exist; the user has to put
+# the *right one* in the right place:
+#   - ``api_key_comfy_org``   long-lived string, ``comfyui-XXX…``
+#                             form. Issued from comfy.org dashboard
+#                             → "API Keys" → Create. Tied to the
+#                             account's credit balance.
+#   - ``auth_token_comfy_org`` short-lived JWT (3 dot-separated
+#                             base64 segments). Issued by Google
+#                             SSO; rotates hourly. Browser-session
+#                             only — not usable from a worker.
+# v0.23.5 auto-detects the token shape and only sends it as the
+# matching field; sending both as the same string actively breaks
+# auth when the node validates the wrong one first.
 _AUTH_HINT = (
-    "ComfyUI ElevenLabs node refused authentication: {raw}. "
-    "Being logged into ComfyUI in your browser does NOT authenticate "
-    "Drevalis's worker — the worker submits prompts as a separate HTTP "
-    "session. Fix: open ComfyUI in your browser, F12 → Application → "
-    "Local Storage → http://<comfyui-host>:8188, copy the value of "
-    "``comfy_api_token`` (or similar JWT-looking key), then paste it "
-    "into Drevalis Settings → ComfyUI Servers → edit your server → "
-    "API Key. Drevalis will send it as both ``api_key_comfy_org`` and "
-    "``auth_token_comfy_org`` plus an Authorization: Bearer header."
+    "ComfyUI API node refused authentication: {raw}. "
+    "Most common cause: the token in Settings → ComfyUI Servers → "
+    "API Key is not the same identity that holds the credits. "
+    "Action: at https://platform.comfy.org → Account → API Keys, "
+    "create a NEW api key while logged in with the SAME account "
+    "that has credits, copy the ``comfyui-XXX...`` value, paste it "
+    "into the API Key field, save, retry. If that still fails the "
+    "key may need its own credit topup (some accounts pool credits, "
+    "some require per-key topups — check the dashboard)."
 )
+
+
+def _classify_comfyui_token(token: str) -> str:
+    """Decide whether a token looks like an ``api_key_comfy_org``
+    (long-lived dashboard key) or an ``auth_token_comfy_org`` (JWT).
+
+    Returns one of: ``"api_key"``, ``"auth_token"``, ``"unknown"``.
+    """
+    if not token:
+        return "unknown"
+    s = token.strip()
+    # JWT shape: three base64url segments separated by dots, each
+    # at least 5 chars, often starting with eyJ...
+    if s.count(".") == 2 and s.startswith("eyJ"):
+        return "auth_token"
+    # ComfyUI api keys conventionally have a ``comfyui-`` /
+    # ``comfy-`` prefix. Accept anything else without dots as a key.
+    if s.startswith(("comfyui-", "comfy-")):
+        return "api_key"
+    if "." not in s and len(s) >= 16:
+        return "api_key"
+    return "unknown"
+
+
+def _build_comfyui_auth_extra_data(token: str | None) -> dict[str, str]:
+    """Build the ``extra_data`` dict for a ComfyUI ``/prompt``.
+
+    Only inserts the field whose shape the token matches, so the
+    node's auth check doesn't fail on the wrong-shape value and
+    short-circuit before ever looking at the right one. When the
+    shape is ambiguous, sends both (same as v0.23.3) — better than
+    sending neither.
+    """
+    if not token:
+        return {}
+    kind = _classify_comfyui_token(token)
+    if kind == "api_key":
+        return {"api_key_comfy_org": token}
+    if kind == "auth_token":
+        return {"auth_token_comfy_org": token}
+    # Unknown shape — fall back to sending both so SOMETHING gets
+    # through. Logged at the call site so the operator can tell.
+    return {"api_key_comfy_org": token, "auth_token_comfy_org": token}
 
 
 class ComfyUIElevenLabsTTSProvider:
@@ -934,18 +987,13 @@ class ComfyUIElevenLabsTTSProvider:
         )
         client = ComfyUIClient(base_url=server_url, api_key=server_key)
         try:
-            extra_data: dict[str, Any] = {}
-            if server_key:
-                # ComfyUI's API-node auth is checked via TWO separate
-                # ``extra_data`` fields depending on the node's
-                # implementation: ``api_key_comfy_org`` (paid API key)
-                # and ``auth_token_comfy_org`` (browser session JWT).
-                # The Drevalis settings UI only exposes ONE field, so
-                # we send the same value as both — whichever the
-                # node checks will be satisfied. The Bearer header on
-                # the HTTP request itself is set by ComfyUIClient.
-                extra_data["api_key_comfy_org"] = server_key
-                extra_data["auth_token_comfy_org"] = server_key
+            extra_data = dict(_build_comfyui_auth_extra_data(server_key))
+            kind = _classify_comfyui_token(server_key) if server_key else "unknown"
+            log.debug(
+                "comfyui_elevenlabs.auth",
+                token_kind=kind,
+                fields_sent=list(extra_data.keys()),
+            )
             prompt_id = await client.queue_prompt(workflow, extra_data=extra_data)
 
             # Poll for completion (exponential backoff)
@@ -1246,14 +1294,15 @@ class ComfyUIElevenLabsSoundEffectsProvider:
 
         client = ComfyUIClient(base_url=self.comfyui_base_url, api_key=self.comfyui_api_key)
         try:
-            extra_data: dict[str, Any] = {}
-            if self.comfyui_api_key:
-                # See ComfyUIElevenLabsTTSProvider for the rationale —
-                # API nodes check either ``api_key_comfy_org`` or
-                # ``auth_token_comfy_org`` depending on the node, so
-                # we send the single configured token as both.
-                extra_data["api_key_comfy_org"] = self.comfyui_api_key
-                extra_data["auth_token_comfy_org"] = self.comfyui_api_key
+            extra_data = dict(_build_comfyui_auth_extra_data(self.comfyui_api_key))
+            kind = (
+                _classify_comfyui_token(self.comfyui_api_key) if self.comfyui_api_key else "unknown"
+            )
+            log.debug(
+                "comfyui_elevenlabs_sfx.auth",
+                token_kind=kind,
+                fields_sent=list(extra_data.keys()),
+            )
             prompt_id = await client.queue_prompt(workflow, extra_data=extra_data)
 
             delay = 1.0

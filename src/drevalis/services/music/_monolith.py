@@ -345,10 +345,9 @@ class MusicService:
             api_key=self.comfyui_api_key,
         )
         try:
-            extra_data: dict[str, str] = {}
-            if self.comfyui_api_key:
-                extra_data["api_key_comfy_org"] = self.comfyui_api_key
-                extra_data["auth_token_comfy_org"] = self.comfyui_api_key
+            from drevalis.services.tts._monolith import _build_comfyui_auth_extra_data
+
+            extra_data: dict[str, str] = dict(_build_comfyui_auth_extra_data(self.comfyui_api_key))
 
             try:
                 prompt_id = await client.queue_prompt(workflow, extra_data=extra_data or None)
