@@ -61,6 +61,25 @@ class Audiobook(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         NUMERIC, nullable=False, server_default="-14.0"
     )
 
+    # ── Track-level mix settings (v0.24.0) ────────────────────────────
+    # Per-track gain offsets applied at remix time. Defaults to a
+    # passthrough mix so existing audiobooks behave identically until
+    # the user explicitly tweaks them. Schema (JSONB):
+    #   {
+    #     "voice_db":   <float>,    # gain offset for voice tracks
+    #     "music_db":   <float>,    # gain offset for music bed
+    #     "sfx_db":     <float>,    # gain offset for SFX clips
+    #     "voice_mute": <bool>,     # mute voice (debug)
+    #     "music_mute": <bool>,     # mute music
+    #     "sfx_mute":   <bool>,     # mute SFX
+    #     "clips":      {           # optional per-clip overrides
+    #        "<clip_id>": { "gain_db": float, "mute": bool }
+    #     }
+    #   }
+    # The Audiobook Editor UI (v0.25.0) writes per-clip overrides
+    # under "clips"; v0.24.0 only consumes the top-level fields.
+    track_mix: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+
     # Audio controls
     speed: Mapped[Decimal] = mapped_column(NUMERIC, nullable=False, server_default="1.0")
     pitch: Mapped[Decimal] = mapped_column(NUMERIC, nullable=False, server_default="1.0")

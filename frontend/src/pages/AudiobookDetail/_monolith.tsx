@@ -168,6 +168,27 @@ function AudiobookDetail() {
   // a freshly-rendered preview that lives at the same URL.
   const [musicPreviewBust, setMusicPreviewBust] = useState(0);
 
+  // Mix Controls (v0.24.0). Local slider state mirrors the
+  // ``track_mix`` JSONB field on the audiobook record. Saved on
+  // Remix click via ``audiobooksApi.remix``.
+  type MixState = {
+    voice_db: number;
+    music_db: number;
+    sfx_db: number;
+    voice_mute: boolean;
+    music_mute: boolean;
+    sfx_mute: boolean;
+  };
+  const [mixState, setMixState] = useState<MixState>({
+    voice_db: 0,
+    music_db: 0,
+    sfx_db: 0,
+    voice_mute: false,
+    music_mute: false,
+    sfx_mute: false,
+  });
+  const [remixing, setRemixing] = useState(false);
+
   // Voice editing
   const [voiceDialogOpen, setVoiceDialogOpen] = useState(false);
   const [voiceProfiles, setVoiceProfiles] = useState<VoiceProfile[]>([]);
@@ -240,6 +261,20 @@ function AudiobookDetail() {
       setSettingsCaptionStyle(audiobook.caption_style_preset ?? 'youtube_highlight');
     }
   }, [settingsDialogOpen, audiobook]);
+
+  // Seed Mix Controls sliders from the persisted track_mix.
+  useEffect(() => {
+    if (!audiobook) return;
+    const tm = audiobook.track_mix || {};
+    setMixState({
+      voice_db: tm.voice_db ?? 0,
+      music_db: tm.music_db ?? 0,
+      sfx_db: tm.sfx_db ?? 0,
+      voice_mute: tm.voice_mute ?? false,
+      music_mute: tm.music_mute ?? false,
+      sfx_mute: tm.sfx_mute ?? false,
+    });
+  }, [audiobook?.id, audiobook?.track_mix]);
 
   // Init voice casting from audiobook data when dialog opens.
   // Reconcile casting keys (may use full character names like "Aldric the Undying")
@@ -478,6 +513,25 @@ function AudiobookDetail() {
     }
   };
 
+  // ── Remix (apply Mix Controls without re-running TTS) ──────────────
+  const handleRemix = async () => {
+    if (!audiobookId) return;
+    setRemixing(true);
+    try {
+      await audiobooksApi.remix(audiobookId, mixState);
+      toast.success('Remix queued', {
+        description: 'Reusing cached audio — should complete in seconds.',
+      });
+      // Status flips to ``generating`` server-side; the existing
+      // polling loop picks it up automatically.
+      void fetchAudiobook();
+    } catch (err) {
+      toast.error('Failed to enqueue remix', { description: String(err) });
+    } finally {
+      setRemixing(false);
+    }
+  };
+
   // ── Cancel in-progress generation ──────────────────────────────────
   // Sets a Redis flag the worker polls between major steps. Actual
   // stop lands at the next boundary (typically <30s during TTS,
@@ -673,6 +727,17 @@ function AudiobookDetail() {
           </div>
 
           <div className="flex items-center gap-2">
+            {isDone && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => navigate(`/audiobooks/${audiobook.id}/edit`)}
+                title="Open the multi-track audiobook editor"
+              >
+                <Edit3 size={14} />
+                Edit
+              </Button>
+            )}
             <Button
               variant="secondary"
               size="sm"
@@ -920,6 +985,116 @@ function AudiobookDetail() {
                     MP4
                   </a>
                 )}
+              </div>
+            </Card>
+          )}
+
+          {/* Mix Controls (v0.24.0) — per-track gain offsets that
+              can be remixed without re-running TTS / image gen.
+              Sliders are wired live to local state; "Remix" enqueues
+              the worker job that re-renders just the audio mix. */}
+          {isDone && (
+            <Card padding="md">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-semibold text-txt-primary">Mix Controls</h3>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => navigate(`/audiobooks/${audiobook.id}/edit`)}
+                  title="Open the multi-track audiobook editor"
+                >
+                  Open editor
+                </Button>
+              </div>
+              <div className="space-y-3 text-xs">
+                {(['voice', 'music', 'sfx'] as const).map((track) => {
+                  const dbKey = `${track}_db` as const;
+                  const muteKey = `${track}_mute` as const;
+                  const value = mixState[dbKey] ?? 0;
+                  const muted = mixState[muteKey] ?? false;
+                  const labels: Record<typeof track, string> = {
+                    voice: 'Voice',
+                    music: 'Music',
+                    sfx: 'SFX',
+                  };
+                  return (
+                    <div key={track}>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-txt-secondary">
+                          {labels[track]}
+                        </span>
+                        <span className="tabular-nums text-txt-primary">
+                          {muted ? 'muted' : `${value > 0 ? '+' : ''}${value.toFixed(1)} dB`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="range"
+                          min={-20}
+                          max={12}
+                          step={0.5}
+                          value={value}
+                          disabled={muted}
+                          onChange={(e) =>
+                            setMixState((prev) => ({
+                              ...prev,
+                              [dbKey]: parseFloat(e.target.value),
+                            }))
+                          }
+                          className="flex-1 accent-accent disabled:opacity-30"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMixState((prev) => ({
+                              ...prev,
+                              [muteKey]: !prev[muteKey],
+                            }))
+                          }
+                          className={[
+                            'px-2 py-0.5 rounded text-[10px] uppercase tracking-wide font-medium',
+                            muted
+                              ? 'bg-error/15 text-error'
+                              : 'bg-bg-elevated text-txt-tertiary hover:text-txt-primary',
+                          ].join(' ')}
+                          title={muted ? 'Unmute' : 'Mute'}
+                        >
+                          {muted ? 'M' : 'm'}
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="pt-2 border-t border-border flex items-center gap-2">
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    loading={remixing}
+                    onClick={() => void handleRemix()}
+                  >
+                    Remix
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() =>
+                      setMixState({
+                        voice_db: 0,
+                        music_db: 0,
+                        sfx_db: 0,
+                        voice_mute: false,
+                        music_mute: false,
+                        sfx_mute: false,
+                      })
+                    }
+                    title="Reset sliders to passthrough (does not remix)"
+                  >
+                    Reset
+                  </Button>
+                  <p className="text-[11px] text-txt-tertiary ml-auto">
+                    Reuses cached audio — completes in seconds.
+                  </p>
+                </div>
               </div>
             </Card>
           )}

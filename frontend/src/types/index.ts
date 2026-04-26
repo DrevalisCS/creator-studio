@@ -577,6 +577,18 @@ export interface Audiobook {
   caption_style_preset: string | null;
   image_generation_enabled: boolean;
   youtube_channel_id: string | null;
+  // Per-track mix offsets persisted on the audiobook. v0.24.0 only
+  // uses the top-level keys; the editor (v0.25.0) hangs per-clip
+  // overrides under ``clips``.
+  track_mix?: {
+    voice_db?: number;
+    music_db?: number;
+    sfx_db?: number;
+    voice_mute?: boolean;
+    music_mute?: boolean;
+    sfx_mute?: boolean;
+    clips?: Record<string, { gain_db?: number; mute?: boolean }>;
+  } | null;
   created_at: string;
   updated_at: string;
 }

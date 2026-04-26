@@ -161,6 +161,9 @@ class AudiobookResponse(BaseModel):
     caption_style_preset: str | None
     image_generation_enabled: bool
     youtube_channel_id: UUID | None = None
+    # Per-track gain offsets + per-clip overrides; see Audiobook
+    # ORM model docstring for the schema.
+    track_mix: Any | None = None
     created_at: datetime
     updated_at: datetime
 

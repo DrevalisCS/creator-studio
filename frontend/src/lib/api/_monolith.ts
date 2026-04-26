@@ -768,6 +768,27 @@ export const audiobooks = {
       {},
     ),
 
+  // Re-render the audio mix with new per-track gain offsets.
+  // Reuses every cached TTS / SFX / image asset; only re-runs concat
+  // + ducking + master loudnorm so it completes in seconds even on
+  // a multi-hour audiobook.
+  remix: (
+    audiobookId: string,
+    payload: {
+      voice_db?: number;
+      music_db?: number;
+      sfx_db?: number;
+      voice_mute?: boolean;
+      music_mute?: boolean;
+      sfx_mute?: boolean;
+    },
+  ) =>
+    post<{
+      message: string;
+      audiobook_id: string;
+      track_mix: Record<string, number | boolean>;
+    }>(`/api/v1/audiobooks/${audiobookId}/remix`, payload),
+
   createAI: (data: {
     concept: string;
     characters: Array<{

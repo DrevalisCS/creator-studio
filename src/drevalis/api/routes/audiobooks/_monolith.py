@@ -1091,6 +1091,74 @@ async def regenerate_audiobook(
     }
 
 
+class TrackMixPayload(BaseModel):
+    """User-tweakable per-track mix offsets.
+
+    All fields optional; missing fields fall back to the existing
+    audiobook record value (or passthrough defaults).
+    """
+
+    voice_db: float | None = Field(default=None, ge=-30, le=20)
+    music_db: float | None = Field(default=None, ge=-30, le=20)
+    sfx_db: float | None = Field(default=None, ge=-30, le=20)
+    voice_mute: bool | None = None
+    music_mute: bool | None = None
+    sfx_mute: bool | None = None
+
+
+@router.post(
+    "/{audiobook_id}/remix",
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="Re-render the audio mix with new track gains (no TTS / image regen)",
+)
+async def remix_audiobook(
+    audiobook_id: UUID,
+    payload: TrackMixPayload,
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Persist new ``track_mix`` settings and enqueue a remix job.
+
+    The remix path reuses every cached TTS / SFX / image asset and
+    only re-runs the concat + ducking + master loudnorm steps, so it
+    completes in seconds even on a multi-hour audiobook.
+    """
+    repo = AudiobookRepository(db)
+    audiobook = await repo.get_by_id(audiobook_id)
+    if audiobook is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Audiobook {audiobook_id} not found",
+        )
+
+    # Merge new fields into the existing track_mix; never wipe
+    # per-clip overrides the editor will store under ``clips``.
+    current_mix: dict[str, Any] = dict(audiobook.track_mix or {})
+    delta = payload.model_dump(exclude_none=True)
+    current_mix.update(delta)
+
+    await repo.update(
+        audiobook_id,
+        status="generating",
+        error_message=None,
+        track_mix=current_mix,
+    )
+    await db.commit()
+
+    arq = get_arq_pool()
+    await arq.enqueue_job("generate_audiobook", str(audiobook_id), False)
+
+    log.info(
+        "audiobook.remix.enqueued",
+        audiobook_id=str(audiobook_id),
+        applied=list(delta.keys()),
+    )
+    return {
+        "message": "Remix enqueued",
+        "audiobook_id": str(audiobook_id),
+        "track_mix": current_mix,
+    }
+
+
 # ── Delete audiobook ────────────────────────────────────────────────────
 
 

@@ -576,6 +576,7 @@ class AudiobookService:
         image_generation_enabled: bool = False,
         per_chapter_music: bool = False,
         chapter_moods: list[str] | None = None,
+        track_mix: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Generate an audiobook from text.
 
@@ -601,6 +602,23 @@ class AudiobookService:
                 await self.comfyui_service._pool.sync_from_db(self.db_session)
             except Exception:
                 log.warning("audiobook.comfyui_pool_refresh_failed", exc_info=True)
+
+        # Stash track_mix on the instance so the mix filter chains
+        # (in ``_add_music`` / ``_add_chapter_music``) can read user
+        # gain offsets without threading them through every helper.
+        # Default = passthrough.
+        mix = track_mix or {}
+        self._voice_gain_db = float(mix.get("voice_db", 0.0) or 0.0)
+        self._music_gain_db = float(mix.get("music_db", 0.0) or 0.0)
+        self._sfx_gain_db = float(mix.get("sfx_db", 0.0) or 0.0)
+        self._voice_muted = bool(mix.get("voice_mute", False))
+        self._music_muted = bool(mix.get("music_mute", False))
+        self._sfx_muted = bool(mix.get("sfx_mute", False))
+        # Music user gain stacks on top of the per-call ``volume_db``
+        # arg (which already represents the music bed level), so a
+        # +3 dB user gain on top of -14 dB call value = -11 dB.
+        if self._music_gain_db:
+            music_volume_db = music_volume_db + self._music_gain_db
 
         # Handle legacy generate_video flag
         if generate_video and output_format == "audio_only":
@@ -1955,6 +1973,17 @@ class AudiobookService:
                     if "238:232" in workflow:
                         workflow["238:232"]["inputs"]["width"] = video_width
                         workflow["238:232"]["inputs"]["height"] = video_height
+                    # Drop sampler steps from the template's 20 → 10
+                    # by default. Qwen-Image-2512 with the Auraflow
+                    # shift produces production-quality output at 10
+                    # steps; 20 was safety-padded and roughly doubled
+                    # generation time. ``AUDIOBOOK_QWEN_STEPS`` env
+                    # var lets power users dial it back up.
+                    import os as _os
+
+                    qwen_steps = int(_os.environ.get("AUDIOBOOK_QWEN_STEPS", "10"))
+                    if "238:230" in workflow:
+                        workflow["238:230"]["inputs"]["steps"] = qwen_steps
 
                     async with self.comfyui_service._pool.acquire() as (_, client):
                         prompt_id = await client.queue_prompt(workflow)
@@ -2125,6 +2154,26 @@ class AudiobookService:
             volume_db=volume_db,
         )
 
+        # Mix chain rebuilt for v0.24.0 — previously voice ended up
+        # ~6 dB quieter than music because:
+        #   1. ``amix`` defaults to ``normalize=1`` which scales each
+        #      input by 1/N. With 2 inputs voice was halved.
+        #   2. The ``volume_db`` arg was applied to BGM but voice got
+        #      no boost, so the implicit -6 dB from amix-normalize
+        #      dragged voice well below intelligibility.
+        # New chain:
+        #   - Voice: optional user gain (default 0 dB), then loudnorm
+        #     pre-mix to -16 LUFS for consistent broadcast level.
+        #   - Music: user volume_db (default -14 dB) then sidechain
+        #     ducked under voice with a more aggressive ducker
+        #     (threshold lower, ratio higher) so it actually gets out
+        #     of the way during dialogue.
+        #   - amix: normalize=0 preserves original gains; voice goes
+        #     through unchanged at -16 LUFS, music sits below.
+        #   - Final loudnorm sets the master to broadcast standard so
+        #     listeners don't have to ride the volume knob.
+        voice_gain_db = float(getattr(self, "_voice_gain_db", 0.0) or 0.0)
+        sfx_gain_db = float(getattr(self, "_sfx_gain_db", 0.0) or 0.0)  # noqa: F841 (reserved)
         cmd = [
             "ffmpeg",
             "-y",
@@ -2134,12 +2183,19 @@ class AudiobookService:
             str(music_path),
             "-filter_complex",
             (
+                f"[0:a]volume={voice_gain_db:+.1f}dB,"
+                "loudnorm=I=-16:TP=-1.5:LRA=11[voice];"
                 f"[1:a]volume={volume_db}dB[bgm];"
-                "[bgm][0:a]sidechaincompress=threshold=0.02:ratio=6:attack=200:release=1000[ducked];"
-                "[0:a][ducked]amix=inputs=2:duration=first:dropout_transition=2[out]"
+                "[bgm][voice]sidechaincompress=threshold=0.05:ratio=10:attack=20:release=400[ducked];"
+                "[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[mixed];"
+                "[mixed]loudnorm=I=-16:TP=-1.5:LRA=11[out]"
             ),
             "-map",
             "[out]",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
             "-c:a",
             "pcm_s16le",
             str(output_path),
@@ -2389,7 +2445,14 @@ class AudiobookService:
                 )
                 return audio_path
 
-        # Mix combined music under voiceover with sidechain compression
+        # Mix combined music under voiceover. See ``_add_music`` for
+        # the rationale behind the filter chain — same gain-staging
+        # approach (per-track loudnorm + sidechain ducker + amix
+        # normalize=0 + master loudnorm) so the chapter-music path
+        # produces the same broadcast-level output as the global
+        # music path. Voice gain pulled from instance attribute when
+        # set by an explicit remix call.
+        voice_gain_db = float(getattr(self, "_voice_gain_db", 0.0) or 0.0)
         cmd = [
             "ffmpeg",
             "-y",
@@ -2399,12 +2462,19 @@ class AudiobookService:
             str(combined_music),
             "-filter_complex",
             (
+                f"[0:a]volume={voice_gain_db:+.1f}dB,"
+                "loudnorm=I=-16:TP=-1.5:LRA=11[voice];"
                 f"[1:a]volume={volume_db}dB[bgm];"
-                "[bgm][0:a]sidechaincompress=threshold=0.02:ratio=6:attack=200:release=1000[ducked];"
-                "[0:a][ducked]amix=inputs=2:duration=first:dropout_transition=2[out]"
+                "[bgm][voice]sidechaincompress=threshold=0.05:ratio=10:attack=20:release=400[ducked];"
+                "[voice][ducked]amix=inputs=2:duration=first:dropout_transition=2:normalize=0[mixed];"
+                "[mixed]loudnorm=I=-16:TP=-1.5:LRA=11[out]"
             ),
             "-map",
             "[out]",
+            "-ar",
+            "44100",
+            "-ac",
+            "2",
             "-c:a",
             "pcm_s16le",
             str(output_path),

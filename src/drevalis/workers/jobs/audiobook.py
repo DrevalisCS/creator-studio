@@ -385,6 +385,7 @@ async def generate_audiobook(
                 video_orientation=audiobook.video_orientation,
                 caption_style_preset=audiobook.caption_style_preset,
                 image_generation_enabled=audiobook.image_generation_enabled,
+                track_mix=getattr(audiobook, "track_mix", None),
             )
 
             await ab_repo.update(
