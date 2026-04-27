@@ -64,8 +64,7 @@ class TestChunkCacheHash:
         baseline = _chunk_cache_hash(**_BASE_INPUTS)
         mutated = {**_BASE_INPUTS, field: new_value}
         assert _chunk_cache_hash(**mutated) != baseline, (
-            f"Changing {field!r} did not change the cache hash — stale audio "
-            "would be reused."
+            f"Changing {field!r} did not change the cache hash — stale audio would be reused."
         )
 
     def test_pipeline_version_affects_hash(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -250,9 +249,7 @@ class TestLegacyChunkPurge:
 
 
 class TestInvalidateChapterChunks:
-    async def test_invalidates_both_single_and_block_voice_chunks(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_invalidates_both_single_and_block_voice_chunks(self, tmp_path: Path) -> None:
         from uuid import uuid4
 
         ab_id = uuid4()

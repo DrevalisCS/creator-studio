@@ -81,12 +81,7 @@ class TestScoreChapterSplit:
 
 class TestMarkdownDetection:
     def test_two_long_chapters_split(self) -> None:
-        text = (
-            "## Chapter One\n\n"
-            + "A" * 1500
-            + "\n\n## Chapter Two\n\n"
-            + "B" * 1500
-        )
+        text = "## Chapter One\n\n" + "A" * 1500 + "\n\n## Chapter Two\n\n" + "B" * 1500
         chs = _svc()._parse_chapters(text)
         assert [c["title"] for c in chs] == ["Chapter One", "Chapter Two"]
 
@@ -116,24 +111,14 @@ class TestMarkdownDetection:
 
 class TestProseChapterDetection:
     def test_chapter_n_arabic(self) -> None:
-        text = (
-            "Chapter 1: Beginning\n\n"
-            + "A" * 1500
-            + "\n\nChapter 2: Middle\n\n"
-            + "B" * 1500
-        )
+        text = "Chapter 1: Beginning\n\n" + "A" * 1500 + "\n\nChapter 2: Middle\n\n" + "B" * 1500
         chs = _svc()._parse_chapters(text)
         assert len(chs) == 2
         assert chs[0]["title"].lower().startswith("chapter 1")
         assert chs[1]["title"].lower().startswith("chapter 2")
 
     def test_chapter_word_form(self) -> None:
-        text = (
-            "Chapter One\n\n"
-            + "A" * 1500
-            + "\n\nChapter Two\n\n"
-            + "B" * 1500
-        )
+        text = "Chapter One\n\n" + "A" * 1500 + "\n\nChapter Two\n\n" + "B" * 1500
         chs = _svc()._parse_chapters(text)
         assert len(chs) == 2
 
@@ -144,7 +129,8 @@ class TestProseChapterDetection:
         text = (
             "She paused at the porch. " + "A" * 600 + "\n\n"
             'He nodded. "Chapter five was a disaster," she said.\n\n'
-            + "B" * 600 + "\n\n"
+            + "B" * 600
+            + "\n\n"
             + "C" * 600
         )
         chs = _svc()._parse_chapters(text)
@@ -157,24 +143,14 @@ class TestProseChapterDetection:
 
 class TestRomanNumeralDetection:
     def test_double_letter_romans_split(self) -> None:
-        text = (
-            "II.\n\n"
-            + "A" * 1500
-            + "\n\nIII.\n\n"
-            + "B" * 1500
-        )
+        text = "II.\n\n" + "A" * 1500 + "\n\nIII.\n\n" + "B" * 1500
         chs = _svc()._parse_chapters(text)
         assert len(chs) == 2
 
     def test_lone_capital_i_does_not_split(self) -> None:
         # A single-letter ``I`` on its own line was the false-positive
         # case the brief flagged. Length-2 minimum locks this out.
-        text = (
-            "I.\n\n"
-            + "A" * 1500
-            + "\n\nI.\n\n"
-            + "B" * 1500
-        )
+        text = "I.\n\n" + "A" * 1500 + "\n\nI.\n\n" + "B" * 1500
         chs = _svc()._parse_chapters(text)
         # Should NOT split via roman pattern; falls through to
         # single-chapter or some other pattern. Either way: not 2
@@ -188,12 +164,7 @@ class TestRomanNumeralDetection:
 
 class TestAllCapsDetection:
     def test_real_chapter_headers_split(self) -> None:
-        text = (
-            "THE FIRST ENCOUNTER\n\n"
-            + "A" * 1500
-            + "\n\nTHE SECOND ENCOUNTER\n\n"
-            + "B" * 1500
-        )
+        text = "THE FIRST ENCOUNTER\n\n" + "A" * 1500 + "\n\nTHE SECOND ENCOUNTER\n\n" + "B" * 1500
         chs = _svc()._parse_chapters(text)
         assert len(chs) == 2
         assert chs[0]["title"] == "THE FIRST ENCOUNTER"
@@ -217,12 +188,7 @@ class TestAllCapsDetection:
 
     def test_low_alpha_ratio_rejected(self) -> None:
         # An all-caps line that's mostly digits + punctuation.
-        text = (
-            "1234567890 ABC\n\n"
-            + "A" * 1500
-            + "\n\n9876543210 XYZ\n\n"
-            + "B" * 1500
-        )
+        text = "1234567890 ABC\n\n" + "A" * 1500 + "\n\n9876543210 XYZ\n\n" + "B" * 1500
         chs = _svc()._parse_chapters(text)
         # The "1234..." rows fail the 80% alpha guard. So they don't
         # split via all-caps.
@@ -268,11 +234,6 @@ class TestBestCandidateWins:
         # their score is higher (more even segments).
         body_a = "A" * size
         body_b = "B" * size
-        text = (
-            "## Chapter One\n\n"
-            "She walked. " + body_a + "\n\n"
-            "## Chapter Two\n\n"
-            "He ran. " + body_b
-        )
+        text = "## Chapter One\n\nShe walked. " + body_a + "\n\n## Chapter Two\n\nHe ran. " + body_b
         chs = _svc()._parse_chapters(text)
         assert [c["title"] for c in chs] == ["Chapter One", "Chapter Two"]

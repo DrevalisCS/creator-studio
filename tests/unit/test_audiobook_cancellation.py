@@ -196,9 +196,7 @@ class TestAddMusicCancellation:
 
         # Even though we patch _resolve_music_service, the ``await self._cancel()``
         # at the top of _add_music should fire FIRST.
-        monkeypatch.setattr(
-            service, "_resolve_music_service", lambda: _MockMusicService(music)
-        )
+        monkeypatch.setattr(service, "_resolve_music_service", lambda: _MockMusicService(music))
 
         with pytest.raises(asyncio.CancelledError):
             await service._add_music(
@@ -268,9 +266,7 @@ class TestMixOverlaySfxCancellation:
                 overlays=[(1, sfx_chunk)],
             )
 
-        assert captured == [], (
-            "no ffmpeg invocation expected after a pre-set cancel flag"
-        )
+        assert captured == [], "no ffmpeg invocation expected after a pre-set cancel flag"
 
 
 # ── Synthesize-chunk-with-retry uses debounced checker ───────────────────

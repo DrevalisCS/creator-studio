@@ -141,10 +141,7 @@ def _make_voice_chunk(
     chunk_index: int,
     speaker: str = "Narrator",
 ) -> AudioChunk:
-    p = (
-        tmp_path
-        / f"ch{chapter_index:03d}_chunk_{chunk_index:04d}_a1b2c3d4e5f6.wav"
-    )
+    p = tmp_path / f"ch{chapter_index:03d}_chunk_{chunk_index:04d}_a1b2c3d4e5f6.wav"
     p.write_bytes(b"RIFF" + b"\x00" * 1024)
     return AudioChunk(
         path=p,
@@ -189,7 +186,7 @@ class _ConcatRecorder:
                     f'"sample_rate": "{fmt[0]}",'
                     f'"channels": {fmt[1]},'
                     f'"sample_fmt": "{fmt[3]}"'
-                    f'}}]}}'
+                    f"}}]}}"
                 )
                 return _CapturedProc(returncode=0, stdout_bytes=json_payload.encode())
 
@@ -226,9 +223,7 @@ class TestConcatUniformFastPath:
             tmp_path / "_silence_1200ms.wav": (24000, 1, "pcm_s16le", "s16"),
         }
         recorder = _ConcatRecorder(formats)
-        monkeypatch.setattr(
-            asyncio, "create_subprocess_exec", recorder.make_fake_exec()
-        )
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", recorder.make_fake_exec())
 
         ffmpeg = AsyncMock()
         ffmpeg.get_duration = AsyncMock(return_value=2.0)
@@ -279,9 +274,7 @@ class TestConcatUniformFastPath:
             tmp_path / "_silence_1200ms.wav": (24000, 1, "pcm_s16le", "s16"),
         }
         recorder = _ConcatRecorder(formats)
-        monkeypatch.setattr(
-            asyncio, "create_subprocess_exec", recorder.make_fake_exec()
-        )
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", recorder.make_fake_exec())
 
         ffmpeg = AsyncMock()
         ffmpeg.get_duration = AsyncMock(return_value=2.0)
@@ -329,9 +322,7 @@ class TestConcatUniformFastPath:
             tmp_path / "_silence_1200ms.wav": (24000, 1, "pcm_s16le", "s16"),
         }
         recorder = _ConcatRecorder(formats)
-        monkeypatch.setattr(
-            asyncio, "create_subprocess_exec", recorder.make_fake_exec()
-        )
+        monkeypatch.setattr(asyncio, "create_subprocess_exec", recorder.make_fake_exec())
 
         ffmpeg = AsyncMock()
         ffmpeg.get_duration = AsyncMock(return_value=2.0)

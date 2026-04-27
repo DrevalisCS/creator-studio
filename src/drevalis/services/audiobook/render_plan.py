@@ -137,9 +137,7 @@ class RenderPlan:
         chapter_markers: list[ChapterMarker] = []
         for timing in chapter_timings:
             idx = timing.chapter_index
-            title = (
-                chapters[idx]["title"] if 0 <= idx < len(chapters) else f"Chapter {idx + 1}"
-            )
+            title = chapters[idx]["title"] if 0 <= idx < len(chapters) else f"Chapter {idx + 1}"
             chapter_markers.append(
                 ChapterMarker(
                     chapter_idx=idx,
@@ -149,9 +147,7 @@ class RenderPlan:
                 )
             )
 
-        total_ms = (
-            chapter_markers[-1].end_ms if chapter_markers else cursor_ms
-        )
+        total_ms = chapter_markers[-1].end_ms if chapter_markers else cursor_ms
 
         return cls(
             audiobook_id=str(audiobook_id),

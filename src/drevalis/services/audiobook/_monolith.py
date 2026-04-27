@@ -210,10 +210,7 @@ def _build_music_mix_graph(
     the WAV in ``_apply_master_loudnorm``.
     """
     voice_branch = f"[0:a]volume={voice_gain_db:+.1f}dB[voice]"
-    bgm_branch = (
-        f"[1:a]apad=whole_dur={music_pad_ms}ms,"
-        f"volume={music_volume_db}dB[bgm]"
-    )
+    bgm_branch = f"[1:a]apad=whole_dur={music_pad_ms}ms,volume={music_volume_db}dB[bgm]"
     if preset.get("mode") == "static":
         # No sidechain — straight amix at fixed gains.
         return (
@@ -275,6 +272,7 @@ def _resolve_ducking_preset(name: str | None) -> dict[str, Any]:
     )
     return DUCKING_PRESETS[DEFAULT_DUCKING_PRESET]
 
+
 # ── Per-provider TTS concurrency (Task 4) ────────────────────────────────────
 # Within-chapter chunks used to render strictly sequentially even though most
 # providers happily handle parallel requests. This map sets the per-provider
@@ -316,6 +314,7 @@ def _chunk_limit(provider_name: str) -> int:
         if normalised_key in name and (best is None or len(normalised_key) > best[0]):
             best = (len(normalised_key), limit)
     return best[1] if best is not None else _DEFAULT_CHUNK_LIMIT
+
 
 # Substring → concurrency. Keys are matched case-insensitively against the
 # provider's class name (or its ``name`` / ``provider_name`` attribute).
@@ -369,9 +368,7 @@ class CancelChecker:
         except Exception:
             return
         if flag:
-            raise asyncio.CancelledError(
-                f"audiobook cancelled by user (key={self._key})"
-            )
+            raise asyncio.CancelledError(f"audiobook cancelled by user (key={self._key})")
 
 
 def _provider_concurrency(provider_name: str) -> int:
@@ -590,9 +587,7 @@ class AudiobookService:
     # DAG job state mutation helpers (Task 11)
     # ══════════════════════════════════════════════════════════════════════
 
-    async def _dag_chapter(
-        self, chapter_index: int, stage: str, value: _js.State
-    ) -> None:
+    async def _dag_chapter(self, chapter_index: int, stage: str, value: _js.State) -> None:
         """Mutate the chapter stage and fire the persist callback."""
         if not getattr(self, "_job_state", None):
             return
@@ -2031,9 +2026,7 @@ class AudiobookService:
         return mean / (1.0 + cv)
 
     @staticmethod
-    def _filter_markdown_matches(
-        matches: list[re.Match[str]], text: str
-    ) -> list[re.Match[str]]:
+    def _filter_markdown_matches(matches: list[re.Match[str]], text: str) -> list[re.Match[str]]:
         """Markdown-heading post-filter: require blank line above + below.
 
         The regex matches every ``## Foo`` line; a heading inside a
@@ -2096,18 +2089,23 @@ class AudiobookService:
         """
         candidates: list[tuple[float, list[re.Match[str]]]] = []
 
-        for pattern, post_filter in (
-            (self._CHAPTER_PATTERN_MARKDOWN, self._filter_markdown_matches),
-            (self._CHAPTER_PATTERN_PROSE, None),
-            (self._CHAPTER_PATTERN_ROMAN, None),
-            (self._CHAPTER_PATTERN_ALLCAPS, self._filter_allcaps_matches),
+        # Inlined dispatch: post-filters have different signatures
+        # (markdown wants ``(matches, text)``; all-caps wants
+        # ``(matches,)``; the others take no post-filter), so keep the
+        # call sites explicit instead of trying to unify them through a
+        # shared callable.
+        for pattern in (
+            self._CHAPTER_PATTERN_MARKDOWN,
+            self._CHAPTER_PATTERN_PROSE,
+            self._CHAPTER_PATTERN_ROMAN,
+            self._CHAPTER_PATTERN_ALLCAPS,
         ):
             compiled = re.compile(pattern)
             matches = list(compiled.finditer(text))
-            if post_filter is self._filter_markdown_matches:
-                matches = post_filter(matches, text)
-            elif post_filter is self._filter_allcaps_matches:
-                matches = post_filter(matches)
+            if pattern is self._CHAPTER_PATTERN_MARKDOWN:
+                matches = self._filter_markdown_matches(matches, text)
+            elif pattern is self._CHAPTER_PATTERN_ALLCAPS:
+                matches = self._filter_allcaps_matches(matches)
             score = self._score_chapter_split(matches, text)
             if score > 0:
                 candidates.append((score, matches))
@@ -2121,11 +2119,7 @@ class AudiobookService:
                     chapters.append({"title": "Introduction", "text": prologue})
                 for i, m in enumerate(best_matches):
                     start = m.end()
-                    end = (
-                        best_matches[i + 1].start()
-                        if i + 1 < len(best_matches)
-                        else len(text)
-                    )
+                    end = best_matches[i + 1].start() if i + 1 < len(best_matches) else len(text)
                     body = text[start:end].strip()
                     if body:
                         chapters.append(
@@ -2519,7 +2513,7 @@ class AudiobookService:
                 # provider rather than the last-seen iteration values.
                 _block_index: int = i,
                 _speaker: str = speaker,
-                _provider=provider,
+                _provider: Any = provider,
                 _voice_id: str = voice_id,
                 _provider_name: str = provider_name,
                 _model_name: str = model_name,
@@ -2541,8 +2535,7 @@ class AudiobookService:
                     sample_rate=24000,
                 )
                 chunk_path = (
-                    output_dir
-                    / f"ch{chapter_index:03d}_block_{_block_index:04d}"
+                    output_dir / f"ch{chapter_index:03d}_block_{_block_index:04d}"
                     f"_chunk_{j:04d}_{chunk_hash}.wav"
                 )
                 if chunk_path.exists() and chunk_path.stat().st_size > 100:
@@ -4268,10 +4261,7 @@ class AudiobookService:
             "-i",
             str(wav_path),
             "-af",
-            (
-                f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}"
-                ":print_format=json"
-            ),
+            (f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:print_format=json"),
             "-f",
             "null",
             "-",
@@ -4306,10 +4296,7 @@ class AudiobookService:
                 "audiobook.master_loudnorm.measure_failed_falling_back_to_single_pass",
                 rc=proc.returncode,
             )
-            af = (
-                f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}"
-                ":print_format=summary"
-            )
+            af = f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:print_format=summary"
 
         apply_cmd = [
             "ffmpeg",

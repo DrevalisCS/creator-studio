@@ -72,9 +72,7 @@ class TestSplitTextBasics:
         assert _svc()._split_text("   \n\n  ", max_chars=500) == [""]
 
     def test_short_text_is_one_chunk(self) -> None:
-        assert _svc()._split_text("Just a short line.", max_chars=500) == [
-            "Just a short line."
-        ]
+        assert _svc()._split_text("Just a short line.", max_chars=500) == ["Just a short line."]
 
     def test_max_chars_respected(self) -> None:
         # 100 short sentences + max=500 → multiple chunks, none over 500.
@@ -99,8 +97,7 @@ class TestProviderLimitProducesFewerChunks:
         # — anything ≤ 70% of the smaller-limit chunk count satisfies
         # the contract.
         assert len(chunks_2200) <= len(chunks_700) * 0.7, (
-            f"expected ≤70% chunk count at 2200 vs 700; "
-            f"got {len(chunks_2200)} vs {len(chunks_700)}"
+            f"expected ≤70% chunk count at 2200 vs 700; got {len(chunks_2200)} vs {len(chunks_700)}"
         )
 
 
@@ -139,9 +136,7 @@ class TestBracketInvariant:
         chunks = _svc()._split_text(text, max_chars=120)
         for chunk in chunks:
             # No chunk should END with an unmatched '['.
-            assert chunk.count("[") == chunk.count("]"), (
-                f"unbalanced brackets in chunk: {chunk!r}"
-            )
+            assert chunk.count("[") == chunk.count("]"), f"unbalanced brackets in chunk: {chunk!r}"
 
     def test_speaker_tag_kept_intact(self) -> None:
         text = (
@@ -151,9 +146,7 @@ class TestBracketInvariant:
         )
         chunks = _svc()._split_text(text, max_chars=80)
         for chunk in chunks:
-            assert chunk.count("[") == chunk.count("]"), (
-                f"chunk {chunk!r} has unbalanced brackets"
-            )
+            assert chunk.count("[") == chunk.count("]"), f"chunk {chunk!r} has unbalanced brackets"
 
     def test_well_formed_text_passes_through_repair_unchanged(self) -> None:
         # Sanity: the repair doesn't mangle text where no bracket
@@ -187,9 +180,7 @@ class TestSplitTextWireUp:
     both pass the per-provider limit to ``_split_text``.
     """
 
-    async def test_single_voice_uses_provider_limit(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_single_voice_uses_provider_limit(self, monkeypatch: pytest.MonkeyPatch) -> None:
         captured: list[int] = []
 
         original = AudiobookService._split_text
@@ -261,6 +252,4 @@ class TestSplitTextWireUp:
 
         assert captured, "_split_text was never called"
         # Edge default = 1200.
-        assert captured[0] == 1200, (
-            f"expected Edge limit (1200), got {captured[0]}"
-        )
+        assert captured[0] == 1200, f"expected Edge limit (1200), got {captured[0]}"

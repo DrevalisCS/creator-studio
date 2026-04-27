@@ -76,8 +76,7 @@ def init_state(num_chapters: int) -> dict[str, Any]:
     """Return a fresh ``pending``-everywhere DAG for *num_chapters*."""
     return {
         "chapters": {
-            str(i): {stage: "pending" for stage in STAGES_CHAPTER}
-            for i in range(num_chapters)
+            str(i): {stage: "pending" for stage in STAGES_CHAPTER} for i in range(num_chapters)
         },
         **{stage: "pending" for stage in STAGES_GLOBAL},
     }
@@ -140,10 +139,10 @@ def set_global_stage(state: dict[str, Any], stage: str, value: State) -> None:
 def is_done(state: dict[str, Any], stage: str, chapter_index: int | None = None) -> bool:
     """``True`` iff the named stage is already ``done`` (skip on retry)."""
     if chapter_index is None:
-        return state.get(stage) == "done"
+        return bool(state.get(stage) == "done")
     chapters = state.get("chapters") or {}
     chapter = chapters.get(str(chapter_index)) or {}
-    return chapter.get(stage) == "done"
+    return bool(chapter.get(stage) == "done")
 
 
 def compute_progress_pct(state: dict[str, Any]) -> int:

@@ -378,9 +378,7 @@ class TestAddMusicDurationFix:
         )
         # Stub _resolve_music_service so the helper finds a music track
         # without touching ComfyUI / library.
-        monkeypatch.setattr(
-            service, "_resolve_music_service", lambda: _MockMusicService(music)
-        )
+        monkeypatch.setattr(service, "_resolve_music_service", lambda: _MockMusicService(music))
 
         await service._add_music(
             audio_path=voice,
@@ -439,9 +437,7 @@ class TestAddChapterMusicDurationFix:
             ffmpeg_service=ffmpeg,
             storage=_StubStorage(tmp_path),
         )
-        monkeypatch.setattr(
-            service, "_resolve_music_service", lambda: _MockMusicService(ch_music)
-        )
+        monkeypatch.setattr(service, "_resolve_music_service", lambda: _MockMusicService(ch_music))
 
         timings = [
             ChapterTiming(0, 0.0, 60.0, 60.0),

@@ -510,7 +510,7 @@ async def create_audiobook(
             preset=payload.preset,
             overrides=payload.settings_override,
         )
-        settings_blob: dict | None = resolved_settings.model_dump()
+        settings_blob: dict[str, Any] | None = resolved_settings.model_dump()
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

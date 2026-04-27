@@ -228,9 +228,7 @@ class TestGenerateSingleVoiceParallelism:
         # Output ordering must follow chunk_index regardless of which
         # ffmpeg invocation completed first.
         indices = [c.chunk_index for c in chunks]
-        assert indices == sorted(indices), (
-            f"AudioChunk list out of order: {indices}"
-        )
+        assert indices == sorted(indices), f"AudioChunk list out of order: {indices}"
 
     async def test_cache_hits_do_not_take_semaphore_slots(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

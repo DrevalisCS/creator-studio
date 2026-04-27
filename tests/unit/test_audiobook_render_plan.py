@@ -189,9 +189,7 @@ class TestFromPipelineOutputs:
             audiobook_id="test",
             inline_chunks=[chunk],
             chapter_timings=[ChapterTiming(3, 0.0, 1.0, 1.0)],
-            chapters=[
-                {"title": f"Chapter {i + 1}", "text": "..."} for i in range(4)
-            ],
+            chapters=[{"title": f"Chapter {i + 1}", "text": "..."} for i in range(4)],
             chunk_durations_seconds={chunk.path.stem: 1.0},
         )
         # plan.clip_ids() should match what _strip_chunk_hash gives us.

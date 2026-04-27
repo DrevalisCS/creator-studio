@@ -386,9 +386,9 @@ async def generate_audiobook(
         # callback the service can fire after every state transition.
         # On retry the service skips ``done`` stages, so a worker
         # crash mid-master-mix doesn't redo TTS.
-        initial_job_state: dict | None = getattr(audiobook, "job_state", None)
+        initial_job_state: dict[str, Any] | None = getattr(audiobook, "job_state", None)
 
-        async def _persist_dag(blob: dict) -> None:
+        async def _persist_dag(blob: dict[str, Any]) -> None:
             try:
                 async with session_factory() as persist_session:
                     persist_repo = AudiobookRepository(persist_session)
@@ -398,7 +398,7 @@ async def generate_audiobook(
                 log.warning("audiobook.job_state.persist_failed", error=str(exc)[:200])
 
         # Task 13: parallel callback for the RenderPlan snapshot.
-        async def _persist_render_plan(blob: dict) -> None:
+        async def _persist_render_plan(blob: dict[str, Any]) -> None:
             try:
                 async with session_factory() as persist_session:
                     persist_repo = AudiobookRepository(persist_session)

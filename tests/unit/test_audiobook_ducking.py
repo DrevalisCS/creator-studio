@@ -135,10 +135,7 @@ class TestBuildMusicMixGraph:
             music_volume_db=-12.0,
             music_pad_ms=60000,
         )
-        assert (
-            "sidechaincompress=threshold=0.08:ratio=8:attack=5:release=350"
-            in graph
-        )
+        assert "sidechaincompress=threshold=0.08:ratio=8:attack=5:release=350" in graph
 
     def test_normal_preset_numerics(self) -> None:
         graph = _build_music_mix_graph(
@@ -147,10 +144,7 @@ class TestBuildMusicMixGraph:
             music_volume_db=-18.0,
             music_pad_ms=60000,
         )
-        assert (
-            "sidechaincompress=threshold=0.1:ratio=4:attack=10:release=600"
-            in graph
-        )
+        assert "sidechaincompress=threshold=0.1:ratio=4:attack=10:release=600" in graph
 
     def test_subtle_preset_numerics(self) -> None:
         graph = _build_music_mix_graph(
@@ -159,10 +153,7 @@ class TestBuildMusicMixGraph:
             music_volume_db=-20.0,
             music_pad_ms=60000,
         )
-        assert (
-            "sidechaincompress=threshold=0.125:ratio=3:attack=15:release=800"
-            in graph
-        )
+        assert "sidechaincompress=threshold=0.125:ratio=3:attack=15:release=800" in graph
 
     def test_strong_preset_numerics(self) -> None:
         graph = _build_music_mix_graph(
@@ -171,10 +162,7 @@ class TestBuildMusicMixGraph:
             music_volume_db=-15.0,
             music_pad_ms=60000,
         )
-        assert (
-            "sidechaincompress=threshold=0.1:ratio=6:attack=8:release=400"
-            in graph
-        )
+        assert "sidechaincompress=threshold=0.1:ratio=6:attack=8:release=400" in graph
 
     def test_master_limiter_ceiling_applied_in_all_modes(self) -> None:
         for name in DUCKING_PRESETS:
@@ -184,9 +172,9 @@ class TestBuildMusicMixGraph:
                 music_volume_db=-18.0,
                 music_pad_ms=60000,
             )
-            assert (
-                f"alimiter=limit={MASTER_LIMITER_CEILING_DB}dB" in graph
-            ), f"preset {name!r} did not end the master chain with the limiter"
+            assert f"alimiter=limit={MASTER_LIMITER_CEILING_DB}dB" in graph, (
+                f"preset {name!r} did not end the master chain with the limiter"
+            )
 
     def test_voice_gain_propagates(self) -> None:
         graph = _build_music_mix_graph(
@@ -246,9 +234,7 @@ class TestAddMusicUsesPresetFromInstance:
         )
         # No explicit preset -> resolves to static.
         service._ducking_preset = _resolve_ducking_preset(None)
-        monkeypatch.setattr(
-            service, "_resolve_music_service", lambda: _MockMusicService(music)
-        )
+        monkeypatch.setattr(service, "_resolve_music_service", lambda: _MockMusicService(music))
 
         await service._add_music(
             audio_path=voice,
@@ -287,9 +273,7 @@ class TestAddMusicUsesPresetFromInstance:
             storage=_StubStorage(tmp_path),
         )
         service._ducking_preset = _resolve_ducking_preset("cinematic")
-        monkeypatch.setattr(
-            service, "_resolve_music_service", lambda: _MockMusicService(music)
-        )
+        monkeypatch.setattr(service, "_resolve_music_service", lambda: _MockMusicService(music))
 
         await service._add_music(
             audio_path=voice,
@@ -300,10 +284,7 @@ class TestAddMusicUsesPresetFromInstance:
         )
 
         graph = captured[0][captured[0].index("-filter_complex") + 1]
-        assert (
-            "sidechaincompress=threshold=0.08:ratio=8:attack=5:release=350"
-            in graph
-        )
+        assert "sidechaincompress=threshold=0.08:ratio=8:attack=5:release=350" in graph
 
 
 # ── SFX overlay uses SFX_DUCKING ─────────────────────────────────────────

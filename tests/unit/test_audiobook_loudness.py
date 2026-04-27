@@ -147,7 +147,7 @@ class TestParseLoudnormJson:
         assert AudiobookService._parse_loudnorm_json(_NO_JSON_STDERR) is None
 
     def test_returns_none_when_json_invalid(self) -> None:
-        broken = "[Parsed_loudnorm_0]\n{\n    \"input_i\" : \"-18\",\n    not valid json,\n}"
+        broken = '[Parsed_loudnorm_0]\n{\n    "input_i" : "-18",\n    not valid json,\n}'
         assert AudiobookService._parse_loudnorm_json(broken) is None
 
 
@@ -259,8 +259,7 @@ class TestApplyMasterLoudnormFallback:
         assert "measured_I" not in af2
         assert "measured_TP" not in af2
         assert "linear=true" not in af2, (
-            "linear=true requires measured values; must not be set on the "
-            "fallback single-pass."
+            "linear=true requires measured values; must not be set on the fallback single-pass."
         )
         # Targets still applied.
         assert "loudnorm=" in af2
@@ -299,9 +298,7 @@ class TestConvertToMp3HasNoLoudnorm:
 
         argv = captured[0]
         # No -af at all in the new argv.
-        assert "-af" not in argv, (
-            f"MP3 export should carry no filter chain; argv had -af: {argv}"
-        )
+        assert "-af" not in argv, f"MP3 export should carry no filter chain; argv had -af: {argv}"
         # Encoder still libmp3lame; bitrate flag is mode-dependent
         # post-Task-9 (default vbr_v0 → -q:a 0).
         assert "libmp3lame" in argv
@@ -346,9 +343,7 @@ class TestMasterLoudnormHitsTarget:
             return None
         return float(parsed["input_i"])
 
-    async def test_master_loudnorm_hits_target_within_half_lufs(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_master_loudnorm_hits_target_within_half_lufs(self, tmp_path: Path) -> None:
         wav = tmp_path / "audiobook.wav"
 
         # 30-second sine sweep — enough audio for the loudnorm window
