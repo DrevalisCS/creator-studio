@@ -129,8 +129,7 @@ class AutoScheduleResponse(BaseModel):
     skipped_already_scheduled: list[UUID] = Field(
         default_factory=list,
         description=(
-            "Episodes that were skipped because they already have a "
-            "scheduled YouTube post."
+            "Episodes that were skipped because they already have a scheduled YouTube post."
         ),
     )
 

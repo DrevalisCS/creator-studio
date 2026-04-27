@@ -236,9 +236,7 @@ async def auto_schedule_series(
     ep_repo = EpisodeRepository(db)
     review_eps = await ep_repo.get_by_series(series_id, status_filter="review", limit=500)
     if payload.episode_filter == "all_unuploaded":
-        exported_eps = await ep_repo.get_by_series(
-            series_id, status_filter="exported", limit=500
-        )
+        exported_eps = await ep_repo.get_by_series(series_id, status_filter="exported", limit=500)
         candidates = list(review_eps) + list(exported_eps)
     else:
         candidates = list(review_eps)
@@ -251,8 +249,7 @@ async def auto_schedule_series(
     for ep in candidates:
         existing = await sched_repo.get_by_content("episode", ep.id)
         has_yt_lock = any(
-            p.platform == "youtube"
-            and p.status in ("scheduled", "publishing", "published")
+            p.platform == "youtube" and p.status in ("scheduled", "publishing", "published")
             for p in existing
         )
         if has_yt_lock:
@@ -367,9 +364,7 @@ async def get_diagnostics(
         if not has_access:
             issues.append("No access token stored — channel needs to be reconnected.")
         if expired and not has_refresh:
-            issues.append(
-                "Access token expired and no refresh token — operator must reconnect."
-            )
+            issues.append("Access token expired and no refresh token — operator must reconnect.")
         if not getattr(ch, "upload_days", None):
             issues.append("upload_days unset (defaults to every weekday).")
         if not getattr(ch, "upload_time", None):
@@ -419,8 +414,7 @@ async def get_diagnostics(
         if kind == "overdue":
             mins_late = int((now - post.scheduled_at).total_seconds() / 60)
             issues.append(
-                f"Scheduled {mins_late} min ago and still 'scheduled' — "
-                f"worker may not be running."
+                f"Scheduled {mins_late} min ago and still 'scheduled' — worker may not be running."
             )
         if post.platform == "youtube" and post.youtube_channel_id is None:
             issues.append(

@@ -103,9 +103,7 @@ def _normalise_upload_days(upload_days: Iterable[Any] | None) -> set[int]:
     return out or {0, 1, 2, 3, 4, 5, 6}
 
 
-def _next_allowed_date(
-    *, after: date, allowed_weekdays: set[int]
-) -> date:
+def _next_allowed_date(*, after: date, allowed_weekdays: set[int]) -> date:
     """First date ≥ *after* whose weekday ∈ *allowed_weekdays*."""
     cursor = after
     for _ in range(7):  # any allow-list has a hit within 7 days
@@ -165,9 +163,7 @@ def plan_auto_schedule(
         # future.
         local_at = datetime.combine(cursor, upload_at, tzinfo=tz)
         if not slots and local_at <= local_start:
-            cursor = _next_allowed_date(
-                after=cursor + timedelta(days=1), allowed_weekdays=allowed
-            )
+            cursor = _next_allowed_date(after=cursor + timedelta(days=1), allowed_weekdays=allowed)
             local_at = datetime.combine(cursor, upload_at, tzinfo=tz)
 
         slot_utc = local_at.astimezone(UTC)
@@ -187,9 +183,7 @@ def plan_auto_schedule(
 
         # Advance the cursor for the next episode.
         if cadence == "daily":
-            cursor = _next_allowed_date(
-                after=cursor + timedelta(days=1), allowed_weekdays=allowed
-            )
+            cursor = _next_allowed_date(after=cursor + timedelta(days=1), allowed_weekdays=allowed)
         elif cadence == "every_n_days":
             cursor = _next_allowed_date(
                 after=cursor + timedelta(days=every_n), allowed_weekdays=allowed
@@ -199,14 +193,10 @@ def plan_auto_schedule(
             # weekday in the allow-list. With a multi-day allow-list
             # this rotates through them; with a single-day allow-list
             # this is effectively "+7 days".
-            cursor = _next_allowed_date(
-                after=cursor + timedelta(days=1), allowed_weekdays=allowed
-            )
+            cursor = _next_allowed_date(after=cursor + timedelta(days=1), allowed_weekdays=allowed)
         else:
             # Unknown cadence — caller should have validated, but
             # fall through with daily as the safe default.
-            cursor = _next_allowed_date(
-                after=cursor + timedelta(days=1), allowed_weekdays=allowed
-            )
+            cursor = _next_allowed_date(after=cursor + timedelta(days=1), allowed_weekdays=allowed)
 
     return slots

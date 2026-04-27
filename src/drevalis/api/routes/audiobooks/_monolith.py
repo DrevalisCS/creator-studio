@@ -236,6 +236,12 @@ async def create_ai_audiobook(
     male_voices = [v for v in all_voices if getattr(v, "gender", None) == "male"]
     female_voices = [v for v in all_voices if getattr(v, "gender", None) == "female"]
 
+    # Round-robin counters per gender. When the unique-voice pool is
+    # exhausted, the counter wraps so character N+pool_size gets a
+    # *different* voice from char 1 (instead of all of them collapsing
+    # onto pool[0] like the pre-fix code did).
+    gender_counters: dict[str, int] = {"male": 0, "female": 0}
+
     for char in payload.characters:
         vp_id = char.get("voice_profile_id")
         if vp_id:
@@ -243,14 +249,22 @@ async def create_ai_audiobook(
             if not default_voice_id:
                 default_voice_id = vp_id
         else:
-            # Auto-assign based on gender
+            # Auto-assign based on gender. Prefer voices not used by
+            # earlier characters; once every voice in the pool is
+            # claimed, rotate via ``count % len(pool)`` so subsequent
+            # characters cycle through different voices instead of
+            # all collapsing on pool[0].
             gender = char.get("gender", "male")
             pool = female_voices if gender == "female" else male_voices
             if pool:
-                # Pick a voice not already used if possible
                 used_ids = set(voice_casting.values())
                 available = [v for v in pool if str(v.id) not in used_ids]
-                chosen = available[0] if available else pool[0]
+                if available:
+                    chosen = available[0]
+                else:
+                    idx = gender_counters[gender] % len(pool)
+                    chosen = pool[idx]
+                gender_counters[gender] += 1
                 voice_casting[char["name"]] = str(chosen.id)
                 if not default_voice_id:
                     default_voice_id = str(chosen.id)
@@ -401,7 +415,15 @@ Write the complete script now. Start with a title line, then ## Chapter 1, and c
     lines = script_text.split("\n")
     title = lines[0].strip().lstrip("#").strip() if lines else "Untitled"
     chapters = re.findall(r"^##\s+(.+)$", script_text, re.MULTILINE)
-    characters_found = list(set(re.findall(r"^\[([^\]]+)\]", script_text, re.MULTILINE)))
+    # Exclude ``[SFX:...]`` tags from the character list — those are
+    # sound effects routed through ``ComfyUIElevenLabsSoundEffectsProvider``,
+    # not voices. Pre-fix the auto-voice-assigner treated each SFX
+    # description as a separate "speaker" and wasted a voice profile
+    # on it.
+    raw_tags = re.findall(r"^\[([^\]]+)\]", script_text, re.MULTILINE)
+    characters_found = sorted(
+        {t.strip() for t in raw_tags if not t.strip().lower().startswith("sfx")}
+    )
     word_count = len(script_text.split())
 
     log.info(

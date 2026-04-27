@@ -763,7 +763,13 @@ async def generate_script_async(
         lines = script_text.split("\n")
         title = lines[0].strip().lstrip("#").strip() if lines else "Untitled"
         chapters = re.findall(r"^##\s+(.+)$", script_text, re.MULTILINE)
-        characters_found = list(set(re.findall(r"^\[([^\]]+)\]", script_text, re.MULTILINE)))
+        # ``[SFX:...]`` tags are NOT speakers — exclude them from the
+        # character list so the auto-voice-assigner doesn't waste a
+        # profile on each sound-effect description.
+        raw_tags = re.findall(r"^\[([^\]]+)\]", script_text, re.MULTILINE)
+        characters_found = sorted(
+            {t.strip() for t in raw_tags if not t.strip().lower().startswith("sfx")}
+        )
         word_count = len(script_text.split())
 
         result_dict = {
