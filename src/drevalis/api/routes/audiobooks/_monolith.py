@@ -500,6 +500,23 @@ async def create_audiobook(
             detail=f"output_format must be one of {valid_formats}",
         )
 
+    # Task 9: resolve preset + settings_override into the persisted blob.
+    # Validation happens here so an unknown override field is rejected
+    # at request time instead of mid-generation.
+    from drevalis.schemas.audiobook import resolve_audiobook_settings
+
+    try:
+        resolved_settings = resolve_audiobook_settings(
+            preset=payload.preset,
+            overrides=payload.settings_override,
+        )
+        settings_blob: dict | None = resolved_settings.model_dump()
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Invalid audiobook settings: {exc}",
+        ) from exc
+
     repo = AudiobookRepository(db)
     audiobook = await repo.create(
         title=payload.title,
@@ -518,6 +535,7 @@ async def create_audiobook(
         video_orientation=payload.video_orientation,
         caption_style_preset=payload.caption_style_preset,
         image_generation_enabled=payload.image_generation_enabled,
+        settings_json=settings_blob,
     )
     await db.commit()
     await db.refresh(audiobook)

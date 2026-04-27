@@ -80,6 +80,27 @@ class Audiobook(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # under "clips"; v0.24.0 only consumes the top-level fields.
     track_mix: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
 
+    # ── Resolved AudiobookSettings (Task 9) ───────────────────────────
+    # Stores the merged ``preset + settings_override`` blob from the
+    # API request. Null means "narrative defaults" — backwards-compat
+    # for rows created before Task 9.
+    settings_json: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+
+    # ── Per-stage DAG job state (Task 11) ────────────────────────────
+    # Fine-grained {chapter_idx → {tts/image/music: state}} + global
+    # stages (concat / overlay_sfx / master_mix / captions /
+    # mp3_export / id3_tags / mp4_export). Persisted between worker
+    # retries so a failed master_mix re-runs without redoing chapter
+    # TTS. Null on legacy rows; the service builds a fresh DAG.
+    job_state: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+
+    # ── RenderPlan snapshot (Task 13 — scoped foundation) ────────────
+    # Inspectable dump of the assembled timeline (events + chapter
+    # markers + LAME priming offset, when applied). Future tasks will
+    # rewire concat / captions / track-mix to consume this directly;
+    # for now it's an artifact, not an authoritative input.
+    render_plan_json: Mapped[Any | None] = mapped_column(JSONB, nullable=True)
+
     # Audio controls
     speed: Mapped[Decimal] = mapped_column(NUMERIC, nullable=False, server_default="1.0")
     pitch: Mapped[Decimal] = mapped_column(NUMERIC, nullable=False, server_default="1.0")

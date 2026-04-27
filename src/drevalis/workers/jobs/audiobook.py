@@ -366,6 +366,47 @@ async def generate_audiobook(
                 "error": msg,
             }
 
+        # Task 9: hydrate AudiobookSettings from the JSONB column.
+        # Null = "narrative defaults" (the service builds one
+        # internally), so legacy rows keep their current behaviour.
+        from drevalis.schemas.audiobook import AudiobookSettings
+
+        ab_settings: AudiobookSettings | None = None
+        settings_blob = getattr(audiobook, "settings_json", None)
+        if settings_blob:
+            try:
+                ab_settings = AudiobookSettings.model_validate(settings_blob)
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "audiobook.settings_json.invalid_falling_back_to_defaults",
+                    error=str(exc)[:200],
+                )
+
+        # Task 11: hydrate the per-stage DAG and provide a persist
+        # callback the service can fire after every state transition.
+        # On retry the service skips ``done`` stages, so a worker
+        # crash mid-master-mix doesn't redo TTS.
+        initial_job_state: dict | None = getattr(audiobook, "job_state", None)
+
+        async def _persist_dag(blob: dict) -> None:
+            try:
+                async with session_factory() as persist_session:
+                    persist_repo = AudiobookRepository(persist_session)
+                    await persist_repo.update(parsed_id, job_state=blob)
+                    await persist_session.commit()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("audiobook.job_state.persist_failed", error=str(exc)[:200])
+
+        # Task 13: parallel callback for the RenderPlan snapshot.
+        async def _persist_render_plan(blob: dict) -> None:
+            try:
+                async with session_factory() as persist_session:
+                    persist_repo = AudiobookRepository(persist_session)
+                    await persist_repo.update(parsed_id, render_plan_json=blob)
+                    await persist_session.commit()
+            except Exception as exc:  # noqa: BLE001
+                log.warning("audiobook.render_plan.persist_failed", error=str(exc)[:200])
+
         try:
             result = await service.generate(
                 audiobook_id=parsed_id,
@@ -386,6 +427,10 @@ async def generate_audiobook(
                 caption_style_preset=audiobook.caption_style_preset,
                 image_generation_enabled=audiobook.image_generation_enabled,
                 track_mix=getattr(audiobook, "track_mix", None),
+                audiobook_settings=ab_settings,
+                initial_job_state=initial_job_state,
+                persist_job_state_cb=_persist_dag,
+                persist_render_plan_cb=_persist_render_plan,
             )
 
             await ab_repo.update(
