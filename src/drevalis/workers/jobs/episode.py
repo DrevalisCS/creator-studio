@@ -182,6 +182,8 @@ async def generate_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, An
                 music_service=music_service,
                 ffmpeg_service=ctx["ffmpeg_service"],
                 storage=ctx["storage"],
+                comfyui_service=ctx.get("comfyui_service"),
+                caption_service=ctx.get("caption_service"),
             )
             try:
                 await mv_orch.run()

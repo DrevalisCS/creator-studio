@@ -154,6 +154,28 @@ def _build_orchestrator(
     )
     # Inject the fake repo so we don't need a real DB for the test.
     orch.episode_repo = repo  # type: ignore[assignment]
+    orch.asset_repo = AsyncMock()  # type: ignore[assignment]
+
+    # Stub Phase 2b legs by default. Tests that want to exercise them
+    # restore real implementations or replace with their own stubs.
+    async def _noop_scenes(*args, **kwargs):  # noqa: ANN001, ANN003
+        return []
+
+    async def _noop_captions(*args, **kwargs):  # noqa: ANN001, ANN003
+        return None
+
+    async def _noop_assembly(*args, **kwargs):  # noqa: ANN001, ANN003
+        from pathlib import Path as _P
+
+        return _P(tmp_path / "video.mp4")
+
+    async def _noop_thumb(*args, **kwargs):  # noqa: ANN001, ANN003
+        return None
+
+    orch._run_scenes = _noop_scenes  # type: ignore[assignment]
+    orch._run_captions = _noop_captions  # type: ignore[assignment]
+    orch._run_assembly = _noop_assembly  # type: ignore[assignment]
+    orch._run_thumbnail = _noop_thumb  # type: ignore[assignment]
     return orch, repo, music
 
 
@@ -281,6 +303,145 @@ class TestFailurePaths:
         with pytest.raises(asyncio.CancelledError):
             await orch.run()
         assert repo.status_calls[-1] == "failed"
+
+    async def test_phase_2b_runs_when_comfyui_and_captions_provided(self, tmp_path: Path) -> None:
+        """When comfyui_service + caption_service are wired the
+        orchestrator goes all the way through SCENES + CAPTIONS +
+        ASSEMBLY + THUMBNAIL and ends in review."""
+        music_src = tmp_path / "track.wav"
+        music_src.write_bytes(b"RIFF" + b"\x00" * 4096)
+
+        # Build the orchestrator the usual way then bolt on Phase 2b
+        # stubs that record their calls.
+        orch, repo, _ = _build_orchestrator(
+            tmp_path=tmp_path, plan_json=_HAPPY_PLAN, music_path=music_src
+        )
+
+        # Stub _run_scenes / _run_captions / _run_assembly / _run_thumbnail
+        # at the orchestrator layer — Phase 2b call sites are exercised
+        # but their real bodies (which need ComfyUI + ffmpeg) are
+        # bypassed. This test checks the wiring + status transitions.
+        from typing import Any as _Any
+        from unittest.mock import AsyncMock as _AM
+
+        called = {"scenes": False, "captions": False, "assembly": False, "thumb": False}
+
+        async def _scenes(plan, audio_meta, series) -> list[_Any]:  # noqa: ARG001, ANN001
+            called["scenes"] = True
+            return []
+
+        async def _captions(plan, audio_meta):  # noqa: ARG001, ANN001
+            called["captions"] = True
+            return None
+
+        async def _assembly(plan, audio_meta, generated_images, captions_path):  # noqa: ARG001, ANN001
+            called["assembly"] = True
+            from pathlib import Path as _P
+
+            return _P(tmp_path / "video.mp4")
+
+        async def _thumbnail(generated_images):  # noqa: ARG001, ANN001
+            called["thumb"] = True
+            return None
+
+        orch._run_scenes = _scenes  # type: ignore[assignment]
+        orch._run_captions = _captions  # type: ignore[assignment]
+        orch._run_assembly = _assembly  # type: ignore[assignment]
+        orch._run_thumbnail = _thumbnail  # type: ignore[assignment]
+        # Indicate Phase 2b deps are present so the orchestrator
+        # doesn't think they're missing.
+        orch.comfyui_service = _AM()
+        orch.caption_service = _AM()
+
+        await orch.run()
+
+        assert called["scenes"]
+        assert called["captions"]
+        assert called["assembly"]
+        assert called["thumb"]
+        assert repo.status_calls[-1] == "review"
+
+    async def test_phase_2b_assembly_failure_marks_failed(self, tmp_path: Path) -> None:
+        music_src = tmp_path / "track.wav"
+        music_src.write_bytes(b"RIFF" + b"\x00" * 4096)
+
+        orch, repo, _ = _build_orchestrator(
+            tmp_path=tmp_path, plan_json=_HAPPY_PLAN, music_path=music_src
+        )
+        from unittest.mock import AsyncMock as _AM
+
+        async def _scenes(plan, audio_meta, series) -> list:  # noqa: ARG001, ANN001
+            return []
+
+        async def _captions(plan, audio_meta):  # noqa: ARG001, ANN001
+            return None
+
+        async def _assembly_fail(plan, audio_meta, gen, captions):  # noqa: ARG001, ANN001
+            raise RuntimeError("ffmpeg fell over")
+
+        orch._run_scenes = _scenes  # type: ignore[assignment]
+        orch._run_captions = _captions  # type: ignore[assignment]
+        orch._run_assembly = _assembly_fail  # type: ignore[assignment]
+        orch.comfyui_service = _AM()
+        orch.caption_service = _AM()
+
+        with pytest.raises(RuntimeError, match="ffmpeg fell over"):
+            await orch.run()
+
+        assert repo.status_calls[-1] == "failed"
+
+    async def test_select_workflow_prefers_music_video_then_longform(self, tmp_path: Path) -> None:
+        """``_select_workflow`` ranks music_video > longform > shorts > any."""
+        music_src = tmp_path / "track.wav"
+        music_src.write_bytes(b"RIFF" + b"\x00" * 4096)
+        orch, _, _ = _build_orchestrator(
+            tmp_path=tmp_path, plan_json=_HAPPY_PLAN, music_path=music_src
+        )
+
+        @dataclass
+        class _WF:
+            name: str
+            content_format: str
+            input_mappings: dict
+            workflow_json_path: str = "workflows/x.json"
+
+        # Stub the workflow repo lookup to return three workflows in
+        # arbitrary order; we should get back the music_video one.
+        async def _fake_get_all(limit: int = 20):  # noqa: ARG001
+            return [
+                _WF(
+                    name="shorts_qwen",
+                    content_format="shorts",
+                    input_mappings={"output_field_name": "images"},
+                ),
+                _WF(
+                    name="music_video_v1",
+                    content_format="music_video",
+                    input_mappings={"output_field_name": "images"},
+                ),
+                _WF(
+                    name="longform_wan",
+                    content_format="longform",
+                    input_mappings={"output_field_name": "images"},
+                ),
+            ]
+
+        from drevalis.repositories import comfyui as _comfyui_repo_mod
+
+        # Patch the repo so the orchestrator's lookup returns the test
+        # workflows instead of hitting the DB.
+        original = _comfyui_repo_mod.ComfyUIWorkflowRepository.get_all
+
+        async def _patched(self, limit: int = 20):  # noqa: ARG001, ARG002
+            return await _fake_get_all(limit)
+
+        _comfyui_repo_mod.ComfyUIWorkflowRepository.get_all = _patched  # type: ignore[method-assign]
+        try:
+            chosen = await orch._select_workflow()
+            assert chosen is not None
+            assert chosen.name == "music_video_v1"
+        finally:
+            _comfyui_repo_mod.ComfyUIWorkflowRepository.get_all = original  # type: ignore[method-assign]
 
     async def test_llm_garbage_falls_back_to_instrumental(self, tmp_path: Path) -> None:
         music_src = tmp_path / "track.wav"
