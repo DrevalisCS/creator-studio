@@ -126,6 +126,80 @@ async def generate_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, An
 
     # Acquire a fresh DB session for this job
     async with session_factory() as session:
+        # ── Dispatch by content_format ──────────────────────────────
+        # music_video episodes go through their own orchestrator
+        # (Phase 2a: SCRIPT + AUDIO; visuals + composite land in
+        # Phase 2b). All other formats use the regular pipeline.
+        from drevalis.repositories.episode import EpisodeRepository as _EpRepo
+        from drevalis.repositories.series import SeriesRepository as _SerRepo
+
+        _ep = await _EpRepo(session).get_by_id(parsed_id)
+        _series = await _SerRepo(session).get_by_id(_ep.series_id) if _ep else None
+        _fmt = getattr(_series, "content_format", "shorts") if _series else "shorts"
+
+        if _fmt == "music_video":
+            from drevalis.repositories.llm_config import LLMConfigRepository
+            from drevalis.services.llm._monolith import LLMPool
+            from drevalis.services.music_video_orchestrator import (
+                MusicVideoOrchestrator,
+            )
+
+            # Build the LLM pool the same way PipelineOrchestrator does
+            # for the longform path. Failures to construct individual
+            # providers are skipped so one bad config doesn't block the
+            # whole pool.
+            llm_service = ctx["llm_service"]
+            llm_repo = LLMConfigRepository(session)
+            configs = await llm_repo.get_all(limit=10)
+            providers = []
+            for cfg in configs:
+                try:
+                    providers.append((cfg.name, llm_service.get_provider(cfg)))
+                except Exception as exc:  # noqa: BLE001
+                    log.warning(
+                        "music_video.llm_pool_skip_config",
+                        name=cfg.name,
+                        error=str(exc)[:100],
+                    )
+            if not providers:
+                raise RuntimeError(
+                    "No LLM providers available for music-video pipeline. "
+                    "Create at least one LLM config in Settings."
+                )
+            llm_pool: LLMPool = LLMPool(providers)
+            music_service = ctx.get("music_service")
+            if music_service is None:
+                log.error("music_video_dispatch.no_music_service")
+                raise RuntimeError(
+                    "MusicService is not available — cannot run music-video "
+                    "pipeline. Check worker startup configuration."
+                )
+            mv_orch = MusicVideoOrchestrator(
+                episode_id=parsed_id,
+                db_session=session,
+                redis=ctx["redis"],
+                llm_pool=llm_pool,
+                music_service=music_service,
+                ffmpeg_service=ctx["ffmpeg_service"],
+                storage=ctx["storage"],
+            )
+            try:
+                await mv_orch.run()
+                log.info(
+                    "job_complete",
+                    status="success",
+                    pipeline="music_video",
+                    phase="2a",
+                )
+                return {
+                    "episode_id": episode_id,
+                    "status": "success",
+                    "pipeline": "music_video",
+                }
+            except Exception as exc:
+                log.error("job_failed", error=str(exc), exc_info=True)
+                raise
+
         orchestrator = PipelineOrchestrator(
             episode_id=parsed_id,
             db_session=session,
