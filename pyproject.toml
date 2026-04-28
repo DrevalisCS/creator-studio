@@ -41,6 +41,13 @@ kokoro = [
 music = [
     "audiocraft>=1.0.0; python_version >= '3.11'",
 ]
+music_video = [
+    # Beat / onset detection for cutting scenes to the beat. Optional —
+    # when not installed, the music_video pipeline degrades to evenly-
+    # spaced scene cuts within each song section.
+    "librosa>=0.10.0; python_version >= '3.11'",
+    "soundfile>=0.13.0",
+]
 dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.25.0",
