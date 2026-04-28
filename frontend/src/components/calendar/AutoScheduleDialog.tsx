@@ -27,6 +27,23 @@ interface AutoScheduleResponse {
   skipped_already_scheduled: string[];
 }
 
+const CADENCE_OPTIONS = [
+  { value: 'daily', label: 'Every day' },
+  { value: 'every_n_days', label: 'Every N days' },
+  { value: 'weekly', label: 'Weekly (rotates allowed weekdays)' },
+];
+
+const EPISODE_FILTER_OPTIONS = [
+  { value: 'all_unuploaded', label: 'Review + Exported (all unuploaded)' },
+  { value: 'review', label: 'Review only' },
+];
+
+const PRIVACY_OPTIONS = [
+  { value: 'private', label: 'Private' },
+  { value: 'unlisted', label: 'Unlisted' },
+  { value: 'public', label: 'Public' },
+];
+
 export interface AutoScheduleDialogProps {
   open: boolean;
   onClose: () => void;
@@ -36,14 +53,13 @@ export interface AutoScheduleDialogProps {
 }
 
 /**
- * Dialog for the v0.26.x auto-schedule endpoint. Lets the operator pick a
+ * Dialog for the v0.27.0 auto-schedule endpoint. Lets the operator pick a
  * series + cadence + start date and either preview the plan (dry-run) or
  * persist the slots.
  *
  * The first slot honours the target channel's ``upload_days`` allow-list
- * and ``upload_time``; subsequent slots step by cadence (daily,
- * every_n_days, weekly). Episodes that already have a scheduled YouTube
- * post are skipped server-side.
+ * and ``upload_time``; subsequent slots step by cadence. Episodes that
+ * already have a scheduled YouTube post are skipped server-side.
  */
 export function AutoScheduleDialog({
   open,
@@ -51,7 +67,7 @@ export function AutoScheduleDialog({
   onScheduled,
   defaultSeriesId,
 }: AutoScheduleDialogProps) {
-  const toast = useToast();
+  const { toast } = useToast();
   const [seriesList, setSeriesList] = useState<SeriesListItem[]>([]);
   const [seriesLoading, setSeriesLoading] = useState(false);
   const [seriesId, setSeriesId] = useState<string>(defaultSeriesId ?? '');
@@ -85,7 +101,9 @@ export function AutoScheduleDialog({
       .list()
       .then((data) => setSeriesList(data))
       .catch((err) =>
-        toast.error('Failed to load series', err?.message ?? String(err)),
+        toast.error('Failed to load series', {
+          description: err?.message ?? String(err),
+        }),
       )
       .finally(() => setSeriesLoading(false));
   }, [open, toast]);
@@ -116,43 +134,41 @@ export function AutoScheduleDialog({
       });
       if (dryRun) {
         setPreview(result as AutoScheduleResponse);
-        toast.info(
-          'Preview',
-          `${(result as AutoScheduleResponse).planned.length} slot(s) would be created.`,
-        );
+        toast.info('Preview', {
+          description: `${(result as AutoScheduleResponse).planned.length} slot(s) would be created.`,
+        });
       } else {
         const r = result as AutoScheduleResponse;
-        toast.success(
-          'Scheduled',
-          `${r.planned.length} episode(s) scheduled across the calendar.${
+        toast.success('Scheduled', {
+          description: `${r.planned.length} episode(s) scheduled across the calendar.${
             r.skipped_already_scheduled.length
               ? ` ${r.skipped_already_scheduled.length} skipped (already scheduled).`
               : ''
           }`,
-        );
+        });
         onScheduled();
         onClose();
       }
     } catch (err: any) {
-      toast.error(
-        'Auto-schedule failed',
-        err?.detail || err?.message || String(err),
-      );
+      toast.error('Auto-schedule failed', {
+        description: err?.detail || err?.message || String(err),
+      });
     } finally {
       setBusy(false);
     }
   };
 
+  // Build series options dynamically (loaded from API).
+  const seriesOptions = seriesList.map((s) => ({
+    value: s.id,
+    label: s.name,
+  }));
+
   return (
     <Dialog
       open={open}
       onClose={onClose}
-      title={
-        <span className="inline-flex items-center gap-2">
-          <Sparkles size={16} className="text-accent" />
-          Auto-schedule a series
-        </span>
-      }
+      title="Auto-schedule a series"
       maxWidth="lg"
     >
       <div className="space-y-4">
@@ -163,111 +179,86 @@ export function AutoScheduleDialog({
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <label className="text-xs text-txt-secondary col-span-2">
-            Series
+          <div className="col-span-2">
             {seriesLoading ? (
-              <div className="mt-1 flex items-center gap-2 text-txt-tertiary">
-                <Spinner size="sm" /> loading…
+              <div className="flex items-center gap-2 text-txt-tertiary text-xs">
+                <Spinner size="sm" /> loading series…
               </div>
             ) : (
               <Select
+                label="Series"
                 value={seriesId}
                 onChange={(e) => setSeriesId(e.target.value)}
-              >
-                <option value="">— pick a series —</option>
-                {seriesList.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.title}
-                  </option>
-                ))}
-              </Select>
-            )}
-          </label>
-
-          <label className="text-xs text-txt-secondary">
-            Cadence
-            <Select
-              value={cadence}
-              onChange={(e) => setCadence(e.target.value as Cadence)}
-            >
-              <option value="daily">Every day</option>
-              <option value="every_n_days">Every N days</option>
-              <option value="weekly">
-                Weekly (rotates allowed weekdays)
-              </option>
-            </Select>
-          </label>
-
-          {cadence === 'every_n_days' && (
-            <label className="text-xs text-txt-secondary">
-              N (days)
-              <Input
-                type="number"
-                min={1}
-                max={30}
-                value={everyN}
-                onChange={(e) =>
-                  setEveryN(Math.max(1, Math.min(30, Number(e.target.value))))
-                }
+                placeholder="— pick a series —"
+                options={seriesOptions}
               />
-            </label>
+            )}
+          </div>
+
+          <Select
+            label="Cadence"
+            value={cadence}
+            onChange={(e) => setCadence(e.target.value as Cadence)}
+            options={CADENCE_OPTIONS}
+          />
+
+          {cadence === 'every_n_days' ? (
+            <Input
+              label="N (days)"
+              type="number"
+              min={1}
+              max={30}
+              value={everyN}
+              onChange={(e) =>
+                setEveryN(Math.max(1, Math.min(30, Number(e.target.value))))
+              }
+            />
+          ) : (
+            <div />
           )}
 
-          <label className="text-xs text-txt-secondary">
-            Start at
+          <Input
+            label="Start at"
+            type="datetime-local"
+            value={startAt}
+            onChange={(e) => setStartAt(e.target.value)}
+          />
+
+          <Select
+            label="Which episodes"
+            value={episodeFilter}
+            onChange={(e) =>
+              setEpisodeFilter(e.target.value as 'review' | 'all_unuploaded')
+            }
+            options={EPISODE_FILTER_OPTIONS}
+          />
+
+          <Select
+            label="Privacy"
+            value={privacy}
+            onChange={(e) =>
+              setPrivacy(e.target.value as 'public' | 'unlisted' | 'private')
+            }
+            options={PRIVACY_OPTIONS}
+          />
+
+          <div className="col-span-2">
             <Input
-              type="datetime-local"
-              value={startAt}
-              onChange={(e) => setStartAt(e.target.value)}
-            />
-          </label>
-
-          <label className="text-xs text-txt-secondary">
-            Which episodes
-            <Select
-              value={episodeFilter}
-              onChange={(e) =>
-                setEpisodeFilter(e.target.value as 'review' | 'all_unuploaded')
-              }
-            >
-              <option value="all_unuploaded">
-                Review + Exported (all unuploaded)
-              </option>
-              <option value="review">Review only</option>
-            </Select>
-          </label>
-
-          <label className="text-xs text-txt-secondary">
-            Privacy
-            <Select
-              value={privacy}
-              onChange={(e) =>
-                setPrivacy(e.target.value as 'public' | 'unlisted' | 'private')
-              }
-            >
-              <option value="private">Private</option>
-              <option value="unlisted">Unlisted</option>
-              <option value="public">Public</option>
-            </Select>
-          </label>
-
-          <label className="text-xs text-txt-secondary col-span-2">
-            Description template (optional, applied to every post)
-            <Input
+              label="Description template (optional)"
               value={descTemplate}
               onChange={(e) => setDescTemplate(e.target.value)}
               placeholder="🔔 Subscribe for more!"
             />
-          </label>
+          </div>
 
-          <label className="text-xs text-txt-secondary col-span-2">
-            Tags template (comma-separated, optional)
+          <div className="col-span-2">
             <Input
+              label="Tags template (comma-separated)"
               value={tagsTemplate}
               onChange={(e) => setTagsTemplate(e.target.value)}
               placeholder="ai, shorts, tutorial"
             />
-          </label>
+          </div>
         </div>
 
         {preview && (
@@ -310,7 +301,11 @@ export function AutoScheduleDialog({
           Preview
         </Button>
         <Button onClick={() => submit(false)} disabled={busy || !seriesId}>
-          {busy ? <Spinner size="sm" /> : <Sparkles size={14} className="mr-1.5" />}
+          {busy ? (
+            <Spinner size="sm" />
+          ) : (
+            <Sparkles size={14} className="mr-1.5" />
+          )}
           Schedule
         </Button>
       </DialogFooter>
