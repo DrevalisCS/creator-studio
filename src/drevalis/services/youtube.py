@@ -643,13 +643,33 @@ class YouTubeService:
                     .execute()
                 )
             except HttpError as exc:
-                msg = str(exc)
-                if "403" in msg or "insufficient" in msg.lower():
+                # Pre-fix: ANY 403 → "scope missing". That misclassified
+                # plenty of other Google 403s (brand-account channel,
+                # quota exhaustion, Analytics API disabled in GCP, no
+                # data in window, etc.) as scope errors. The new
+                # detection looks at Google's actual ``reason`` field
+                # so users get the real story.
+                detail = _decode_google_http_error(exc)
+                reason = (detail.get("reason") or "").lower()
+                if reason in (
+                    "insufficientpermissions",
+                    "access_token_scope_insufficient",
+                    "forbidden_for_scope",
+                ):
                     raise AnalyticsNotAuthorized(
                         "YouTube analytics scope missing — reconnect this "
-                        "channel from Settings → YouTube to grant access."
+                        "channel from Settings → YouTube to grant access. "
+                        "If you've already reconnected, revoke the app at "
+                        "myaccount.google.com → Security → Third-party "
+                        "access, then reconnect."
                     ) from exc
-                raise
+                # Surface the real Google message instead of pretending
+                # every 403 is a scope issue.
+                raise RuntimeError(
+                    f"YouTube Analytics API error: "
+                    f"status={detail.get('status')} reason={detail.get('reason')!r} "
+                    f"message={detail.get('message')!r}"
+                ) from exc
 
             # ``rows`` is a list-of-lists keyed by column order.
             tcols = [c["name"] for c in totals_resp.get("columnHeaders", [])]
@@ -706,3 +726,87 @@ class AnalyticsNotAuthorized(Exception):
     Callers should translate this into a 403 with a hint to reconnect
     the channel from Settings → YouTube.
     """
+
+
+def _decode_google_http_error(exc: Any) -> dict[str, Any]:
+    """Best-effort parse of a ``googleapiclient.errors.HttpError``.
+
+    Returns ``{status, reason, message, raw}`` where ``reason`` is the
+    machine-readable code from the first error entry (e.g.
+    ``insufficientPermissions``, ``forbidden``, ``quotaExceeded``,
+    ``brandAccountRequired``). ``message`` is the human-readable
+    description. ``raw`` is the parsed response body for callers that
+    want to dig deeper.
+
+    Robust to API client versions: prefers ``error_details`` (newer),
+    falls back to parsing ``content`` JSON, then to ``str(exc)``.
+    """
+    import json as _json
+
+    out: dict[str, Any] = {
+        "status": getattr(getattr(exc, "resp", None), "status", None),
+        "reason": None,
+        "message": None,
+        "raw": None,
+    }
+
+    # Newer googleapiclient: pre-parsed list of error dicts.
+    error_details = getattr(exc, "error_details", None)
+    if error_details and isinstance(error_details, list) and error_details:
+        first = error_details[0] or {}
+        out["reason"] = first.get("reason") or first.get("@type")
+        out["message"] = first.get("message")
+        out["raw"] = error_details
+
+    # Fall back to the raw response body.
+    if out["reason"] is None and hasattr(exc, "content"):
+        try:
+            body = exc.content
+            if isinstance(body, bytes):
+                body = body.decode("utf-8", errors="replace")
+            parsed = _json.loads(body)
+            err = parsed.get("error") or {}
+            out["raw"] = parsed
+            errors_list = err.get("errors") or []
+            if errors_list:
+                first = errors_list[0]
+                out["reason"] = first.get("reason")
+                out["message"] = first.get("message")
+            if not out["message"]:
+                out["message"] = err.get("message")
+        except (_json.JSONDecodeError, ValueError, AttributeError):
+            pass
+
+    # Last-ditch: pull what we can from the exception's str form.
+    if out["message"] is None:
+        out["message"] = str(exc)[:300]
+    return out
+
+
+async def fetch_token_scopes(access_token: str) -> list[str]:
+    """Return the OAuth scopes the access token actually carries.
+
+    Hits Google's ``tokeninfo`` endpoint — definitive answer to
+    "did the user grant analytics scope" without having to call the
+    Analytics API and infer from a 403.
+
+    Returns an empty list when the token can't be introspected
+    (revoked, expired, network failure). Caller can compare the
+    returned scopes against ``YouTubeService.SCOPES`` to decide
+    whether a reconnect is required.
+    """
+    import httpx as _httpx
+
+    try:
+        async with _httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.get(
+                "https://oauth2.googleapis.com/tokeninfo",
+                params={"access_token": access_token},
+            )
+            if resp.status_code != 200:
+                return []
+            data = resp.json()
+    except (_httpx.HTTPError, ValueError):
+        return []
+    scope_field = data.get("scope") or ""
+    return [s for s in scope_field.split(" ") if s]

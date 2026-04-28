@@ -9,8 +9,10 @@ import {
   Trash2,
   PanelRightClose,
   PanelRightOpen,
+  Sparkles,
   X,
 } from 'lucide-react';
+import { AutoScheduleDialog } from '@/components/calendar/AutoScheduleDialog';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
@@ -436,6 +438,10 @@ function Calendar() {
   // calendar then uses the full main area. Persisted only in this
   // component's lifetime — cheap toggle, no need for localStorage.
   const [upcomingCollapsed, setUpcomingCollapsed] = useState(false);
+  // Auto-schedule dialog (v0.26.x). Lets the operator pick a series +
+  // cadence + start date and queue every unuploaded episode in one
+  // shot — see ``AutoScheduleDialog``.
+  const [autoScheduleOpen, setAutoScheduleOpen] = useState(false);
   // Day cell that's currently expanded into a full popover (so the
   // user can read every post on a heavily-scheduled day instead of
   // staring at "+N more"). Keyed by ISO yyyy-mm-dd.
@@ -735,6 +741,16 @@ function Calendar() {
             <Button
               variant="ghost"
               size="sm"
+              onClick={() => setAutoScheduleOpen(true)}
+              aria-label="Auto-schedule a series"
+              title="Auto-schedule unuploaded episodes from a series across the calendar"
+            >
+              <Sparkles size={14} className="mr-1.5" />
+              Auto-schedule
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setUpcomingCollapsed((v) => !v)}
               aria-label={upcomingCollapsed ? 'Show upcoming panel' : 'Hide upcoming panel'}
               title={upcomingCollapsed ? 'Show upcoming panel' : 'Hide upcoming panel'}
@@ -743,6 +759,15 @@ function Calendar() {
             </Button>
           </div>
         </div>
+        <AutoScheduleDialog
+          open={autoScheduleOpen}
+          onClose={() => setAutoScheduleOpen(false)}
+          onScheduled={() => {
+            setAutoScheduleOpen(false);
+            void fetchPosts();
+          }}
+        />
+
 
         {/* Calendar grid (Month) or flat list (List). */}
         <Card padding="none">

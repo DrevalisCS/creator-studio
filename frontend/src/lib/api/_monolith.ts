@@ -1094,6 +1094,21 @@ export const youtube = {
       `/api/v1/youtube/analytics/channel${q ? `?${q}` : ''}`,
     );
   },
+
+  // Inspect what OAuth scopes a channel's stored token actually carries.
+  // Use when the analytics page reports "scope missing" to confirm
+  // whether the token genuinely lacks the scope or the API is 403'ing
+  // for some other reason (brand-account, quota, no data, etc.).
+  getChannelScopes: (channelId: string) =>
+    get<{
+      channel_id: string;
+      scopes: string[];
+      has_analytics_scope: boolean;
+      has_upload_scope: boolean;
+      expected_scopes: string[];
+      token_introspection_failed: boolean;
+      hint: string | null;
+    }>(`/api/v1/youtube/channels/${channelId}/scopes`),
 };
 
 export interface YouTubeChannelAnalytics {
@@ -1154,6 +1169,27 @@ export const schedule = {
   }) => post<any>('/api/v1/schedule', data),
   cancel: (id: string) => del(`/api/v1/schedule/${id}`),
   update: (id: string, data: any) => put<any>(`/api/v1/schedule/${id}`, data),
+  // Auto-schedule a series (v0.26.x)
+  autoScheduleSeries: (
+    seriesId: string,
+    body: {
+      cadence: 'daily' | 'every_n_days' | 'weekly';
+      every_n?: number;
+      start_at: string;
+      episode_filter?: 'review' | 'all_unuploaded';
+      privacy?: 'public' | 'unlisted' | 'private';
+      description_template?: string;
+      tags_template?: string;
+      youtube_channel_id?: string | null;
+      dry_run?: boolean;
+    },
+  ) => post<any>(`/api/v1/schedule/series/${seriesId}/auto-schedule`, body),
+  // Diagnostics: why are uploads failing?
+  diagnostics: (withinHours = 72) =>
+    get<any>(`/api/v1/schedule/diagnostics?within_hours=${withinHours}`),
+  // Manual retry of failed posts.
+  retryFailed: (body: { within_hours?: number; post_ids?: string[] | null }) =>
+    post<any>('/api/v1/schedule/retry-failed', body),
 };
 
 // ---------------------------------------------------------------------------

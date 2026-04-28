@@ -34,7 +34,11 @@ from drevalis.schemas.youtube import (
     YouTubeUploadRequest,
     YouTubeUploadResponse,
 )
-from drevalis.services.youtube import AnalyticsNotAuthorized, YouTubeService
+from drevalis.services.youtube import (
+    AnalyticsNotAuthorized,
+    YouTubeService,
+    fetch_token_scopes,
+)
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -1445,3 +1449,85 @@ async def get_channel_analytics(
         ) from exc
 
     return {"channel_id": str(channel.id), **result}
+
+
+@router.get(
+    "/channels/{channel_id}/scopes",
+    summary="Inspect what OAuth scopes the channel's token actually has",
+)
+async def get_channel_scopes(
+    channel_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, Any]:
+    """Returns the OAuth scopes the stored access token actually carries.
+
+    Definitive answer to "did the user grant analytics scope" — hits
+    Google's tokeninfo endpoint instead of inferring from a 403 on the
+    Analytics API. Use this when the analytics page reports "scope
+    missing" but the user insists the channel is reconnected.
+
+    Returns ``{channel_id, scopes, has_analytics_scope, has_upload_scope,
+    expected_scopes, token_introspection_failed}``. When
+    ``token_introspection_failed`` is true, Google rejected the token
+    (revoked, expired, network failure) — reconnect is the cure.
+    """
+    svc = await _build_youtube_service(settings, db)
+    channel_repo = YouTubeChannelRepository(db)
+    channel = await _resolve_channel(channel_repo, channel_id)
+
+    # Refresh first so we're inspecting a live token, not an expired
+    # one (which would tokeninfo-fail for the wrong reason).
+    updated_tokens = await svc.refresh_tokens_if_needed(
+        channel.access_token_encrypted or "",
+        channel.refresh_token_encrypted,
+        channel.token_expiry,
+    )
+    if updated_tokens:
+        for key, value in updated_tokens.items():
+            setattr(channel, key, value)
+        await db.flush()
+        await db.commit()
+
+    if not channel.access_token_encrypted:
+        return {
+            "channel_id": str(channel.id),
+            "scopes": [],
+            "has_analytics_scope": False,
+            "has_upload_scope": False,
+            "expected_scopes": YouTubeService.SCOPES,
+            "token_introspection_failed": True,
+            "hint": "No access token stored — channel must be reconnected.",
+        }
+
+    # Decrypt and introspect.
+    from drevalis.core.security import decrypt_value
+
+    try:
+        access_token = decrypt_value(channel.access_token_encrypted, settings.encryption_key)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("youtube.scope_introspect.decrypt_failed", error=str(exc)[:120])
+        return {
+            "channel_id": str(channel.id),
+            "scopes": [],
+            "has_analytics_scope": False,
+            "has_upload_scope": False,
+            "expected_scopes": YouTubeService.SCOPES,
+            "token_introspection_failed": True,
+            "hint": "Stored access token couldn't be decrypted.",
+        }
+
+    scopes = await fetch_token_scopes(access_token)
+    return {
+        "channel_id": str(channel.id),
+        "scopes": scopes,
+        "has_analytics_scope": "https://www.googleapis.com/auth/yt-analytics.readonly" in scopes,
+        "has_upload_scope": "https://www.googleapis.com/auth/youtube.upload" in scopes,
+        "expected_scopes": YouTubeService.SCOPES,
+        "token_introspection_failed": not scopes,
+        "hint": (
+            "Reconnect required: your token is missing the analytics scope."
+            if scopes and "https://www.googleapis.com/auth/yt-analytics.readonly" not in scopes
+            else None
+        ),
+    }
