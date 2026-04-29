@@ -1221,13 +1221,22 @@ class PipelineOrchestrator:
         out: list[str] = []
         if not reference_asset_ids:
             return out
-        asset_repo = _AssetRepo(self.db)
+        # Parse all UUIDs first; skip strings that don't parse so the
+        # IN-clause stays clean and we still preserve insertion order
+        # for the existing-asset lookup.
+        parsed: list[_UUID] = []
         for raw_id in reference_asset_ids:
             try:
-                asset_uuid = _UUID(str(raw_id))
+                parsed.append(_UUID(str(raw_id)))
             except ValueError:
                 continue
-            asset = await asset_repo.get_by_id(asset_uuid)
+        if not parsed:
+            return out
+        asset_repo = _AssetRepo(self.db)
+        # One query for the whole list instead of one per id.
+        assets_by_id = await asset_repo.get_by_ids(parsed)
+        for asset_uuid in parsed:
+            asset = assets_by_id.get(asset_uuid)
             if asset is None or asset.kind not in kinds:
                 continue
             abs_path = _Path(self.storage.base_path) / asset.file_path
