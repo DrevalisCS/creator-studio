@@ -38,6 +38,7 @@ class Episode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         Index("ix_episodes_series_id_status", "series_id", "status"),
         Index("ix_episodes_status", "status"),
+        Index("ix_episodes_created_at", "created_at"),
     )
 
     series_id: Mapped[uuid.UUID] = mapped_column(
