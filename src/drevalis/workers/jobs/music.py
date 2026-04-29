@@ -46,9 +46,7 @@ async def generate_episode_music(
     db = ctx["db"]
     settings = Settings()
 
-    structlog.contextvars.bind_contextvars(
-        episode_id=episode_id, job="generate_episode_music"
-    )
+    structlog.contextvars.bind_contextvars(episode_id=episode_id, job="generate_episode_music")
     logger.info(
         "music_generate_job.start",
         mood=mood,

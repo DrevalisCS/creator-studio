@@ -637,9 +637,7 @@ class PipelineOrchestrator:
                 )
             return scene_data, None
 
-        results = await asyncio.gather(
-            *(_refine_one(s) for s in scenes), return_exceptions=False
-        )
+        results = await asyncio.gather(*(_refine_one(s) for s in scenes), return_exceptions=False)
         refined_count = 0
         for scene_data, refined in results:
             if refined is not None:

@@ -40,9 +40,7 @@ async def generate_seo_async(ctx: dict[str, Any], episode_id: str) -> dict[str, 
 
     # Bind context so every downstream provider/log call carries the
     # episode id without each callee having to take or rebind it.
-    structlog.contextvars.bind_contextvars(
-        episode_id=episode_id, job="generate_seo_async"
-    )
+    structlog.contextvars.bind_contextvars(episode_id=episode_id, job="generate_seo_async")
     logger.info("seo_generate_job.start")
 
     ep_repo = EpisodeRepository(db)

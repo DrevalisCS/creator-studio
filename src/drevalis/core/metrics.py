@@ -23,10 +23,10 @@ callers in the worker pass ``self.redis`` and route handlers pass the
 from __future__ import annotations
 
 import json
+from collections.abc import Awaitable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any, cast
-from collections.abc import Awaitable
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
