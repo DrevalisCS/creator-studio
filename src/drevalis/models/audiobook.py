@@ -6,7 +6,7 @@ import uuid
 from decimal import Decimal
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import BIGINT, BOOLEAN, NUMERIC, TEXT, CheckConstraint, ForeignKey
+from sqlalchemy import BIGINT, BOOLEAN, NUMERIC, TEXT, CheckConstraint, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -29,6 +29,7 @@ class Audiobook(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "output_format IN ('audio_only', 'audio_image', 'audio_video')",
             name="ck_audiobooks_output_format",
         ),
+        Index("ix_audiobooks_status", "status"),
     )
 
     title: Mapped[str] = mapped_column(TEXT, nullable=False)
