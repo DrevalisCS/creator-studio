@@ -43,10 +43,12 @@ async def startup(ctx: dict[str, Any]) -> None:
     )
 
     # ── Database engine & session factory ──────────────────────────────
+    # Worker uses its own (smaller) pool — it's sequential per job and
+    # max_jobs=8, so a pool the size of FastAPI's (10+20) is wasted.
     engine = create_async_engine(
         settings.database_url,
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
+        pool_size=settings.worker_db_pool_size,
+        max_overflow=settings.worker_db_max_overflow,
         echo=settings.db_echo,
     )
     session_factory = async_sessionmaker(

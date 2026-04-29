@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     database_url: str = "postgresql+asyncpg://drevalis:drevalis@localhost:5432/drevalis"
     db_pool_size: int = 10
     db_max_overflow: int = 20
+    # Worker is sequential per-job (max_jobs=8); a smaller pool is
+    # plenty and reduces idle Postgres connections from a worker that
+    # mostly waits on subprocess-bound work (ffmpeg, Comfy polls).
+    worker_db_pool_size: int = 5
+    worker_db_max_overflow: int = 10
     # SQLAlchemy echoes every executed statement when enabled. Previously
     # coupled to `debug`, which meant a developer who just wanted verbose
     # Python logs also got a firehose of SQL printouts on every endpoint
