@@ -1920,12 +1920,23 @@ class AudiobookService:
                     try:
                         resolved_cover = str(self.storage.resolve_path(cover_image_path))
                     except Exception:
-                        pass
+                        # User-supplied path failed sanitisation or is
+                        # outside the storage root — log so they see why
+                        # the auto-generated title card replaced their art.
+                        log.warning(
+                            "audiobook.cover_image_resolve_failed",
+                            path=cover_image_path,
+                            exc_info=True,
+                        )
                 if not resolved_cover and background_image_path:
                     try:
                         resolved_cover = str(self.storage.resolve_path(background_image_path))
                     except Exception:
-                        pass
+                        log.warning(
+                            "audiobook.background_image_resolve_failed",
+                            path=background_image_path,
+                            exc_info=True,
+                        )
                 if not resolved_cover or not Path(resolved_cover).exists():
                     title_for_card = chapters[0]["title"] if chapters else "Audiobook"
                     resolved_cover = str(
