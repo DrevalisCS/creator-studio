@@ -78,6 +78,16 @@ class Settings(BaseSettings):
     # ── Authentication (H4) ───────────────────────────────────────────────
     api_auth_token: str | None = None
 
+    # ── Session cookies ──────────────────────────────────────────────────
+    # Dedicated HMAC secret for the team-mode session cookie. When unset,
+    # falls back to ``encryption_key`` for backwards compatibility — but
+    # production installs should set this so a Fernet-key compromise (e.g.
+    # backup leak) does not also yield session-forgery capability.
+    session_secret: str | None = None
+    # Sets the ``Secure`` flag on the session cookie. Default False so
+    # local-HTTP dev still works; flip True when fronting via HTTPS.
+    cookie_secure: bool = False
+
     # ── RunPod cloud GPU ──────────────────────────────────────────────────
     runpod_api_key: str = ""
 
@@ -125,6 +135,15 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         case_sensitive=False,
     )
+
+    def get_session_secret(self) -> str:
+        """Return the secret used to HMAC session cookies.
+
+        Prefers a dedicated ``SESSION_SECRET``; falls back to the Fernet
+        ``encryption_key`` so existing installs keep working without a
+        config change. New installs / production should set both.
+        """
+        return self.session_secret or self.encryption_key
 
     @model_validator(mode="after")
     def validate_encryption_key(self) -> Settings:

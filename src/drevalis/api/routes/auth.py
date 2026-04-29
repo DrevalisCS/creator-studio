@@ -88,7 +88,7 @@ async def _current_user(
     token = request.cookies.get(_COOKIE_NAME)
     if not token:
         return None
-    payload = parse_session_token(token, secret=settings.encryption_key)
+    payload = parse_session_token(token, secret=settings.get_session_secret())
     if not payload:
         return None
     try:
@@ -135,12 +135,14 @@ async def login(
     user.last_login_at = datetime.now(tz=UTC)
     await db.commit()
 
-    token = mint_session_token(user_id=user.id, role=user.role, secret=settings.encryption_key)
+    token = mint_session_token(
+        user_id=user.id, role=user.role, secret=settings.get_session_secret()
+    )
     response.set_cookie(
         _COOKIE_NAME,
         token,
         httponly=True,
-        secure=False,  # flip to True behind HTTPS — the reverse proxy terminates TLS
+        secure=settings.cookie_secure,
         samesite="lax",
         max_age=60 * 60 * 24 * 14,  # 14 days
         path="/",
