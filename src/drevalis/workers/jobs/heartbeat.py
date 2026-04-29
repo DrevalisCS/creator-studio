@@ -38,4 +38,8 @@ async def worker_heartbeat(ctx: dict[str, Any]) -> None:
         finally:
             await _r.aclose()
     except Exception:
-        pass
+        # The heartbeat is the sentinel for worker liveness — silent
+        # failures here cause /api/v1/jobs/worker/health to false-flag
+        # the worker as dead with no log to investigate. Log loudly
+        # so operators see the underlying Redis problem.
+        logger.warning("worker_heartbeat_failed", exc_info=True)
