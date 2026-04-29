@@ -267,11 +267,15 @@ async def cleanup_stale_jobs(
     job_repo = GenerationJobRepository(db)
     ep_repo = EpisodeRepository(db)
 
-    # 1. Find all queued/running jobs whose episode is NOT generating
+    # 1. Find all queued/running jobs whose episode is NOT generating.
+    # Batch-load every referenced episode in one query instead of one
+    # per active job (cleanup runs against up to 1000 jobs at a time).
     active_jobs = await job_repo.get_active_jobs(limit=1000)
+    episode_ids = list({job.episode_id for job in active_jobs})
+    eps_by_id = await ep_repo.get_by_ids(episode_ids)
     cleaned_jobs = 0
     for job in active_jobs:
-        ep = await ep_repo.get_by_id(job.episode_id)
+        ep = eps_by_id.get(job.episode_id)
         if ep is None or ep.status != "generating":
             await job_repo.update_status(job.id, "failed", error_message="Cleaned up: orphaned job")
             cleaned_jobs += 1

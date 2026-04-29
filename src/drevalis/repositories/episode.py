@@ -67,6 +67,18 @@ class EpisodeRepository(BaseRepository[Episode]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_by_ids(self, ids: list[UUID]) -> dict[UUID, Episode]:
+        """Return episodes for the given IDs, indexed by id.
+
+        Single round-trip replacement for a per-id ``get_by_id`` loop;
+        missing rows are simply absent from the returned dict.
+        """
+        if not ids:
+            return {}
+        stmt = select(Episode).where(Episode.id.in_(ids))
+        result = await self.session.execute(stmt)
+        return {ep.id: ep for ep in result.scalars().all()}
+
     async def get_by_status(self, status: str, limit: int = 50) -> list[Episode]:
         """Return all episodes with the given status."""
         stmt = (
