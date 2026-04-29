@@ -607,18 +607,15 @@ class PipelineOrchestrator:
             "Refine this prompt: {prompt}"
         )
 
-        refined_count = 0
-        for scene_data in scenes:
+        async def _refine_one(scene_data: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
             raw_vp: str = scene_data.get("visual_prompt", "")
             if not raw_vp:
-                continue
-
+                return scene_data, None
             refine_user = user_template.replace("{prompt}", raw_vp)
             if visual_style:
                 refine_user += f"\nVisual style: {visual_style}"
             if character_description:
                 refine_user += f"\nCharacter: {character_description}"
-
             try:
                 result = await provider.generate(
                     refine_system,
@@ -627,16 +624,24 @@ class PipelineOrchestrator:
                     max_tokens=256,
                 )
                 refined = result.content.strip().strip('"')
-                if len(refined) > 20:  # sanity-check: reject trivially short output
-                    scene_data["visual_prompt"] = refined
-                    refined_count += 1
+                if len(refined) > 20:
+                    return scene_data, refined
             except Exception as exc:
-                # Log but never propagate — original prompt remains intact.
                 self.log.debug(
                     "step_script.visual_prompt_refine_failed",
                     scene=scene_data.get("scene_number"),
                     error=str(exc)[:120],
                 )
+            return scene_data, None
+
+        results = await asyncio.gather(
+            *(_refine_one(s) for s in scenes), return_exceptions=False
+        )
+        refined_count = 0
+        for scene_data, refined in results:
+            if refined is not None:
+                scene_data["visual_prompt"] = refined
+                refined_count += 1
 
         self.log.info(
             "step_script.visual_prompts_refined",
