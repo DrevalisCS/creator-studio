@@ -11,6 +11,8 @@ Two workflows:
 1. **Video generation** — LLM script → TTS → ComfyUI scenes → faster-whisper captions → FFmpeg assembly → optional YouTube upload. Shorts (9:16), long-form (16:9), or square (1:1). Long-form uses 3-phase chunked LLM (outline → chapters → quality).
 2. **Text-to-Voice (Audiobooks)** — long text → audiobook with chapter detection, multi-voice via `[Speaker]` tags, sidechain-ducked music, speed/pitch, multiple outputs (WAV/MP3, audio+image MP4, audio+video MP4).
 
+User-facing setup, features, env vars, and pipeline step descriptions are documented in [README.md](README.md). For HTTP endpoints, point at Swagger: `http://localhost:8000/docs`.
+
 ## Commands
 
 ### Dev
@@ -59,6 +61,8 @@ pip-audit
 Single arq job, `PipelineOrchestrator` state machine (`services/pipeline.py`). Steps run sequentially; each completion is persisted to `generation_jobs` before the next. Completed steps are skipped on retry.
 
 Steps: `script` → `voice` → `scenes` → `captions` → `assembly` → `thumbnail`
+
+Per-step description lives in [README.md](README.md#generation-pipeline). Implementation notes:
 
 - **Resumability**: per-scene — existing `media_assets` skipped on retry; existing TTS WAVs reused.
 - **Cancellation**: Redis flags `cancel:{episode_id}` checked between steps. Emergency stop via `POST /api/v1/jobs/cancel-all` cancels all `generating` episodes.
@@ -166,11 +170,11 @@ Static mounts: `/storage/episodes/`, `/storage/voice_previews/`, `/storage/audio
 | TikTok | OAuth 2.0 + PKCE | TikTok API |
 | AceStep | ComfyUI workflow | 12 mood presets |
 
-## Patterns & Gotchas
+## Conventions
 
-- **Layered**: Router → Service → Repo, strict.
-- **Protocol-based providers**: implement one class to add a provider.
-- **Single orchestrator job**: state machine, no inter-job coordination, completed steps skipped on retry.
+Engineering patterns to follow when adding or changing code in this repo.
+
+- **Single orchestrator job**: state machine, no inter-job coordination. Completed steps skipped on retry.
 - **Cancellation via Redis flags**, checked between steps.
 - **Fernet w/ key versioning**: API keys + OAuth tokens encrypted at rest. `key_version` stored. Rotation via `ENCRYPTION_KEY_V1`, `_V2`, etc.
 - **structlog JSON logs**: pipeline binds `episode_id`, `step`, `job_id`. Requests bind `request_id`.
@@ -181,8 +185,8 @@ Static mounts: `/storage/episodes/`, `/storage/voice_previews/`, `/storage/audio
 - **Optional API key auth**: middleware checks `API_AUTH_TOKEN`. Unset = local dev mode. `/health` always exempt.
 - **In-process metrics**: `core/metrics.py` — per-step duration + success/failure. Exposed via `/api/v1/metrics/*`. No external deps.
 - **Request logging**: `core/middleware.py` — method, path, status, duration, `request_id`. Quiet paths (`/health`, `/api/v1/metrics/*`) at DEBUG.
-- **Multi-channel YouTube**: series/audiobook each have `youtube_channel_id` FK. Upload resolves from series — required, no fallback. Multiple channels simultaneously, no `deactivate_all`. Per-channel `upload_days` + `upload_time`.
-- **Chunked LLM**: long-form uses `LongFormScriptService` (3 phases). Long-form audiobooks (>30 min) use 2-phase outline-then-chapter.
+- **Multi-channel YouTube**: series/audiobook each have `youtube_channel_id` FK. Upload resolves from series — required, no fallback. Per-channel `upload_days` + `upload_time`.
+- **Chunked LLM**: long-form video uses `LongFormScriptService` (3 phases). Long-form audiobooks (>30 min) use 2-phase outline-then-chapter.
 - **TTS segment caching**: existing WAVs reused on retry.
 - **Per-scene resumability**: `media_assets` records skip retry. `asyncio.gather(..., return_exceptions=True)` preserves partial results.
 - **Safe WAV replacement**: backup before rename in audiobook music mixing.
@@ -194,6 +198,34 @@ Static mounts: `/storage/episodes/`, `/storage/voice_previews/`, `/storage/audio
 - **Background jobs**: music gen + SEO gen moved from sync HTTP handlers to arq jobs (was blocking 10+ min).
 - **Frontend**: `React.lazy` + `Suspense` for all routes. Large pages split into directory packages.
 - **Modular packages**: services >600 LOC and routes >800 LOC → packages with backward-compat `__init__.py` re-exports. Code lives in `_monolith.py`. **Never import from `_monolith` directly** — always from the package.
+
+## Gotchas
+
+Surprising behaviors and footguns. Read before changing related code.
+
+- **Env vars** — see [README configuration table](README.md#configuration). Required: `ENCRYPTION_KEY`. In dev, you usually only override `LM_STUDIO_BASE_URL` and `COMFYUI_DEFAULT_URL`.
+- `episode.script` and `episode.chapters` are JSONB. Validate via `EpisodeScript.model_validate()` / `LongFormScriptService` before write.
+- API keys + OAuth tokens encrypted. Never log/return decrypted. LLM config response uses `has_api_key: bool`.
+- ComfyUI `input_mappings` must match `WorkflowInputMapping` exactly — mismatched node IDs silently produce wrong results.
+- ComfyUI workflows have `content_format` tag. Pipeline filters by episode's `content_format` — mistagged workflows fail at scenes step.
+- Worker = separate process w/ own DB engine + Redis pool (created in `startup`). Doesn't share FastAPI's pools.
+- Static files limited to `episodes/`, `voice_previews/`, `audiobooks/` — not whole storage tree (avoids exposing models + temp).
+- Kokoro, Edge TTS, MusicGen are optional deps. Worker startup tolerates absence.
+- Long-form jobs legitimately run hours on slow GPU — that's why `longform_job_timeout=14400`.
+- Scene editing operates on JSONB script. After delete, remaining scenes renumbered from 1.
+- YouTube OAuth uses manual URL construction (no PKCE) to dodge `google_auth_oauthlib` state issues.
+- Episode statuses: `draft` → `generating` → `review`/`editing`/`exported`/`failed`. Only `draft` + `failed` regen-able.
+- Audiobook statuses: `draft` → `generating` → `done`/`failed`.
+- YouTube upload statuses: `pending` → `uploading` → `done`/`failed`.
+- Multi-channel YouTube: no "active" concept — resolved per-series via `youtube_channel_id`. Upload of episode whose series has no channel **fails at upload step**, not enqueue.
+- `publish_scheduled_posts` cron every 5 min (was 15). 3× retry w/ backoff. Missing `youtube_channel_id` skips + logs error rather than crashing.
+- LLMPool failover transparent to callers — round-robin, retries on next provider on 5xx/timeout.
+- Scene gen `asyncio.gather(..., return_exceptions=True)` saves completed scenes to `media_assets` before raising. Retry skips them.
+- Worker heartbeat key: `worker:heartbeat`. Health = healthy if <90s old.
+- Service/route packages: code in `_monolith.py` + re-exports in `__init__.py`. **Never import from `_monolith` directly.**
+- `UnsafeURLError` inherits from `ValueError`. **Don't catch `ValueError` broadly** in code calling SSRF validators — use explicit `except UnsafeURLError`.
+- Music + SEO gen are now arq jobs. HTTP endpoints enqueue + return immediately. Frontend polls or uses WebSocket.
+- Docker `app` doesn't use `--reload`. For hot reload: run `uvicorn ... --reload` directly outside Docker.
 
 ## Frontend
 
@@ -230,74 +262,7 @@ Docked bottom bar. Left: active task list w/ per-step progress. Right: worker he
 
 ## API Routes
 
-Base: `/api/v1/`
-
-| Prefix | Description |
-|--------|-------------|
-| `/series` | Series CRUD |
-| `/episodes` | CRUD + generate, retry, script/scene editing, export, cancel, duplicate, reset, reassemble, regenerate-voice/captions/scene, set-music, bulk-generate, estimate-cost |
-| `/voice-profiles` | CRUD + testing |
-| `/audiobooks` | CRUD + generation + cover upload |
-| `/comfyui` | Servers + workflows CRUD |
-| `/llm` | Config CRUD + test |
-| `/prompt-templates` | CRUD |
-| `/jobs` | Listing, active, queue, cancel-all, pause-all, retry-all-failed, set-priority, worker health/restart |
-| `/metrics` | Step stats, gen stats, recent history |
-| `/settings` | Health (DB/Redis/ComfyUI/FFmpeg), storage usage |
-| `/youtube` | OAuth, upload, channels, status, disconnect, history, video delete |
-| `/api-keys` | Encrypted key CRUD |
-| `/social` | Platform OAuth, upload, stats |
-| `/video-templates` | CRUD |
-| `/runpod` | GPU pod CRUD, deploy, register |
-| `/schedule` | CRUD + calendar view |
-| `/ws/progress/{episode_id}` | WebSocket per-episode progress |
-| `/ws/progress/all` | Pattern sub — all active episodes |
-| `/ws/progress/audiobook/{audiobook_id}` | Audiobook progress |
-| `/health` | Liveness/readiness (always exempt) |
-
-### Episode endpoints
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/episodes/recent` | Recent across all series |
-| `GET/POST` | `/episodes` | List/create |
-| `GET/PUT/DELETE` | `/episodes/{id}` | CRUD |
-| `POST` | `/episodes/{id}/generate` | Start pipeline |
-| `POST` | `/episodes/{id}/retry` | From first failed step |
-| `POST` | `/episodes/{id}/retry/{step}` | Specific step |
-| `GET/PUT` | `/episodes/{id}/script` | Get/update |
-| `PUT/DELETE` | `/episodes/{id}/scenes/{num}` | Update/delete scene |
-| `POST` | `/episodes/{id}/scenes/reorder` | Reorder |
-| `POST` | `/episodes/{id}/regenerate-scene/{num}` | One scene + reassemble |
-| `POST` | `/episodes/{id}/regenerate-voice` | Voice + downstream; `?voice_profile_id=&speed=&pitch=` |
-| `POST` | `/episodes/{id}/regenerate-captions` | Captions only; `?caption_style=` |
-| `POST` | `/episodes/{id}/reassemble` | Captions + assembly + thumbnail |
-| `POST` | `/episodes/{id}/set-music` | Music settings + auto-reassemble |
-| `POST` | `/episodes/{id}/duplicate` | Duplicate |
-| `POST` | `/episodes/{id}/reset` | Back to draft |
-| `POST` | `/episodes/{id}/cancel` | Cancel in-progress |
-| `POST` | `/episodes/{id}/estimate-cost` | Token + compute estimate |
-| `POST` | `/episodes/bulk-generate` | Up to 100 episodes |
-| `GET` | `/episodes/{id}/export/{video,thumbnail,description,bundle}` | Downloads |
-
-### YouTube endpoints
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/youtube/channels` | List (filters inactive; `?include_inactive=true`) |
-| `PUT` | `/youtube/channels/{id}` | Update settings |
-| `DELETE` | `/youtube/channels/{id}` | Delete + cascade history |
-| `DELETE` | `/youtube/videos/{video_id}` | Delete from YouTube |
-
-### Jobs endpoints
-
-| Method | Path | Purpose |
-|--------|------|---------|
-| `GET` | `/jobs/worker/health` | Heartbeat-based liveness |
-| `POST` | `/jobs/worker/restart` | Signal restart + reset stuck |
-| `POST` | `/jobs/retry-all-failed` | All failed; `?priority=` |
-| `POST` | `/jobs/pause-all` | Pause queue |
-| `POST` | `/jobs/set-priority` | `shorts_first`/`longform_first`/`fifo` |
+Base: `/api/v1/`. For the full endpoint list with request/response schemas, see Swagger UI at **http://localhost:8000/docs**.
 
 ## Directory Structure
 
@@ -356,31 +321,6 @@ frontend/src/
 
 Service/route packages use `_monolith.py` + `__init__.py` re-exports. Import from the package, never `_monolith`.
 
-## Configuration
-
-`core/config.py` — Pydantic `Settings` from env + `.env`. Only **required** value is `ENCRYPTION_KEY` (Fernet). Validated at Settings level + lifespan startup; app refuses invalid keys.
-
-| Var | Default | Description |
-|-----|---------|-------------|
-| `ENCRYPTION_KEY` | **required** | Fernet, encrypts API keys + OAuth tokens |
-| `DATABASE_URL` | `postgresql+asyncpg://drevalis:drevalis@localhost:5432/drevalis` | Postgres |
-| `REDIS_URL` | `redis://localhost:6379/0` | Job queue + pub/sub |
-| `STORAGE_BASE_PATH` | `./storage` | Media root |
-| `DEBUG` | `false` | Debug logs + SQLAlchemy echo |
-| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `10` / `20` | asyncpg pool |
-| `LM_STUDIO_BASE_URL` / `LM_STUDIO_DEFAULT_MODEL` | `http://localhost:1234/v1` / `local-model` | Local LLM |
-| `ANTHROPIC_API_KEY` | empty | Claude fallback |
-| `COMFYUI_DEFAULT_URL` | `http://localhost:8188` | ComfyUI |
-| `PIPER_MODELS_PATH` / `KOKORO_MODELS_PATH` | `./storage/models/{piper,kokoro}` | TTS models |
-| `FFMPEG_PATH` | `ffmpeg` | Binary |
-| `VIDEO_WIDTH` / `VIDEO_HEIGHT` / `VIDEO_FPS` | `1080` / `1920` / `30` | Output |
-| `VIDEO_MAX_DURATION` | `60` | Shorts cap; long-form uses `longform_job_timeout` |
-| `YOUTUBE_CLIENT_ID` / `_SECRET` / `_REDIRECT_URI` | empty / empty / `http://localhost:8000/api/v1/youtube/callback` | OAuth |
-| `API_AUTH_TOKEN` | empty | If set, all `/api/` + `/ws/` need `Authorization: Bearer <token>` |
-| `MAX_CONCURRENT_GENERATIONS` | `4` | Hard cap (actual = 4 + 2 × extra ComfyUI servers) |
-| `RUNPOD_API_KEY` | empty | RunPod cloud GPU |
-| `shorts_job_timeout` / `longform_job_timeout` | `7200` / `14400` | arq timeouts (sec) |
-
 ## Database
 
 Postgres 16, asyncpg + SQLAlchemy 2.x async. Alembic migrations. All models use `TimestampMixin` + `UUIDPrimaryKeyMixin`.
@@ -429,28 +369,3 @@ Postgres 16, asyncpg + SQLAlchemy 2.x async. Alembic migrations. All models use 
 - httpx `AsyncClient` for API tests
 - Repos mockable at service layer
 - Branch coverage; `TYPE_CHECKING` + `__main__` excluded
-
-## Common Gotchas
-
-- `episode.script` and `episode.chapters` are JSONB. Validate via `EpisodeScript.model_validate()` / `LongFormScriptService` before write.
-- API keys + OAuth tokens encrypted. Never log/return decrypted. LLM config response uses `has_api_key: bool`.
-- ComfyUI `input_mappings` must match `WorkflowInputMapping` exactly — mismatched node IDs silently produce wrong results.
-- ComfyUI workflows have `content_format` tag. Pipeline filters by episode's `content_format` — mistagged workflows fail at scenes step.
-- Worker = separate process w/ own DB engine + Redis pool (created in `startup`). Doesn't share FastAPI's pools.
-- Static files limited to `episodes/`, `voice_previews/`, `audiobooks/` — not whole storage tree (avoids exposing models + temp).
-- Kokoro, Edge TTS, MusicGen are optional deps. Worker startup tolerates absence.
-- Long-form jobs legitimately run hours on slow GPU — that's why `longform_job_timeout=14400`.
-- Scene editing operates on JSONB script. After delete, remaining scenes renumbered from 1.
-- YouTube OAuth uses manual URL construction (no PKCE) to dodge `google_auth_oauthlib` state issues.
-- Episode statuses: `draft` → `generating` → `review`/`editing`/`exported`/`failed`. Only `draft` + `failed` regen-able.
-- Audiobook statuses: `draft` → `generating` → `done`/`failed`.
-- YouTube upload statuses: `pending` → `uploading` → `done`/`failed`.
-- Multi-channel YouTube: no "active" concept — resolved per-series via `youtube_channel_id`. Upload of episode whose series has no channel **fails at upload step**, not enqueue.
-- `publish_scheduled_posts` cron now every 5 min (was 15). 3× retry w/ backoff. Missing `youtube_channel_id` skips + logs error rather than crashing.
-- LLMPool failover transparent to callers — round-robin, retries on next provider on 5xx/timeout.
-- Scene gen `asyncio.gather(..., return_exceptions=True)` saves completed scenes to `media_assets` before raising. Retry skips them.
-- Worker heartbeat key: `worker:heartbeat`. Health = healthy if <90s old.
-- Service/route packages: code in `_monolith.py` + re-exports in `__init__.py`. **Never import from `_monolith` directly.**
-- `UnsafeURLError` inherits from `ValueError`. **Don't catch `ValueError` broadly** in code calling SSRF validators — use explicit `except UnsafeURLError`.
-- Music + SEO gen are now arq jobs. HTTP endpoints enqueue + return immediately. Frontend polls or uses WebSocket.
-- Docker `app` doesn't use `--reload`. For hot reload: run `uvicorn ... --reload` directly outside Docker.

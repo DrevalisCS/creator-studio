@@ -97,7 +97,7 @@ Open the app:
               (LLM)   (images) (voice) (video)
 ```
 
-The backend follows strict **Router -> Service -> Repository** layering. Long-running generation is handled by arq async workers running a `PipelineOrchestrator` state machine. Real-time progress streams to the frontend via Redis pub/sub and WebSocket.
+The backend follows strict **Router -> Service -> Repository** layering — see [CLAUDE.md](CLAUDE.md#architecture) for the full conventions. Long-running generation is handled by arq async workers running a `PipelineOrchestrator` state machine. Real-time progress streams to the frontend via Redis pub/sub and WebSocket.
 
 | Layer | Technology |
 |-------|-----------|
@@ -352,46 +352,7 @@ storage/
 
 ## API Reference
 
-Interactive API documentation is available at **http://localhost:8000/docs** (Swagger UI) when the server is running.
-
-### Key Endpoints
-
-| Method | Path | Description |
-|--------|------|-------------|
-| `GET` | `/health` | Liveness/readiness probe |
-| `GET` | `/api/v1/settings/health` | Deep health check (DB, Redis, ComfyUI, FFmpeg) |
-| `GET/POST` | `/api/v1/series` | List/create series |
-| `GET/POST` | `/api/v1/episodes` | List/create episodes |
-| `POST` | `/api/v1/episodes/{id}/generate` | Start generation pipeline |
-| `POST` | `/api/v1/episodes/{id}/retry` | Retry from first failed step |
-| `POST` | `/api/v1/episodes/{id}/retry/{step}` | Retry a specific step |
-| `POST` | `/api/v1/episodes/bulk-generate` | Enqueue up to 100 episodes at once |
-| `GET/PUT` | `/api/v1/episodes/{id}/script` | Read/edit episode script |
-| `PUT/DELETE` | `/api/v1/episodes/{id}/scenes/{num}` | Edit/delete individual scenes |
-| `POST` | `/api/v1/episodes/{id}/scenes/reorder` | Reorder scenes |
-| `POST` | `/api/v1/episodes/{id}/regenerate-scene/{num}` | Regenerate one scene + reassemble |
-| `POST` | `/api/v1/episodes/{id}/regenerate-voice` | Regenerate voice + downstream |
-| `POST` | `/api/v1/episodes/{id}/reassemble` | Re-run captions + assembly |
-| `POST` | `/api/v1/episodes/{id}/cancel` | Cancel in-progress generation |
-| `POST` | `/api/v1/episodes/{id}/estimate-cost` | Token + compute cost estimate before generation |
-| `GET` | `/api/v1/episodes/{id}/export/bundle` | Download ZIP bundle |
-| `GET/POST` | `/api/v1/audiobooks` | List/create audiobooks |
-| `GET/POST` | `/api/v1/voice-profiles` | Manage voice profiles |
-| `GET/POST` | `/api/v1/llm` | Manage LLM configurations |
-| `POST` | `/api/v1/llm/{id}/test` | Test an LLM connection |
-| `GET/POST` | `/api/v1/comfyui` | Manage ComfyUI servers/workflows |
-| `GET` | `/api/v1/jobs/active` | Active/queued jobs |
-| `POST` | `/api/v1/jobs/cancel-all` | Emergency stop: cancel all |
-| `POST` | `/api/v1/jobs/set-priority` | Set job ordering (`shorts_first` / `longform_first` / `fifo`) |
-| `GET` | `/api/v1/jobs/worker/health` | Worker liveness (reads heartbeat from Redis) |
-| `POST` | `/api/v1/jobs/worker/restart` | Signal worker restart |
-| `GET` | `/api/v1/metrics/steps` | Per-step pipeline statistics |
-| `GET` | `/api/v1/youtube/channels` | List connected YouTube channels |
-| `POST` | `/api/v1/youtube/upload/{id}` | Upload episode to YouTube |
-| `GET/POST` | `/api/v1/schedule` | Content scheduling + calendar view |
-| `GET/POST` | `/api/v1/runpod` | RunPod GPU pod management |
-| `WS` | `/ws/progress/{episode_id}` | Real-time generation progress |
-| `WS` | `/ws/progress/all` | Progress for all active episodes simultaneously |
+Interactive API documentation is available at **http://localhost:8000/docs** (Swagger UI) when the server is running. All HTTP and WebSocket endpoints, request/response schemas, and example payloads live there.
 
 ## License
 
