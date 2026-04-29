@@ -10,7 +10,7 @@ import pytest
 from cryptography.fernet import Fernet
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -36,6 +36,12 @@ def _jsonb_to_json(element, compiler, **kw):
 @compiles(UUID, "sqlite")
 def _uuid_to_char(element, compiler, **kw):
     return "TEXT"
+
+
+@compiles(ARRAY, "sqlite")
+def _array_to_json(element, compiler, **kw):
+    # SQLite has no ARRAY; serialize as JSON for round-trip in tests.
+    return compiler.visit_JSON(JSON(), **kw)
 
 
 # Override UUID type processing for SQLite so that string <-> uuid.UUID
