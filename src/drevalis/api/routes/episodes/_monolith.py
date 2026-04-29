@@ -461,11 +461,12 @@ async def generate_episode(
 
     # Create generation jobs (skip steps that already completed successfully
     # so the orchestrator preserves existing work like scripts and voice).
+    # One query for all done steps instead of one per step.
     job_repo = GenerationJobRepository(db)
+    done_steps = await job_repo.get_done_steps(episode_id)
     job_ids: list[UUID] = []
     for step in steps:
-        existing = await job_repo.get_latest_by_episode_and_step(episode_id, step)
-        if existing and existing.status == "done":
+        if step in done_steps:
             continue
         job = await job_repo.create(
             episode_id=episode_id,
