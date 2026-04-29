@@ -429,6 +429,7 @@ class ComfyUIPool:
                 logger.warning(
                     "comfyui_server_unhealthy_cooldown",
                     server_id=str(chosen_id),
+                    server_url=client.base_url[:60],
                     error=str(ping_exc)[:120],
                     cooldown_seconds=60,
                     remaining_candidates=len(candidates) - candidates.index(chosen_id) - 1,
