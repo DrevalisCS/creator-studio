@@ -4433,7 +4433,10 @@ class AudiobookService:
         # deterministic for the "regenerate same chapter" retry case.
         import hashlib
 
-        slug = hashlib.sha1(title.encode("utf-8", errors="replace")).hexdigest()[:8]
+        slug = hashlib.sha1(
+            title.encode("utf-8", errors="replace"),
+            usedforsecurity=False,
+        ).hexdigest()[:8]
         card_path = output_dir / f"title_card_{slug}.jpg"
 
         # Drawtext escaping rules: backslash escapes itself; the
