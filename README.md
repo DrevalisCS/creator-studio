@@ -29,6 +29,22 @@ Open the app:
 - **API docs (Swagger):** http://localhost:8000/docs
 - **Health check:** http://localhost:8000/health
 
+## Documentation
+
+- [Architecture reference for Claude Code](CLAUDE.md)
+- [Architecture decision records](docs/adr/)
+- [Operations runbook](docs/ops/runbook.md)
+- [Releasing](docs/ops/releasing.md)
+- [Tech debt tracker](docs/ops/techdebt.md)
+- [Billing & payments setup](docs/setup/billing.md)
+- [SEO & analytics setup](docs/setup/seo-and-analytics.md)
+- [SMB storage option](docs/ops/smb-storage.md)
+- [Frontend design system](docs/frontend/design-system.md)
+- [Security advisories](docs/security/)
+- [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
+- [Security policy](SECURITY.md)
+
 ## Features
 
 ### Video Generation (Shorts + Long-Form)
