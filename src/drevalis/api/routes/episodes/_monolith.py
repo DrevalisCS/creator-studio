@@ -289,6 +289,10 @@ async def bulk_generate(
 
         await ep_repo.update_status(episode_id, "generating")
 
+        # Clear any stale cancel flag from a prior crashed run — without
+        # this, a flag set within the last hour silently aborts the new
+        # pipeline at the first _check_cancelled().
+        await arq.delete(f"cancel:{episode_id}")
         await arq.enqueue_job("generate_episode", str(episode_id))
         queued_ids.append(episode_id)
         logger.info("bulk_generate_enqueued", episode_id=str(episode_id))
@@ -474,8 +478,10 @@ async def generate_episode(
     await ep_repo.update_status(episode_id, "generating")
     await db.commit()
 
-    # Enqueue arq job for async processing.
+    # Enqueue arq job for async processing. Clear any stale cancel flag
+    # from a prior crashed run so the new pipeline isn't pre-cancelled.
     arq = get_arq_pool()
+    await arq.delete(f"cancel:{episode_id}")
     await arq.enqueue_job("generate_episode", str(episode_id))
 
     return GenerateResponse(
@@ -534,8 +540,9 @@ async def retry_episode(
     await ep_repo.update_status(episode_id, "generating")
     await db.commit()
 
-    # Enqueue arq retry.
+    # Enqueue arq retry. Clear any stale cancel flag first.
     arq = get_arq_pool()
+    await arq.delete(f"cancel:{episode_id}")
     await arq.enqueue_job("retry_episode_step", str(episode_id), failed_job.step)
 
     return RetryResponse(
@@ -594,8 +601,9 @@ async def retry_episode_step(
     await ep_repo.update_status(episode_id, "generating")
     await db.commit()
 
-    # Enqueue arq retry.
+    # Enqueue arq retry. Clear any stale cancel flag first.
     arq = get_arq_pool()
+    await arq.delete(f"cancel:{episode_id}")
     await arq.enqueue_job("retry_episode_step", str(episode_id), step)
 
     return RetryResponse(
