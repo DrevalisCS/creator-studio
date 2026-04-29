@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import AsyncGenerator
 from functools import lru_cache
 
+from fastapi import Depends, HTTPException, status
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -32,3 +33,21 @@ async def get_redis() -> AsyncGenerator[Redis, None]:
     """Yield a Redis client from the connection pool."""
     async for client in _get_redis():
         yield client
+
+
+def is_demo_mode(settings: Settings = Depends(get_settings)) -> bool:
+    """Return True when the install is running in demo mode."""
+    return bool(settings.demo_mode)
+
+
+def require_not_demo(settings: Settings = Depends(get_settings)) -> None:
+    """Refuse the request when demo mode is active.
+
+    Use on destructive routes (DELETE, RESET, RESTORE, regenerate) that
+    don't belong in a public playground.
+    """
+    if settings.demo_mode:
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "disabled_in_demo",
+        )
