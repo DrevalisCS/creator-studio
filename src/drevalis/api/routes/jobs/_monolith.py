@@ -174,34 +174,44 @@ async def get_active_tasks(
         logger.debug("tasks_audiobook_query_failed", exc_info=True)
 
     # ── 3. LLM script/series jobs (from Redis) ───────────────────────
+    # Activity Monitor polls every 2-3s. The previous loop fired
+    # 1 SCAN + N GET (status) + N GET (input) per poll for N matched
+    # keys; with MGET we collapse the 2N GETs into 2 batched calls.
     redis_client: Redis = Redis(connection_pool=get_pool())
     try:
+        all_status_keys: list[str] = []
         cursor: int = 0
         while True:
             cursor, keys = await redis_client.scan(cursor, match="script_job:*:status", count=50)
-            for key in keys:
-                raw_val = await redis_client.get(key)
+            for k in keys:
+                all_status_keys.append(k if isinstance(k, str) else k.decode())
+            if cursor == 0:
+                break
+
+        if all_status_keys:
+            status_values = await redis_client.mget(all_status_keys)
+            generating_jids: list[str] = []
+            for key_str, raw_val in zip(all_status_keys, status_values, strict=False):
                 if not raw_val:
                     continue
                 val = raw_val if isinstance(raw_val, str) else raw_val.decode()
                 if val != "generating":
                     continue
-
-                # Extract job_id from key pattern "script_job:{jid}:status"
-                key_str = key if isinstance(key, str) else key.decode()
                 parts = key_str.split(":")
-                if len(parts) < 3:
-                    continue
-                jid = parts[1]
+                if len(parts) >= 3:
+                    generating_jids.append(parts[1])
 
-                # Read input data for a better title
+            input_values: list[Any] = []
+            if generating_jids:
+                input_keys = [f"script_job:{jid}:input" for jid in generating_jids]
+                input_values = await redis_client.mget(input_keys)
+
+            for jid, input_raw in zip(generating_jids, input_values, strict=False):
                 title = "AI Script"
-                input_raw = await redis_client.get(f"script_job:{jid}:input")
                 if input_raw:
                     try:
                         raw_input = input_raw if isinstance(input_raw, str) else input_raw.decode()
                         data = json.loads(raw_input)
-                        # Could be audiobook script or series generation
                         if data.get("type") == "series":
                             idea = data.get("idea", "")
                             title = f"AI Series: {idea[:30]}" if idea else "AI Series"
@@ -227,9 +237,6 @@ async def get_active_tasks(
                         "url": url,
                     }
                 )
-
-            if cursor == 0:
-                break
     except Exception:
         logger.debug("tasks_redis_scan_failed", exc_info=True)
     finally:
