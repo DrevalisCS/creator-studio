@@ -1344,6 +1344,17 @@ class AudiobookService:
         dict with keys: audio_rel_path, video_rel_path, mp3_rel_path,
                         duration_seconds, file_size_bytes, chapters
         """
+        # Bind audiobook_id at the call boundary so every log line
+        # produced by helpers further down — including module-level
+        # `log = structlog.get_logger(__name__)` callers — carries the
+        # id without each helper having to take or rebind it. Cleared
+        # in the matching finally so other tasks running on this loop
+        # don't inherit the binding.
+        structlog.contextvars.bind_contextvars(
+            audiobook_id=str(audiobook_id),
+            title=title,
+        )
+
         # Refresh ComfyUI pool from DB so retries always use current servers
         if self.comfyui_service and self.db_session:
             try:
