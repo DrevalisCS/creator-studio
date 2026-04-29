@@ -41,11 +41,15 @@ class MediaAsset(UUIDPrimaryKeyMixin, Base):
     __tablename__ = "media_assets"
     __table_args__ = (
         CheckConstraint(
-            "asset_type IN ('voiceover', 'scene', 'scene_video', 'caption', 'video', 'thumbnail', 'temp')",
+            "asset_type IN ("
+            "'voiceover', 'scene', 'scene_image', 'scene_video', "
+            "'caption', 'video', 'video_proxy', 'thumbnail', 'temp'"
+            ")",
             name="asset_type_valid",
         ),
         Index("ix_media_assets_episode_id", "episode_id"),
         Index("ix_media_assets_episode_id_asset_type", "episode_id", "asset_type"),
+        Index("ix_media_assets_episode_id_scene_number", "episode_id", "scene_number"),
     )
 
     episode_id: Mapped[uuid.UUID] = mapped_column(
