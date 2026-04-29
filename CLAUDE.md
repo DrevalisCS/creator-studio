@@ -246,7 +246,7 @@ React + TS + Tailwind, Vite. **Outfit** (display) + **DM Sans** (body), glass mo
 | `/calendar` | Calendar | Month grid + scheduling dialog |
 | `/jobs` | Jobs | Background job monitor |
 | `/logs` | Logs | App logs |
-| `/about` | About | App info, pipeline viz |
+| `/help` | Help | App info, pipeline viz, troubleshooting |
 | `/settings` | Settings | ComfyUI, LLM, voices, YouTube |
 | `/youtube/callback` | YouTubeCallback | OAuth redirect |
 
