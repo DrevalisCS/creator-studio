@@ -3505,7 +3505,16 @@ class AudiobookService:
                     )
 
                 try:
-                    # Use ComfyUI pool to generate image
+                    # Use ComfyUI pool to generate image. Audiobooks
+                    # without a configured ComfyUI server have no way
+                    # to render chapter art — fall back to title cards
+                    # rather than crash with AttributeError.
+                    if self.comfyui_service is None:
+                        log.info(
+                            "audiobook.image_generation_skipped_no_comfyui",
+                            chapter=ch_idx,
+                        )
+                        return None
                     workflow = await self.comfyui_service._load_workflow(
                         "workflows/qwen_image_2512.json"
                     )
