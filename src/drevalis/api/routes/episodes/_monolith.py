@@ -3462,7 +3462,7 @@ async def seo_variants(
             ],
         )
 
-    llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+    llm_service = LLMService(encryption_key=settings.encryption_key)
     provider = llm_service.get_provider(configs[0])
     narration = " ".join((s.get("narration") or "") for s in episode.script.get("scenes") or [])
 
@@ -3619,7 +3619,7 @@ async def check_script_continuity(
         return ContinuityResponse(issues=[])
 
     script = _EpisodeScript.model_validate(episode.script)
-    llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+    llm_service = LLMService(encryption_key=settings.encryption_key)
     issues = await check_continuity(script=script, llm_service=llm_service, llm_config=configs[0])
     return ContinuityResponse(
         issues=[ContinuityIssueResponse.model_validate(i.to_dict()) for i in issues]

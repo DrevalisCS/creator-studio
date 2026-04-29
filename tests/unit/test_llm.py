@@ -114,8 +114,7 @@ class TestProviderSelection:
 
     @patch("drevalis.services.llm.OpenAICompatibleProvider")
     def test_provider_selection_openai_compatible(self, mock_openai_cls: MagicMock) -> None:
-        storage_mock = AsyncMock()
-        service = LLMService(storage=storage_mock)
+        service = LLMService()
 
         config = _make_llm_config(
             base_url="http://localhost:1234/v1",
@@ -133,8 +132,7 @@ class TestProviderSelection:
 
     @patch("drevalis.services.llm.AnthropicProvider")
     def test_provider_selection_anthropic_by_url(self, mock_anthropic_cls: MagicMock) -> None:
-        storage_mock = AsyncMock()
-        service = LLMService(storage=storage_mock)
+        service = LLMService()
 
         config = _make_llm_config(
             base_url="https://api.anthropic.com/v1",
@@ -154,8 +152,7 @@ class TestProviderSelection:
     def test_provider_selection_anthropic_by_model_name(
         self, mock_anthropic_cls: MagicMock
     ) -> None:
-        storage_mock = AsyncMock()
-        service = LLMService(storage=storage_mock)
+        service = LLMService()
 
         config = _make_llm_config(
             base_url="http://some-proxy.local/v1",
@@ -169,8 +166,7 @@ class TestProviderSelection:
     @patch("drevalis.services.llm.OpenAICompatibleProvider")
     def test_provider_caching(self, mock_openai_cls: MagicMock) -> None:
         """The same config.id should reuse the cached provider."""
-        storage_mock = AsyncMock()
-        service = LLMService(storage=storage_mock)
+        service = LLMService()
 
         config = _make_llm_config()
         provider1 = service.get_provider(config)
@@ -188,8 +184,7 @@ class TestGenerateScript:
     """Test LLMService.generate_script with mocked provider."""
 
     async def test_generate_script_valid_json(self) -> None:
-        storage_mock = AsyncMock()
-        service = LLMService(storage=storage_mock)
+        service = LLMService()
 
         valid_script = json.dumps(
             {
@@ -231,8 +226,7 @@ class TestGenerateScript:
         assert script.scenes[0].narration == "Cats are mysterious."
 
     async def test_generate_script_retry_on_invalid_json(self) -> None:
-        storage_mock = AsyncMock()
-        service = LLMService(storage=storage_mock)
+        service = LLMService()
 
         valid_script = json.dumps(
             {
@@ -278,8 +272,7 @@ class TestGenerateScript:
         assert mock_provider.generate.call_count == 2
 
     async def test_generate_script_all_retries_fail(self) -> None:
-        storage_mock = AsyncMock()
-        service = LLMService(storage=storage_mock)
+        service = LLMService()
 
         mock_provider = AsyncMock()
         # All calls return invalid JSON
@@ -303,8 +296,7 @@ class TestGenerateScript:
         assert mock_provider.generate.call_count == 3
 
     async def test_generate_script_markdown_fenced_json(self) -> None:
-        storage_mock = AsyncMock()
-        service = LLMService(storage=storage_mock)
+        service = LLMService()
 
         fenced_json = (
             "```json\n"

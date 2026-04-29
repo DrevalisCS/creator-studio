@@ -222,12 +222,10 @@ async def test_llm_config(
 
     try:
         from drevalis.services.llm import LLMService
-        from drevalis.services.storage import LocalStorage
 
-        storage = LocalStorage(settings.storage_base_path)
         # Pass the encryption key to LLMService so it can decrypt API keys
         # internally without mutating the ORM object (M5 fix).
-        service = LLMService(storage=storage, encryption_key=settings.encryption_key)
+        service = LLMService(encryption_key=settings.encryption_key)
 
         # Expunge the config from the session so that no accidental
         # autoflush can persist decrypted values to the database.

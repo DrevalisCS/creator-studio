@@ -602,7 +602,7 @@ async def upload_episode(
 
             configs = await LLMConfigRepository(db).get_all(limit=1)
             if configs:
-                llm_svc = LLMService(storage=None, encryption_key=settings.encryption_key)
+                llm_svc = LLMService(encryption_key=settings.encryption_key)
                 provider = llm_svc.get_provider(configs[0])
             else:
                 provider = OpenAICompatibleProvider(
