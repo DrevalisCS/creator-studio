@@ -38,12 +38,17 @@ async def generate_seo_async(ctx: dict[str, Any], episode_id: str) -> dict[str, 
     db = ctx["db"]
     settings = Settings()
 
-    logger.info("seo_generate_job.start", episode_id=episode_id)
+    # Bind context so every downstream provider/log call carries the
+    # episode id without each callee having to take or rebind it.
+    structlog.contextvars.bind_contextvars(
+        episode_id=episode_id, job="generate_seo_async"
+    )
+    logger.info("seo_generate_job.start")
 
     ep_repo = EpisodeRepository(db)
     episode = await ep_repo.get_by_id(UUID(episode_id))
     if not episode or not episode.script:
-        logger.error("seo_generate_job.episode_not_found", episode_id=episode_id)
+        logger.error("seo_generate_job.episode_not_found")
         return {"error": "Episode not found or has no script"}
 
     script = EpisodeScript.model_validate(episode.script)
@@ -98,7 +103,6 @@ async def generate_seo_async(ctx: dict[str, Any], episode_id: str) -> dict[str, 
 
     logger.info(
         "seo_generate_job.done",
-        episode_id=episode_id,
         virality_score=data.get("virality_score", 0),
     )
 
