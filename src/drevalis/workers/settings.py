@@ -10,7 +10,7 @@ Usage::
 
 from __future__ import annotations
 
-from arq import cron
+from arq import cron, func
 from arq.connections import RedisSettings
 
 from drevalis.core.config import Settings
@@ -109,6 +109,12 @@ class WorkerSettings:
         arq drevalis.workers.settings.WorkerSettings
     """
 
+    # Long-running jobs (pipeline, audiobook generation, music gen) inherit
+    # the global ``job_timeout`` below — those legitimately run for hours.
+    # Short admin/cron jobs are wrapped with ``func(...)`` so a stuck call
+    # can't squat on a worker slot for the full longform window.
+    _SHORT_TIMEOUT = 120  # 2 min — heartbeat, scheduled-publish per tick
+    _MEDIUM_TIMEOUT = 900  # 15 min — SEO LLM, social-publish batch
     functions = [
         generate_episode,
         generate_audiobook,
@@ -122,13 +128,13 @@ class WorkerSettings:
         generate_script_async,
         generate_series_async,
         generate_episode_music,
-        generate_seo_async,
-        publish_scheduled_posts,
-        publish_pending_social_uploads,
-        compute_ab_test_winners,
+        func(generate_seo_async, timeout=_MEDIUM_TIMEOUT),
+        func(publish_scheduled_posts, timeout=_MEDIUM_TIMEOUT),
+        func(publish_pending_social_uploads, timeout=_MEDIUM_TIMEOUT),
+        func(compute_ab_test_winners, timeout=_MEDIUM_TIMEOUT),
         auto_deploy_runpod_pod,
-        worker_heartbeat,
-        license_heartbeat,
+        func(worker_heartbeat, timeout=_SHORT_TIMEOUT),
+        func(license_heartbeat, timeout=_SHORT_TIMEOUT),
         scheduled_backup,
         analyze_video_ingest,
         commit_video_ingest_clip,
