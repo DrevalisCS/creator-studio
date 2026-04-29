@@ -14,6 +14,7 @@ from sqlalchemy import (  # noqa: F401
     CheckConstraint,
     Float,
     ForeignKey,
+    Index,
     String,
     text,
 )
@@ -45,6 +46,7 @@ class Series(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             "target_duration_seconds IN (15, 30, 60)",
             name="target_duration_valid",
         ),
+        Index("ix_series_youtube_channel_id", "youtube_channel_id"),
     )
 
     name: Mapped[str] = mapped_column(TEXT, nullable=False, unique=True)
