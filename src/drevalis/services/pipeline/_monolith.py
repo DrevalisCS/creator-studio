@@ -630,7 +630,12 @@ class PipelineOrchestrator:
                 if len(refined) > 20:
                     return scene_data, refined
             except Exception as exc:
-                self.log.debug(
+                # Refinement failure means the scene falls back to the
+                # raw LLM-generated prompt — visible quality degradation
+                # the user can't otherwise diagnose. Log at warning so
+                # the cause (provider 5xx, timeout, rate limit) is in
+                # the operator's normal log stream.
+                self.log.warning(
                     "step_script.visual_prompt_refine_failed",
                     scene=scene_data.get("scene_number"),
                     error=str(exc)[:120],

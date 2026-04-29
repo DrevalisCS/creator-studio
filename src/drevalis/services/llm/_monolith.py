@@ -339,7 +339,8 @@ class LLMPool:
                     logger.warning(
                         "llm_pool_provider_failed",
                         name=name,
-                        error=err_str[:100],
+                        error=err_str[:200],
+                        exc_info=True,
                     )
                 else:
                     # Client error (400, 422, auth failure, etc.) — don't
