@@ -76,12 +76,31 @@ async def _publish_scheduled_posts_locked(
 
                 if post.platform == "youtube":
                     # ── Actual YouTube upload ────────────────────────
-                    if not settings.youtube_client_id or not settings.youtube_client_secret:
-                        raise RuntimeError("YouTube not configured (missing client_id/secret)")
+                    # Resolve creds via the shared helper that checks
+                    # both env (``YOUTUBE_CLIENT_ID`` / ``_SECRET``)
+                    # AND the api_keys DB store. Pre-v0.28.1 this
+                    # path read only from ``settings``, so creds saved
+                    # via Settings → API Keys were ignored at publish
+                    # time and every upload failed with "not configured"
+                    # even though the integration page said the keys
+                    # were stored.
+                    from drevalis.services.integration_keys import (
+                        resolve_youtube_credentials,
+                    )
+
+                    yt_client_id, yt_client_secret = await resolve_youtube_credentials(
+                        settings, session
+                    )
+                    if not yt_client_id or not yt_client_secret:
+                        raise RuntimeError(
+                            "YouTube not configured (missing client_id/secret). "
+                            "Set YOUTUBE_CLIENT_ID + YOUTUBE_CLIENT_SECRET in .env, "
+                            "or save them via Settings → API Keys."
+                        )
 
                     svc = YouTubeService(
-                        client_id=settings.youtube_client_id,
-                        client_secret=settings.youtube_client_secret,
+                        client_id=yt_client_id,
+                        client_secret=yt_client_secret,
                         redirect_uri=settings.youtube_redirect_uri,
                         encryption_key=settings.encryption_key,
                     )

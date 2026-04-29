@@ -51,63 +51,15 @@ router = APIRouter(prefix="/api/v1/youtube", tags=["youtube"])
 async def _resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> tuple[str, str]:
     """Resolve the YouTube OAuth client credentials.
 
-    Priority order:
-    1. ``.env`` / environment variables (``YOUTUBE_CLIENT_ID`` /
-       ``YOUTUBE_CLIENT_SECRET``) — fastest, no DB lookup.
-    2. Database ``api_key_store`` table — where the Settings → API Keys
-       UI writes keys after Fernet encryption.
-
-    Before this helper existed, the Settings UI's "Save YouTube key"
-    path persisted to the DB but the YouTube router only read from the
-    Settings object → user saved creds successfully yet every YouTube
-    call returned 503 ``not_configured``. Now both sources merge; the
-    UI is a first-class configuration surface.
+    Pre-v0.28.1 the resolution body lived inline here and the worker
+    ``publish_scheduled_posts`` path bypassed it entirely (read straight
+    from ``settings``), so DB-stored credentials were ignored when
+    publishing. The logic moved to ``services.integration_keys`` so
+    both call sites share the same env→DB-with-decrypt resolver.
     """
-    from drevalis.core.security import decrypt_value
-    from drevalis.repositories.api_key_store import ApiKeyStoreRepository
+    from drevalis.services.integration_keys import resolve_youtube_credentials
 
-    client_id = settings.youtube_client_id
-    client_secret = settings.youtube_client_secret
-
-    # Fall back to the DB store for anything that's blank in settings.
-    if not client_id or not client_secret:
-        repo = ApiKeyStoreRepository(db)
-        if not client_id:
-            row = await repo.get_by_key_name("youtube_client_id")
-            if row and row.encrypted_value:
-                try:
-                    client_id = decrypt_value(
-                        row.encrypted_value,
-                        settings.encryption_key,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    # v0.20.16 — surface decryption failures instead of
-                    # silently falling back to empty. The most common
-                    # cause is a backup restored onto a different
-                    # ENCRYPTION_KEY; the user needs to know the key
-                    # is stored but can't be read with the current
-                    # Fernet key, not "integration not configured".
-                    logger.warning(
-                        "youtube_client_id_decrypt_failed",
-                        error=f"{type(exc).__name__}: {str(exc)[:120]}",
-                    )
-                    client_id = ""
-        if not client_secret:
-            row = await repo.get_by_key_name("youtube_client_secret")
-            if row and row.encrypted_value:
-                try:
-                    client_secret = decrypt_value(
-                        row.encrypted_value,
-                        settings.encryption_key,
-                    )
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning(
-                        "youtube_client_secret_decrypt_failed",
-                        error=f"{type(exc).__name__}: {str(exc)[:120]}",
-                    )
-                    client_secret = ""
-
-    return client_id, client_secret
+    return await resolve_youtube_credentials(settings, db)
 
 
 async def _build_youtube_service(settings: Settings, db: AsyncSession) -> YouTubeService:

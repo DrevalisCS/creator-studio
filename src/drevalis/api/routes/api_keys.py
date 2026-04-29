@@ -144,13 +144,27 @@ async def get_integrations_status(
             return IntegrationStatus(configured=True, source="env")
         return IntegrationStatus(configured=False, source="none")
 
+    # YouTube needs BOTH ``youtube_client_id`` AND ``youtube_client_secret``
+    # rows present in the api_keys store (or both env vars). Pre-v0.28.1 the
+    # lookup queried for a single ``"youtube"`` row that's never written by
+    # the Settings UI, so the integrations endpoint reported
+    # ``configured=false`` even when the publish path's underlying creds
+    # were stored. RunPod wasn't affected because it stores a single
+    # ``"runpod"`` row that DOES match the lookup.
+    from drevalis.services.integration_keys import youtube_configured_in_db
+
+    youtube_in_db = youtube_configured_in_db(stored_keys)
+    youtube_in_env = bool(settings.youtube_client_id and settings.youtube_client_secret)
+    if youtube_in_db:
+        yt_status = IntegrationStatus(configured=True, source="db")
+    elif youtube_in_env:
+        yt_status = IntegrationStatus(configured=True, source="env")
+    else:
+        yt_status = IntegrationStatus(configured=False, source="none")
+
     return IntegrationsStatusResponse(
         runpod=_status("runpod", settings.runpod_api_key),
         elevenlabs=_status("elevenlabs", ""),  # ElevenLabs key is per voice-profile
         anthropic=_status("anthropic", settings.anthropic_api_key),
-        youtube=_status(
-            "youtube",
-            # YouTube is configured when the OAuth client ID is present.
-            settings.youtube_client_id,
-        ),
+        youtube=yt_status,
     )
