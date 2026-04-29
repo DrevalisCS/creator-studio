@@ -218,7 +218,7 @@ class PipelineOrchestrator:
             # a mid-step crash between delete+commit previously lost
             # the cancellation signal.
             await self._clear_cancel_flag()
-            await metrics.record_generation(success=False)
+            await metrics.record_generation(self.redis, success=False)
             clear_pipeline_context()
             return
 
@@ -244,7 +244,7 @@ class PipelineOrchestrator:
                 await self.episode_repo.update_status(self.episode_id, "failed")
                 await self.db.commit()
                 await self._clear_cancel_flag()
-                await metrics.record_generation(success=False)
+                await metrics.record_generation(self.redis, success=False)
                 clear_pipeline_context()
                 return  # Exit cleanly.
 
@@ -295,6 +295,7 @@ class PipelineOrchestrator:
                 # Record successful step metric
                 step_duration = time.perf_counter() - step_start
                 await metrics.record_step(
+                    self.redis,
                     step=step.value,
                     duration=step_duration,
                     success=True,
@@ -315,6 +316,7 @@ class PipelineOrchestrator:
                     duration_seconds=round(step_duration, 3),
                 )
                 await metrics.record_step(
+                    self.redis,
                     step=step.value,
                     duration=step_duration,
                     success=False,
@@ -327,7 +329,7 @@ class PipelineOrchestrator:
                     "Generation cancelled by user",
                     error="Cancelled by user",
                 )
-                await metrics.record_generation(success=False)
+                await metrics.record_generation(self.redis, success=False)
                 clear_pipeline_context()
                 return  # Exit cleanly.
 
@@ -335,6 +337,7 @@ class PipelineOrchestrator:
                 # Record failed step metric
                 step_duration = time.perf_counter() - step_start
                 await metrics.record_step(
+                    self.redis,
                     step=step.value,
                     duration=step_duration,
                     success=False,
@@ -366,7 +369,7 @@ class PipelineOrchestrator:
                 await self._handle_step_failure(job, step, exc, suggestion=suggestion)
 
                 # Record failed generation
-                await metrics.record_generation(success=False)
+                await metrics.record_generation(self.redis, success=False)
                 clear_pipeline_context()
                 end_accumulator(token_reset)
                 raise  # Let arq handle retry
@@ -385,7 +388,7 @@ class PipelineOrchestrator:
         await self._broadcast_progress(PipelineStep.THUMBNAIL, 100, "done", "pipeline_complete")
 
         # Record successful generation
-        await metrics.record_generation(success=True)
+        await metrics.record_generation(self.redis, success=True)
         self.log.info("pipeline_complete")
         clear_pipeline_context()
 
