@@ -884,7 +884,7 @@ class ComfyUIService:
 
     async def generate_scene_images(
         self,
-        server_id: UUID,
+        server_id: UUID | None,
         workflow_path: str,
         input_mappings: WorkflowInputMapping,
         scenes: list[SceneScript],
@@ -1183,7 +1183,7 @@ class ComfyUIService:
 
     async def generate_scene_videos(
         self,
-        server_id: UUID,
+        server_id: UUID | None,
         workflow_path: str,
         input_mappings: WorkflowInputMapping,
         scenes: list[SceneScript],
