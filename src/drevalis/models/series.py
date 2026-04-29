@@ -47,6 +47,7 @@ class Series(UUIDPrimaryKeyMixin, TimestampMixin, Base):
             name="target_duration_valid",
         ),
         Index("ix_series_youtube_channel_id", "youtube_channel_id"),
+        Index("ix_series_content_format", "content_format"),
     )
 
     name: Mapped[str] = mapped_column(TEXT, nullable=False, unique=True)
