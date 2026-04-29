@@ -192,7 +192,7 @@ Engineering patterns to follow when adding or changing code in this repo.
 - **Safe WAV replacement**: backup before rename in audiobook music mixing.
 - **Chunk cleanup**: temp files cleaned *after* DB commit, not before.
 - **Scene duration scaling**: FFmpeg scales scene durations proportionally to audio length — prevents frozen last frames.
-- **Worker heartbeat**: every 60s to Redis (`worker:heartbeat`). `GET /api/v1/jobs/worker/health` reads it; healthy if <90s old.
+- **Worker heartbeat**: every 60s to Redis (`worker:heartbeat`, TTL 120s). `GET /api/v1/jobs/worker/health` reads it; healthy if <120s old (one full beat of slack).
 - **YouTube OAuth**: manual URL construction (no PKCE) to dodge state persistence issues with `google_auth_oauthlib`.
 - **Service extraction**: `EpisodeService` (`services/episode.py`) reusable ops (`get_or_raise`, `create_reassembly_jobs`, `require_status`). Domain exceptions in `core/exceptions.py` keep services FastAPI-free.
 - **Background jobs**: music gen + SEO gen moved from sync HTTP handlers to arq jobs (was blocking 10+ min).
@@ -221,7 +221,7 @@ Surprising behaviors and footguns. Read before changing related code.
 - `publish_scheduled_posts` cron every 5 min (was 15). 3× retry w/ backoff. Missing `youtube_channel_id` skips + logs error rather than crashing.
 - LLMPool failover transparent to callers — round-robin, retries on next provider on 5xx/timeout.
 - Scene gen `asyncio.gather(..., return_exceptions=True)` saves completed scenes to `media_assets` before raising. Retry skips them.
-- Worker heartbeat key: `worker:heartbeat`. Health = healthy if <90s old.
+- Worker heartbeat key: `worker:heartbeat`. Health = healthy if <120s old.
 - Service/route packages: code in `_monolith.py` + re-exports in `__init__.py`. **Never import from `_monolith` directly.**
 - `UnsafeURLError` inherits from `ValueError`. **Don't catch `ValueError` broadly** in code calling SSRF validators — use explicit `except UnsafeURLError`.
 - Music + SEO gen are now arq jobs. HTTP endpoints enqueue + return immediately. Frontend polls or uses WebSocket.
