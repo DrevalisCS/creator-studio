@@ -266,8 +266,15 @@ class TestComfyUIPool:
         blocking.set()
         await task
 
-    async def test_pool_least_loaded_selection(self) -> None:
-        """When server_id is None, the least-loaded server should be selected."""
+    async def test_pool_round_robin_selection(self) -> None:
+        """When server_id is None, the pool round-robins across servers.
+
+        The previous least-loaded selector was replaced because it
+        couldn't observe slot usage from inside an asyncio.gather()
+        fan-out — the load picture was always stale at decision time.
+        Round-robin gives the same end-state utilisation under burst
+        load and is observable.
+        """
         pool = ComfyUIPool()
         server_a = uuid4()
         server_b = uuid4()
@@ -280,12 +287,31 @@ class TestComfyUIPool:
         pool.register_server(server_a, client_a, max_concurrent=2)
         pool.register_server(server_b, client_b, max_concurrent=2)
 
-        # Consume one slot on server_a
-        async with pool.acquire(server_a):
-            # Now server_b has 2 free slots, server_a has 1
-            async with pool.acquire() as (chosen_id, client):
-                # Should pick server_b (more available capacity)
-                assert chosen_id == server_b
+        chosen: list = []
+        async with pool.acquire() as (sid1, _c1):
+            chosen.append(sid1)
+        async with pool.acquire() as (sid2, _c2):
+            chosen.append(sid2)
+
+        # Two distinct round-robin picks back-to-back must hit both
+        # registered servers exactly once.
+        assert set(chosen) == {server_a, server_b}
+
+    async def test_pool_total_capacity(self) -> None:
+        """total_capacity sums max_concurrent across all registered servers."""
+        pool = ComfyUIPool()
+
+        # Empty pool returns the fallback constant rather than zero so
+        # callers don't divide by zero in scene-gen sizing.
+        assert pool.total_capacity() > 0
+
+        a, b = uuid4(), uuid4()
+        pool.register_server(a, AsyncMock(), max_concurrent=4)
+        pool.register_server(b, AsyncMock(), max_concurrent=8)
+        assert pool.total_capacity() == 12
+
+        pool.unregister_server(a)
+        assert pool.total_capacity() == 8
 
     async def test_pool_acquire_specific_server(self, mock_comfyui_client: AsyncMock) -> None:
         pool = ComfyUIPool()

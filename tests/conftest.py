@@ -377,8 +377,8 @@ def sample_workflow_mapping() -> WorkflowInputMapping:
 
 _STALE_TESTS: frozenset[str] = frozenset(
     {
-        # Referenced ``_select_least_loaded`` which the ComfyUIPool no longer exposes
-        "tests/unit/test_comfyui.py::TestComfyUIPool::test_pool_least_loaded_selection",
+        # (Un-quarantined: replaced with test_pool_round_robin_selection
+        # which exercises the actual selector + total_capacity helper.)
         # FFmpegService.build_assembly_command signature changed; mocks stale
         "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_basic",
         "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_full",
