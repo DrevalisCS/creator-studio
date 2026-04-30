@@ -88,3 +88,21 @@ class VoiceTestResponse(BaseModel):
     message: str
     audio_path: str | None = None
     duration_seconds: float | None = None
+
+
+class CloneVoiceRequest(BaseModel):
+    """Payload for cloning a voice from an existing audio asset."""
+
+    asset_id: UUID
+    display_name: str
+    provider: Literal["elevenlabs", "piper", "kokoro"] = "elevenlabs"
+    language_code: str | None = None
+
+
+class CloneVoiceResponse(BaseModel):
+    """Result of a voice clone create."""
+
+    voice_profile_id: UUID
+    provider: str
+    status: str  # "ready" | "pending_training"
+    note: str

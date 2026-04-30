@@ -1,9 +1,11 @@
-"""Voice Profiles API router -- CRUD and voice testing."""
+"""Voice Profiles API router — CRUD, voice testing, voice cloning.
+
+Layering: this router calls ``VoiceProfileService`` only. No repository
+imports, no TTS provider imports here (audit F-A-01).
+"""
 
 from __future__ import annotations
 
-import asyncio
-from pathlib import Path
 from uuid import UUID
 
 import structlog
@@ -12,20 +14,34 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
-from drevalis.core.security import decrypt_value
-from drevalis.repositories.comfyui import ComfyUIServerRepository
-from drevalis.repositories.voice_profile import VoiceProfileRepository
+from drevalis.core.exceptions import NotFoundError, ValidationError
 from drevalis.schemas.voice_profile import (
+    CloneVoiceRequest,
+    CloneVoiceResponse,
     VoiceProfileCreate,
     VoiceProfileResponse,
     VoiceProfileUpdate,
     VoiceTestRequest,
     VoiceTestResponse,
 )
+from drevalis.services.voice_profile import VoiceProfileService
 
 log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/voice-profiles", tags=["voice-profiles"])
+
+
+def _service(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> VoiceProfileService:
+    return VoiceProfileService(
+        db,
+        encryption_key=settings.encryption_key,
+        storage_base_path=settings.storage_base_path,
+        piper_models_path=settings.piper_models_path,
+        kokoro_models_path=settings.kokoro_models_path,
+    )
 
 
 # ── List voice profiles ──────────────────────────────────────────────────
@@ -44,32 +60,13 @@ async def list_voice_profiles(
         description="Filter by BCP-47 language tag (e.g. 'en-US'). Profiles with "
         "language_code=NULL always pass through so legacy voices aren't hidden.",
     ),
-    db: AsyncSession = Depends(get_db),
+    svc: VoiceProfileService = Depends(_service),
 ) -> list[VoiceProfileResponse]:
-    """Return all voice profiles, optionally filtered by provider and language."""
-    repo = VoiceProfileRepository(db)
-    if provider is not None:
-        profiles = await repo.get_by_provider(provider)
-    else:
-        profiles = await repo.get_all()
-
-    if language_code:
-        profiles = [p for p in profiles if not p.language_code or p.language_code == language_code]
+    profiles = await svc.list_filtered(provider=provider, language_code=language_code)
     return [VoiceProfileResponse.model_validate(p) for p in profiles]
 
 
 # ── Generate ElevenLabs voice previews ───────────────────────────────────
-
-#: Maximum seconds to wait for a single voice synthesis before skipping it.
-_PREVIEW_SYNTHESIS_TIMEOUT: int = 60
-
-#: Sample text template for generated previews.  ``{voice_name}`` is replaced
-#: with the human-readable part of the voice ID (e.g. "Roger").
-_PREVIEW_TEXT_TEMPLATE = (
-    "Hello, this is {voice_name}. "
-    "I can narrate your stories, bring characters to life, "
-    "and create engaging content."
-)
 
 
 @router.post(
@@ -87,136 +84,12 @@ _PREVIEW_TEXT_TEMPLATE = (
     ),
 )
 async def generate_voice_previews(
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: VoiceProfileService = Depends(_service),
 ) -> dict[str, int | str]:
-    """Generate and cache audio previews for all ComfyUI ElevenLabs profiles.
-
-    Processing is sequential so that a single overloaded ComfyUI server is
-    not flooded with concurrent prompt submissions.  Each synthesis attempt
-    is wrapped in an ``asyncio.timeout`` guard; profiles that time out or
-    raise are counted as failures and logged, but do not abort the batch.
-
-    Returns:
-        A dict with ``generated``, ``skipped``, ``failed``, and ``message``
-        keys summarising the batch result.
-    """
-    from drevalis.services.tts import ComfyUIElevenLabsTTSProvider
-
-    vp_repo = VoiceProfileRepository(db)
-    profiles = await vp_repo.get_by_provider("comfyui_elevenlabs")
-
-    if not profiles:
-        return {
-            "generated": 0,
-            "skipped": 0,
-            "failed": 0,
-            "message": "No comfyui_elevenlabs voice profiles found.",
-        }
-
-    # Resolve the first active ComfyUI server -- the provider handles its own
-    # HTTP connection lifecycle, so we only need the URL and optional API key.
-    comfyui_repo = ComfyUIServerRepository(db)
-    active_servers = await comfyui_repo.get_active_servers()
-    if not active_servers:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No active ComfyUI server is configured.",
-        )
-
-    server = active_servers[0]
-    comfyui_api_key: str | None = None
-    if server.api_key_encrypted:
-        try:
-            comfyui_api_key = decrypt_value(server.api_key_encrypted, settings.encryption_key)
-        except Exception:
-            # Proceed without the key; ComfyUI may still accept the request if
-            # it does not enforce authentication locally.
-            log.warning(
-                "voice_preview.comfyui_key_decrypt_failed",
-                server_id=str(server.id),
-            )
-
-    provider = ComfyUIElevenLabsTTSProvider(
-        comfyui_base_url=server.url,
-        comfyui_api_key=comfyui_api_key,
-    )
-
-    preview_dir: Path = settings.storage_base_path / "voice_previews"
-    preview_dir.mkdir(parents=True, exist_ok=True)
-
-    generated = 0
-    skipped = 0
-    failed = 0
-
-    for profile in profiles:
-        # Skip profiles that already have a valid preview file on disk.
-        if profile.sample_audio_path:
-            full_path: Path = settings.storage_base_path / profile.sample_audio_path
-            if full_path.exists():
-                skipped += 1
-                continue
-
-        voice_id: str | None = profile.elevenlabs_voice_id
-        if not voice_id:
-            log.warning(
-                "voice_preview.no_voice_id",
-                profile_id=str(profile.id),
-                profile_name=profile.name,
-            )
-            failed += 1
-            continue
-
-        # Extract the human-readable name before the parenthesised metadata,
-        # e.g. "Roger (male, american)" -> "Roger".
-        voice_name = voice_id.split(" (")[0].strip()
-        sample_text = _PREVIEW_TEXT_TEMPLATE.format(voice_name=voice_name)
-
-        output_path: Path = preview_dir / f"{profile.id}.wav"
-
-        try:
-            async with asyncio.timeout(_PREVIEW_SYNTHESIS_TIMEOUT):
-                await provider.synthesize(sample_text, voice_id, output_path)
-        except TimeoutError:
-            log.warning(
-                "voice_preview.timeout",
-                profile_id=str(profile.id),
-                profile_name=profile.name,
-                timeout_seconds=_PREVIEW_SYNTHESIS_TIMEOUT,
-            )
-            failed += 1
-            continue
-        except Exception as exc:
-            log.warning(
-                "voice_preview.synthesis_failed",
-                profile_id=str(profile.id),
-                profile_name=profile.name,
-                error=str(exc),
-            )
-            failed += 1
-            continue
-
-        # Persist the relative path so the frontend can derive the static URL.
-        rel_path = f"voice_previews/{profile.id}.wav"
-        await vp_repo.update(profile.id, sample_audio_path=rel_path)
-        generated += 1
-        log.info(
-            "voice_preview.generated",
-            profile_id=str(profile.id),
-            profile_name=profile.name,
-            path=rel_path,
-        )
-
-    # A single commit covers all `vp_repo.update` calls above.
-    await db.commit()
-
-    message = f"Generated {generated} preview(s), skipped {skipped} existing, {failed} failed."
-    return {
-        "generated": generated,
-        "skipped": skipped,
-        "failed": failed,
-        "message": message,
-    }
+    try:
+        return await svc.generate_all_previews()
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.detail) from exc
 
 
 # ── Create voice profile ─────────────────────────────────────────────────
@@ -230,73 +103,9 @@ async def generate_voice_previews(
 )
 async def create_voice_profile(
     payload: VoiceProfileCreate,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: VoiceProfileService = Depends(_service),
 ) -> VoiceProfileResponse:
-    """Create a new voice profile and auto-generate a voice preview."""
-    repo = VoiceProfileRepository(db)
-    create_kwargs = payload.model_dump()
-
-    # Auto-derive language_code from edge_voice_id when the caller didn't
-    # supply one — e.g. "en-US-AriaNeural" → "en-US". Keeps users from
-    # having to fill it in manually for the most common case.
-    if not create_kwargs.get("language_code") and create_kwargs.get("provider") == "edge":
-        evid = create_kwargs.get("edge_voice_id") or ""
-        parts = evid.split("-")
-        if len(parts) >= 2:
-            create_kwargs["language_code"] = f"{parts[0]}-{parts[1]}"
-
-    profile = await repo.create(**create_kwargs)
-    await db.commit()
-    await db.refresh(profile)
-
-    # Auto-generate a voice preview (best-effort, does not block creation)
-    preview_text = (
-        "Welcome to Drevalis. This is how I sound when narrating your videos. Pretty cool, right?"
-    )
-    try:
-        preview_dir = settings.storage_base_path / "voice_previews"
-        preview_dir.mkdir(parents=True, exist_ok=True)
-        preview_path = preview_dir / f"{profile.id}.wav"
-
-        from drevalis.services.tts import TTSProvider
-
-        provider: TTSProvider | None = None
-        voice_id: str | None = None
-
-        if profile.provider == "edge":
-            from drevalis.services.tts import EdgeTTSProvider
-
-            provider = EdgeTTSProvider()
-            voice_id = profile.edge_voice_id
-        elif profile.provider == "piper":
-            from drevalis.services.tts import PiperTTSProvider
-
-            provider = PiperTTSProvider(models_path=settings.piper_models_path)
-            voice_id = (
-                Path(profile.piper_model_path).stem
-                if profile.piper_model_path
-                else profile.piper_speaker_id
-            )
-        elif profile.provider == "kokoro":
-            from drevalis.services.tts import KokoroTTSProvider
-
-            provider = KokoroTTSProvider(models_path=settings.kokoro_models_path)
-            voice_id = profile.kokoro_voice_name
-
-        if provider and voice_id:
-            await provider.synthesize(
-                preview_text,
-                voice_id,
-                preview_path,
-                speed=float(profile.speed) if profile.speed else 1.0,
-            )
-            profile.sample_audio_path = f"voice_previews/{profile.id}.wav"
-            await db.commit()
-            await db.refresh(profile)
-    except Exception as e:
-        log.warning("voice_preview_generation_failed", error=str(e))
-
+    profile = await svc.create(payload)
     return VoiceProfileResponse.model_validate(profile)
 
 
@@ -311,16 +120,12 @@ async def create_voice_profile(
 )
 async def get_voice_profile(
     profile_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: VoiceProfileService = Depends(_service),
 ) -> VoiceProfileResponse:
-    """Fetch a single voice profile by ID."""
-    repo = VoiceProfileRepository(db)
-    profile = await repo.get_by_id(profile_id)
-    if profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VoiceProfile {profile_id} not found",
-        )
+    try:
+        profile = await svc.get(profile_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return VoiceProfileResponse.model_validate(profile)
 
 
@@ -336,24 +141,14 @@ async def get_voice_profile(
 async def update_voice_profile(
     profile_id: UUID,
     payload: VoiceProfileUpdate,
-    db: AsyncSession = Depends(get_db),
+    svc: VoiceProfileService = Depends(_service),
 ) -> VoiceProfileResponse:
-    """Update an existing voice profile."""
-    repo = VoiceProfileRepository(db)
-    update_data = payload.model_dump(exclude_unset=True)
-    if not update_data:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No fields to update",
-        )
-    profile = await repo.update(profile_id, **update_data)
-    if profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VoiceProfile {profile_id} not found",
-        )
-    await db.commit()
-    await db.refresh(profile)
+    try:
+        profile = await svc.update(profile_id, payload)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.detail) from exc
     return VoiceProfileResponse.model_validate(profile)
 
 
@@ -367,17 +162,12 @@ async def update_voice_profile(
 )
 async def delete_voice_profile(
     profile_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: VoiceProfileService = Depends(_service),
 ) -> None:
-    """Delete a voice profile by ID."""
-    repo = VoiceProfileRepository(db)
-    deleted = await repo.delete(profile_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VoiceProfile {profile_id} not found",
-        )
-    await db.commit()
+    try:
+        await svc.delete(profile_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 # ── Test voice profile ───────────────────────────────────────────────────
@@ -392,155 +182,21 @@ async def delete_voice_profile(
 async def test_voice_profile(
     profile_id: UUID,
     payload: VoiceTestRequest | None = None,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: VoiceProfileService = Depends(_service),
 ) -> VoiceTestResponse:
     """Synthesise a short sample and return the result.
 
-    Uses Piper or ElevenLabs depending on the voice profile's provider.
+    Uses Piper, Edge, Kokoro, or ElevenLabs depending on the profile's
+    provider.
     """
-    repo = VoiceProfileRepository(db)
-    profile = await repo.get_by_id(profile_id)
-    if profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VoiceProfile {profile_id} not found",
-        )
-
-    text = "Hello, this is a test of the voice profile."
-    if payload is not None:
-        text = payload.text
-
+    text = payload.text if payload is not None else "Hello, this is a test of the voice profile."
     try:
-        from drevalis.services.tts import (
-            EdgeTTSProvider,
-            KokoroTTSProvider,
-            PiperTTSProvider,
-            TTSProvider,
-        )
-
-        output_dir = settings.storage_base_path / "temp" / "voice_tests"
-        output_dir.mkdir(parents=True, exist_ok=True)
-        output_path = output_dir / f"test_{profile_id}.wav"
-
-        provider: TTSProvider
-        voice_id: str
-
-        if profile.provider == "piper":
-            provider = PiperTTSProvider(models_path=settings.piper_models_path)
-            voice_id = (
-                Path(profile.piper_model_path).stem
-                if profile.piper_model_path
-                else profile.piper_speaker_id or ""
-            )
-        elif profile.provider == "elevenlabs":
-            # Resolve the ElevenLabs API key from the encrypted api_key_store.
-            from drevalis.repositories.api_key_store import ApiKeyStoreRepository
-
-            key_store = ApiKeyStoreRepository(db)
-            api_key_row = await key_store.get_by_key_name("elevenlabs")
-            if api_key_row is None:
-                return VoiceTestResponse(
-                    success=False,
-                    message="ElevenLabs API key not configured — add it on the Settings → API Keys page.",
-                )
-            from drevalis.core.security import decrypt_value
-
-            el_api_key = decrypt_value(api_key_row.encrypted_value, settings.encryption_key)
-
-            from drevalis.services.tts import ElevenLabsTTSProvider
-
-            el_provider = ElevenLabsTTSProvider(api_key=el_api_key)
-
-            # Auto-upload the sample via IVC the first time we test a
-            # pending_training clone (no voice_id yet but sample_audio_path is set).
-            if not profile.elevenlabs_voice_id and profile.sample_audio_path:
-                sample_abs = Path(settings.storage_base_path) / profile.sample_audio_path
-                if sample_abs.exists():
-                    try:
-                        new_voice_id = await el_provider.upload_voice_sample(
-                            name=profile.name or f"drevalis-{profile.id.hex[:8]}",
-                            sample_path=sample_abs,
-                        )
-                        await repo.update(profile.id, elevenlabs_voice_id=new_voice_id)
-                        await db.commit()
-                        profile = await repo.get_by_id(profile.id) or profile
-                    except Exception as exc:
-                        return VoiceTestResponse(
-                            success=False,
-                            message=f"ElevenLabs IVC upload failed: {exc}",
-                        )
-
-            if not profile.elevenlabs_voice_id:
-                return VoiceTestResponse(
-                    success=False,
-                    message="ElevenLabs voice ID is not configured and no sample audio is available.",
-                )
-
-            result = await el_provider.synthesize(
-                text,
-                profile.elevenlabs_voice_id,
-                output_path,
-                speed=float(profile.speed),
-                pitch=float(profile.pitch),
-            )
-            await el_provider.close()
-            return VoiceTestResponse(
-                success=True,
-                message="Voice test completed successfully",
-                audio_path=result.audio_path,
-                duration_seconds=result.duration_seconds,
-            )
-        elif profile.provider == "edge":
-            provider = EdgeTTSProvider()
-            voice_id = profile.edge_voice_id or ""
-        elif profile.provider == "kokoro":
-            provider = KokoroTTSProvider(models_path=settings.kokoro_models_path)
-            voice_id = profile.kokoro_voice_name or ""
-        else:
-            return VoiceTestResponse(
-                success=False,
-                message=f"Unknown provider: {profile.provider}",
-            )
-
-        result = await provider.synthesize(
-            text,
-            voice_id,
-            output_path,
-            speed=float(profile.speed),
-            pitch=float(profile.pitch),
-        )
-        return VoiceTestResponse(
-            success=True,
-            message="Voice test completed successfully",
-            audio_path=result.audio_path,
-            duration_seconds=result.duration_seconds,
-        )
-    except Exception as exc:
-        return VoiceTestResponse(
-            success=False,
-            message=f"Voice test failed: {exc}",
-        )
+        return await svc.test(profile_id, text)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
-# ── Voice cloning (Phase E) ─────────────────────────────────────────
-
-
-from pydantic import BaseModel as _CloneBase  # noqa: E402
-
-
-class CloneVoiceRequest(_CloneBase):
-    asset_id: UUID
-    display_name: str
-    provider: str = "elevenlabs"  # elevenlabs | piper | kokoro
-    language_code: str | None = None
-
-
-class CloneVoiceResponse(_CloneBase):
-    voice_profile_id: UUID
-    provider: str
-    status: str  # "ready" | "pending_training"
-    note: str
+# ── Voice cloning (Phase E) ──────────────────────────────────────────────
 
 
 @router.post(
@@ -551,7 +207,7 @@ class CloneVoiceResponse(_CloneBase):
 )
 async def clone_voice(
     body: CloneVoiceRequest,
-    db: AsyncSession = Depends(get_db),
+    svc: VoiceProfileService = Depends(_service),
 ) -> CloneVoiceResponse:
     """Clone a voice from an existing asset.
 
@@ -566,47 +222,9 @@ async def clone_voice(
     ``pending_training`` since those engines need offline model
     fine-tuning which isn't automated yet.
     """
-    from drevalis.repositories.asset import AssetRepository
-    from drevalis.repositories.voice_profile import VoiceProfileRepository
-
-    valid_providers = {"elevenlabs", "piper", "kokoro"}
-    if body.provider not in valid_providers:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            f"provider must be one of {sorted(valid_providers)}",
-        )
-
-    asset = await AssetRepository(db).get_by_id(body.asset_id)
-    if asset is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found")
-    if asset.kind != "audio":
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            f"asset kind must be 'audio', got '{asset.kind}'",
-        )
-
-    profile_repo = VoiceProfileRepository(db)
-    profile = await profile_repo.create(
-        name=body.display_name.strip() or "Cloned voice",
-        provider=body.provider,
-        piper_voice_model=None,
-        elevenlabs_voice_id=None,
-        kokoro_voice_id=None,
-        sample_audio_path=asset.file_path,
-        language_code=body.language_code,
-    )
-    await db.commit()
-
-    note = (
-        "Profile created. ElevenLabs upload will happen on the first "
-        "voice test; until then the profile is pending_training."
-        if body.provider == "elevenlabs"
-        else "Profile created — local TTS voices require offline model "
-        "fine-tuning which isn't automated yet."
-    )
-    return CloneVoiceResponse(
-        voice_profile_id=profile.id,
-        provider=body.provider,
-        status="pending_training",
-        note=note,
-    )
+    try:
+        return await svc.clone(body)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.detail) from exc
