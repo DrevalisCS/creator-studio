@@ -777,6 +777,213 @@ class EpisodeService:
             "provider": provider,
         }
 
+    # ── Music tab ──────────────────────────────────────────────────
+
+    async def list_music_tracks(
+        self,
+        episode_id: UUID,
+        storage_base_path: Any,
+        ffprobe_duration: Any,
+        audio_extensions: tuple[str, ...],
+    ) -> dict[str, Any]:
+        """Scan episode-specific + shared library music dirs. Returns
+        the assembled response payload directly."""
+        from pathlib import Path
+
+        episode = await self.get_or_raise(episode_id)
+        base = Path(storage_base_path)
+        tracks: list[dict[str, Any]] = []
+
+        episode_music_dir = base / "episodes" / str(episode_id) / "music"
+        if episode_music_dir.exists():
+            for audio_file in sorted(episode_music_dir.iterdir()):
+                if audio_file.suffix.lower() in audio_extensions:
+                    relative = f"episodes/{episode_id}/music/{audio_file.name}"
+                    duration = await ffprobe_duration(audio_file)
+                    mood_guess = audio_file.stem.split("_")[0] if "_" in audio_file.stem else ""
+                    tracks.append(
+                        {
+                            "filename": audio_file.name,
+                            "path": relative,
+                            "mood": mood_guess,
+                            "duration": duration,
+                            "source": "episode",
+                        }
+                    )
+
+        generated_dir = base / "music" / "generated"
+        if generated_dir.exists():
+            for mood_dir in sorted(generated_dir.iterdir()):
+                if not mood_dir.is_dir():
+                    continue
+                mood_name = mood_dir.name
+                for audio_file in sorted(mood_dir.iterdir()):
+                    if audio_file.suffix.lower() in audio_extensions:
+                        relative = f"music/generated/{mood_name}/{audio_file.name}"
+                        duration = await ffprobe_duration(audio_file)
+                        tracks.append(
+                            {
+                                "filename": audio_file.name,
+                                "path": relative,
+                                "mood": mood_name,
+                                "duration": duration,
+                                "source": "library",
+                            }
+                        )
+
+        selected_path: str | None = (
+            episode.metadata_.get("selected_music_path") if episode.metadata_ else None
+        )
+        return {
+            "episode_id": str(episode_id),
+            "tracks": tracks,
+            "selected_path": selected_path,
+        }
+
+    async def select_music(self, episode_id: UUID, music_path: str | None) -> str | None:
+        """Persist ``selected_music_path`` in episode.metadata_."""
+        episode = await self.get_or_raise(episode_id)
+
+        current_meta: dict[str, Any] = dict(episode.metadata_) if episode.metadata_ else {}
+        if music_path is None:
+            current_meta.pop("selected_music_path", None)
+        else:
+            current_meta["selected_music_path"] = music_path
+
+        await self._ep_repo.update(episode_id, metadata_=current_meta)
+        await self._db.commit()
+        log.info(
+            "music_selected",
+            episode_id=str(episode_id),
+            selected_music_path=music_path,
+        )
+        return music_path
+
+    async def set_music(
+        self,
+        episode_id: UUID,
+        *,
+        music_enabled: bool,
+        music_mood: str | None,
+        music_volume_db: float | None,
+        reassemble: bool,
+        base_max: int,
+    ) -> dict[str, Any]:
+        """Persist music_settings on episode.metadata_; optionally
+        enqueue a reassembly job. Returns the response payload."""
+        from drevalis.core.redis import get_arq_pool
+
+        episode = await self.get_or_raise(episode_id)
+
+        music_settings: dict[str, Any] = {"music_enabled": music_enabled}
+        if music_mood is not None:
+            music_settings["music_mood"] = music_mood
+        if music_volume_db is not None:
+            music_settings["music_volume_db"] = music_volume_db
+
+        current_meta: dict[str, Any] = dict(episode.metadata_) if episode.metadata_ else {}
+        current_meta["music_settings"] = music_settings
+
+        await self._ep_repo.update(episode_id, metadata_=current_meta)
+        await self._db.commit()
+        log.info(
+            "music_settings_updated",
+            episode_id=str(episode_id),
+            music_settings=music_settings,
+        )
+
+        response: dict[str, Any] = {
+            "episode_id": str(episode_id),
+            "music_settings": music_settings,
+            "message": "Music settings saved",
+        }
+        if not reassemble:
+            return response
+
+        await self.check_generation_slots(base_max)
+
+        if not episode.script:
+            response["message"] = "Music settings saved; reassembly skipped (episode has no script)"
+            return response
+
+        job_ids: list[UUID] = []
+        for step in ("captions", "assembly", "thumbnail"):
+            job = await self._job_repo.create(episode_id=episode_id, step=step, status="queued")
+            job_ids.append(job.id)
+
+        await self._ep_repo.update_status(episode_id, "generating")
+        await self._db.commit()
+
+        arq = get_arq_pool()
+        await arq.enqueue_job("reassemble_episode", str(episode_id))
+        log.info("set_music_reassemble_enqueued", episode_id=str(episode_id))
+        response["message"] = "Music settings saved; reassembly enqueued"
+        response["job_ids"] = [str(j) for j in job_ids]
+        return response
+
+    # ── Export helpers ─────────────────────────────────────────────
+
+    async def get_with_series_or_raise(self, episode_id: UUID) -> Episode:
+        """Load an episode with its series eagerly loaded."""
+        from sqlalchemy.orm import selectinload
+
+        stmt = (
+            sa_select(Episode).where(Episode.id == episode_id).options(selectinload(Episode.series))
+        )
+        result = await self._db.execute(stmt)
+        episode = result.scalar_one_or_none()
+        if episode is None:
+            raise EpisodeNotFoundError(episode_id)
+        return episode
+
+    async def get_video_asset_path(self, episode_id: UUID) -> str | None:
+        """Return the relative path of the latest video asset, or None."""
+        video_assets = await self._asset_repo.get_by_episode_and_type(episode_id, "video")
+        return video_assets[-1].file_path if video_assets else None
+
+    async def get_thumbnail_asset_path(self, episode_id: UUID) -> str | None:
+        thumb_assets = await self._asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
+        return thumb_assets[-1].file_path if thumb_assets else None
+
+    async def get_caption_asset_path(self, episode_id: UUID) -> str | None:
+        caption_assets = await self._asset_repo.get_by_episode_and_type(episode_id, "caption")
+        return caption_assets[-1].file_path if caption_assets else None
+
+    async def get_all_assets(self, episode_id: UUID) -> list[Any]:
+        return list(await self._asset_repo.get_by_episode(episode_id))
+
+    # ── Custom thumbnail upload ────────────────────────────────────
+
+    async def replace_thumbnail_asset(
+        self,
+        episode_id: UUID,
+        *,
+        rel_path: str,
+        file_size: int,
+    ) -> Any:
+        """Delete any existing thumbnail MediaAsset rows + create a new
+        one + update episode.metadata_['thumbnail_path']. Returns the
+        new asset row."""
+        existing = await self._asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
+        for a in existing:
+            await self._asset_repo.delete(a.id)
+
+        new_asset = await self._asset_repo.create(
+            episode_id=episode_id,
+            asset_type="thumbnail",
+            file_path=rel_path,
+            file_size_bytes=file_size,
+        )
+
+        episode = await self._ep_repo.get_by_id(episode_id)
+        if episode is None:
+            raise EpisodeNotFoundError(episode_id)
+        current_metadata = dict(episode.metadata_ or {}) if episode.metadata_ else {}
+        current_metadata["thumbnail_path"] = rel_path
+        await self._ep_repo.update(episode_id, metadata_=current_metadata)
+        await self._db.commit()
+        return new_asset
+
     # ── Job creation helpers (kept from original v1 for compatibility) ──
 
     async def create_reassembly_jobs(

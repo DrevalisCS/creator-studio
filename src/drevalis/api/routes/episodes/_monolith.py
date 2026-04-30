@@ -17,14 +17,12 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_redis, get_settings
 from drevalis.core.redis import get_arq_pool
 from drevalis.models.episode import Episode
 from drevalis.repositories.episode import EpisodeRepository
-from drevalis.repositories.generation_job import GenerationJobRepository
 from drevalis.repositories.media_asset import MediaAssetRepository
 from drevalis.schemas.episode import (
     BulkGenerateRequest,
@@ -355,9 +353,7 @@ async def generate_episode(
         await check_and_increment_episode_quota(_redis)
         break
 
-    requested_steps: list[str] | None = (
-        list(payload.steps) if payload and payload.steps else None
-    )
+    requested_steps: list[str] | None = list(payload.steps) if payload and payload.steps else None
     try:
         job_ids = await svc.generate(
             episode_id, requested_steps, settings.max_concurrent_generations
@@ -1093,82 +1089,22 @@ async def list_music_moods(episode_id: UUID) -> dict[str, Any]:
 )
 async def list_episode_music(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """List all music tracks available for the given episode.
-
-    Two directories are scanned:
-
-    1. ``storage/episodes/{episode_id}/music/`` -- tracks generated
-       specifically for this episode.
-    2. ``storage/music/generated/`` -- tracks generated for other episodes
-       that are available for reuse (organised by mood subdirectory).
-
-    Each entry contains the relative storage path so the frontend can
-    construct the static-file URL as ``/storage/{relative_path}``.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
+    """List all music tracks available for the given episode."""
+    try:
+        return await svc.list_music_tracks(
+            episode_id,
+            settings.storage_base_path,
+            _ffprobe_duration,
+            _AUDIO_EXTENSIONS,
+        )
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-
-    base = settings.storage_base_path
-    tracks: list[dict[str, Any]] = []
-
-    # 1. Episode-specific music directory.
-    episode_music_dir = base / "episodes" / str(episode_id) / "music"
-    if episode_music_dir.exists():
-        for audio_file in sorted(episode_music_dir.iterdir()):
-            if audio_file.suffix.lower() in _AUDIO_EXTENSIONS:
-                relative = f"episodes/{episode_id}/music/{audio_file.name}"
-                duration = await _ffprobe_duration(audio_file)
-                # Derive mood from filename prefix (e.g. "epic_1234.mp3" -> "epic").
-                mood_guess = audio_file.stem.split("_")[0] if "_" in audio_file.stem else ""
-                tracks.append(
-                    {
-                        "filename": audio_file.name,
-                        "path": relative,
-                        "mood": mood_guess,
-                        "duration": duration,
-                        "source": "episode",
-                    }
-                )
-
-    # 2. Shared generated library (mood subdirectories).
-    generated_dir = base / "music" / "generated"
-    if generated_dir.exists():
-        for mood_dir in sorted(generated_dir.iterdir()):
-            if not mood_dir.is_dir():
-                continue
-            mood_name = mood_dir.name
-            for audio_file in sorted(mood_dir.iterdir()):
-                if audio_file.suffix.lower() in _AUDIO_EXTENSIONS:
-                    relative = f"music/generated/{mood_name}/{audio_file.name}"
-                    duration = await _ffprobe_duration(audio_file)
-                    tracks.append(
-                        {
-                            "filename": audio_file.name,
-                            "path": relative,
-                            "mood": mood_name,
-                            "duration": duration,
-                            "source": "library",
-                        }
-                    )
-
-    # Highlight currently selected track.
-    selected_path: str | None = (
-        episode.metadata_.get("selected_music_path") if episode.metadata_ else None
-    )
-
-    return {
-        "episode_id": str(episode_id),
-        "tracks": tracks,
-        "selected_path": selected_path,
-    }
+        ) from exc
 
 
 @router.post(
@@ -1186,23 +1122,18 @@ async def list_episode_music(
 async def generate_episode_music(
     episode_id: UUID,
     payload: dict[str, Any],
-    db: AsyncSession = Depends(get_db),
     redis: ArqRedis = Depends(get_redis),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Enqueue music generation as a background job.
-
-    The actual generation runs in the arq worker to avoid blocking
-    a uvicorn worker for up to 10 minutes.
-    """
-    # Validate episode exists
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
+    """Enqueue music generation as a background job."""
+    try:
+        await svc.get_or_raise(episode_id)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"Episode {episode_id} not found"
-        )
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Episode {episode_id} not found",
+        ) from exc
 
-    # Validate request body
     mood = payload.get("mood")
     if not mood or not isinstance(mood, str):
         raise HTTPException(
@@ -1216,15 +1147,17 @@ async def generate_episode_music(
         duration_seconds = float(raw_duration)
     except (TypeError, ValueError):
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="'duration' must be a number (seconds)."
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="'duration' must be a number (seconds).",
         ) from None
     if not (1.0 <= duration_seconds <= _ACESTEP_MAX_DURATION_SECONDS):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"'duration' must be between 1 and {int(_ACESTEP_MAX_DURATION_SECONDS)} seconds.",
+            detail=(
+                f"'duration' must be between 1 and {int(_ACESTEP_MAX_DURATION_SECONDS)} seconds."
+            ),
         )
 
-    # Enqueue background job
     await redis.enqueue_job(
         "generate_episode_music",
         str(episode_id),
@@ -1249,35 +1182,10 @@ async def generate_episode_music(
 async def select_episode_music(
     episode_id: UUID,
     payload: dict[str, Any],
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Store the user's chosen music track on the episode record.
-
-    Args:
-        episode_id: UUID of the episode to update.
-        payload: JSON body with ``music_path`` key (relative to storage base,
-            e.g. ``"episodes/{id}/music/epic_1234.mp3"``).  Pass ``null`` to
-            clear the selection.
-        db: Injected async database session.
-        settings: Injected application settings.
-
-    Returns:
-        Confirmation dict with ``episode_id`` and ``selected_music_path``.
-
-    Raises:
-        HTTPException 400: if ``music_path`` is missing from the payload.
-        HTTPException 404: if the episode does not exist or the specified file
-            is not found on disk.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Episode {episode_id} not found",
-        )
-
+    """Store the user's chosen music track on the episode record."""
     if "music_path" not in payload:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -1287,7 +1195,6 @@ async def select_episode_music(
     music_path: str | None = payload["music_path"]
 
     if music_path is not None:
-        # Validate the referenced file actually exists on disk.
         resolved = settings.storage_base_path / music_path
         if not resolved.exists():
             raise HTTPException(
@@ -1295,28 +1202,18 @@ async def select_episode_music(
                 detail=f"Music file not found at storage path '{music_path}'.",
             )
 
-    # Merge into the existing metadata_ JSONB without overwriting other keys.
-    current_meta: dict[str, Any] = dict(episode.metadata_) if episode.metadata_ else {}
-    if music_path is None:
-        current_meta.pop("selected_music_path", None)
-    else:
-        current_meta["selected_music_path"] = music_path
-
-    await ep_repo.update(episode_id, metadata_=current_meta)
-    await db.commit()
-
-    logger.info(
-        "music_selected",
-        episode_id=str(episode_id),
-        selected_music_path=music_path,
-    )
+    try:
+        selected = await svc.select_music(episode_id, music_path)
+    except EpisodeNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Episode {episode_id} not found",
+        ) from exc
 
     return {
         "episode_id": str(episode_id),
-        "selected_music_path": music_path,
-        "message": (
-            f"Music track selected: {music_path}" if music_path else "Music selection cleared"
-        ),
+        "selected_music_path": selected,
+        "message": (f"Music track selected: {selected}" if selected else "Music selection cleared"),
     }
 
 
@@ -1338,94 +1235,26 @@ async def select_episode_music(
 async def set_music(
     episode_id: UUID,
     payload: SetMusicRequest,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Store music configuration on the episode and optionally trigger reassembly.
-
-    Only fields explicitly provided in the request body are stored. Existing
-    ``metadata_`` keys outside of ``music_settings`` are preserved.
-
-    Args:
-        episode_id: UUID of the episode to configure.
-        payload: Music settings and optional reassembly flag.
-        db: Injected async database session.
-        settings: Injected application settings.
-
-    Returns:
-        Confirmation dict including the persisted music settings and,
-        if reassembly was triggered, the enqueued job IDs.
-
-    Raises:
-        HTTPException 404: if the episode does not exist.
-        HTTPException 429: if reassembly was requested but the concurrency cap
-            is reached.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
+    """Store music configuration on the episode and optionally trigger reassembly."""
+    try:
+        return await svc.set_music(
+            episode_id,
+            music_enabled=payload.music_enabled,
+            music_mood=payload.music_mood,
+            music_volume_db=payload.music_volume_db,
+            reassemble=payload.reassemble,
+            base_max=settings.max_concurrent_generations,
+        )
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-
-    # Build the music_settings dict from explicitly provided fields.
-    music_settings: dict[str, Any] = {"music_enabled": payload.music_enabled}
-    if payload.music_mood is not None:
-        music_settings["music_mood"] = payload.music_mood
-    if payload.music_volume_db is not None:
-        music_settings["music_volume_db"] = payload.music_volume_db
-
-    # Merge into existing metadata_, preserving unrelated keys.
-    current_meta: dict[str, Any] = dict(episode.metadata_) if episode.metadata_ else {}
-    current_meta["music_settings"] = music_settings
-
-    await ep_repo.update(episode_id, metadata_=current_meta)
-    await db.commit()
-
-    logger.info(
-        "music_settings_updated",
-        episode_id=str(episode_id),
-        music_settings=music_settings,
-    )
-
-    response: dict[str, Any] = {
-        "episode_id": str(episode_id),
-        "music_settings": music_settings,
-        "message": "Music settings saved",
-    }
-
-    if not payload.reassemble:
-        return response
-
-    # Trigger reassembly so the new music settings are applied to the video.
-    await _check_generation_slots(ep_repo, settings, db)
-
-    if not episode.script:
-        # No script yet — store the settings but skip reassembly silently.
-        response["message"] = "Music settings saved; reassembly skipped (episode has no script)"
-        return response
-
-    job_repo = GenerationJobRepository(db)
-    job_ids: list[UUID] = []
-    for step in ("captions", "assembly", "thumbnail"):
-        job = await job_repo.create(
-            episode_id=episode_id,
-            step=step,
-            status="queued",
-        )
-        job_ids.append(job.id)
-
-    await ep_repo.update_status(episode_id, "generating")
-    await db.commit()
-
-    arq = get_arq_pool()
-    await arq.enqueue_job("reassemble_episode", str(episode_id))
-
-    logger.info("set_music_reassemble_enqueued", episode_id=str(episode_id))
-    response["message"] = "Music settings saved; reassembly enqueued"
-    response["job_ids"] = [str(j) for j in job_ids]
-    return response
+        ) from exc
+    except ConcurrencyCapReachedError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
 
 
 # ── Export helpers ────────────────────────────────────────────────────────
@@ -1439,19 +1268,16 @@ def _sanitize_filename(series_name: str, episode_title: str) -> str:
     return safe[:100] or "export"
 
 
-async def _load_episode_with_series(episode_id: UUID, db: AsyncSession) -> Episode:
-    """Load an episode with its series relationship eagerly loaded."""
-    from sqlalchemy import select
-
-    stmt = select(Episode).where(Episode.id == episode_id).options(selectinload(Episode.series))
-    result = await db.execute(stmt)
-    episode = result.scalar_one_or_none()
-    if episode is None:
+async def _load_episode_with_series(episode_id: UUID, svc: EpisodeService) -> Episode:
+    """Thin wrapper around ``EpisodeService.get_with_series_or_raise``
+    that maps NotFound → 404 so the export endpoints stay terse."""
+    try:
+        return await svc.get_with_series_or_raise(episode_id)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-    return episode
+        ) from exc
 
 
 def _build_description(episode: Episode) -> str:
@@ -1499,23 +1325,21 @@ def _build_description(episode: Episode) -> str:
 )
 async def export_video(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> FileResponse:
     """Serve the episode's final video file with a sanitized filename."""
-    episode = await _load_episode_with_series(episode_id, db)
+    episode = await _load_episode_with_series(episode_id, svc)
     series_name = episode.series.name if episode.series else "Short"
     safe_name = _sanitize_filename(series_name, episode.title)
 
-    asset_repo = MediaAssetRepository(db)
-    video_assets = await asset_repo.get_by_episode_and_type(episode_id, "video")
-    if not video_assets:
+    rel = await svc.get_video_asset_path(episode_id)
+    if rel is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No video asset found for this episode",
         )
-
-    video_path = Path(settings.storage_base_path) / video_assets[-1].file_path
+    video_path = Path(settings.storage_base_path) / rel
     if not video_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1541,23 +1365,21 @@ async def export_video(
 )
 async def export_thumbnail(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> FileResponse:
     """Serve the episode's thumbnail image with a sanitized filename."""
-    episode = await _load_episode_with_series(episode_id, db)
+    episode = await _load_episode_with_series(episode_id, svc)
     series_name = episode.series.name if episode.series else "Short"
     safe_name = _sanitize_filename(series_name, episode.title)
 
-    asset_repo = MediaAssetRepository(db)
-    thumb_assets = await asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
-    if not thumb_assets:
+    rel = await svc.get_thumbnail_asset_path(episode_id)
+    if rel is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No thumbnail asset found for this episode",
         )
-
-    thumb_path = Path(settings.storage_base_path) / thumb_assets[-1].file_path
+    thumb_path = Path(settings.storage_base_path) / rel
     if not thumb_path.exists():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1587,8 +1409,8 @@ async def upload_thumbnail(
         ...,
         description="PNG or JPEG. Max 4 MB. Saved as storage/episodes/{id}/output/thumbnail.jpg.",
     ),
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
     """Accept a user-edited thumbnail image and replace the episode's
     thumbnail asset.
@@ -1626,13 +1448,13 @@ async def upload_thumbnail(
             )
 
     # 2. Load episode, ensure the output directory exists.
-    episode_repo = EpisodeRepository(db)
-    episode = await episode_repo.get_by_id(episode_id)
-    if not episode:
+    try:
+        await svc.get_or_raise(episode_id)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="episode_not_found",
-        )
+        ) from exc
 
     base = Path(settings.storage_base_path)
     rel_path = f"episodes/{episode_id}/output/thumbnail.jpg"
@@ -1666,22 +1488,9 @@ async def upload_thumbnail(
     file_size = abs_path.stat().st_size
 
     # 4. Point the MediaAsset + episode metadata at the new file.
-    asset_repo = MediaAssetRepository(db)
-    existing = await asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
-    for a in existing:
-        await asset_repo.delete(a.id)
-
-    new_asset = await asset_repo.create(
-        episode_id=episode_id,
-        asset_type="thumbnail",
-        file_path=rel_path,
-        file_size_bytes=file_size,
+    new_asset = await svc.replace_thumbnail_asset(
+        episode_id, rel_path=rel_path, file_size=file_size
     )
-
-    current_metadata = dict(episode.metadata_ or {}) if episode.metadata_ else {}
-    current_metadata["thumbnail_path"] = rel_path
-    await episode_repo.update(episode_id, metadata_=current_metadata)
-    await db.commit()
 
     logger.info(
         "thumbnail_uploaded",
@@ -1708,11 +1517,11 @@ async def upload_thumbnail(
 )
 async def export_description(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> Response:
     """Generate and serve a plain-text description file with title, description,
     hashtags, series info, and full script narration."""
-    episode = await _load_episode_with_series(episode_id, db)
+    episode = await _load_episode_with_series(episode_id, svc)
     series_name = episode.series.name if episode.series else "Short"
     safe_name = _sanitize_filename(series_name, episode.title)
 
@@ -1739,33 +1548,30 @@ async def export_description(
 )
 async def export_bundle(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> Response:
     """Create an in-memory ZIP archive containing the video, thumbnail,
     description text, and SRT captions (when available)."""
-    episode = await _load_episode_with_series(episode_id, db)
+    episode = await _load_episode_with_series(episode_id, svc)
     series_name = episode.series.name if episode.series else "Short"
     safe_name = _sanitize_filename(series_name, episode.title)
 
-    asset_repo = MediaAssetRepository(db)
     base = Path(settings.storage_base_path)
+    video_rel = await svc.get_video_asset_path(episode_id)
+    thumb_rel = await svc.get_thumbnail_asset_path(episode_id)
+    caption_rel = await svc.get_caption_asset_path(episode_id)
 
-    # Collect assets.
-    video_assets = await asset_repo.get_by_episode_and_type(episode_id, "video")
-    thumb_assets = await asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
-    caption_assets = await asset_repo.get_by_episode_and_type(episode_id, "caption")
-
-    if not video_assets:
+    if video_rel is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No video asset found for this episode; cannot create bundle",
         )
 
     description_content = _build_description(episode)
-    video_path = base / video_assets[-1].file_path
-    thumb_path = (base / thumb_assets[-1].file_path) if thumb_assets else None
-    srt_path = (base / caption_assets[-1].file_path) if caption_assets else None
+    video_path = base / video_rel
+    thumb_path = (base / thumb_rel) if thumb_rel else None
+    srt_path = (base / caption_rel) if caption_rel else None
 
     def _build() -> bytes:
         # MP4/JPG/SRT are already compressed (or tiny); ZIP_STORED keeps
@@ -2201,8 +2007,8 @@ async def get_seo_score(
 )
 async def export_raw_assets(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> Response:
     """Zip every raw generation asset — one file per scene image, per
     voice segment, the final composited assets, and any ASS/SRT caption
@@ -2220,14 +2026,13 @@ async def export_raw_assets(
         <safe_name>/thumbnail/thumb.jpg   (when present)
         <safe_name>/README.txt            (asset index + generation notes)
     """
-    episode = await _load_episode_with_series(episode_id, db)
+    episode = await _load_episode_with_series(episode_id, svc)
     series_name = episode.series.name if episode.series else "Short"
     safe_name = _sanitize_filename(series_name, episode.title)
 
-    asset_repo = MediaAssetRepository(db)
     base = Path(settings.storage_base_path)
 
-    all_assets = await asset_repo.get_by_episode(episode_id)
+    all_assets = await svc.get_all_assets(episode_id)
     if not all_assets:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
