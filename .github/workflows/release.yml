@@ -114,7 +114,18 @@ jobs:
           }
           JSON
 
-          curl -fsSL -X POST "$LICENSE_SERVER/admin/updates/publish" \
+          # NPM proxy in front of the license server occasionally
+          # returns 502 (upstream container restart, brief blip).
+          # ``--retry 5 --retry-all-errors --retry-delay 10`` rides
+          # over a 50s outage; persistent failure still fails the
+          # step so the release pipeline visibly stops when the
+          # license server is genuinely down.
+          curl -fsSL \
+            --retry 5 \
+            --retry-all-errors \
+            --retry-delay 10 \
+            --retry-max-time 120 \
+            -X POST "$LICENSE_SERVER/admin/updates/publish" \
             -H "Authorization: Bearer $ADMIN_TOKEN" \
             -H "Content-Type: application/json" \
             --data-binary @manifest.json
