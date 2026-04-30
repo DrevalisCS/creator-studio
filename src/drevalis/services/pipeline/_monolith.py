@@ -1529,7 +1529,7 @@ class PipelineOrchestrator:
                     background_music_path = await self._prepare_chapter_music(
                         episode=episode,
                         series=series,
-                        chapters=chapters,
+                        chapters=chapters or [],
                         scene_inputs=scene_inputs if not use_video_concat else None,
                         video_assets=scene_video_assets if use_video_concat else None,
                         voiceover_path=voiceover_path,
@@ -1547,7 +1547,7 @@ class PipelineOrchestrator:
                 # Single track (shorts or fallback)
                 try:
                     bg_path = await self.music_service.get_music_for_episode(
-                        mood=series.music_mood,
+                        mood=series.music_mood or "",
                         target_duration=float(total_duration),
                         episode_id=self.episode_id,
                     )

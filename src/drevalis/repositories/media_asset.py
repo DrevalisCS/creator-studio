@@ -52,7 +52,9 @@ class MediaAssetRepository(BaseRepository[MediaAsset]):
         """
         stmt = select(func.coalesce(func.sum(MediaAsset.file_size_bytes), 0))
         result = await self.session.execute(stmt)
-        return result.scalar_one()
+        # ``COALESCE(..., 0)`` guarantees a non-NULL int — narrow for mypy.
+        total: int | None = result.scalar_one()
+        return total or 0
 
     async def delete_by_episode(self, episode_id: UUID) -> int:
         """Bulk-delete all media assets for an episode.

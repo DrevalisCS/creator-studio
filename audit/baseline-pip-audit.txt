@@ -1,0 +1,17 @@
+Found 9 known vulnerabilities in 5 packages
+Name         Version ID             Fix Versions
+------------ ------- -------------- ------------
+anthropic    0.86.0  CVE-2026-34450 0.87.0
+anthropic    0.86.0  CVE-2026-34452 0.87.0
+cryptography 46.0.5  CVE-2026-34073 46.0.6
+cryptography 46.0.5  CVE-2026-39892 46.0.7
+pip          25.1.1  CVE-2025-8869  25.3
+pip          25.1.1  CVE-2026-1703  26.0
+pip          25.1.1  CVE-2026-3219
+pygments     2.19.2  CVE-2026-4539  2.20.0
+pytest       9.0.2   CVE-2025-71176 9.0.3
+Name                         Skip Reason
+---------------------------- -------------------------------------------------------------------------------------------
+drevalis                     Dependency not found on PyPI and could not be audited: drevalis (0.1.0)
+shortsfactory                Dependency not found on PyPI and could not be audited: shortsfactory (0.1.0)
+shortsfactory-license-server Dependency not found on PyPI and could not be audited: shortsfactory-license-server (0.1.0)

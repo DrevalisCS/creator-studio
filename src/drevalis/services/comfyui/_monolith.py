@@ -701,7 +701,7 @@ class ComfyUIService:
 
     async def generate_image(
         self,
-        server_id: UUID,
+        server_id: UUID | None,
         workflow_path: str,
         input_mappings: WorkflowInputMapping,
         prompt: str,
@@ -1050,8 +1050,8 @@ class ComfyUIService:
                     save_relative_dir=save_dir,
                     # Phase-E locks — first ref image wins for simplicity;
                     # multi-ref blending is a workflow-level concern.
-                    character_ref_image=(character_lock_paths or [None])[0],
-                    style_ref_image=(style_lock_paths or [None])[0],
+                    character_ref_image=character_lock_paths[0] if character_lock_paths else None,
+                    style_ref_image=style_lock_paths[0] if style_lock_paths else None,
                     character_lora=(character_lock or {}).get("lora"),
                     style_lora=(style_lock or {}).get("lora"),
                     character_strength=(character_lock or {}).get("strength"),
@@ -1110,7 +1110,7 @@ class ComfyUIService:
 
     async def generate_video(
         self,
-        server_id: UUID,
+        server_id: UUID | None,
         workflow_path: str,
         input_mappings: WorkflowInputMapping,
         prompt: str,

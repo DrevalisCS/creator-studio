@@ -26,7 +26,7 @@ logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 
 # Ordered so the UI lists providers in a sensible default order.
-SUPPORTED_PROVIDERS: tuple[dict[str, str], ...] = (
+SUPPORTED_PROVIDERS: tuple[dict[str, str | None], ...] = (
     {
         "name": "runpod",
         "display_name": "RunPod",
@@ -58,7 +58,7 @@ SUPPORTED_PROVIDERS: tuple[dict[str, str], ...] = (
 async def _resolve_api_key(
     db: AsyncSession,
     settings: Settings,
-    spec: dict[str, str],
+    spec: dict[str, str | None],
 ) -> str | None:
     """Fetch a provider's API key from the encrypted key-store first,
     then fall back to the Settings env-var (if one exists).
@@ -73,7 +73,10 @@ async def _resolve_api_key(
     from drevalis.repositories.api_key_store import ApiKeyStoreRepository
 
     repo = ApiKeyStoreRepository(db)
-    lookup_names: list[str] = [spec["api_key_name"]]
+    lookup_names: list[str] = []
+    primary = spec.get("api_key_name")
+    if primary:
+        lookup_names.append(primary)
     alias = spec.get("api_key_alias")
     if alias:
         lookup_names.append(alias)
@@ -132,7 +135,7 @@ async def get_provider(
         raise CloudGPUConfigError(
             provider=provider_name,
             hint=f"Unknown cloud GPU provider {provider_name!r}. Supported: "
-            + ", ".join(s["name"] for s in SUPPORTED_PROVIDERS),
+            + ", ".join(str(s["name"]) for s in SUPPORTED_PROVIDERS),
         )
 
     key = await _resolve_api_key(db, settings, spec)

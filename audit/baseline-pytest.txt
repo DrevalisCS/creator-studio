@@ -1,0 +1,9 @@
+pytest --tb=no
+562 passed, 2 skipped, 18 xfailed, 21 errors
+
+NOTE: 21 integration errors all stem from SQLite test fixture incompatibility:
+  sqlalchemy.exc.CompileError: (in table 'assets', column 'tags'):
+  Compiler ... can't render element of type ARRAY
+This is a fixture/dialect issue, not a prod bug. Tracked as test debt.
+
+Quarantined xfails (per docs/ops/techdebt.md): 18 in test_pipeline.py + test_worker_jobs.py.

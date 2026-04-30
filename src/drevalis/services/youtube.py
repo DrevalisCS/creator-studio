@@ -127,7 +127,7 @@ class YouTubeService:
             )
 
             # Encrypt tokens.
-            access_enc, key_ver = encrypt_value(credentials.token, self.encryption_key)
+            access_enc, key_ver = encrypt_value(credentials.token or "", self.encryption_key)
             refresh_enc = ""
             if credentials.refresh_token:
                 refresh_enc, _ = encrypt_value(credentials.refresh_token, self.encryption_key)

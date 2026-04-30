@@ -119,8 +119,9 @@ async def _publish_scheduled_posts_locked(
                         episode = await ep_repo.get_by_id(post.content_id)
                         if episode:
                             series = await SeriesRepository(session).get_by_id(episode.series_id)
-                            if series and getattr(series, "youtube_channel_id", None):
-                                channel = await ch_repo.get_by_id(series.youtube_channel_id)
+                            series_channel_id = getattr(series, "youtube_channel_id", None)
+                            if series and series_channel_id:
+                                channel = await ch_repo.get_by_id(series_channel_id)
                     if channel is None:
                         raise RuntimeError(
                             "No YouTube channel assigned: set youtube_channel_id on "

@@ -197,8 +197,8 @@ class MetricsCollector:
         max_key = _step_key(step, "max_dur")
         cur_min_raw = await redis.get(min_key)
         cur_max_raw = await redis.get(max_key)
-        cur_min = float(_decode(cur_min_raw)) if cur_min_raw else None
-        cur_max = float(_decode(cur_max_raw)) if cur_max_raw else None
+        cur_min = float(_decode(cur_min_raw) or 0.0) if cur_min_raw else None
+        cur_max = float(_decode(cur_max_raw) or 0.0) if cur_max_raw else None
         if cur_min is None or duration < cur_min:
             await redis.set(min_key, f"{duration:.6f}")
         if cur_max is None or duration > cur_max:

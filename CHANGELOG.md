@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.1] - 2026-04-30
+
+### Strict-mode rollout — codebase-wide
+
+The entire `drevalis` package — all 208 source files — now passes
+`mypy --strict`. CI gate widened from the prior two-package adoption
+(`drevalis.core.license` + `drevalis.services.updates`) to
+`mypy -p drevalis --strict`.
+
+Eight residual strict-optional issues fixed along the way (none of
+them latent bugs — all type-system narrowing nudges):
+
+- `repositories/media_asset.py` — `get_total_size_bytes()` narrows
+  `result.scalar_one()` against the `COALESCE(..., 0)` guarantee so
+  the return type matches the declared `int`.
+- `services/comfyui/_monolith.py` — `generate_image` and
+  `generate_video` now declare `server_id: UUID | None` to match
+  every call site (round-robin pool dispatch passes `None`). Scene
+  ref-image fallbacks rewritten to a conditional expression so the
+  literal `[None]` doesn't pollute the inferred list type.
+- `services/ffmpeg/_monolith.py` and `services/audiobook/_monolith.py`
+  — added `assert proc.stderr is not None` after PIPE'd
+  `create_subprocess_exec` so mypy can narrow before the readline
+  loop.
+- `services/youtube.py` — encrypt-value at OAuth callback now passes
+  `credentials.token or ""` (the upstream type is `Any | None`).
+- `services/cloud_gpu/registry.py` — `SUPPORTED_PROVIDERS` retyped to
+  `tuple[dict[str, str | None], ...]` to admit the `settings_attr:
+  None` rows for vastai/lambda. `_resolve_api_key` follows.
+- `services/pipeline/_monolith.py` — chapters and music_mood Optional
+  fields now coerce to `[]` / `""` at the call boundary instead of
+  passing `None` into helpers that don't accept it.
+- `core/metrics.py` — `float(_decode(raw))` falls back to `0.0` when
+  decode returns `None`.
+- `workers/jobs/scheduled.py` and `workers/jobs/audiobook.py` — fresh
+  variable declarations to clear stale `str` narrowing across
+  reassignments to `str | None`.
+
+Failure mode going forward: any new `Optional` leak that was
+previously masked by `--no-strict-optional` will fail CI on the
+strict step. Fix at the call site, don't weaken the gate.
+
 ## [0.29.0] - 2026-04-30
 
 ### Layering refactor (audit F-A-01) — complete

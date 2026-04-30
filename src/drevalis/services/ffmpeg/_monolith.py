@@ -1278,6 +1278,7 @@ class FFmpegService:
 
             stderr_lines: list[str] = []
             last_pct = -1
+            assert proc.stderr is not None  # PIPE'd above; mypy can't narrow
 
             while True:
                 line = await proc.stderr.readline()

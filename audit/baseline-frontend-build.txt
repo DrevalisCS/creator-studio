@@ -1,0 +1,2 @@
+npm not present in current shell PATH on this Windows host.
+Cannot produce a live frontend build baseline; reusing existing frontend/dist.

@@ -888,7 +888,7 @@ async def generate_ai_audiobook(
 
             char_list = "\n".join(f"- {c['name']}: {c.get('description', '')}" for c in characters)
 
-            script_text = await _generate_audiobook_script_text(
+            script_text_or_none = await _generate_audiobook_script_text(
                 provider=provider,
                 concept=concept,
                 char_list=char_list,
@@ -897,8 +897,7 @@ async def generate_ai_audiobook(
                 target_minutes=target_minutes,
                 log=log,
             )
-            if script_text is None:
-                script_text = ""
+            script_text = script_text_or_none or ""
 
             # Extract title from first line
             lines = script_text.split("\n")
