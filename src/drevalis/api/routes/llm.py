@@ -1,4 +1,10 @@
-"""LLM configuration API router -- CRUD and connection testing."""
+"""LLM configuration API router -- CRUD and connection testing.
+
+Layering: this router calls ``LLMConfigService`` only. The runtime
+``LLMService`` (from ``services/llm``) is still imported lazily inside
+the test endpoint — that's a separate concern (it owns the provider
+orchestration, not the config-row CRUD).
+"""
 
 from __future__ import annotations
 
@@ -9,9 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
-from drevalis.core.security import encrypt_value
+from drevalis.core.exceptions import NotFoundError, ValidationError
 from drevalis.models.llm_config import LLMConfig
-from drevalis.repositories.llm_config import LLMConfigRepository
 from drevalis.schemas.llm_config import (
     LLMConfigCreate,
     LLMConfigResponse,
@@ -19,8 +24,16 @@ from drevalis.schemas.llm_config import (
     LLMTestRequest,
     LLMTestResponse,
 )
+from drevalis.services.llm_config import LLMConfigService
 
 router = APIRouter(prefix="/api/v1/llm", tags=["llm"])
+
+
+def _service(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> LLMConfigService:
+    return LLMConfigService(db, settings.encryption_key)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -51,11 +64,10 @@ def _config_to_response(config: LLMConfig) -> LLMConfigResponse:
     summary="List all LLM configurations",
 )
 async def list_llm_configs(
-    db: AsyncSession = Depends(get_db),
+    svc: LLMConfigService = Depends(_service),
 ) -> list[LLMConfigResponse]:
     """Return all registered LLM configurations."""
-    repo = LLMConfigRepository(db)
-    configs = await repo.get_all()
+    configs = await svc.list_all()
     return [_config_to_response(c) for c in configs]
 
 
@@ -70,32 +82,17 @@ async def list_llm_configs(
 )
 async def create_llm_config(
     payload: LLMConfigCreate,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: LLMConfigService = Depends(_service),
 ) -> LLMConfigResponse:
-    """Create a new LLM configuration.
-
-    If an api_key is provided, it will be encrypted before storage.
-    """
-    repo = LLMConfigRepository(db)
-
-    # Encrypt API key if provided.
-    api_key_encrypted = None
-    api_key_version = 1
-    if payload.api_key:
-        api_key_encrypted, api_key_version = encrypt_value(payload.api_key, settings.encryption_key)
-
-    config = await repo.create(
+    """Create a new LLM configuration. Encrypts api_key when present."""
+    config = await svc.create(
         name=payload.name,
         base_url=payload.base_url,
         model_name=payload.model_name,
-        api_key_encrypted=api_key_encrypted,
-        api_key_version=api_key_version,
+        api_key=payload.api_key,
         max_tokens=payload.max_tokens,
         temperature=payload.temperature,
     )
-    await db.commit()
-    await db.refresh(config)
     return _config_to_response(config)
 
 
@@ -110,16 +107,13 @@ async def create_llm_config(
 )
 async def get_llm_config(
     config_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: LLMConfigService = Depends(_service),
 ) -> LLMConfigResponse:
     """Fetch a single LLM configuration by ID."""
-    repo = LLMConfigRepository(db)
-    config = await repo.get_by_id(config_id)
-    if config is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"LLM config {config_id} not found",
-        )
+    try:
+        config = await svc.get(config_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return _config_to_response(config)
 
 
@@ -135,37 +129,17 @@ async def get_llm_config(
 async def update_llm_config(
     config_id: UUID,
     payload: LLMConfigUpdate,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: LLMConfigService = Depends(_service),
 ) -> LLMConfigResponse:
     """Update an existing LLM configuration."""
-    repo = LLMConfigRepository(db)
-    update_data = payload.model_dump(exclude_unset=True)
-
-    if not update_data:
+    try:
+        config = await svc.update(config_id, **payload.model_dump(exclude_unset=True))
+    except ValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No fields to update",
-        )
-
-    # Handle API key encryption.
-    if "api_key" in update_data:
-        raw_key = update_data.pop("api_key")
-        if raw_key is not None:
-            encrypted, version = encrypt_value(raw_key, settings.encryption_key)
-            update_data["api_key_encrypted"] = encrypted
-            update_data["api_key_version"] = version
-        else:
-            update_data["api_key_encrypted"] = None
-
-    config = await repo.update(config_id, **update_data)
-    if config is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"LLM config {config_id} not found",
-        )
-    await db.commit()
-    await db.refresh(config)
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.detail
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return _config_to_response(config)
 
 
@@ -179,17 +153,13 @@ async def update_llm_config(
 )
 async def delete_llm_config(
     config_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: LLMConfigService = Depends(_service),
 ) -> None:
     """Delete an LLM configuration by ID."""
-    repo = LLMConfigRepository(db)
-    deleted = await repo.delete(config_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"LLM config {config_id} not found",
-        )
-    await db.commit()
+    try:
+        await svc.delete(config_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 # ── Test LLM config ──────────────────────────────────────────────────────
@@ -204,17 +174,14 @@ async def delete_llm_config(
 async def test_llm_config(
     config_id: UUID,
     payload: LLMTestRequest | None = None,
-    db: AsyncSession = Depends(get_db),
+    svc: LLMConfigService = Depends(_service),
     settings: Settings = Depends(get_settings),
 ) -> LLMTestResponse:
     """Send a test prompt to the configured LLM endpoint and return the result."""
-    repo = LLMConfigRepository(db)
-    config = await repo.get_by_id(config_id)
-    if config is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"LLM config {config_id} not found",
-        )
+    try:
+        config = await svc.get(config_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     prompt_text = "Say hello in one sentence."
     if payload is not None:
@@ -225,13 +192,13 @@ async def test_llm_config(
 
         # Pass the encryption key to LLMService so it can decrypt API keys
         # internally without mutating the ORM object (M5 fix).
-        service = LLMService(encryption_key=settings.encryption_key)
+        runtime = LLMService(encryption_key=settings.encryption_key)
 
         # Expunge the config from the session so that no accidental
         # autoflush can persist decrypted values to the database.
-        db.expunge(config)
+        await svc.expunge(config)
 
-        provider = service.get_provider(config)
+        provider = runtime.get_provider(config)
         result = await provider.generate(
             system_prompt="You are a helpful assistant.",
             user_prompt=prompt_text,
