@@ -170,6 +170,44 @@ async def delete_backup(
     path.unlink()
 
 
+async def _seed_restore_status(job_id: str) -> None:
+    """Write a placeholder ``queued`` status before the worker picks up.
+
+    The frontend polls ``GET /restore-status/{job_id}`` every 2s and treats
+    a missing Redis key as ``unknown`` (terminal — clears localStorage and
+    surfaces a toast). Without this seed there is a race window between
+    ``enqueue_job`` returning and the worker writing its first
+    ``starting`` status; if the first poll lands inside that window the
+    UI bails out instantly even though the restore is healthy.
+
+    Seeding ``queued`` here turns that into a normal queued → running →
+    done flow with no UI flicker. TTL matches the worker's status TTL
+    (1h) so a never-picked-up job still self-cleans.
+    """
+    import json as _json
+
+    from redis.asyncio import Redis
+
+    from drevalis.core.redis import get_pool
+
+    redis = Redis(connection_pool=get_pool())
+    try:
+        await redis.set(
+            f"backup:restore:{job_id}",
+            _json.dumps(
+                {
+                    "status": "queued",
+                    "stage": "queued",
+                    "progress_pct": 0,
+                    "message": "Waiting for worker to pick up the restore job…",
+                }
+            ),
+            ex=3600,
+        )
+    finally:
+        await redis.aclose()
+
+
 # ── Restore (destructive) ────────────────────────────────────────────────
 
 
@@ -217,6 +255,7 @@ async def restore_backup(
     from drevalis.core.redis import get_arq_pool
 
     job_id = str(uuid4())
+    await _seed_restore_status(job_id)
 
     # Land the upload in BACKUP_DIRECTORY rather than /tmp so worker +
     # API share the same path even when /tmp is per-container scratch.
@@ -315,6 +354,7 @@ async def restore_from_existing(
     from drevalis.core.redis import get_arq_pool
 
     job_id = str(uuid4())
+    await _seed_restore_status(job_id)
     arq = get_arq_pool()
     await arq.enqueue_job(
         "restore_backup_async",

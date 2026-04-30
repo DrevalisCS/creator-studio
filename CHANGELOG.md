@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.11] - 2026-04-30
+
+### Fixed
+
+- **Restore aborted instantly with "the worker either never picked up
+  the job or the status TTL expired"** (user report). Regression from
+  v0.29.10. The new terminal ``unknown`` branch fired on the very
+  first poll after enqueue: between the API route returning a
+  ``job_id`` and the worker writing its first ``starting`` status,
+  the Redis key ``backup:restore:{job_id}`` didn't exist yet, so the
+  poll endpoint returned ``status: "unknown"``, the UI treated that
+  as terminal, and dropped the localStorage stash before the worker
+  ever picked the job up.
+
+  Fix: the API route now seeds an initial ``queued`` status to Redis
+  before returning the job_id (1h TTL, matches the worker's status
+  TTL). The frontend's existing ``queued`` branch picks it up
+  cleanly, and the ``unknown`` branch retains its job: catching
+  TTL-expired stashes from previous sessions.
+
+  Applied to both ``POST /api/v1/backup/restore`` (uploaded archive)
+  and ``POST /api/v1/backup/restore-existing/{filename}`` (multi-GB
+  bypass path).
+
+### Added
+
+- **F-Tst-07 follow-up** — 37 new unit tests for the audiobook
+  generation-path code (``test_audiobook_voice_blocks.py``):
+
+  - ``_parse_voice_blocks`` — speaker-tag grammar, ``[SFX:]`` tag
+    grammar with all modifiers (``dur`` / ``duration``,
+    ``influence`` / ``prompt_influence``, ``loop``, ``under=next`` /
+    ``all`` / block-count / seconds, ``duck`` / ``duck_db``),
+    case-insensitivity, fallthrough cases, and the rule that
+    ``[SFX]`` without ``:`` falls back to a regular speaker tag.
+  - ``_is_overlay_sfx`` — distinguishes sequential SFX (no overlay
+    metadata) from overlay SFX (sidechain-ducked under voice).
+  - ``_generate_multi_voice`` — speaker-to-voice-profile dispatch
+    with the casting map: each speaker routed to its assigned
+    voice, uncast speakers fall back to the default profile,
+    profile-lookup failures fall back rather than crash, normalised
+    speaker names match (``NARRATOR.`` → ``Narrator``) without
+    accidental substring matches (``Nate`` does NOT match
+    ``Narrator``), and SFX blocks routed through
+    ``_generate_sfx_chunk`` even when the dedicated provider returns
+    ``None`` (graceful degradation when no ComfyUI server is
+    available).
+
+  All tests use lightweight stubs and AsyncMocks — no ffmpeg, no DB,
+  no real TTS. Total suite: 740 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.10] - 2026-04-30
 
 ### Fixed
