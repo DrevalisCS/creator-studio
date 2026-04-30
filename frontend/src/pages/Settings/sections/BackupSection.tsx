@@ -366,6 +366,27 @@ export function BackupSection() {
               description: data.error ?? data.message ?? 'see worker logs',
             });
             setRestoring(false);
+          } else if (data.status === 'unknown') {
+            // Status key not in Redis — TTL expired (1h) or worker died
+            // before writing the first progress event. Without this
+            // branch the poll loop runs forever and ``restoring`` stays
+            // true, locking the UI. Treat as terminal: clear the
+            // stashed job_id, drop the bar, let the user start fresh.
+            if (pollRef.current != null) {
+              window.clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+            try {
+              window.localStorage.removeItem('restoreJobId');
+            } catch {
+              /* ignore */
+            }
+            setRestoring(false);
+            setRestoreProgress(null);
+            toast.error('Restore status lost', {
+              description:
+                'The worker either never picked up the job or the status TTL expired. Try again.',
+            });
           }
         } catch {
           // Network blip — keep polling. The job is on the worker side
@@ -1095,9 +1116,34 @@ export function BackupSection() {
                 <span>
                   Stage: <span className="font-mono text-txt-primary">{restoreProgress.stage}</span>
                 </span>
-                <span className="font-mono text-txt-primary">
-                  {restoreProgress.progress_pct}%
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-txt-primary">
+                    {restoreProgress.progress_pct}%
+                  </span>
+                  {(restoreProgress.stage === 'done' ||
+                    restoreProgress.stage === 'failed' ||
+                    restoreProgress.stage === 'resuming') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (pollRef.current != null) {
+                          window.clearInterval(pollRef.current);
+                          pollRef.current = null;
+                        }
+                        try {
+                          window.localStorage.removeItem('restoreJobId');
+                        } catch {
+                          /* ignore */
+                        }
+                        setRestoring(false);
+                        setRestoreProgress(null);
+                      }}
+                      className="text-[10px] text-txt-muted hover:text-txt-primary underline"
+                    >
+                      dismiss
+                    </button>
+                  )}
+                </div>
               </div>
               <div
                 className="h-2 w-full rounded bg-bg-elevated overflow-hidden"

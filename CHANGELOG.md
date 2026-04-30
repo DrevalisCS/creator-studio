@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.10] - 2026-04-30
+
+### Fixed
+
+- **Backup tab locked into a stale "Reconnecting to in-flight
+  restore…" state across page reloads** (user report). The poll
+  loop in ``BackupSection`` had branches for
+  ``running`` / ``queued`` / ``done`` / ``failed`` but no branch
+  for ``unknown`` — the status the API returns when the Redis
+  status key has expired (1h TTL) or the worker died before
+  writing the first event. Combined with the v0.29.2
+  resume-on-mount effect that re-enters the poll loop from a
+  ``localStorage.restoreJobId`` stash, the UI got stuck: every
+  poll returned ``unknown``, the if/elif chain fell through,
+  the polling kept running, ``restoring`` stayed ``true``, and
+  the restore form stayed disabled. Restarting the stack didn't
+  help because the ``restoreJobId`` was persisted in
+  ``localStorage``, so each page load entered the same dead loop.
+
+  Now the ``unknown`` status is treated as terminal: clear the
+  interval, drop the ``localStorage`` stash, reset
+  ``restoring=false``, drop the progress overlay, and show a
+  toast explaining "the worker either never picked up the job or
+  the status TTL expired". The restore form is usable again
+  within ~2s of opening the tab.
+
+  Also added a small ``dismiss`` link in the corner of the
+  progress overlay (visible when stage is ``done`` / ``failed`` /
+  ``resuming``) so future edge cases can be cleared without
+  waiting for a poll.
+
 ## [0.29.9] - 2026-04-30
 
 ### Added
