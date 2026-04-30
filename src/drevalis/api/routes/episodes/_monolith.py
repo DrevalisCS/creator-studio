@@ -42,7 +42,22 @@ from drevalis.schemas.episode import (
     VideoEditResponse,
 )
 from drevalis.schemas.script import EpisodeScript
+from drevalis.services.episode import (
+    ConcurrencyCapReachedError,
+    EpisodeInvalidStatusError,
+    EpisodeNoScriptError,
+    EpisodeNotFoundError,
+    EpisodeService,
+    NoFailedJobError,
+    SceneNotFoundError,
+    ScriptValidationError,
+)
 from drevalis.services.storage import LocalStorage
+
+
+def _episode_service(db: AsyncSession = Depends(get_db)) -> EpisodeService:
+    return EpisodeService(db)
+
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -145,11 +160,10 @@ def _episode_to_list(episode: Episode) -> EpisodeListResponse:
 )
 async def list_recent_episodes(
     limit: int = Query(default=10, ge=1, le=100),
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> list[EpisodeListResponse]:
     """Return the most recently created episodes across all series."""
-    repo = EpisodeRepository(db)
-    episodes = await repo.get_recent(limit=limit)
+    episodes = await svc.list_recent(limit)
     return [_episode_to_list(ep) for ep in episodes]
 
 
@@ -168,23 +182,15 @@ async def list_episodes(
     | None = Query(default=None, alias="status"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> list[EpisodeListResponse]:
     """List episodes, optionally filtered by series and/or status."""
-    repo = EpisodeRepository(db)
-
-    if series_id is not None:
-        episodes = await repo.get_by_series(
-            series_id=series_id,
-            status_filter=status_filter,
-            offset=offset,
-            limit=limit,
-        )
-    elif status_filter is not None:
-        episodes = await repo.get_by_status(status=status_filter, limit=limit)
-    else:
-        episodes = await repo.get_all(offset=offset, limit=limit)
-
+    episodes = await svc.list_filtered(
+        series_id=series_id,
+        status_filter=status_filter,
+        offset=offset,
+        limit=limit,
+    )
     return [_episode_to_list(ep) for ep in episodes]
 
 
@@ -199,21 +205,15 @@ async def list_episodes(
 )
 async def create_episode(
     payload: EpisodeCreate,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> EpisodeResponse:
     """Create a new episode in draft status."""
-    repo = EpisodeRepository(db)
-    episode = await repo.create(
+    episode = await svc.create(
         series_id=payload.series_id,
         title=payload.title,
         topic=payload.topic,
-        status="draft",
     )
-    await db.commit()
-    await db.refresh(episode)
-    # Re-fetch with relations for a full response.
-    full = await repo.get_with_assets(episode.id)
-    return _episode_to_response(full)
+    return _episode_to_response(episode)
 
 
 # ── Bulk generate ─────────────────────────────────────────────────────────
@@ -233,7 +233,7 @@ async def create_episode(
 )
 async def bulk_generate(
     payload: BulkGenerateRequest,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
     settings: Settings = Depends(get_settings),
 ) -> BulkGenerateResponse:
     """Enqueue the full generation pipeline for each eligible episode.
@@ -241,65 +241,10 @@ async def bulk_generate(
     Only episodes with ``draft`` or ``failed`` status are eligible. The
     concurrency gate is applied per-episode: once ``MAX_CONCURRENT_GENERATIONS``
     is reached, remaining episodes are skipped rather than raising an error.
-    This allows partial-success bulk submissions.
-
-    Args:
-        payload: Request body containing a list of up to 100 episode UUIDs.
-        db: Injected async database session.
-        settings: Injected application settings.
-
-    Returns:
-        A summary with counts and IDs for both queued and skipped episodes.
     """
-    ep_repo = EpisodeRepository(db)
-    job_repo = GenerationJobRepository(db)
-    arq = get_arq_pool()
-
-    queued_ids: list[UUID] = []
-    skipped_ids: list[UUID] = []
-
-    # Batch-query all episodes at once instead of N individual queries
-    from sqlalchemy import select as sa_select
-
-    result = await db.execute(sa_select(Episode).where(Episode.id.in_(payload.episode_ids)))
-    episodes_by_id = {ep.id: ep for ep in result.scalars().all()}
-
-    for episode_id in payload.episode_ids:
-        episode = episodes_by_id.get(episode_id)
-
-        # Skip episodes that don't exist or aren't in a re-generatable status.
-        if episode is None or episode.status not in ("draft", "failed"):
-            skipped_ids.append(episode_id)
-            continue
-
-        # Check the concurrency cap individually so the loop can continue past
-        # the limit rather than aborting the entire batch.
-        generating_count = await ep_repo.count_by_status("generating")
-        if generating_count >= settings.max_concurrent_generations:
-            skipped_ids.append(episode_id)
-            continue
-
-        # Create per-step GenerationJob rows.
-        for step in _PIPELINE_STEPS:
-            await job_repo.create(
-                episode_id=episode_id,
-                step=step,
-                status="queued",
-            )
-
-        await ep_repo.update_status(episode_id, "generating")
-
-        # Clear any stale cancel flag from a prior crashed run — without
-        # this, a flag set within the last hour silently aborts the new
-        # pipeline at the first _check_cancelled().
-        await arq.delete(f"cancel:{episode_id}")
-        await arq.enqueue_job("generate_episode", str(episode_id))
-        queued_ids.append(episode_id)
-        logger.info("bulk_generate_enqueued", episode_id=str(episode_id))
-
-    # Single commit for all job records
-    await db.commit()
-
+    queued_ids, skipped_ids = await svc.bulk_generate(
+        payload.episode_ids, settings.max_concurrent_generations
+    )
     return BulkGenerateResponse(
         queued=len(queued_ids),
         skipped=len(skipped_ids),
@@ -320,16 +265,16 @@ async def bulk_generate(
 )
 async def get_episode(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> EpisodeResponse:
     """Fetch a single episode by ID with media assets and generation jobs."""
-    repo = EpisodeRepository(db)
-    episode = await repo.get_with_assets(episode_id)
-    if episode is None:
+    try:
+        episode = await svc.get_with_assets_or_raise(episode_id)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
+        ) from exc
     return _episode_to_response(episode)
 
 
@@ -345,37 +290,22 @@ async def get_episode(
 async def update_episode(
     episode_id: UUID,
     payload: EpisodeUpdate,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> EpisodeResponse:
     """Update an existing episode. Only provided (non-None) fields are changed."""
-    repo = EpisodeRepository(db)
     update_data = payload.model_dump(exclude_unset=True)
-
-    # Validate script if provided.
-    if "script" in update_data and update_data["script"] is not None:
-        try:
-            EpisodeScript.model_validate(update_data["script"])
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid script format: {exc}",
-            ) from exc
-
-    if not update_data:
+    try:
+        episode = await svc.update(episode_id, update_data)
+    except ScriptValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No fields to update",
-        )
-
-    episode = await repo.update(episode_id, **update_data)
-    if episode is None:
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-    await db.commit()
-    full = await repo.get_with_assets(episode.id)
-    return _episode_to_response(full)
+        ) from exc
+    return _episode_to_response(episode)
 
 
 # ── Delete episode ────────────────────────────────────────────────────────
@@ -388,25 +318,18 @@ async def update_episode(
 )
 async def delete_episode(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> None:
     """Delete an episode, its generation jobs, media assets, and storage files."""
-    repo = EpisodeRepository(db)
-    episode = await repo.get_by_id(episode_id)
-    if episode is None:
+    storage = LocalStorage(settings.storage_base_path)
+    try:
+        await svc.delete(episode_id, storage_delete_dir=storage.delete_episode_dir)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-
-    # Clean up files on disk.
-    storage = LocalStorage(settings.storage_base_path)
-    await storage.delete_episode_dir(episode_id)
-
-    # Delete the DB record (cascades to media_assets and generation_jobs).
-    await repo.delete(episode_id)
-    await db.commit()
+        ) from exc
 
 
 # ── Generate episode ──────────────────────────────────────────────────────
@@ -421,15 +344,10 @@ async def delete_episode(
 async def generate_episode(
     episode_id: UUID,
     payload: GenerateRequest | None = None,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> GenerateResponse:
-    """Enqueue generation jobs for the episode's pipeline steps.
-
-    Creates a GenerationJob row per step and enqueues an arq task.
-    Returns immediately with the job IDs.
-    """
-    # License tier: enforce daily episode quota before any DB work.
+    """Enqueue generation jobs for the episode's pipeline steps."""
     from drevalis.core.license.quota import check_and_increment_episode_quota
     from drevalis.core.redis import get_redis as _get_redis_gen
 
@@ -437,53 +355,28 @@ async def generate_episode(
         await check_and_increment_episode_quota(_redis)
         break
 
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
+    requested_steps: list[str] | None = (
+        list(payload.steps) if payload and payload.steps else None
+    )
+    try:
+        job_ids = await svc.generate(
+            episode_id, requested_steps, settings.max_concurrent_generations
+        )
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-
-    if episode.status not in ("draft", "failed"):
+        ) from exc
+    except EpisodeInvalidStatusError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Episode is in '{episode.status}' status and cannot be regenerated. "
-            "Only 'draft' or 'failed' episodes can be generated.",
-        )
-
-    await _check_generation_slots(ep_repo, settings, db)
-
-    # Determine which steps to run.
-    steps = _PIPELINE_STEPS
-    if payload and payload.steps:
-        steps = [s for s in _PIPELINE_STEPS if s in payload.steps]
-
-    # Create generation jobs (skip steps that already completed successfully
-    # so the orchestrator preserves existing work like scripts and voice).
-    # One query for all done steps instead of one per step.
-    job_repo = GenerationJobRepository(db)
-    done_steps = await job_repo.get_done_steps(episode_id)
-    job_ids: list[UUID] = []
-    for step in steps:
-        if step in done_steps:
-            continue
-        job = await job_repo.create(
-            episode_id=episode_id,
-            step=step,
-            status="queued",
-        )
-        job_ids.append(job.id)
-
-    # Update episode status.
-    await ep_repo.update_status(episode_id, "generating")
-    await db.commit()
-
-    # Enqueue arq job for async processing. Clear any stale cancel flag
-    # from a prior crashed run so the new pipeline isn't pre-cancelled.
-    arq = get_arq_pool()
-    await arq.delete(f"cancel:{episode_id}")
-    await arq.enqueue_job("generate_episode", str(episode_id))
+            detail=(
+                f"Episode is in '{exc.current_status}' status and cannot be regenerated. "
+                "Only 'draft' or 'failed' episodes can be generated."
+            ),
+        ) from exc
+    except ConcurrencyCapReachedError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
 
     return GenerateResponse(
         episode_id=episode_id,
@@ -503,54 +396,29 @@ async def generate_episode(
 )
 async def retry_episode(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> RetryResponse:
     """Find the first failed generation job and re-enqueue it."""
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
+    try:
+        job_id, step = await svc.retry_first_failed(episode_id, settings.max_concurrent_generations)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-
-    await _check_generation_slots(ep_repo, settings, db)
-
-    job_repo = GenerationJobRepository(db)
-    jobs = await job_repo.get_by_episode(episode_id)
-
-    failed_job = None
-    for job in jobs:
-        if job.status == "failed":
-            failed_job = job
-            break
-
-    if failed_job is None:
+        ) from exc
+    except ConcurrencyCapReachedError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+    except NoFailedJobError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="No failed jobs found for this episode",
-        )
-
-    # Reset the failed job.
-    await job_repo.update_status(failed_job.id, "queued")
-    failed_job.retry_count += 1
-    await db.flush()
-
-    # Update episode status.
-    await ep_repo.update_status(episode_id, "generating")
-    await db.commit()
-
-    # Enqueue arq retry. Clear any stale cancel flag first.
-    arq = get_arq_pool()
-    await arq.delete(f"cancel:{episode_id}")
-    await arq.enqueue_job("retry_episode_step", str(episode_id), failed_job.step)
-
+        ) from exc
     return RetryResponse(
         episode_id=episode_id,
-        job_id=failed_job.id,
-        step=failed_job.step,
-        message=f"Retry enqueued for step '{failed_job.step}'",
+        job_id=job_id,
+        step=step,
+        message=f"Retry enqueued for step '{step}'",
     )
 
 
@@ -566,47 +434,19 @@ async def retry_episode(
 async def retry_episode_step(
     episode_id: UUID,
     step: Literal["script", "voice", "scenes", "captions", "assembly", "thumbnail"],
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> RetryResponse:
     """Re-enqueue a specific pipeline step for the episode."""
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
+    try:
+        job_id = await svc.retry_step(episode_id, step, settings.max_concurrent_generations)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-
-    await _check_generation_slots(ep_repo, settings, db)
-
-    job_repo = GenerationJobRepository(db)
-    existing = await job_repo.get_latest_by_episode_and_step(episode_id, step)
-
-    if existing is not None:
-        # Reset the existing job.
-        await job_repo.update_status(existing.id, "queued")
-        existing.retry_count += 1
-        await db.flush()
-        job_id = existing.id
-    else:
-        # Create a new job for this step.
-        job = await job_repo.create(
-            episode_id=episode_id,
-            step=step,
-            status="queued",
-        )
-        job_id = job.id
-
-    # Update episode status.
-    await ep_repo.update_status(episode_id, "generating")
-    await db.commit()
-
-    # Enqueue arq retry. Clear any stale cancel flag first.
-    arq = get_arq_pool()
-    await arq.delete(f"cancel:{episode_id}")
-    await arq.enqueue_job("retry_episode_step", str(episode_id), step)
-
+        ) from exc
+    except ConcurrencyCapReachedError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     return RetryResponse(
         episode_id=episode_id,
         job_id=job_id,
@@ -626,17 +466,16 @@ async def retry_episode_step(
 )
 async def get_episode_script(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any] | None:
     """Return the script JSONB field for an episode."""
-    repo = EpisodeRepository(db)
-    episode = await repo.get_by_id(episode_id)
-    if episode is None:
+    try:
+        return await svc.get_script(episode_id)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-    return episode.script
+        ) from exc
 
 
 # ── Update episode script ────────────────────────────────────────────────
@@ -651,27 +490,20 @@ async def get_episode_script(
 async def update_episode_script(
     episode_id: UUID,
     payload: ScriptUpdate,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
     """Validate and persist a new script for the episode."""
-    # Validate against EpisodeScript schema.
     try:
-        EpisodeScript.model_validate(payload.script)
-    except Exception as exc:
+        return await svc.update_script(episode_id, payload.script)
+    except ScriptValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid script format: {exc}",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
         ) from exc
-
-    repo = EpisodeRepository(db)
-    episode = await repo.update(episode_id, script=payload.script)
-    if episode is None:
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-    await db.commit()
-    return episode.script
+        ) from exc
 
 
 # ── Update a single scene ─────────────────────────────────────────────
@@ -687,59 +519,26 @@ async def update_scene(
     episode_id: UUID,
     scene_number: int,
     payload: dict[str, Any],
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
     """Modify fields of a specific scene within the episode's script JSONB.
 
     Accepted payload keys: ``narration``, ``visual_prompt``,
-    ``duration_seconds``, ``keywords``.  Only provided keys are changed.
+    ``duration_seconds``, ``keywords``. Only provided keys are changed.
     """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
+    try:
+        scene_dump = await svc.update_scene(episode_id, scene_number, payload)
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found or has no script",
-        )
-
-    script = EpisodeScript.model_validate(episode.script)
-    scene_idx = next(
-        (i for i, s in enumerate(script.scenes) if s.scene_number == scene_number),
-        None,
-    )
-    if scene_idx is None:
+        ) from exc
+    except SceneNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Scene {scene_number} not found",
-        )
-
-    scene = script.scenes[scene_idx]
-    if "narration" in payload:
-        scene.narration = payload["narration"]
-    if "visual_prompt" in payload:
-        scene.visual_prompt = payload["visual_prompt"]
-    if "duration_seconds" in payload:
-        scene.duration_seconds = payload["duration_seconds"]
-    if "keywords" in payload:
-        scene.keywords = payload["keywords"]
-
-    # Recalculate total duration.
-    script.total_duration_seconds = sum(s.duration_seconds for s in script.scenes)
-
-    episode.script = script.model_dump()
-    await db.commit()
-
-    logger.info(
-        "scene_updated",
-        episode_id=str(episode_id),
-        scene_number=scene_number,
-        updated_fields=[
-            k
-            for k in payload
-            if k in ("narration", "visual_prompt", "duration_seconds", "keywords")
-        ],
-    )
-    return {"message": f"Scene {scene_number} updated", "scene": scene.model_dump()}
+        ) from exc
+    return {"message": f"Scene {scene_number} updated", "scene": scene_dump}
 
 
 # ── Delete a scene ────────────────────────────────────────────────────
@@ -754,62 +553,28 @@ async def update_scene(
 async def delete_scene(
     episode_id: UUID,
     scene_number: int,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
     """Delete a scene from the script and remove associated media assets."""
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
+    try:
+        remaining, deleted_count = await svc.delete_scene(episode_id, scene_number)
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found or has no script",
-        )
-
-    script = EpisodeScript.model_validate(episode.script)
-    scene_idx = next(
-        (i for i, s in enumerate(script.scenes) if s.scene_number == scene_number),
-        None,
-    )
-    if scene_idx is None:
+        ) from exc
+    except SceneNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Scene {scene_number} not found",
-        )
-
-    if len(script.scenes) <= 1:
+        ) from exc
+    except ScriptValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Cannot delete the last remaining scene",
-        )
-
-    # Remove scene from script.
-    script.scenes.pop(scene_idx)
-
-    # Renumber remaining scenes sequentially.
-    for i, scene in enumerate(script.scenes):
-        scene.scene_number = i + 1
-
-    # Recalculate total duration.
-    script.total_duration_seconds = sum(s.duration_seconds for s in script.scenes)
-
-    episode.script = script.model_dump()
-
-    # Delete associated media assets for this scene.
-    asset_repo = MediaAssetRepository(db)
-    deleted_count = await asset_repo.delete_by_episode_and_scene(episode_id, scene_number)
-
-    await db.commit()
-
-    logger.info(
-        "scene_deleted",
-        episode_id=str(episode_id),
-        scene_number=scene_number,
-        media_assets_deleted=deleted_count,
-    )
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     return {
         "message": f"Scene {scene_number} deleted",
-        "remaining_scenes": len(script.scenes),
+        "remaining_scenes": remaining,
         "media_assets_deleted": deleted_count,
     }
 
@@ -826,64 +591,30 @@ async def delete_scene(
 async def reorder_scenes(
     episode_id: UUID,
     payload: dict[str, Any],
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
     """Reorder scenes by providing the desired scene number order.
 
     Payload: ``{"order": [3, 1, 2, 5, 4, 6]}``
-
-    The ``order`` array must contain exactly the same scene numbers as the
-    current script (no duplicates, no missing values).
     """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Episode {episode_id} not found or has no script",
-        )
-
     order = payload.get("order")
     if not order or not isinstance(order, list):
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Payload must include 'order' as a list of scene numbers",
         )
-
-    script = EpisodeScript.model_validate(episode.script)
-    current_numbers = {s.scene_number for s in script.scenes}
-    order_set = set(order)
-
-    if order_set != current_numbers or len(order) != len(script.scenes):
+    try:
+        new_order = await svc.reorder_scenes(episode_id, order)
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"Order must contain exactly the current scene numbers "
-                f"{sorted(current_numbers)}, got {order}"
-            ),
-        )
-
-    # Build a lookup by current scene_number.
-    scene_map = {s.scene_number: s for s in script.scenes}
-
-    # Reorder and renumber.
-    reordered = [scene_map[num] for num in order]
-    for i, scene in enumerate(reordered):
-        scene.scene_number = i + 1
-
-    script.scenes = reordered
-    episode.script = script.model_dump()
-    await db.commit()
-
-    logger.info(
-        "scenes_reordered",
-        episode_id=str(episode_id),
-        new_order=order,
-    )
-    return {
-        "message": "Scenes reordered",
-        "order": [s.scene_number for s in script.scenes],
-    }
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Episode {episode_id} not found or has no script",
+        ) from exc
+    except ScriptValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return {"message": "Scenes reordered", "order": new_order}
 
 
 # ── Split / merge scenes (script-only edits, no re-run) ────────────────────
@@ -899,69 +630,31 @@ async def split_scene(
     episode_id: UUID,
     scene_number: int,
     payload: dict[str, Any],
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Split scene ``scene_number`` at ``char_offset`` inside its narration.
-
-    Payload: ``{"char_offset": 120}`` — if omitted, splits at the midpoint.
-
-    Script-only mutation: the two halves inherit the original visual
-    prompt, keywords, and style; existing voice / scene media for the
-    episode are **not** regenerated here. The user can kick off a
-    regenerate-voice or regenerate-scene afterwards if needed.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
+    """Split scene ``scene_number`` at ``char_offset`` inside its narration."""
+    char_offset = payload.get("char_offset")
+    try:
+        total_scenes = await svc.split_scene(
+            episode_id,
+            scene_number,
+            int(char_offset) if char_offset is not None else None,
+        )
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found or has no script",
-        )
-
-    script = EpisodeScript.model_validate(episode.script)
-    idx = next(
-        (i for i, s in enumerate(script.scenes) if s.scene_number == scene_number),
-        None,
-    )
-    if idx is None:
+        ) from exc
+    except SceneNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Scene {scene_number} not found",
-        )
-
-    scene = script.scenes[idx]
-    narration = scene.narration or ""
-    char_offset = int(payload.get("char_offset", len(narration) // 2))
-    if char_offset <= 0 or char_offset >= len(narration):
+        ) from exc
+    except ScriptValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="char_offset must be a positive index strictly inside the narration",
-        )
-
-    # Snap the cut to the nearest whitespace so we don't slice a word.
-    left = narration[:char_offset]
-    right = narration[char_offset:]
-    last_space = left.rfind(" ")
-    if last_space > len(left) * 0.5:
-        left = left[:last_space]
-        right = narration[last_space + 1 :]
-
-    left_scene = scene.model_copy(update={"narration": left.rstrip()})
-    right_scene = scene.model_copy(update={"narration": right.lstrip()})
-
-    # Rebuild the list with the split pair in place and renumber everyone.
-    new_scenes = [*script.scenes[:idx], left_scene, right_scene, *script.scenes[idx + 1 :]]
-    for i, s in enumerate(new_scenes):
-        s.scene_number = i + 1
-    script.scenes = new_scenes
-    episode.script = script.model_dump()
-    await db.commit()
-
-    logger.info("scene_split", episode_id=str(episode_id), scene_number=scene_number)
-    return {
-        "message": f"Scene {scene_number} split",
-        "total_scenes": len(script.scenes),
-    }
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
+    return {"message": f"Scene {scene_number} split", "total_scenes": total_scenes}
 
 
 @router.post(
@@ -973,49 +666,24 @@ async def split_scene(
 async def merge_scenes(
     episode_id: UUID,
     payload: dict[str, Any],
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Merge scene ``scene_number`` with the scene immediately after it.
-
-    Payload: ``{"scene_number": 3}`` — merges scenes 3 and 4. Narrations
-    concatenate with a space; the visual prompt of the first scene wins,
-    keywords are unioned.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
+    """Merge scene ``scene_number`` with the scene immediately after it."""
+    target = int(payload.get("scene_number") or 0)
+    try:
+        total_scenes = await svc.merge_scenes(episode_id, target)
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found or has no script",
-        )
-
-    target = int(payload.get("scene_number") or 0)
-    script = EpisodeScript.model_validate(episode.script)
-    idx = next((i for i, s in enumerate(script.scenes) if s.scene_number == target), None)
-    if idx is None or idx + 1 >= len(script.scenes):
+        ) from exc
+    except ScriptValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="scene_number must refer to a scene that has a successor to merge with",
-        )
-
-    a, b = script.scenes[idx], script.scenes[idx + 1]
-    merged = a.model_copy(
-        update={
-            "narration": f"{(a.narration or '').rstrip()} {(b.narration or '').lstrip()}".strip(),
-            "keywords": sorted(set((a.keywords or []) + (b.keywords or []))),
-        }
-    )
-    new_scenes = [*script.scenes[:idx], merged, *script.scenes[idx + 2 :]]
-    for i, s in enumerate(new_scenes):
-        s.scene_number = i + 1
-    script.scenes = new_scenes
-    episode.script = script.model_dump()
-    await db.commit()
-
-    logger.info("scenes_merged", episode_id=str(episode_id), kept=target, removed=target + 1)
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)
+        ) from exc
     return {
         "message": f"Scenes {target} and {target + 1} merged",
-        "total_scenes": len(script.scenes),
+        "total_scenes": total_scenes,
     }
 
 
@@ -1032,76 +700,40 @@ async def regenerate_scene(
     episode_id: UUID,
     scene_number: int,
     payload: dict[str, Any] | None = None,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
     """Enqueue a job to regenerate a single scene's image/video.
 
     Optionally accepts ``{"visual_prompt": "new prompt"}`` to override
-    the prompt before regenerating.  After the scene is regenerated,
+    the prompt before regenerating. After the scene is regenerated,
     the video is automatically reassembled.
     """
-    ep_repo = EpisodeRepository(db)
-    await _check_generation_slots(ep_repo, settings, db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
+    visual_prompt_override = payload.get("visual_prompt") if payload else None
+    try:
+        job_ids = await svc.regenerate_scene(
+            episode_id,
+            scene_number,
+            visual_prompt_override,
+            settings.max_concurrent_generations,
+        )
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found or has no script",
-        )
-
-    script = EpisodeScript.model_validate(episode.script)
-    scene_idx = next(
-        (i for i, s in enumerate(script.scenes) if s.scene_number == scene_number),
-        None,
-    )
-    if scene_idx is None:
+        ) from exc
+    except SceneNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Scene {scene_number} not found",
-        )
-
-    # Optionally update the visual prompt before regenerating.
-    if payload and "visual_prompt" in payload:
-        script.scenes[scene_idx].visual_prompt = payload["visual_prompt"]
-        episode.script = script.model_dump()
-        await db.commit()
-
-    # Create generation jobs for the scene regeneration.
-    job_repo = GenerationJobRepository(db)
-    scene_job = await job_repo.create(
-        episode_id=episode_id,
-        step="scenes",
-        status="queued",
-    )
-    assembly_job = await job_repo.create(
-        episode_id=episode_id,
-        step="assembly",
-        status="queued",
-    )
-
-    await ep_repo.update_status(episode_id, "generating")
-    await db.commit()
-
-    # Enqueue arq job.
-    arq = get_arq_pool()
-    await arq.enqueue_job(
-        "regenerate_scene",
-        str(episode_id),
-        scene_number,
-        payload.get("visual_prompt") if payload else None,
-    )
-
-    logger.info(
-        "regenerate_scene_enqueued",
-        episode_id=str(episode_id),
-        scene_number=scene_number,
-    )
+        ) from exc
+    except ConcurrencyCapReachedError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     return {
         "message": f"Scene {scene_number} regeneration enqueued",
         "episode_id": str(episode_id),
         "scene_number": scene_number,
-        "job_ids": [str(scene_job.id), str(assembly_job.id)],
+        "job_ids": [str(j) for j in job_ids],
     }
 
 
@@ -1138,8 +770,8 @@ async def regenerate_voice(
         description="Pitch shift in semitones override (-12 to +12)",
     ),
     payload: dict[str, Any] | None = None,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
     """Enqueue a job to re-run voice synthesis, captions, and assembly.
 
@@ -1166,52 +798,25 @@ async def regenerate_voice(
         HTTPException 404: if the episode does not exist or has no script.
         HTTPException 429: if the concurrency cap is reached.
     """
-    ep_repo = EpisodeRepository(db)
-    await _check_generation_slots(ep_repo, settings, db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Episode {episode_id} not found or has no script",
-        )
-
-    # Apply voice profile override: query param wins over body field.
     resolved_vp_id: UUID | None = voice_profile_id
     if resolved_vp_id is None and payload and "voice_profile_id" in payload:
         resolved_vp_id = payload["voice_profile_id"]
 
-    if resolved_vp_id is not None:
-        await ep_repo.update(episode_id, override_voice_profile_id=resolved_vp_id)
-
-    # Apply speed / pitch overrides into metadata_ so the TTS step can read them.
-    if speed is not None or pitch is not None:
-        current_meta: dict[str, Any] = dict(episode.metadata_) if episode.metadata_ else {}
-        tts_overrides: dict[str, Any] = dict(current_meta.get("tts_overrides", {}))
-        if speed is not None:
-            tts_overrides["speed"] = speed
-        if pitch is not None:
-            tts_overrides["pitch"] = pitch
-        current_meta["tts_overrides"] = tts_overrides
-        await ep_repo.update(episode_id, metadata_=current_meta)
-
-    # Create generation jobs for the steps that will be re-run.
-    job_repo = GenerationJobRepository(db)
-    job_ids: list[UUID] = []
-    for step in ("voice", "captions", "assembly", "thumbnail"):
-        job = await job_repo.create(
-            episode_id=episode_id,
-            step=step,
-            status="queued",
+    try:
+        job_ids = await svc.regenerate_voice(
+            episode_id,
+            voice_profile_id=resolved_vp_id,
+            speed=speed,
+            pitch=pitch,
+            base_max=settings.max_concurrent_generations,
         )
-        job_ids.append(job.id)
-
-    await ep_repo.update_status(episode_id, "generating")
-    await db.commit()
-
-    arq = get_arq_pool()
-    await arq.enqueue_job("regenerate_voice", str(episode_id))
-
-    logger.info("regenerate_voice_enqueued", episode_id=str(episode_id))
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Episode {episode_id} not found or has no script",
+        ) from exc
+    except ConcurrencyCapReachedError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     return {
         "message": "Voice regeneration enqueued (voice + captions + assembly + thumbnail)",
         "episode_id": str(episode_id),
@@ -1230,41 +835,19 @@ async def regenerate_voice(
 )
 async def reassemble(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Enqueue a job to re-run captions, assembly, and thumbnail extraction.
-
-    Voice and scene assets are kept.  Useful after reordering scenes
-    or editing captions style.
-    """
-    ep_repo = EpisodeRepository(db)
-    await _check_generation_slots(ep_repo, settings, db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
+    """Enqueue a job to re-run captions, assembly, and thumbnail extraction."""
+    try:
+        job_ids = await svc.reassemble(episode_id, settings.max_concurrent_generations)
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found or has no script",
-        )
-
-    # Create generation jobs for the steps that will be re-run.
-    job_repo = GenerationJobRepository(db)
-    job_ids: list[UUID] = []
-    for step in ("captions", "assembly", "thumbnail"):
-        job = await job_repo.create(
-            episode_id=episode_id,
-            step=step,
-            status="queued",
-        )
-        job_ids.append(job.id)
-
-    await ep_repo.update_status(episode_id, "generating")
-    await db.commit()
-
-    arq = get_arq_pool()
-    await arq.enqueue_job("reassemble_episode", str(episode_id))
-
-    logger.info("reassemble_enqueued", episode_id=str(episode_id))
+        ) from exc
+    except ConcurrencyCapReachedError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     return {
         "message": "Reassembly enqueued (captions + assembly + thumbnail)",
         "episode_id": str(episode_id),
@@ -1294,61 +877,21 @@ async def regenerate_captions(
         "youtube_highlight",
         description="Caption style preset name to apply before reassembling",
     ),
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Store a new caption style override and enqueue reassembly.
-
-    This is a focused variant of ``/reassemble`` that also sets the caption
-    style in a single request, removing the need for a separate ``PUT`` call.
-
-    Args:
-        episode_id: UUID of the episode to update.
-        caption_style: Name of the caption preset to apply.
-        db: Injected async database session.
-        settings: Injected application settings.
-
-    Returns:
-        Confirmation dict with the enqueued job IDs and the applied style.
-
-    Raises:
-        HTTPException 404: if the episode does not exist or has no script.
-        HTTPException 429: if the concurrency cap is reached.
-    """
-    ep_repo = EpisodeRepository(db)
-    await _check_generation_slots(ep_repo, settings, db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
+    """Store a new caption style override and enqueue reassembly."""
+    try:
+        job_ids = await svc.regenerate_captions(
+            episode_id, caption_style, settings.max_concurrent_generations
+        )
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found or has no script",
-        )
-
-    # Persist the caption style override on the episode record.
-    await ep_repo.update(episode_id, override_caption_style=caption_style)
-
-    # Create generation jobs for the downstream steps.
-    job_repo = GenerationJobRepository(db)
-    job_ids: list[UUID] = []
-    for step in ("captions", "assembly", "thumbnail"):
-        job = await job_repo.create(
-            episode_id=episode_id,
-            step=step,
-            status="queued",
-        )
-        job_ids.append(job.id)
-
-    await ep_repo.update_status(episode_id, "generating")
-    await db.commit()
-
-    arq = get_arq_pool()
-    await arq.enqueue_job("reassemble_episode", str(episode_id))
-
-    logger.info(
-        "regenerate_captions_enqueued",
-        episode_id=str(episode_id),
-        caption_style=caption_style,
-    )
+        ) from exc
+    except ConcurrencyCapReachedError as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
     return {
         "message": f"Caption style '{caption_style}' applied; reassembly enqueued",
         "episode_id": str(episode_id),
@@ -1367,51 +910,13 @@ async def regenerate_captions(
 )
 async def estimate_cost(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Estimate TTS cost and duration for generating this episode.
-
-    Useful before long-form generation to show expected cost.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
-        raise HTTPException(404, f"Episode {episode_id} not found")
-
-    from drevalis.repositories.series import SeriesRepository
-
-    series = await SeriesRepository(db).get_by_id(episode.series_id)
-    content_format = getattr(episode, "content_format", "shorts")
-    script = episode.script or {}
-    scenes = script.get("scenes", [])
-
-    total_chars = sum(len(s.get("narration", "")) for s in scenes)
-    estimated_minutes = round(total_chars / 900, 1)  # ~150 wpm, ~6 chars/word
-
-    # ElevenLabs pricing: ~$0.15 per 1000 chars (rough estimate)
-    voice_profile_id = None
-    if series:
-        voice_profile_id = series.voice_profile_id
-    provider = "unknown"
-    if voice_profile_id:
-        from drevalis.repositories.voice_profile import VoiceProfileRepository
-
-        vp = await VoiceProfileRepository(db).get_by_id(voice_profile_id)
-        if vp:
-            provider = vp.provider
-
-    cost_per_1k = 0.15 if "elevenlabs" in provider else 0.0
-    estimated_cost = round(total_chars / 1000 * cost_per_1k, 2)
-
-    return {
-        "content_format": content_format,
-        "scene_count": len(scenes),
-        "total_characters": total_chars,
-        "estimated_duration_minutes": estimated_minutes,
-        "estimated_tts_cost_usd": estimated_cost,
-        "provider": provider,
-    }
+    """Estimate TTS cost and duration for generating this episode."""
+    try:
+        return await svc.estimate_cost(episode_id)
+    except EpisodeNotFoundError as exc:
+        raise HTTPException(404, f"Episode {episode_id} not found") from exc
 
 
 # ── Duplicate episode ────────────────────────────────────────────────
@@ -1425,41 +930,17 @@ async def estimate_cost(
 )
 async def duplicate_episode(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> EpisodeResponse:
-    """Create a copy of the episode with ``draft`` status and the same script.
-
-    The duplicate retains the script, title, topic, and per-episode
-    overrides but none of the media assets or generation jobs.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
+    """Create a copy of the episode with ``draft`` status and the same script."""
+    try:
+        new_episode = await svc.duplicate(episode_id)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-
-    new_episode = await ep_repo.create(
-        series_id=episode.series_id,
-        title=f"{episode.title} (copy)",
-        topic=episode.topic,
-        status="draft",
-        script=episode.script,
-        override_voice_profile_id=episode.override_voice_profile_id,
-        override_llm_config_id=episode.override_llm_config_id,
-    )
-    await db.commit()
-    await db.refresh(new_episode)
-
-    full = await ep_repo.get_with_assets(new_episode.id)
-
-    logger.info(
-        "episode_duplicated",
-        source_episode_id=str(episode_id),
-        new_episode_id=str(new_episode.id),
-    )
-    return _episode_to_response(full)
+        ) from exc
+    return _episode_to_response(new_episode)
 
 
 # ── Reset to draft ───────────────────────────────────────────────────
@@ -1473,45 +954,16 @@ async def duplicate_episode(
 )
 async def reset_episode(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Reset the episode to ``draft`` status, clearing all generation jobs.
-
-    Media assets are preserved so the user can review them or delete
-    them separately.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
+    """Reset the episode to ``draft`` status, clearing all generation jobs."""
+    try:
+        deleted_jobs = await svc.reset_to_draft(episode_id)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-
-    # Bulk delete all generation jobs for this episode.
-    from sqlalchemy import delete as sa_delete
-    from sqlalchemy import func as sa_func
-    from sqlalchemy import select as sa_select_count
-
-    from drevalis.models.generation_job import GenerationJob
-
-    count_result = await db.execute(
-        sa_select_count(sa_func.count())
-        .select_from(GenerationJob)
-        .where(GenerationJob.episode_id == episode_id)
-    )
-    deleted_jobs = count_result.scalar() or 0
-    await db.execute(sa_delete(GenerationJob).where(GenerationJob.episode_id == episode_id))
-
-    # Reset status to draft.
-    await ep_repo.update_status(episode_id, "draft")
-    await db.commit()
-
-    logger.info(
-        "episode_reset",
-        episode_id=str(episode_id),
-        jobs_deleted=deleted_jobs,
-    )
+        ) from exc
     return {
         "message": "Episode reset to draft",
         "episode_id": str(episode_id),
@@ -1530,69 +982,24 @@ async def reset_episode(
 )
 async def cancel_episode(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Cancel an in-progress generation for the episode.
-
-    Sets a cancel flag in Redis that the pipeline checks between steps.
-    Marks all running/queued jobs as failed and updates the episode
-    status to ``failed``.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
+    """Cancel an in-progress generation for the episode."""
+    try:
+        cancelled_jobs = await svc.cancel(episode_id)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Episode {episode_id} not found",
-        )
-
-    if episode.status != "generating":
+        ) from exc
+    except EpisodeInvalidStatusError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"Episode is in '{episode.status}' status, not 'generating'. "
-            "Only generating episodes can be cancelled.",
-        )
-
-    # Set cancel flag in Redis so the pipeline checks it between steps.
-    redis = get_arq_pool()
-    await redis.set(f"cancel:{episode_id}", "1", ex=3600)
-
-    # Mark all running/queued jobs as failed with cancellation message.
-    job_repo = GenerationJobRepository(db)
-    jobs = await job_repo.get_by_episode(episode_id)
-    cancelled_jobs = 0
-    for job in jobs:
-        if job.status in ("running", "queued"):
-            await job_repo.update_status(job.id, "failed", error_message="Cancelled by user")
-            cancelled_jobs += 1
-
-    # Update episode status.
-    await ep_repo.update_status(episode_id, "failed")
-    await db.commit()
-
-    # Broadcast cancellation via WebSocket so the frontend updates immediately.
-    from drevalis.schemas.progress import ProgressMessage
-
-    cancel_msg = ProgressMessage(
-        episode_id=str(episode_id),
-        job_id="",
-        step="script",
-        status="failed",
-        progress_pct=0,
-        message="Generation cancelled by user",
-        error="Cancelled by user",
-    )
-    channel = f"progress:{episode_id}"
-    try:
-        await redis.publish(channel, cancel_msg.model_dump_json())
-    except Exception:
-        logger.debug("cancel_broadcast_failed", episode_id=str(episode_id), exc_info=True)
-
-    logger.info(
-        "episode_cancelled",
-        episode_id=str(episode_id),
-        cancelled_jobs=cancelled_jobs,
-    )
+            detail=(
+                f"Episode is in '{exc.current_status}' status, not 'generating'. "
+                "Only generating episodes can be cancelled."
+            ),
+        ) from exc
     return {
         "message": "Episode generation cancelled",
         "episode_id": str(episode_id),
