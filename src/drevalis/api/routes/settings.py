@@ -270,7 +270,9 @@ async def _check_worker(redis: Redis) -> ServiceHealth:
     )
 
 
-async def _check_comfyui_servers(db: AsyncSession, default_url: str) -> list[ServiceHealth]:
+async def _check_comfyui_servers(
+    db: AsyncSession, default_url: str, encryption_key: str
+) -> list[ServiceHealth]:
     """Check each active ComfyUI server's connectivity.
 
     Queries the database for all active servers and tests each one.
@@ -278,14 +280,14 @@ async def _check_comfyui_servers(db: AsyncSession, default_url: str) -> list[Ser
     """
     import httpx
 
-    from drevalis.repositories.comfyui import ComfyUIServerRepository
+    from drevalis.services.comfyui_admin import ComfyUIServerService
 
     results: list[ServiceHealth] = []
 
     # Try to fetch active servers from DB
     try:
-        repo = ComfyUIServerRepository(db)
-        active_servers = await repo.get_active_servers()
+        svc = ComfyUIServerService(db, encryption_key)
+        active_servers = [s for s in await svc.list_all() if s.is_active]
     except Exception:
         active_servers = []
 
@@ -467,7 +469,9 @@ async def system_health(
     db_task = asyncio.create_task(_check_database(db))
     redis_task = asyncio.create_task(_check_redis(redis))
     worker_task = asyncio.create_task(_check_worker(redis))
-    comfyui_task = asyncio.create_task(_check_comfyui_servers(db, settings.comfyui_default_url))
+    comfyui_task = asyncio.create_task(
+        _check_comfyui_servers(db, settings.comfyui_default_url, settings.encryption_key)
+    )
     ffmpeg_task = asyncio.create_task(_check_ffmpeg(settings.ffmpeg_path))
     piper_task = asyncio.create_task(_check_piper_tts(settings.piper_models_path))
     lm_studio_task = asyncio.create_task(_check_lm_studio(settings.lm_studio_base_url))
