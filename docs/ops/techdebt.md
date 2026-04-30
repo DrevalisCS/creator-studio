@@ -31,20 +31,25 @@ Unit suite: 562 passed / 18 xfailed / 21 errors → 630 passed / 0 xfailed
 
 ## 2. Mypy (gated in CI)
 
-Mypy **is** a CI gate as of this commit. The whole-package run
+Mypy **is** a CI gate. The whole-package run
 `mypy -p drevalis --no-strict-optional` returns 0 errors across
-138 source files.
+189 source files. Two packages now also gate at full `--strict` in CI
+(typecheck step §2): `drevalis.core.license` and
+`drevalis.services.updates`. Regressions on either fail the build.
 
 Remaining debt is on the strictness axis:
 
-- [ ] Tighten to `--strict` per package (blocked on each package's own
-      `Any`-leak audit). Start with `drevalis.core.license` and
-      `drevalis.services.updates` — both are small and entirely
-      authored in-repo.
-- [ ] Remove the `--no-strict-optional` flag once the `None`-handling
-      drift in repositories/ORM paths is cleaned up.
-- [ ] Audit the `# type: ignore[...]` comments that remain for
-      legitimacy (should be narrow and commented, not blanket).
+- [ ] Tighten more packages to `--strict`. Audit-time error counts:
+      `drevalis.schemas` 0, `drevalis.models` 0, `drevalis.core` 1
+      (transitive from repositories), `drevalis.repositories` 1,
+      `drevalis.services.episode` / `services.storage` 1 each. The
+      next four are very cheap.
+- [ ] Remove the `--no-strict-optional` flag globally once the
+      `None`-handling drift in repositories/ORM paths is cleaned up.
+- [x] Audit the `# type: ignore[...]` comments that remain for
+      legitimacy (post-audit: every remaining ignore has a specific
+      `[error-code]` annotation; F-T-31 was the one bare ignore and
+      it was real — fixed in commit 9107f30).
 
 ## 3. Bandit / pip-audit
 
