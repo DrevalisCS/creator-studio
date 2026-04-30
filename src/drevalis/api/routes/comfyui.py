@@ -1,8 +1,13 @@
-"""ComfyUI API router -- CRUD for servers and workflows, connection testing."""
+"""ComfyUI API router -- CRUD for servers and workflows, connection testing.
+
+Layering: routes call ``ComfyUIServerService`` / ``ComfyUIWorkflowService``
+only. No repository imports, no ``encrypt_value`` / ``decrypt_value`` in
+the route file. The connection-test endpoint still uses the runtime
+``ComfyUIClient`` since that's a different concern from CRUD.
+"""
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -10,13 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
-from drevalis.core.security import decrypt_value, encrypt_value
+from drevalis.core.exceptions import NotFoundError, ValidationError
 from drevalis.models.comfyui import ComfyUIServer
-from drevalis.repositories.comfyui import (
-    ComfyUIServerRepository,
-    ComfyUIWorkflowRepository,
-)
-from drevalis.schemas.comfyui import WorkflowInputMapping
 from drevalis.schemas.comfyui_crud import (
     ComfyUIServerCreate,
     ComfyUIServerResponse,
@@ -26,8 +26,23 @@ from drevalis.schemas.comfyui_crud import (
     ComfyUIWorkflowResponse,
     ComfyUIWorkflowUpdate,
 )
+from drevalis.services.comfyui_admin import (
+    ComfyUIServerService,
+    ComfyUIWorkflowService,
+)
 
 router = APIRouter(prefix="/api/v1/comfyui", tags=["comfyui"])
+
+
+def _server_service(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> ComfyUIServerService:
+    return ComfyUIServerService(db, settings.encryption_key)
+
+
+def _workflow_service(db: AsyncSession = Depends(get_db)) -> ComfyUIWorkflowService:
+    return ComfyUIWorkflowService(db)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
@@ -61,11 +76,10 @@ def _server_to_response(server: ComfyUIServer) -> ComfyUIServerResponse:
     summary="List all ComfyUI servers",
 )
 async def list_servers(
-    db: AsyncSession = Depends(get_db),
+    svc: ComfyUIServerService = Depends(_server_service),
 ) -> list[ComfyUIServerResponse]:
     """Return all registered ComfyUI servers."""
-    repo = ComfyUIServerRepository(db)
-    servers = await repo.get_all()
+    servers = await svc.list_all()
     return [_server_to_response(s) for s in servers]
 
 
@@ -77,35 +91,21 @@ async def list_servers(
 )
 async def create_server(
     payload: ComfyUIServerCreate,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: ComfyUIServerService = Depends(_server_service),
 ) -> ComfyUIServerResponse:
     """Register a new ComfyUI server instance."""
-    from drevalis.core.validators import validate_safe_url_or_localhost
-
     try:
-        validate_safe_url_or_localhost(payload.url)
-    except ValueError as exc:
-        raise HTTPException(status_code=422, detail=f"Invalid server URL: {exc}") from exc
-
-    repo = ComfyUIServerRepository(db)
-
-    # Encrypt API key if provided.
-    api_key_encrypted = None
-    api_key_version = 1
-    if payload.api_key:
-        api_key_encrypted, api_key_version = encrypt_value(payload.api_key, settings.encryption_key)
-
-    server = await repo.create(
-        name=payload.name,
-        url=payload.url,
-        api_key_encrypted=api_key_encrypted,
-        api_key_version=api_key_version,
-        max_concurrent=payload.max_concurrent,
-        is_active=payload.is_active,
-    )
-    await db.commit()
-    await db.refresh(server)
+        server = await svc.create(
+            name=payload.name,
+            url=payload.url,
+            api_key=payload.api_key,
+            max_concurrent=payload.max_concurrent,
+            is_active=payload.is_active,
+        )
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.detail
+        ) from exc
     return _server_to_response(server)
 
 
@@ -117,16 +117,13 @@ async def create_server(
 )
 async def get_server(
     server_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: ComfyUIServerService = Depends(_server_service),
 ) -> ComfyUIServerResponse:
     """Fetch a single ComfyUI server by ID."""
-    repo = ComfyUIServerRepository(db)
-    server = await repo.get_by_id(server_id)
-    if server is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ComfyUI server {server_id} not found",
-        )
+    try:
+        server = await svc.get(server_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return _server_to_response(server)
 
 
@@ -139,37 +136,17 @@ async def get_server(
 async def update_server(
     server_id: UUID,
     payload: ComfyUIServerUpdate,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: ComfyUIServerService = Depends(_server_service),
 ) -> ComfyUIServerResponse:
     """Update an existing ComfyUI server."""
-    repo = ComfyUIServerRepository(db)
-    update_data = payload.model_dump(exclude_unset=True)
-
-    if not update_data:
+    try:
+        server = await svc.update(server_id, **payload.model_dump(exclude_unset=True))
+    except ValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No fields to update",
-        )
-
-    # Handle API key encryption.
-    if "api_key" in update_data:
-        raw_key = update_data.pop("api_key")
-        if raw_key is not None:
-            encrypted, version = encrypt_value(raw_key, settings.encryption_key)
-            update_data["api_key_encrypted"] = encrypted
-            update_data["api_key_version"] = version
-        else:
-            update_data["api_key_encrypted"] = None
-
-    server = await repo.update(server_id, **update_data)
-    if server is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ComfyUI server {server_id} not found",
-        )
-    await db.commit()
-    await db.refresh(server)
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.detail
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return _server_to_response(server)
 
 
@@ -180,17 +157,13 @@ async def update_server(
 )
 async def delete_server(
     server_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: ComfyUIServerService = Depends(_server_service),
 ) -> None:
     """Remove a ComfyUI server registration."""
-    repo = ComfyUIServerRepository(db)
-    deleted = await repo.delete(server_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ComfyUI server {server_id} not found",
-        )
-    await db.commit()
+    try:
+        await svc.delete(server_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 @router.post(
@@ -201,25 +174,15 @@ async def delete_server(
 )
 async def test_server(
     server_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: ComfyUIServerService = Depends(_server_service),
 ) -> ComfyUIServerTestResponse:
     """Test connectivity to a ComfyUI server and update its health status."""
-    repo = ComfyUIServerRepository(db)
-    server = await repo.get_by_id(server_id)
-    if server is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ComfyUI server {server_id} not found",
-        )
+    try:
+        server = await svc.get(server_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
-    # Decrypt API key if present.
-    api_key: str | None = None
-    if server.api_key_encrypted:
-        try:
-            api_key = decrypt_value(server.api_key_encrypted, settings.encryption_key)
-        except Exception:
-            api_key = None
+    api_key = await svc.decrypt_api_key(server)
 
     try:
         from drevalis.services.comfyui import ComfyUIClient
@@ -230,10 +193,8 @@ async def test_server(
         finally:
             await client.close()
 
-        now = datetime.now(UTC)
         test_status = "ok" if reachable else "unreachable"
-        await repo.update_test_status(server_id, test_status, now)
-        await db.commit()
+        await svc.record_test_status(server_id, test_status)
 
         if reachable:
             return ComfyUIServerTestResponse(
@@ -241,16 +202,13 @@ async def test_server(
                 message=f"Server '{server.name}' is reachable",
                 server_id=server_id,
             )
-        else:
-            return ComfyUIServerTestResponse(
-                success=False,
-                message=f"Server '{server.name}' is unreachable",
-                server_id=server_id,
-            )
+        return ComfyUIServerTestResponse(
+            success=False,
+            message=f"Server '{server.name}' is unreachable",
+            server_id=server_id,
+        )
     except Exception as exc:
-        now = datetime.now(UTC)
-        await repo.update_test_status(server_id, f"error: {exc}", now)
-        await db.commit()
+        await svc.record_test_status(server_id, f"error: {exc}")
         return ComfyUIServerTestResponse(
             success=False,
             message=f"Connection test failed: {exc}",
@@ -270,11 +228,10 @@ async def test_server(
     summary="List all ComfyUI workflows",
 )
 async def list_workflows(
-    db: AsyncSession = Depends(get_db),
+    svc: ComfyUIWorkflowService = Depends(_workflow_service),
 ) -> list[ComfyUIWorkflowResponse]:
     """Return all registered ComfyUI workflows."""
-    repo = ComfyUIWorkflowRepository(db)
-    workflows = await repo.get_all()
+    workflows = await svc.list_all()
     return [ComfyUIWorkflowResponse.model_validate(w) for w in workflows]
 
 
@@ -286,25 +243,15 @@ async def list_workflows(
 )
 async def create_workflow(
     payload: ComfyUIWorkflowCreate,
-    db: AsyncSession = Depends(get_db),
+    svc: ComfyUIWorkflowService = Depends(_workflow_service),
 ) -> ComfyUIWorkflowResponse:
-    """Register a new ComfyUI workflow template.
-
-    The input_mappings field is validated against the WorkflowInputMapping schema.
-    """
-    # Validate input_mappings structure.
+    """Register a new ComfyUI workflow template."""
     try:
-        WorkflowInputMapping.model_validate(payload.input_mappings)
-    except Exception as exc:
+        workflow = await svc.create(**payload.model_dump())
+    except ValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Invalid input_mappings: {exc}",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.detail
         ) from exc
-
-    repo = ComfyUIWorkflowRepository(db)
-    workflow = await repo.create(**payload.model_dump())
-    await db.commit()
-    await db.refresh(workflow)
     return ComfyUIWorkflowResponse.model_validate(workflow)
 
 
@@ -316,16 +263,13 @@ async def create_workflow(
 )
 async def get_workflow(
     workflow_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: ComfyUIWorkflowService = Depends(_workflow_service),
 ) -> ComfyUIWorkflowResponse:
     """Fetch a single ComfyUI workflow by ID."""
-    repo = ComfyUIWorkflowRepository(db)
-    workflow = await repo.get_by_id(workflow_id)
-    if workflow is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ComfyUI workflow {workflow_id} not found",
-        )
+    try:
+        workflow = await svc.get(workflow_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return ComfyUIWorkflowResponse.model_validate(workflow)
 
 
@@ -338,36 +282,17 @@ async def get_workflow(
 async def update_workflow(
     workflow_id: UUID,
     payload: ComfyUIWorkflowUpdate,
-    db: AsyncSession = Depends(get_db),
+    svc: ComfyUIWorkflowService = Depends(_workflow_service),
 ) -> ComfyUIWorkflowResponse:
     """Update an existing ComfyUI workflow."""
-    repo = ComfyUIWorkflowRepository(db)
-    update_data = payload.model_dump(exclude_unset=True)
-
-    if not update_data:
+    try:
+        workflow = await svc.update(workflow_id, **payload.model_dump(exclude_unset=True))
+    except ValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No fields to update",
-        )
-
-    # Validate input_mappings if provided.
-    if "input_mappings" in update_data and update_data["input_mappings"] is not None:
-        try:
-            WorkflowInputMapping.model_validate(update_data["input_mappings"])
-        except Exception as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"Invalid input_mappings: {exc}",
-            ) from exc
-
-    workflow = await repo.update(workflow_id, **update_data)
-    if workflow is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ComfyUI workflow {workflow_id} not found",
-        )
-    await db.commit()
-    await db.refresh(workflow)
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.detail
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return ComfyUIWorkflowResponse.model_validate(workflow)
 
 
@@ -378,17 +303,13 @@ async def update_workflow(
 )
 async def delete_workflow(
     workflow_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: ComfyUIWorkflowService = Depends(_workflow_service),
 ) -> None:
     """Remove a ComfyUI workflow registration."""
-    repo = ComfyUIWorkflowRepository(db)
-    deleted = await repo.delete(workflow_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"ComfyUI workflow {workflow_id} not found",
-        )
-    await db.commit()
+    try:
+        await svc.delete(workflow_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
 
 # ── Bundled workflow templates ──────────────────────────────────────
@@ -438,7 +359,7 @@ async def list_templates() -> list[WorkflowTemplateResponse]:
 )
 async def install_template(
     slug: str,
-    db: AsyncSession = Depends(get_db),
+    svc: ComfyUIWorkflowService = Depends(_workflow_service),
     settings: Settings = Depends(get_settings),
 ) -> InstallTemplateResponse:
     """Copy the bundled workflow JSON into
@@ -469,8 +390,7 @@ async def install_template(
 
     rel_path = target_path.relative_to(Path(settings.storage_base_path)).as_posix()
 
-    repo = ComfyUIWorkflowRepository(db)
-    wf = await repo.create(
+    wf = await svc.install_template(
         name=tpl.name,
         description=tpl.description,
         workflow_json_path=rel_path,
@@ -478,7 +398,6 @@ async def install_template(
         content_format=tpl.content_format,
         scene_mode=tpl.scene_mode,
     )
-    await db.commit()
     return InstallTemplateResponse(
         workflow_id=str(wf.id),
         workflow_json_path=rel_path,
