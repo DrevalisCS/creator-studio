@@ -70,9 +70,7 @@ def _scenes_for_chapter(start_number: int, count: int) -> list[dict[str, Any]]:
     return [
         {
             "scene_number": start_number + i,
-            "narration": (
-                f"Scene {start_number + i} narration. " * 3
-            ).strip(),
+            "narration": (f"Scene {start_number + i} narration. " * 3).strip(),
             "visual_prompt": f"Visual {start_number + i}: detailed shot",
             "duration_seconds": 10.0,
             "keywords": [f"kw{start_number + i}-a", f"kw{start_number + i}-b"],
@@ -124,9 +122,7 @@ class TestGenerate:
         # 40 mins // 8 = 5 chapters expected. The outline mock returns
         # 5 chapters, so the resulting flow must run exactly 5 chapter
         # calls (= 6 total LLM calls).
-        await svc.generate(
-            topic="x", series_description="y", target_duration_minutes=40
-        )
+        await svc.generate(topic="x", series_description="y", target_duration_minutes=40)
         assert provider.generate.call_count == 6  # 1 outline + 5 chapters
 
     async def test_chapter_count_auto_floor_is_3(self) -> None:
@@ -139,9 +135,7 @@ class TestGenerate:
         )
 
         svc = LongFormScriptService(provider=provider)
-        await svc.generate(
-            topic="x", series_description="y", target_duration_minutes=1
-        )
+        await svc.generate(topic="x", series_description="y", target_duration_minutes=1)
         # 1 // 8 == 0; floor is 3 → 1 outline + 3 chapter calls = 4 total.
         assert provider.generate.call_count == 4
 
@@ -362,7 +356,7 @@ class TestParseJson:
         assert result == {"k": "v"}
 
     def test_markdown_fenced_no_label(self) -> None:
-        result = LongFormScriptService._parse_json('```\n[1, 2]\n```')
+        result = LongFormScriptService._parse_json("```\n[1, 2]\n```")
         assert result == [1, 2]
 
     def test_object_embedded_in_prose(self) -> None:
