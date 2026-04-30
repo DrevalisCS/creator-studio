@@ -58,7 +58,7 @@ pip-audit
 
 ### Generation Pipeline
 
-Single arq job, `PipelineOrchestrator` state machine (`services/pipeline.py`). Steps run sequentially; each completion is persisted to `generation_jobs` before the next. Completed steps are skipped on retry.
+Single arq job, `PipelineOrchestrator` state machine (`services/pipeline/_monolith.py`, re-exported from `services/pipeline/__init__.py`). Steps run sequentially; each completion is persisted to `generation_jobs` before the next. Completed steps are skipped on retry.
 
 Steps: `script` → `voice` → `scenes` → `captions` → `assembly` → `thumbnail`
 
