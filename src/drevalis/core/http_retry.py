@@ -24,11 +24,14 @@ from __future__ import annotations
 
 import asyncio
 import random
+from collections.abc import Awaitable, Callable
 from email.utils import parsedate_to_datetime
-from typing import Any
+from typing import Any, TypeVar
 
 import httpx
 import structlog
+
+_T = TypeVar("_T")
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -150,4 +153,62 @@ async def request_with_retry(
     raise last_exc
 
 
-__all__ = ["request_with_retry"]
+async def retry_async(
+    fn: Callable[[], Awaitable[_T]],
+    *,
+    is_retryable: Callable[[Exception], bool],
+    max_attempts: int = 3,
+    base_backoff_s: float = 5.0,
+    max_backoff_s: float = 60.0,
+    label: str | None = None,
+) -> _T:
+    """Generic async retry wrapper for non-httpx callables.
+
+    Parameters
+    ----------
+    fn:
+        Zero-arg async callable. The callable is invoked up to
+        ``max_attempts`` times.
+    is_retryable:
+        Predicate that decides whether to retry a particular exception.
+        Anything the predicate returns ``False`` for re-raises immediately
+        (so 4xx auth errors can fail fast while 5xx retries).
+    max_attempts:
+        Total number of attempts including the first. Default ``3``.
+    base_backoff_s / max_backoff_s:
+        Exponential backoff with jitter, capped at ``max_backoff_s``.
+    label:
+        Free-form string for log lines.
+
+    Used for SDK call sites (OpenAI, Anthropic, ElevenLabs) where the
+    httpx-specific ``request_with_retry`` doesn't fit because the caller
+    isn't talking to httpx directly. F-CQ-08.
+    """
+    last_exc: Exception | None = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await fn()
+        except Exception as exc:  # noqa: BLE001 - predicate decides
+            if not is_retryable(exc):
+                raise
+            last_exc = exc
+            if attempt == max_attempts:
+                break
+            wait = min(
+                max_backoff_s,
+                base_backoff_s * (2 ** (attempt - 1)) * (0.5 + random.random()),
+            )
+            logger.warning(
+                "retry_async",
+                label=label or "fn",
+                attempt=attempt,
+                wait_s=round(wait, 2),
+                error_type=type(exc).__name__,
+                error=str(exc)[:150],
+            )
+            await asyncio.sleep(wait)
+    assert last_exc is not None
+    raise last_exc
+
+
+__all__ = ["request_with_retry", "retry_async"]

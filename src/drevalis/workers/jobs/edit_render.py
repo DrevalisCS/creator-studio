@@ -6,7 +6,7 @@ produce a new ``video`` asset for the episode. Pragmatic first pass:
 1. For each video-track clip, trim the source file to (in_s, out_s)
    via ``FFmpegService.trim_video``.
 2. Concat all trimmed clips in timeline order via
-   ``FFmpegService.concat_video_clips``.
+   ``FFmpegService.concat_videos``.
 3. Overlay captions ASS file on top when present.
 4. Mix voice (+ optional music with sidechain ducking) via the
    standard AudioMixConfig path on ``assemble_video``.

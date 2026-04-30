@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.6] - 2026-04-30
+
+### Added
+
+- **F-CQ-08** — generic ``retry_async`` helper in
+  ``core/http_retry.py``. Sibling to the httpx-specific
+  ``request_with_retry``: takes a zero-arg async callable + a
+  ``is_retryable: Callable[[Exception], bool]`` predicate, runs
+  exponential backoff with jitter, max-attempt cap, fail-fast on
+  predicate-False. Designed for SDK call sites (OpenAI, Anthropic,
+  ElevenLabs) where ``request_with_retry`` doesn't fit because the
+  caller isn't holding the httpx client. ``OpenAICompatibleProvider.
+  generate`` is the first call site converted — its bespoke
+  for-attempt-in-range loop with the typed-exception predicate from
+  v0.29.4 collapses to a single ``retry_async(...)`` call.
+- 7 unit tests covering retry-until-success, max-attempts-exhausted,
+  non-retryable predicate fast-path, predicate exception inspection,
+  and signature preservation.
+
+### Fixed
+
+- **F-T-31** stale docstring — ``workers/jobs/edit_render.py`` was
+  documented as calling ``FFmpegService.concat_video_clips`` but the
+  method has been renamed to ``concat_videos``. The ``# type:
+  ignore[call-arg]`` that previously hid the signature mismatch was
+  already removed in v0.28.x; the doc now matches the code.
+
 ## [0.29.5] - 2026-04-30
 
 ### Added

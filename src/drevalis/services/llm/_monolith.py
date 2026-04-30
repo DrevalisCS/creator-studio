@@ -114,66 +114,47 @@ class OpenAICompatibleProvider:
             json_mode=json_mode,
         )
 
-        # Retry up to 3 times on timeout / transient server errors
-        # (RunPod proxy 524s, ReadTimeout, 5xx). Match on the typed
-        # exception classes the OpenAI SDK exposes — string-matching
-        # the exception text is brittle across SDK versions and
-        # silently catches unrelated errors (asyncio.CancelledError,
-        # JSON validation errors). F-CQ-15.
-        import asyncio as _asyncio
-
+        # Retry on timeout / transient server errors (RunPod proxy
+        # 524s, ReadTimeout, 5xx) via the shared retry_async helper.
+        # 4xx auth/quota errors fail fast. F-CQ-08, F-CQ-15.
         import openai as _openai
 
-        # Tuple of exception classes that mean "transient, retry".
-        # APIStatusError covers 5xx; we narrow to the 5xx subclasses
-        # via the .status_code attribute below so 4xx auth/quota
-        # failures fail fast instead of burning the retry budget.
-        _RETRYABLE: tuple[type[BaseException], ...] = (
-            _openai.APIConnectionError,
-            _openai.APITimeoutError,
-            _openai.InternalServerError,
-        )
+        from drevalis.core.http_retry import retry_async
 
-        for attempt in range(3):
-            try:
+        def _is_retryable(exc: Exception) -> bool:
+            if isinstance(
+                exc,
+                (
+                    _openai.APIConnectionError,
+                    _openai.APITimeoutError,
+                    _openai.InternalServerError,
+                ),
+            ):
+                return True
+            # Generic API error — retry only on 5xx (RunPod proxy
+            # frequently returns 502/503/524 under load).
+            if isinstance(exc, _openai.APIStatusError):
+                return 500 <= exc.status_code < 600
+            return False
+
+        try:
+            response = await retry_async(
+                lambda: self._client.chat.completions.create(**kwargs),
+                is_retryable=_is_retryable,
+                max_attempts=3,
+                base_backoff_s=10.0,
+                max_backoff_s=30.0,
+                label="openai_generate",
+            )
+        except _openai.APIStatusError as exc:
+            # 4xx after retries gave up — try json_mode fallback if
+            # applicable (some local backends 400 on response_format),
+            # otherwise let the caller see it.
+            if 400 <= exc.status_code < 500 and json_mode and "response_format" in kwargs:
+                logger.debug("json_mode_fallback", reason="response_format not supported")
+                del kwargs["response_format"]
                 response = await self._client.chat.completions.create(**kwargs)
-                break
-            except _RETRYABLE as exc:
-                if attempt < 2:
-                    wait = (attempt + 1) * 10
-                    logger.warning(
-                        "openai_generate_retry",
-                        attempt=attempt + 1,
-                        wait=wait,
-                        error_type=type(exc).__name__,
-                        error=str(exc)[:100],
-                    )
-                    await _asyncio.sleep(wait)
-                    continue
-                # Last attempt exhausted — re-raise so the caller sees it.
-                raise
-            except _openai.APIStatusError as exc:
-                # Generic API error — retry only on 5xx (RunPod proxy
-                # frequently returns 502/503/524 under load).
-                if 500 <= exc.status_code < 600 and attempt < 2:
-                    wait = (attempt + 1) * 10
-                    logger.warning(
-                        "openai_generate_retry",
-                        attempt=attempt + 1,
-                        wait=wait,
-                        status_code=exc.status_code,
-                        error=str(exc)[:100],
-                    )
-                    await _asyncio.sleep(wait)
-                    continue
-                # 4xx (auth, quota, invalid request) — try json_mode
-                # fallback if applicable (some local backends 400 on
-                # response_format), otherwise let the caller see it.
-                if json_mode and "response_format" in kwargs:
-                    logger.debug("json_mode_fallback", reason="response_format not supported")
-                    del kwargs["response_format"]
-                    response = await self._client.chat.completions.create(**kwargs)
-                    break
+            else:
                 raise
 
         choice = response.choices[0]
