@@ -229,753 +229,1475 @@ remains clean across the touched packages; `ruff check src/` passes.
 
 ## [0.28.1] - 2026-04-29
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(youtube,settings): YouTube credential lookup misses the api_keys store
+
 
 ## [0.28.0] - 2026-04-28
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(music_video): scenes + lyric captions + composite (Phase 2b â€” full pipeline)
+- feat(music_video): orchestrator dispatch (Phase 2a â€” SCRIPT + AUDIO real)
+- feat(music_video): real plan_song + librosa beat detection (Phase 1)
+
 
 ## [0.27.1] - 2026-04-28
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(frontend): repair AutoScheduleDialog UI library API misuse
+
 
 ## [0.27.0] - 2026-04-28
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(youtube,calendar): tighten analytics scope detection + Auto-Schedule UI
+- feat(schedule): auto-schedule + diagnostics + retry-failed endpoints
+
+### Changed
+
+- style(audiobook): ruff format + mypy fixes for v0.26.0 CI
+
+### Fixed
+
+- fix(audiobook): exclude [SFX:] tags from auto-character detection + round-robin voices
+
 
 ## [0.26.0] - 2026-04-27
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(audiobook): v0.26.0 â€” pipeline overhaul (cache, loudness, mix, settings, DAG, render plan)
+
 
 ## [0.25.1] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(audiobook): keep per-chunk WAVs so the editor can list them
+
 
 ## [0.25.0] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(audiobook): v0.25.0 â€” multi-track timeline editor with per-clip overrides
+
 
 ## [0.24.0] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(audiobook): v0.24.0 â€” quality + remix + editor stub
+
 
 ## [0.23.5] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(comfyui-auth): route the ComfyUI-Org token to the field whose shape it matches
+
 
 ## [0.23.4] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(music): make AceStep model filenames configurable; default clip2 to 4b
+
 
 ## [0.23.3] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(tts): send token as both api_key_comfy_org AND auth_token_comfy_org
+
 
 ## [0.23.2] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- style: ruff format the v0.23.x audiobook + tts + audiobooks-route files
+
 
 ## [0.23.1] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(audiobook): overlay SFX (under=) + lint/typecheck fixes
+
 
 ## [0.23.0] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(audiobook): v0.23.0 quality pass + ElevenLabs SFX
+
 
 ## [0.22.10] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(tts): revert ComfyUI ElevenLabs workflow to dotted-key schema
+
 
 ## [0.22.9] - 2026-04-26
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(audiobook): cancel button + ComfyUIElevenLabs workflow fix
+
 
 ## [0.22.8] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(workers,app): Redis DNS pre-flight to survive compose-up race
+
 
 ## [0.22.7] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(audiobook): bullet-proof title card generation; never return missing path
+
 
 ## [0.22.6] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(infra): shrink Redis retry budget; bump app/worker start_period
+
 
 ## [0.22.5] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(ui): portal Dialog to document.body + drop panel backdrop-filter
+
 
 ## [0.22.4] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(workers): bump Redis connect timeout + retry on slow startup
+
 
 ## [0.22.3] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(ui): cap Dialog height + sticky DialogFooter so actions stay reachable
+
 
 ## [0.22.2] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(nginx): quote regex location to escape curly-brace tokenisation
+
 
 ## [0.22.1] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(frontend): pin nginx base + bypass entrypoint chain (v0.22.0 crash fix)
+
 
 ## [0.22.0] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(social): guided OAuth setup wizard for YouTube + TikTok
+- feat(calendar): Month/List view toggle + platform filter strip
+- feat(ui): global âŒ˜K command palette wired into Layout + header affordance
+
+### Changed
+
+- chore(ui): drop dead .empty-state CSS class â€” all call sites use EmptyState now
+
+### Fixed
+
+- fix(ui): use semantic error/success color tokens instead of red-400/green-400
+- fix(ui): port Usage KPI tiles to shared StatCard; drop local KPI helper
+- fix(ui): port Logs + YouTube stat tiles to shared StatCard
+- fix(build): typecheck â€” EmptyState icon prop, Settings nav typing, unused Help import
+- fix(a11y): aria-label + focus rings on icon-only action buttons
+- fix(ui): convert all 4 Settings empty-state divs to shared EmptyState
+- fix(ui): convert all 5 empty-state divs in EpisodeDetail to EmptyState
+- fix(ui): use EmptyState in SeriesDetail's EpisodesSection too
+- fix(ui): convert ad-hoc empty-state divs to shared EmptyState component
+- fix(ui): drop YouTube page H1 + decorative icon â€” banner shows the title
+- fix(ui): drop duplicate H2 in Assets page (banner shows the title)
+- fix(ui): drop duplicate H2s and use shared EmptyState in Logs + Audiobooks
+- fix(ui): a11y + status-pill docs + scene thumbs in script tab
+- fix(ui): use shared EmptyState in Jobs + CloudGPU empty paths
+- fix(ui): group Settings nav into Account / Appearance / Integrations / System / Content
+- fix(ui): SeriesCard cover identity + drop SeriesList duplicate H2
+- fix(ui): P1 batch 2 â€” episode card layout, calendar polish, help dedup, episode detail toolbar
+- fix(ui): P0+P1 batch â€” assets route, ws backoff, page headers, license, episodes UX
+
 
 ## [0.21.4] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(nginx): raise client_max_body_size to 5 GB for video ingest (v0.21.4)
+
 
 ## [0.21.3] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- style: ruff format audiobook/_monolith.py (v0.21.3)
+
 
 ## [0.21.2] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(ci): drop unused onOpenAssetPicker prop from ToolsRail (v0.21.2)
+
 
 ## [0.21.1] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(editor): preview scales to fit + draggable preview/timeline split (v0.21.1)
+
 
 ## [0.21.0] - 2026-04-25
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: v0.21.0 â€” Help sticky nav + stamps library + audiobook image gallery
+
 
 ## [0.20.43] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): preserve container healthcheck on recreation (v0.20.43)
+
 
 ## [0.20.42] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(ci): drop more unused imports orphaned by RunPodSection delete (v0.20.42)
+
 
 ## [0.20.41] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(ci): tsc unused-locals + line-shape type mismatch (v0.20.41)
+
 
 ## [0.20.40] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(cloud-gpu): consolidate management to /cloud-gpu; add Vast.ai + Lambda keys (v0.20.40)
+
 
 ## [0.20.39] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(editor): fullscreen 3-column editor + drag-drop assets (v0.20.39)
+
 
 ## [0.20.38] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(help): next-level navigation â€” palette, hub, grouped rail (v0.20.38)
+
 
 ## [0.20.37] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(series): restore ChevronRight import dropped in sections split (v0.20.37)
+
 
 ## [0.20.36] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- refactor(series): split monolith into sections/ sub-components (v0.20.36)
+
 
 ## [0.20.35] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): drive docker run -v args from Mounts[] only (v0.20.35)
+
 
 ## [0.20.34] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(series): hero card + style popover + format segmented control (v0.20.34)
+
 
 ## [0.20.33] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(youtube): reconnect + remove controls + filter inactive channels (v0.20.33)
+
 
 ## [0.20.32] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(series): inline autosave + drop global Save button (v0.20.32)
+
 
 ## [0.20.31] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(series): two-column layout + sticky rail nav + kanban episodes (v0.20.31)
+
 
 ## [0.20.30] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(youtube+editor): per-channel analytics + multi-channel dashboard (v0.20.30)
+
 
 ## [0.20.29] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(theme): add Aurora preset (violet + DM Sans) (v0.20.29)
+
 
 ## [0.20.28] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(ci): re-export ChangelogEntry + ChangelogResponse from api barrel (v0.20.28)
+
 
 ## [0.20.27] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(theme): bundled personality presets with per-theme fonts/radius/shadows (v0.20.27)
+
 
 ## [0.20.26] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(updates): in-app changelog from GitHub releases (v0.20.26)
+
 
 ## [0.20.25] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): recreate containers with new image (not just restart) (v0.20.25)
+
 
 ## [0.20.24] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): pull by Config.Image, skip raw image IDs (v0.20.24)
+
 
 ## [0.20.23] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(updater): drop docker compose, use docker pull + docker restart (v0.20.23)
+
 
 ## [0.20.22] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): exclude self from pull, clear flag up-front, visible progress (v0.20.22)
+
 
 ## [0.20.21] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): accept ghcr.io /v2/ 401 as reachable (v0.20.21)
+
 
 ## [0.20.20] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(ui): editor preview fix + per-platform social pages (v0.20.20)
+
 
 ## [0.20.19] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(youtube): auto-retry with first channel on channel_id_required (v0.20.19)
+
 
 ## [0.20.18] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(youtube): pass channel_id on scoped calls for multi-channel installs (v0.20.18)
+
 
 ## [0.20.17] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): surface real pull error + preflight ghcr.io (v0.20.17)
+
 
 ## [0.20.16] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(api-keys): return created_at/updated_at + surface decryption failures (v0.20.16)
+
 
 ## [0.20.15] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(editor): mypy â€” narrow _jsonable output via runtime assert (v0.20.15)
+
 
 ## [0.20.14] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(editor): coerce Decimal â†’ float in seeded timeline (v0.20.14)
+
 
 ## [0.20.13] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(ws): strip CRLF from API_AUTH_TOKEN env value (v0.20.13)
+
 
 ## [0.20.12] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(editor): structured 500 responses instead of opaque errors (v0.20.12)
+
 
 ## [0.20.11] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): read compose yml from container, bind to host path (v0.20.11)
+
 
 ## [0.20.10] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(routes): hoist AsyncSession to runtime import across 7 routers (v0.20.10)
+
 
 ## [0.20.9] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(ci): add mountinfo_lines to types/index.ts + ruff format settings.py (v0.20.9)
+
 
 ## [0.20.8] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): resolve host project dir via docker inspect on self (v0.20.8)
+
 
 ## [0.20.7] - 2026-04-24
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(v0.20.7): raw mountinfo dump on Storage panel for bind-mount diagnosis
+
 
 ## [0.20.6] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(v0.20.6): media_repair diagnostics â€” show sample paths + offload walk
+
 
 ## [0.20.5] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(v0.20.5): media_repair ghost-row fix + retractable rails + deeper theme
+
 
 ## [0.20.4] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(marketing): real-sample example gallery + voice library + CI fixes (v0.20.4)
+
 
 ## [0.20.3] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(v0.20.3): YouTube DB-keys + Storage walk fix + appearance refactor + lifetime 899
+
+### Changed
+
+- refactor(marketing): propagate v0.20.2 redesign to all pages
+
 
 ## [0.20.2] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(license+marketing): stop 404-toast flood + marketing site redesign v0.20.2
+
 
 ## [0.20.1] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(backup): surface the backup directory's on-host path + Docker Desktop VM translation (v0.20.1)
+
 
 ## [0.20.0] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(pricing+backup): Lifetime (Pro) tier, unlimited Creator, 20% annual, deeper storage probe (v0.20.0)
+
 
 ## [0.19.59] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- docs(backup): clarify Docker Desktop /project/ path label (v0.19.59)
+
 
 ## [0.19.58] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(settings): Storage panel shows host bind-mount path + subdir breakdown (v0.19.58)
+
 
 ## [0.19.57] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(backup): surface host-side bind-mount path in storage probe (v0.19.57)
+
 
 ## [0.19.56] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- chore(frontend): remove boot intro from the app (v0.19.56)
+
 
 ## [0.19.55] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(storage): SMB/CIFS support via docker-compose.smb.override.yml (v0.19.55)
+
 
 ## [0.19.54] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(backup): storage-probe endpoint â€” diagnose 'can't see videos' (v0.19.54)
+
 
 ## [0.19.53] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(backup): dedupe media_assets + refresh file_size_bytes (v0.19.53)
+
 
 ## [0.19.52] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(backup): media_repair diagnostics + per-row on-disk hint (v0.19.52)
+
 
 ## [0.19.51] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(backup): media_repair now covers full storage tree + audiobooks (v0.19.51)
+
 
 ## [0.19.50] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(backup): runtime-import AsyncSession for FastAPI deps (v0.19.50)
+
 
 ## [0.19.49] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(frontend): non-root nginx pid at /tmp (v0.19.49)
+
 
 ## [0.19.48] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- security: read_only frontend container + marketing CSP rationale (v0.19.48)
+
 
 ## [0.19.47] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- chore(migrations): idempotency retrofit for the remaining 15 (v0.19.47)
+
 
 ## [0.19.46] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- chore(migrations): idempotency retrofit for 005/007/021/025 (v0.19.46)
+
 
 ## [0.19.45] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- style: ruff --fix on migration 024 (UP035, UP007)
+
+### Fixed
+
+- fix(backup): repair-media 422 + readable error toast (v0.19.45)
+
 
 ## [0.19.44] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- security+migrations: cap_drop ALL on every service; idempotency on 024 (v0.19.44)
+
 
 ## [0.19.43] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(social): 429/Retry-After on TikTok, IG, Facebook, X INIT + FINISH calls (v0.19.43)
+
 
 ## [0.19.42] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updates): honour 429/Retry-After on manifest fetch (v0.19.42)
+
 
 ## [0.19.41] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- style: ruff format on ab_test_winner.py (v0.19.41)
+
 
 ## [0.19.40] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(tts): ElevenLabs TTS honours 429 / Retry-After (v0.19.40)
+
 
 ## [0.19.39] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- security+infra: frontend non-root, compose hardening, migration helpers, httpx retry (v0.19.39)
+
 
 ## [0.19.38] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(worker): log nested failure in scheduled-post fail-recording (v0.19.38)
+
 
 ## [0.19.37] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(security+bugs): audit round three (v0.19.37)
+
 
 ## [0.19.36] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(security+bugs): audit round two â€” cron locks, timing-safe compare, IP parsing (v0.19.36)
+
 
 ## [0.19.35] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- security(deps): commit lockfile, bump Vite + PyJWT (v0.19.35)
+
 
 ## [0.19.34] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(ffmpeg): clamp scene-duration stretch at 3x (v0.19.34)
+
 
 ## [0.19.33] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(audiobook): actual acrossfade between chapter music (v0.19.33)
+
 
 ## [0.19.32] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(audiobook): loudnorm + silence trim on MP3 export (v0.19.32)
+
 
 ## [0.19.31] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- chore: remove dead code flagged by the pipeline audit (v0.19.31)
+
 
 ## [0.19.30] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(audiobook): use storage.resolve_path, not base_path (mypy) (v0.19.30)
+
 
 ## [0.19.29] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(audiobook): genuine per-chapter fast path on regenerate (v0.19.29)
+
 
 ## [0.19.28] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(help): InfoBox has no className prop; wrap in a div instead (v0.19.28)
+
 
 ## [0.19.27] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- security(marketing): strict CSP â€” drop 'unsafe-inline' from script-src (v0.19.27)
+
 
 ## [0.19.26] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- docs(help): music video + animation + Facebook coverage (v0.19.26)
+
 
 ## [0.19.25] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- ci: coverage report + docker image size summary; compose frontend healthcheck (v0.19.25)
+
 
 ## [0.19.24] - 2026-04-23
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(editor): snap-to-grid + keyboard cheat-sheet + larger undo (v0.19.24)
+
 
 ## [0.19.23] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(worker): per-sub-step heartbeats in video_ingest (v0.19.22)
+
+### Changed
+
+- refactor(marketing): tighter hero + vendor-neutral stack chips (v0.19.23)
+- style: raise ... from None on bad-outline ValueError (ruff B904)
+
 
 ## [0.19.21] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(pipeline): P0 cancel-flag ordering + bad-outline no longer silent (v0.19.21)
+
 
 ## [0.19.20] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(pipeline+audiobook): quality gates + split/merge + chapter + voice cast fixes (v0.19.20)
+
 
 ## [0.19.19] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(ops+ux): frontend healthcheck + no-cache index + editor asset picker (v0.19.19)
+
 
 ## [0.19.18] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(marketing): boot intro v3 â€” matrix rain + title scramble (v0.19.18)
+
 
 ## [0.19.17] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- security(marketing): info-leak scrub + nginx security headers (v0.19.17)
+
 
 ## [0.19.16] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(pipeline): P0 audit round two (v0.19.16)
+
 
 ## [0.19.15] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: music_video + animation content formats (scaffold) (v0.19.15)
+
 
 ## [0.19.14] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(pipeline + social): P0 audits round one (v0.19.14)
+
 
 ## [0.19.13] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(marketing): mobile polish + hamburger nav (v0.19.13)
+
 
 ## [0.19.12] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(migration): CAST(... AS regclass) instead of ::regclass (v0.19.12)
+
 
 ## [0.19.11] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix: idempotent migration 030 + drop money-back guarantee copy (v0.19.11)
+
 
 ## [0.19.10] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(boot): TS2532 LINES[last] unchecked index (v0.19.10)
+
 
 ## [0.19.9] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(demo): protect demo content from mutation/deletion (v0.19.9)
+
 
 ## [0.19.8] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(boot): cyberpunk CRT intro + per-tab-session gate (v0.19.8)
+
 
 ## [0.19.7] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: boot intro on every app start + on marketing first visit (v0.19.6)
+
+### Fixed
+
+- fix(marketing): play boot intro on every reload, not once (v0.19.7)
+
 
 ## [0.19.6] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: boot intro on every app start + on marketing first visit (v0.19.6)
+
+### Changed
+
+- chore: pass CI â€” ruff format + mypy strict cleanup (v0.19.5)
+
 
 ## [0.19.5] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- chore: pass CI — ruff format + mypy strict cleanup (v0.19.5)
 
 ## [0.19.4] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(marketing): GA4 consent banner + Consent Mode v2 defaults (v0.19.4)
+
 
 ## [0.19.3] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- chore(marketing): add GA4 tag G-FJ3ZBMTLCF on every public page (v0.19.3)
+
 
 ## [0.19.2] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: facebook page video uploader via Graph resumable upload (v0.19.2)
+
 
 ## [0.19.1] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: yearly = 1 free month; add Facebook as social platform (v0.19.1)
+
 
 ## [0.19.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: v0.19.0 â€” boot intro, editor polish, marketing unification, media-repair
+
 
 ## [0.18.4] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(demo): tolerate real pipeline media layout (v0.18.4)
+
 
 ## [0.18.3] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(demo): block asset uploads + reject stub videos (v0.18.3)
+
 
 ## [0.18.2] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(demo): default channel + copy content to episode-id dirs (v0.18.2)
+
 
 ## [0.18.1] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(demo): stub YouTube analytics instead of 502 (v0.18.1)
+
 
 ## [0.18.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: voice clone playback + shot-list + continuity badges (v0.18.0)
+
+### Changed
+
+- docs: restore-media troubleshooting + diagnostic script
+
+### Fixed
+
+- fix(demo): one episode per real content dir, no placeholders
+- fix(demo): seed only from content dirs that have complete media
+
 
 ## [0.17.1] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix: demo editor â€” pure-ASGI guard + UUID Python default (v0.17.1)
+
 
 ## [0.17.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix: demo editor + real media + broad demo guards (v0.17.0)
+
 
 ## [0.16.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: marketing SEO + demo CTA + CHF pricing + character packs (v0.16.0)
+
 
 ## [0.15.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: inpaint canvas UI + continuity checker (v0.15.0)
+
 
 ## [0.14.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: IG/X uploads + workflow templates + demo fix + marketing (v0.14.0)
+
 
 ## [0.13.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: AssetPicker UI + mic clone + inpaint + v2v plumbing (v0.13.0)
+
 
 ## [0.12.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: Phase E wiring â€” character/style locks + ElevenLabs IVC (v0.12.0)
+
 
 ## [0.11.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: caption editor + envelope + proxy player + Phase E foundation (v0.11.0)
+
 
 ## [0.10.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(editor): overlays + caption words + waveform + proxy preview (v0.10.0)
+
 
 ## [0.9.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: SEO pre-flight + generation QoL + in-browser video editor (v0.9.0)
+
 
 ## [0.8.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(assets): central asset library + video-in pipeline (v0.8.0)
+
 
 ## [0.7.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(demo): live demo mode + marketing refresh (v0.7.0)
+
 
 ## [0.6.1] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(auth): drop EmailStr â€” pydantic[email] not in runtime image
+
 
 ## [0.6.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(team): Q4.13 â€” team/workspace mode (v0.6.0)
+
 
 ## [0.5.2] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(i18n): Q4.12 â€” language picker on Series edit form
+
 
 ## [0.5.1] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(i18n): Q4.11 â€” multi-language scripts + language-aware voice picker
+
 
 ## [0.5.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(cloud-gpu): v0.5.0 â€” multi-provider cloud GPU (RunPod, Vast.ai, Lambda Labs)
+
 
 ## [0.4.4] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(usage): Q4.2 â€” LLM token instrumentation on generation_jobs
+
 
 ## [0.4.3] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(ab-tests): Q4.1 â€” auto-winner worker settles pairs at 7 days
+
+### Changed
+
+- docs(marketing): Q3 shipped â€” merge into 'Just shipped', promote Q4
+
 
 ## [0.4.2] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: Q3.5 â€” Series A/B test pairs
+
 
 ## [0.4.1] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(social): TikTok Direct Post upload worker + honest gating
+- feat(music): Q3.4 â€” custom music upload + per-track sidechain overrides
+
 
 ## [0.4.0] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: Q3.2 drag-drop calendar + Q3.3 cross-platform bulk publish
+
 
 ## [0.3.9] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(usage): Q3.1 â€” usage + compute-time dashboard
+- feat(marketing): click-to-zoom lightbox + reshoot YouTube on Uploads tab
+
+### Changed
+
+- docs(marketing): move Q2 roadmap items to 'Just shipped', promote Q3 to 'In progress'
+
+### Fixed
+
+- fix(demo): schema alignment + same-origin API routing
+
+### Other
+
+- infra(demo): demo stack + seed + screenshot runner for marketing
+
 
 ## [0.3.8] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: in-app thumbnail editor with drag-positioned text overlay
+
 
 ## [0.3.7] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(youtube): channel analytics pull-back (views, CTR, retention, subs)
+
 
 ## [0.3.6] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat: raw-assets ZIP export + deterministic SEO score
+
 
 ## [0.3.5] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(onboarding): first-run 4-step wizard for new installs
+
 
 ## [0.3.4] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(docker): self-healing storage permissions on startup
+
 
 ## [0.3.3] - 2026-04-22
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- chore(format): apply ruff format to voice_profiles + config
+
+### Fixed
+
+- fix(backup): align voice_profiles CHECK + harden restore against schema drift
+
 
 ## [0.3.2] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(marketing): align homepage claims with shipped code
+
+### Other
+
+- cleanup: drop the shortsfactory back-compat shim (zero customers)
+
 
 ## [0.3.1] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix: ship shortsfactory back-compat shim for pre-v0.3.0 compose files
+
 
 ## [0.3.0] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- refactor: rename internal Python package shortsfactory -> drevalis
+
 
 ## [0.2.7] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(marketing): full design-system overhaul + Swiss legal pages
+
+### Fixed
+
+- fix(backup): correct _TABLE_ORDER so parents insert before children
+
 
 ## [0.2.6] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): exclude self from docker compose up -d
+
 
 ## [0.2.5] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(backup): restore datetime coercion; add restore_db/restore_media flags; drop About page
+
 
 ## [0.2.4] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(license): seat-cap lockout now shows inline seat manager
+
 
 ## [0.2.3] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(license): user-facing seat management for seat-cap recovery
+
 
 ## [0.2.2] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(backup): resolve metadata-column clash + export UpdateProgress type
+
 
 ## [0.2.1] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(audiobook): ID3 tags + CHAP/CTOC chapter markers on MP3 output
+- feat(updates): live progress overlay survives the restart window
+
+### Changed
+
+- chore: remove stray '=1.47.0' file from pip install shell artifact
+
+### Other
+
+- test: unquarantine schemas (3) + SSRF link-local (1); reorder _check_ip
+
 
 ## [0.2.0] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Added
+
+- feat(settings/updates): prominent Check-for-updates button + last-checked UX
+- feat(backup): full-install backup/restore + fix correctness blockers
+
+### Changed
+
+- chore(format): apply ruff format to services/tts/_monolith.py
+- chore: remove accidental test file
+
+### Fixed
+
+- fix: tts overrides pipeline, license-gate startup race; docs: Help page
+- fix: multi-channel playlist/analytics, audiobook chapter regen, mobile UX
+- fix: series field lock, token-refresh persistence, onboarding checklist
+- fix(installer): ps1 heredoc backtick-a produced BEL in compose yaml
+- fix(installer): ASCII-only + UTF-8 no-BOM compose output
+
+### Other
+
+- marketing: expand site + add legal pages (Terms, Privacy, AUP, Impressum)
+
 
 ## [0.1.9] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(compose): use absolute /app/.venv/bin/python instead of bare alembic
+
 
 ## [0.1.8] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updates): bake the real version into the image, stop hardcoding 0.1.0
+
 
 ## [0.1.7] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): target the real stack by project name
+
 
 ## [0.1.6] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(updater): chmod 0777 /shared on startup so app can write the flag
+
 
 ## [0.1.5] - 2026-04-21
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- chore(logging): demote license_gate_blocked to DEBUG
+- chore(config): decouple SQLAlchemy echo from DEBUG
+- chore(mypy): suppress google.oauth2 no-untyped-call per-module
+
+### Fixed
+
+- fix(installer): inline alembic, drop deadlock-prone migrate one-shot
+- fix(compose): run alembic inline in app startup, drop separate migrate service
+- fix(auth): empty API_AUTH_TOKEN should disable auth, not lock out
+- fix: restore migrate one-shot service + surface real API errors
+
+### Other
+
+- harden: P0 bug fixes, security hardening, perf wins, mypy gate
+- models: add new re-exports to __all__
+
 
 ## [0.1.4] - 2026-04-20
 
-<!-- TODO: backfill from GitHub Release -->
+### Other
+
+- frontend: serve production build via nginx instead of vite dev server
+
 
 ## [0.1.3] - 2026-04-20
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(migrations): add 016 for five missing tables + three missing columns
+
 
 ## [0.1.2] - 2026-04-20
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- fix(migrations): add missing 010b to create scheduled_posts table
+
 
 ## [0.1.1] - 2026-04-20
 
-<!-- TODO: backfill from GitHub Release -->
+### Changed
+
+- CI: run mypy via -p shortsfactory (avoids duplicate module with editable install)
+- CI: add --explicit-package-bases to mypy to fix duplicate module conflict
+
+### Fixed
+
+- fix(migration 009): call set_updated_at() instead of nonexistent update_updated_at_column()
+
+### Other
+
+- install scripts: run Alembic migrations as a one-shot service
+- install.ps1: surface errors via throw (exit 1 gets swallowed by iex)
+
 
 ## [0.1.0] - 2026-04-20
 
-<!-- TODO: backfill from GitHub Release -->
+### Fixed
+
+- Fix sanitize_filename on Linux + add py.typed marker
+- Fix Toast API misuse in LicenseSection + UpdatesSection
+
+### Other
+
+- Clean up for first GHCR release
+- Revert "Remove ci.yml"
+- Remove ci.yml
+- About page: replace personal handle with Drevalis branding
+- Expand .gitignore for local state
+- Initial commit: Drevalis Creator Studio
+
 
