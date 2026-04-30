@@ -54,8 +54,15 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install -e ".[dev]" && pip install python-multipart
-      - name: mypy
+      - name: mypy (whole package, strict-optional relaxed)
         run: mypy -p drevalis --no-strict-optional
+      - name: mypy (strict on clean packages — keeps them clean)
+        # Per audit techdebt §2: lift strict per-package as packages
+        # become clean. Failing here means a regression on a package
+        # that was previously --strict clean.
+        run: |
+          mypy -p drevalis.core.license --strict
+          mypy -p drevalis.services.updates --strict
 
   test:
     name: Pytest (unit)
