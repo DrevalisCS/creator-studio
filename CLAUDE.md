@@ -43,7 +43,7 @@ pytest tests/ -v -m "not integration"
 ```bash
 ruff check src/ tests/
 ruff format src/ tests/
-mypy src/ --strict             # pydantic + SQLAlchemy plugins
+mypy -p drevalis --no-strict-optional   # what CI runs (matches techdebt §2)
 bandit -r src/ -c pyproject.toml
 pip-audit
 ```
