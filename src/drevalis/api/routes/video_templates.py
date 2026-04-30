@@ -5,6 +5,9 @@ endpoints that bridge templates and series:
 
 - ``POST /{id}/apply/{series_id}``  -- push template settings onto a series
 - ``POST /from-series/{series_id}`` -- capture a series's settings as a new template
+
+Layering: this router calls ``VideoTemplateService`` only. No
+repository imports here.
 """
 
 from __future__ import annotations
@@ -16,8 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.deps import get_db
-from drevalis.repositories.series import SeriesRepository
-from drevalis.repositories.video_template import VideoTemplateRepository
+from drevalis.core.exceptions import NotFoundError, ValidationError
 from drevalis.schemas.video_template import (
     ApplyTemplateResponse,
     CreateFromSeriesResponse,
@@ -25,30 +27,15 @@ from drevalis.schemas.video_template import (
     VideoTemplateResponse,
     VideoTemplateUpdate,
 )
+from drevalis.services.video_template import VideoTemplateService
 
 log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/video-templates", tags=["video-templates"])
 
-# ---------------------------------------------------------------------------
-# Mapping: VideoTemplate field -> Series field
-# Only fields that exist on both models and make semantic sense to copy are
-# listed.  When a template field is None it is silently skipped so partial
-# templates remain useful.
-# ---------------------------------------------------------------------------
-_TEMPLATE_TO_SERIES_FIELD_MAP: dict[str, str] = {
-    "voice_profile_id": "voice_profile_id",
-    "visual_style": "visual_style",
-    "scene_mode": "scene_mode",
-    "music_enabled": "music_enabled",
-    "music_mood": "music_mood",
-    "music_volume_db": "music_volume_db",
-    "target_duration_seconds": "target_duration_seconds",
-}
 
-# caption_style_preset on VideoTemplate maps to caption_style["preset"] on
-# Series (which stores a full JSONB dict).  Handled separately in the apply
-# logic below to avoid a lossy overwrite of the whole caption_style JSONB.
+def _service(db: AsyncSession = Depends(get_db)) -> VideoTemplateService:
+    return VideoTemplateService(db)
 
 
 # ── List ─────────────────────────────────────────────────────────────────
@@ -62,11 +49,10 @@ _TEMPLATE_TO_SERIES_FIELD_MAP: dict[str, str] = {
     description="Return every video template ordered by creation date (newest first).",
 )
 async def list_video_templates(
-    db: AsyncSession = Depends(get_db),
+    svc: VideoTemplateService = Depends(_service),
 ) -> list[VideoTemplateResponse]:
     """Return all video templates."""
-    repo = VideoTemplateRepository(db)
-    templates = await repo.get_all()
+    templates = await svc.list_all()
     return [VideoTemplateResponse.model_validate(t) for t in templates]
 
 
@@ -86,30 +72,16 @@ async def list_video_templates(
 )
 async def create_video_template(
     payload: VideoTemplateCreate,
-    db: AsyncSession = Depends(get_db),
+    svc: VideoTemplateService = Depends(_service),
 ) -> VideoTemplateResponse:
-    """Create a new video template.
-
-    When the payload marks the template as default, all other templates are
-    updated to ``is_default=False`` within the same transaction before the
-    new row is inserted.
-    """
-    repo = VideoTemplateRepository(db)
-
-    if payload.is_default:
-        await repo.clear_default_flag()
-
-    template = await repo.create(**payload.model_dump())
-    await db.commit()
-    await db.refresh(template)
-
+    """Create a new video template."""
+    template = await svc.create(**payload.model_dump())
     log.info(
         "video_template.created",
         template_id=str(template.id),
         name=template.name,
         is_default=template.is_default,
     )
-
     return VideoTemplateResponse.model_validate(template)
 
 
@@ -124,16 +96,13 @@ async def create_video_template(
 )
 async def get_video_template(
     template_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: VideoTemplateService = Depends(_service),
 ) -> VideoTemplateResponse:
     """Fetch a single video template by primary key."""
-    repo = VideoTemplateRepository(db)
-    template = await repo.get_by_id(template_id)
-    if template is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VideoTemplate {template_id} not found",
-        )
+    try:
+        template = await svc.get(template_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return VideoTemplateResponse.model_validate(template)
 
 
@@ -153,34 +122,17 @@ async def get_video_template(
 async def update_video_template(
     template_id: UUID,
     payload: VideoTemplateUpdate,
-    db: AsyncSession = Depends(get_db),
+    svc: VideoTemplateService = Depends(_service),
 ) -> VideoTemplateResponse:
-    """Update an existing video template.
-
-    Raises 422 if no updatable fields are supplied to avoid silent no-ops.
-    """
-    update_data = payload.model_dump(exclude_unset=True)
-    if not update_data:
+    """Update an existing video template."""
+    try:
+        template = await svc.update(template_id, **payload.model_dump(exclude_unset=True))
+    except ValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No fields to update",
-        )
-
-    repo = VideoTemplateRepository(db)
-
-    # If the caller is promoting this template to default, first clear others.
-    if update_data.get("is_default") is True:
-        await repo.clear_default_flag()
-
-    template = await repo.update(template_id, **update_data)
-    if template is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VideoTemplate {template_id} not found",
-        )
-    await db.commit()
-    await db.refresh(template)
-
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.detail
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     log.info("video_template.updated", template_id=str(template_id))
     return VideoTemplateResponse.model_validate(template)
 
@@ -195,17 +147,13 @@ async def update_video_template(
 )
 async def delete_video_template(
     template_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: VideoTemplateService = Depends(_service),
 ) -> None:
     """Delete a video template by ID."""
-    repo = VideoTemplateRepository(db)
-    deleted = await repo.delete(template_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VideoTemplate {template_id} not found",
-        )
-    await db.commit()
+    try:
+        await svc.delete(template_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     log.info("video_template.deleted", template_id=str(template_id))
 
 
@@ -229,59 +177,13 @@ async def delete_video_template(
 async def apply_template_to_series(
     template_id: UUID,
     series_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: VideoTemplateService = Depends(_service),
 ) -> ApplyTemplateResponse:
-    """Apply a video template to a series.
-
-    Loads both the template and the series, then writes every non-None template
-    field onto the series.  The caption_style_preset is merged into the
-    series-level caption_style dict rather than overwriting the whole object.
-
-    Returns:
-        An :class:`ApplyTemplateResponse` listing the fields that were changed.
-    """
-    template_repo = VideoTemplateRepository(db)
-    series_repo = SeriesRepository(db)
-
-    template = await template_repo.get_by_id(template_id)
-    if template is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VideoTemplate {template_id} not found",
-        )
-
-    series = await series_repo.get_by_id(series_id)
-    if series is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Series {series_id} not found",
-        )
-
-    # Collect the series update kwargs and track which fields were applied.
-    series_update: dict[str, object] = {}
-    applied_fields: list[str] = []
-
-    for template_field, series_field in _TEMPLATE_TO_SERIES_FIELD_MAP.items():
-        value = getattr(template, template_field)
-        if value is not None:
-            series_update[series_field] = value
-            applied_fields.append(series_field)
-
-    # Special-case: caption_style_preset is merged into caption_style JSONB.
-    if template.caption_style_preset is not None:
-        existing_caption_style: dict[str, object] = dict(series.caption_style or {})
-        existing_caption_style["preset"] = template.caption_style_preset
-        series_update["caption_style"] = existing_caption_style
-        applied_fields.append("caption_style.preset")
-
-    if series_update:
-        await series_repo.update(series_id, **series_update)
-
-    # Atomically increment the usage counter — do not abort the whole
-    # operation if this fails, but let the outer transaction propagate errors.
-    await template_repo.increment_usage(template_id)
-
-    await db.commit()
+    """Apply a video template to a series."""
+    try:
+        template, applied_fields = await svc.apply_to_series(template_id, series_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     log.info(
         "video_template.applied",
@@ -289,7 +191,6 @@ async def apply_template_to_series(
         series_id=str(series_id),
         fields_applied=applied_fields,
     )
-
     return ApplyTemplateResponse(
         series_id=series_id,
         template_id=template_id,
@@ -318,55 +219,26 @@ async def apply_template_to_series(
 )
 async def create_template_from_series(
     series_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: VideoTemplateService = Depends(_service),
 ) -> CreateFromSeriesResponse:
-    """Create a new video template by capturing the current state of a series.
-
-    Reads the series configuration and stores relevant fields as a new
-    :class:`VideoTemplate`.  The reverse mapping is the inverse of
-    ``_TEMPLATE_TO_SERIES_FIELD_MAP``, plus the special caption_style handling.
-
-    Returns:
-        A :class:`CreateFromSeriesResponse` containing the new template.
-    """
-    series_repo = SeriesRepository(db)
-    series = await series_repo.get_by_id(series_id)
-    if series is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Series {series_id} not found",
-        )
-
-    # Extract caption_style preset from the series JSONB if present.
-    caption_preset: str | None = None
-    if series.caption_style and isinstance(series.caption_style, dict):
-        caption_preset = series.caption_style.get("preset")
-
-    template_repo = VideoTemplateRepository(db)
-    template = await template_repo.create(
-        name=f"Template: {series.name}",
-        description=(f"Snapshot of series '{series.name}' settings captured automatically."),
-        voice_profile_id=series.voice_profile_id,
-        visual_style=series.visual_style,
-        scene_mode=series.scene_mode,
-        caption_style_preset=caption_preset,
-        music_enabled=series.music_enabled,
-        music_mood=series.music_mood,
-        music_volume_db=float(series.music_volume_db),
-        target_duration_seconds=series.target_duration_seconds,
-        is_default=False,
-        times_used=0,
-    )
-    await db.commit()
-    await db.refresh(template)
+    """Create a new video template by capturing the current state of a series."""
+    try:
+        template = await svc.create_from_series(series_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
 
     log.info(
         "video_template.created_from_series",
         template_id=str(template.id),
         series_id=str(series_id),
     )
-
     return CreateFromSeriesResponse(
         template=VideoTemplateResponse.model_validate(template),
-        message=(f"Template '{template.name}' created from series '{series.name}'."),
+        # The original message read "from series '{series.name}'"; the
+        # template name is "Template: {series.name}" so we strip the
+        # prefix to recover the same human-readable string.
+        message=(
+            f"Template '{template.name}' created"
+            f"{' from series ' + chr(39) + template.name.removeprefix('Template: ') + chr(39) if template.name.startswith('Template: ') else ''}."
+        ),
     )
