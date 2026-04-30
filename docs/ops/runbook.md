@@ -520,7 +520,7 @@ This document covers diagnosis and resolution of common failures in Drevalis Cre
    ```
    **Warning:** Changing the encryption key will make all previously encrypted API keys unreadable. You will need to re-enter API keys for all LLM configs and voice profiles that use cloud providers.
 
-2. **Key rotation:** If you need to rotate the key while preserving existing encrypted values, use versioned keys. Set the old key as `ENCRYPTION_KEY_V1` and the new key as `ENCRYPTION_KEY`. The `decrypt_value_multi` function will try all known key versions.
+2. **Key rotation:** The codebase ships `decrypt_value_multi` for mixed-version reads, but `Settings` does not yet auto-load `ENCRYPTION_KEY_V*` env vars. Until wiring lands, rotate by re-encrypting every persisted ciphertext with the new key, then swapping `ENCRYPTION_KEY` and dropping the old. A migration script that walks every encrypted column and re-emits ciphertext is the cleanest path; ad-hoc rotation in production should be done with the app stopped.
 
 3. **Restart after updating:**
    ```bash

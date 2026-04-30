@@ -176,7 +176,7 @@ Engineering patterns to follow when adding or changing code in this repo.
 
 - **Single orchestrator job**: state machine, no inter-job coordination. Completed steps skipped on retry.
 - **Cancellation via Redis flags**, checked between steps.
-- **Fernet w/ key versioning**: API keys + OAuth tokens encrypted at rest. `key_version` stored. Rotation via `ENCRYPTION_KEY_V1`, `_V2`, etc.
+- **Fernet w/ key versioning**: API keys + OAuth tokens encrypted at rest. `key_version` stored alongside each ciphertext. The `decrypt_value_multi(ciphertext, {1: ..., 2: ...})` helper supports mixed-version reads, but `Settings` does not currently auto-load `ENCRYPTION_KEY_V*` env vars — wiring is per-caller. Rotation today means: re-encrypt all rows with the new key, then drop the old. True multi-version env loading is a follow-up.
 - **structlog JSON logs**: pipeline binds `episode_id`, `step`, `job_id`. Requests bind `request_id`.
 - **ComfyUI server pool**: round-robin, per-server semaphores, `max_concurrent_video_jobs` separate cap.
 - **File-first**: write to disk before DB record creation/update — avoids orphan refs on crash.
