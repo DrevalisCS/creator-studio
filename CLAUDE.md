@@ -87,9 +87,18 @@ Per-step description lives in [README.md](README.md#generation-pipeline). Implem
 | `auto_deploy_runpod_pod` | Poll RunPod, register when ready |
 | `publish_scheduled_posts` | Cron every 5 min — resolves channel from series, 3× retry+backoff |
 | `generate_episode_music` | Background AceStep via ComfyUI |
-| `generate_seo_async` | Background SEO LLM |
+| `generate_seo_async` | Background SEO LLM (per-fn timeout 900s) |
+| `regenerate_audiobook_chapter_image` | One audiobook chapter image |
+| `publish_pending_social_uploads` | Cron every 5 min — TikTok / IG / X direct uploads (per-fn timeout 900s) |
+| `compute_ab_test_winners` | Cron daily 04:31 UTC — settle title-A/B test pairs after 7+ days of YouTube data (per-fn timeout 900s) |
+| `worker_heartbeat` | Cron every 1 min — write `worker:heartbeat` Redis key (per-fn timeout 120s) |
+| `license_heartbeat` | Cron daily 04:17 UTC — refresh license JWT from license server (per-fn timeout 120s) |
+| `scheduled_backup` | Cron daily 03:00 UTC — full-install tarball when `BACKUP_AUTO_ENABLED=true` |
+| `analyze_video_ingest` | Background — split uploaded MP4 into clip suggestions |
+| `commit_video_ingest_clip` | Background — promote one suggestion into a real episode |
+| `render_from_edit` | Background — render `video_edit_sessions.timeline` JSON to MP4 |
 
-Worker: `max_jobs=8`, `shorts_job_timeout=7200` (2h), `longform_job_timeout=14400` (4h), `max_tries=3`.
+Worker: `max_jobs=8`, global `job_timeout=14400` (4h, used by long-form), per-fn timeouts noted above for short admin jobs, `max_tries=3`.
 
 **Priority**: Redis `set-priority` flag (`shorts_first` / `longform_first` / `fifo`). With `shorts_first`, long-form is deferred while shorts are queued.
 
