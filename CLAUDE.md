@@ -252,9 +252,11 @@ React + TS + Tailwind, Vite. **Outfit** (display) + **DM Sans** (body), glass mo
 
 ### Sidebar
 
-- **Content Studio**: Dashboard, Series, Episodes, Text to Voice (badge: live count of generating episodes)
-- **Social Media**: YouTube, Calendar
-- **System**: Settings
+- **Top (no header)**: Dashboard
+- **Content Studio**: Episodes (badge: live count of generating episodes), Series, Text to Voice
+- **Publish**: Calendar, plus YouTube and any connected social platforms (TikTok / IG / X / Facebook) rendered conditionally
+- **System**: Jobs, Logs, Settings
+- **Bottom (no header)**: Help, About
 
 ### Activity Monitor
 
