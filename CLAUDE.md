@@ -283,6 +283,20 @@ Docked bottom bar. Left: active task list w/ per-step progress. Right: worker he
 
 Base: `/api/v1/`. For the full endpoint list with request/response schemas, see Swagger UI at **http://localhost:8000/docs**.
 
+Top-level routers (`api/router.py` aggregates these under `/api/v1`):
+
+| Prefix | Module | Notes |
+|--------|--------|-------|
+| `/series`, `/episodes`, `/audiobooks` | `series.py` + `episodes/` + `audiobooks/` | Core content CRUD + generation control |
+| `/jobs`, `/metrics`, `/settings` | `jobs/` + `metrics.py` + `settings.py` | Worker + observability + service health |
+| `/llm`, `/voice-profiles`, `/comfyui`, `/prompt-templates`, `/video-templates` | per-name modules | Provider config |
+| `/youtube`, `/social`, `/schedule` | `youtube/` + `social.py` + `schedule.py` | Multi-channel upload + cron |
+| `/runpod`, `/cloud-gpu` | `runpod.py` + `cloud_gpu.py` | GPU pod lifecycle |
+| `/auth`, `/license`, `/onboarding` | `auth.py` + `license.py` + `onboarding.py` | Team mode + license activation + first-run |
+| `/api-keys`, `/integration-keys` | `api_keys.py` + `integration_keys.py` | DB-stored credentials with Fernet encryption |
+| `/assets`, `/character-packs`, `/video-ingest` | `assets.py` + `character_packs.py` + `video_ingest.py` | Reference asset library + IPAdapter packs + clip extraction |
+| `/ab-tests`, `/editor`, `/music`, `/backup`, `/updates` | per-name modules | A/B title testing, edit-session timeline, music library, backup tarballs, in-app self-update |
+
 ## Directory Structure
 
 ```
