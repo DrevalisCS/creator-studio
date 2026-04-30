@@ -162,3 +162,80 @@ async def _record_auth_failure(client_ip: str) -> None:
             await _redis.aclose()
     except Exception:
         pass  # Best-effort — never block auth flow due to Redis errors.
+
+
+# ── Login form rate limiting (F-S-09) ──────────────────────────────────
+
+
+# Per-(IP, email) login attempt counters live alongside the API-token
+# bucket so a single Redis key prefix governs the whole auth surface.
+# The middleware's per-IP bucket already covers Bearer-token attempts;
+# this pair extends the same bucket pattern to the login form.
+_LOGIN_FAIL_LIMIT: int = 10
+_LOGIN_FAIL_WINDOW: int = 600  # 10 minutes
+
+
+class LoginRateLimitedError(Exception):
+    """Raised when the (IP, email) pair has exceeded the login attempt cap."""
+
+
+async def check_login_rate_limit(client_ip: str, email: str) -> None:
+    """Raise ``LoginRateLimitedError`` if (client_ip, email) is over its
+    failure budget.
+
+    Combined key so a brute-force attacker rotating IPs against a single
+    account still trips the limiter (per-email bucket), and a single
+    misbehaving IP scanning many accounts also trips it (per-IP bucket).
+    Failures decay automatically after ``_LOGIN_FAIL_WINDOW`` seconds.
+    """
+    key_ip = f"login_fail:ip:{client_ip}"
+    key_email = f"login_fail:email:{email.lower()}"
+    try:
+        from redis.asyncio import Redis as _Redis
+
+        from drevalis.core.redis import get_pool
+
+        _redis: _Redis = _Redis(connection_pool=get_pool())
+        try:
+            ip_count_raw, email_count_raw = await _redis.mget([key_ip, key_email])
+            ip_count = int(ip_count_raw) if ip_count_raw else 0
+            email_count = int(email_count_raw) if email_count_raw else 0
+        finally:
+            await _redis.aclose()
+    except Exception:
+        # Redis unavailable — degrade gracefully (fail-open). The
+        # underlying PBKDF2 cost (~480k iterations) still imposes a
+        # CPU-bound floor on attempt rate.
+        return
+
+    if ip_count >= _LOGIN_FAIL_LIMIT or email_count >= _LOGIN_FAIL_LIMIT:
+        raise LoginRateLimitedError(
+            f"Too many failed login attempts. Try again in {_LOGIN_FAIL_WINDOW // 60} minutes."
+        )
+
+
+async def record_login_failure(client_ip: str, email: str) -> None:
+    """Increment both per-IP and per-email login failure counters.
+
+    Best-effort: Redis errors are swallowed so a downed cache doesn't
+    block the auth flow.
+    """
+    key_ip = f"login_fail:ip:{client_ip}"
+    key_email = f"login_fail:email:{email.lower()}"
+    try:
+        from redis.asyncio import Redis as _Redis
+
+        from drevalis.core.redis import get_pool
+
+        _redis: _Redis = _Redis(connection_pool=get_pool())
+        try:
+            pipe = _redis.pipeline()
+            pipe.incr(key_ip)
+            pipe.expire(key_ip, _LOGIN_FAIL_WINDOW, nx=True)
+            pipe.incr(key_email)
+            pipe.expire(key_email, _LOGIN_FAIL_WINDOW, nx=True)
+            await pipe.execute()
+        finally:
+            await _redis.aclose()
+    except Exception:
+        pass

@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.3] - 2026-04-30
+
+### Security
+
+- **F-S-09** — login form rate limit. ``POST /api/v1/auth/login`` now
+  checks a per-(IP, email) failure bucket in Redis (``login_fail:ip:*``
+  and ``login_fail:email:*``) before accepting credentials. Cap is 10
+  attempts per 10-minute window; either bucket overflowing returns 429
+  with a "Try again in N minutes" detail. Closes the brute-force gap
+  where PBKDF2's ~6 attempts/sec ceiling was the only thing standing
+  between a weak password and a patient attacker. Both buckets decay
+  automatically; Redis outage fails open (PBKDF2 cost is the
+  fall-back floor). New helpers in ``core/auth.py``:
+  ``check_login_rate_limit``, ``record_login_failure``,
+  ``LoginRateLimitedError``.
+- **F-S-11** — license JWT verifier now passes ``audience=
+  "drevalis-creator-studio"`` to ``jwt.decode``. Tokens that carry an
+  ``aud`` claim must match this value (defends against same-key reuse
+  for a different audience); legacy tokens minted before the audience
+  pin (no ``aud`` claim) continue to validate via PyJWT's
+  optional-claim semantics. Once the longest-lived legacy JWT expires
+  the verifier should bump to ``options.require=["aud", ...]`` for
+  full enforcement.
+
 ## [0.29.2] - 2026-04-30
 
 ### Added

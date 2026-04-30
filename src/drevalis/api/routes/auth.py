@@ -28,6 +28,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI Depends
 
+from drevalis.core.auth import (
+    LoginRateLimitedError,
+    check_login_rate_limit,
+    record_login_failure,
+)
 from drevalis.core.deps import get_db, get_settings
 from drevalis.models.user import User
 from drevalis.services.team import (
@@ -119,6 +124,7 @@ async def require_owner(user: User = Depends(require_user)) -> User:
 @router.post("/api/v1/auth/login")
 async def login(
     body: LoginRequest,
+    request: Request,
     response: Response,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
@@ -127,9 +133,21 @@ async def login(
     # if the users table is empty and OWNER_EMAIL/OWNER_PASSWORD are set.
     await ensure_owner_from_env(db)
 
-    row = await db.execute(select(User).where(User.email == body.email.lower().strip()))
+    # F-S-09: per-(IP, email) rate limit on login attempts.
+    # PBKDF2 at 480k iterations gives ~6 attempts/sec; without this a
+    # patient attacker could still bruteforce a weak password over hours.
+    client_ip = request.client.host if request.client else "unknown"
+    email_norm = body.email.lower().strip()
+    try:
+        await check_login_rate_limit(client_ip, email_norm)
+    except LoginRateLimitedError as exc:
+        logger.warning("auth.login_rate_limited", ip=client_ip, email=email_norm)
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+
+    row = await db.execute(select(User).where(User.email == email_norm))
     user = row.scalar_one_or_none()
     if not user or not user.is_active or not verify_password(body.password, user.password_hash):
+        await record_login_failure(client_ip, email_norm)
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
 
     user.last_login_at = datetime.now(tz=UTC)

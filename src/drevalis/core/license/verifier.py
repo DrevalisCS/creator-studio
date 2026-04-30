@@ -30,6 +30,14 @@ logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 _EXPECTED_ISS = "drevalis-license-server"
 
+# Audience pin — F-S-11. Until every legacy JWT (issued without ``aud``)
+# has aged out, we pass ``audience`` to pyjwt without adding ``aud`` to
+# the required claim list: tokens that DO carry an aud claim must match
+# this value, tokens that DON'T are accepted (legacy compat). Once the
+# longest-lived legacy JWT expires, lift this to ``require=["aud", ...]``
+# so every future token must carry the audience pin explicitly.
+_EXPECTED_AUD = "drevalis-creator-studio"
+
 # Redis key used to invalidate the in-process license state across uvicorn
 # workers. Incremented on activate/deactivate. Middleware consults this on
 # every request; a cheap GET/INCR keeps workers in sync within one request.
@@ -101,7 +109,13 @@ def verify_jwt(token: str, *, public_key_override_pem: str | None = None) -> Lic
                 key=key,
                 algorithms=["EdDSA"],
                 issuer=_EXPECTED_ISS,
-                options={"require": ["iss", "sub", "exp", "nbf", "iat", "jti"]},
+                audience=_EXPECTED_AUD,
+                options={
+                    "require": ["iss", "sub", "exp", "nbf", "iat", "jti"],
+                    # Don't require ``aud`` yet — gradual tightening for
+                    # legacy tokens. See _EXPECTED_AUD comment above.
+                    "verify_aud": True,
+                },
             )
             return LicenseClaims.model_validate(payload)
         except jwt.InvalidSignatureError as exc:
