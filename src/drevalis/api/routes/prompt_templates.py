@@ -1,4 +1,8 @@
-"""Prompt Templates API router -- CRUD endpoints."""
+"""Prompt Templates API router -- CRUD endpoints.
+
+Layering: this router calls ``PromptTemplateService`` only. No
+repository imports here — that's the service's job.
+"""
 
 from __future__ import annotations
 
@@ -8,14 +12,19 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.deps import get_db
-from drevalis.repositories.prompt_template import PromptTemplateRepository
+from drevalis.core.exceptions import NotFoundError, ValidationError
 from drevalis.schemas.prompt_template import (
     PromptTemplateCreate,
     PromptTemplateResponse,
     PromptTemplateUpdate,
 )
+from drevalis.services.prompt_template import PromptTemplateService
 
 router = APIRouter(prefix="/api/v1/prompt-templates", tags=["prompt-templates"])
+
+
+def _service(db: AsyncSession = Depends(get_db)) -> PromptTemplateService:
+    return PromptTemplateService(db)
 
 
 # ── List prompt templates ─────────────────────────────────────────────────
@@ -32,14 +41,10 @@ async def list_prompt_templates(
         default=None,
         description="Filter by type: script, visual, hook, hashtag",
     ),
-    db: AsyncSession = Depends(get_db),
+    svc: PromptTemplateService = Depends(_service),
 ) -> list[PromptTemplateResponse]:
     """Return all prompt templates, optionally filtered by type."""
-    repo = PromptTemplateRepository(db)
-    if template_type is not None:
-        templates = await repo.get_by_type(template_type)
-    else:
-        templates = await repo.get_all()
+    templates = await svc.list(template_type)
     return [PromptTemplateResponse.model_validate(t) for t in templates]
 
 
@@ -54,13 +59,10 @@ async def list_prompt_templates(
 )
 async def create_prompt_template(
     payload: PromptTemplateCreate,
-    db: AsyncSession = Depends(get_db),
+    svc: PromptTemplateService = Depends(_service),
 ) -> PromptTemplateResponse:
     """Create a new prompt template."""
-    repo = PromptTemplateRepository(db)
-    template = await repo.create(**payload.model_dump())
-    await db.commit()
-    await db.refresh(template)
+    template = await svc.create(**payload.model_dump())
     return PromptTemplateResponse.model_validate(template)
 
 
@@ -75,16 +77,13 @@ async def create_prompt_template(
 )
 async def get_prompt_template(
     template_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: PromptTemplateService = Depends(_service),
 ) -> PromptTemplateResponse:
     """Fetch a single prompt template by ID."""
-    repo = PromptTemplateRepository(db)
-    template = await repo.get_by_id(template_id)
-    if template is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Prompt template {template_id} not found",
-        )
+    try:
+        template = await svc.get(template_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return PromptTemplateResponse.model_validate(template)
 
 
@@ -100,24 +99,17 @@ async def get_prompt_template(
 async def update_prompt_template(
     template_id: UUID,
     payload: PromptTemplateUpdate,
-    db: AsyncSession = Depends(get_db),
+    svc: PromptTemplateService = Depends(_service),
 ) -> PromptTemplateResponse:
     """Update an existing prompt template."""
-    repo = PromptTemplateRepository(db)
-    update_data = payload.model_dump(exclude_unset=True)
-    if not update_data:
+    try:
+        template = await svc.update(template_id, **payload.model_dump(exclude_unset=True))
+    except ValidationError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No fields to update",
-        )
-    template = await repo.update(template_id, **update_data)
-    if template is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Prompt template {template_id} not found",
-        )
-    await db.commit()
-    await db.refresh(template)
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=exc.detail
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
     return PromptTemplateResponse.model_validate(template)
 
 
@@ -131,14 +123,10 @@ async def update_prompt_template(
 )
 async def delete_prompt_template(
     template_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: PromptTemplateService = Depends(_service),
 ) -> None:
     """Delete a prompt template by ID."""
-    repo = PromptTemplateRepository(db)
-    deleted = await repo.delete(template_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Prompt template {template_id} not found",
-        )
-    await db.commit()
+    try:
+        await svc.delete(template_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
