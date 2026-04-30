@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Film,
@@ -182,16 +182,26 @@ function Dashboard() {
     return () => clearInterval(interval);
   }, [toast]);
 
-  // --- Stats ---
+  // --- Stats --- (memoised: WS messages re-render Dashboard at the
+  // pipeline-progress cadence; without these the .filter walks the
+  // full episode list every tick).
   const totalEpisodes = allEpisodes.length;
-  const completedCount = allEpisodes.filter(
-    (e) => e.status === 'review' || e.status === 'exported',
-  ).length;
-  const failedCount = allEpisodes.filter((e) => e.status === 'failed').length;
+  const { completedCount, failedCount } = useMemo(() => {
+    let completed = 0;
+    let failed = 0;
+    for (const e of allEpisodes) {
+      if (e.status === 'review' || e.status === 'exported') completed += 1;
+      else if (e.status === 'failed') failed += 1;
+    }
+    return { completedCount: completed, failedCount: failed };
+  }, [allEpisodes]);
   const totalSeries = seriesList.length;
 
   // --- Series lookup map for activity timeline ---
-  const seriesById = Object.fromEntries(seriesList.map((s) => [s.id, s.name]));
+  const seriesById = useMemo(
+    () => Object.fromEntries(seriesList.map((s) => [s.id, s.name])),
+    [seriesList],
+  );
 
   if (loading) {
     return (
