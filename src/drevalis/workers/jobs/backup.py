@@ -92,10 +92,7 @@ async def restore_backup_async(
     import json as _json
     from pathlib import Path
 
-    from redis.asyncio import Redis
-
     from drevalis.core.config import Settings
-    from drevalis.core.redis import get_pool
     from drevalis.services.backup import BackupError, BackupService
     from drevalis.services.updates import _resolve_current_version
 
@@ -103,7 +100,11 @@ async def restore_backup_async(
     logger.info("restore_backup_async.start", archive=archive_path)
 
     settings = Settings()
-    redis = Redis(connection_pool=get_pool())
+    # Use the worker's arq Redis pool from ctx — the API-side
+    # ``get_pool()`` isn't initialised in the worker process, so a
+    # naive ``Redis(connection_pool=get_pool())`` raises
+    # "Redis connection pool is not initialised" at the first set().
+    redis = ctx["redis"]
     status_key = f"backup:restore:{job_id}"
 
     async def _write_status(payload: dict[str, Any]) -> None:
@@ -199,4 +200,5 @@ async def restore_backup_async(
                 archive.unlink(missing_ok=True)
             except OSError:
                 logger.debug("restore_archive_cleanup_failed", path=str(archive))
-        await redis.aclose()
+        # ``redis`` is the worker's shared arq pool (ctx["redis"]) — do
+        # NOT close it here; arq owns the lifecycle.

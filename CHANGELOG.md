@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.8] - 2026-04-30
+
+### Fixed
+
+- **``restore_backup_async`` worker job crashed at first
+  Redis-write** (user worker log): ``RuntimeError: Redis connection
+  pool is not initialised. Ensure init_redis() has been called
+  during application startup.`` The job constructed a fresh
+  ``Redis(connection_pool=get_pool())`` from ``core.redis`` —
+  ``init_redis()`` is only called in the FastAPI lifespan, never in
+  the arq worker process. The worker provides its own Redis client
+  via ``ctx["redis"]``; every other arq job in the codebase already
+  uses that. Restore jobs failed at 0.02s with the temp archive
+  still on disk and no progress events written, so the UI's poll
+  endpoint returned ``status: "unknown"`` indefinitely.
+  ``restore_backup_async`` now uses ``ctx["redis"]`` and skips the
+  ``aclose`` (arq owns the pool's lifecycle).
+
 ## [0.29.7] - 2026-04-30
 
 ### Fixed
