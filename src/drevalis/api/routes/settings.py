@@ -225,6 +225,51 @@ async def _check_redis(redis: Redis) -> ServiceHealth:
         )
 
 
+async def _check_worker(redis: Redis) -> ServiceHealth:
+    """Read the worker:heartbeat key and report whether the worker is alive.
+
+    Mirrors the threshold used by /api/v1/jobs/worker/health (120s) so the
+    aggregate /settings/health page can flag a dead worker without making
+    operators visit a second endpoint. Treats Redis-unreachable as a
+    degraded-rather-than-unreachable signal so a Redis outage doesn't show
+    the worker as separately broken on top of Redis.
+    """
+    from datetime import UTC, datetime
+
+    try:
+        raw = await redis.get("worker:heartbeat")
+    except Exception as exc:
+        return ServiceHealth(
+            name="worker",
+            status="degraded",
+            message=f"could not read heartbeat (Redis: {str(exc)[:120]})",
+        )
+    if not raw:
+        return ServiceHealth(
+            name="worker",
+            status="unreachable",
+            message="No worker:heartbeat key — worker not started?",
+        )
+    value = raw if isinstance(raw, str) else raw.decode()
+    try:
+        last_beat = datetime.fromisoformat(value)
+    except ValueError:
+        return ServiceHealth(
+            name="worker",
+            status="degraded",
+            message=f"heartbeat malformed: {value[:60]}",
+        )
+    now = datetime.now(tz=UTC) if last_beat.tzinfo else datetime.now()
+    age = (now - last_beat).total_seconds()
+    if age < 120:
+        return ServiceHealth(name="worker", status="ok", message=f"alive ({age:.0f}s ago)")
+    return ServiceHealth(
+        name="worker",
+        status="unreachable",
+        message=f"heartbeat stale: {age:.0f}s old (threshold 120s)",
+    )
+
+
 async def _check_comfyui_servers(db: AsyncSession, default_url: str) -> list[ServiceHealth]:
     """Check each active ComfyUI server's connectivity.
 
@@ -414,25 +459,31 @@ async def system_health(
     FFmpeg, Piper TTS models, and LM Studio.
     """
     # Run all health checks concurrently for faster response
-    (
-        db_health,
-        redis_health,
-        comfyui_healths,
-        ffmpeg_health,
-        piper_health,
-        lm_studio_health,
-    ) = await asyncio.gather(
-        _check_database(db),
-        _check_redis(redis),
-        _check_comfyui_servers(db, settings.comfyui_default_url),
-        _check_ffmpeg(settings.ffmpeg_path),
-        _check_piper_tts(settings.piper_models_path),
-        _check_lm_studio(settings.lm_studio_base_url),
-    )
+    # Run independent checks in parallel. Listing them by-call keeps
+    # types crisp (mypy can't narrow a 7-element heterogeneous gather
+    # tuple after a single unpack); single-call `await` per result is
+    # equivalent in wall-clock since asyncio.gather is implicit on
+    # subsequent awaits already-running coroutines.
+    db_task = asyncio.create_task(_check_database(db))
+    redis_task = asyncio.create_task(_check_redis(redis))
+    worker_task = asyncio.create_task(_check_worker(redis))
+    comfyui_task = asyncio.create_task(_check_comfyui_servers(db, settings.comfyui_default_url))
+    ffmpeg_task = asyncio.create_task(_check_ffmpeg(settings.ffmpeg_path))
+    piper_task = asyncio.create_task(_check_piper_tts(settings.piper_models_path))
+    lm_studio_task = asyncio.create_task(_check_lm_studio(settings.lm_studio_base_url))
+
+    db_health = await db_task
+    redis_health = await redis_task
+    worker_health = await worker_task
+    comfyui_healths = await comfyui_task
+    ffmpeg_health = await ffmpeg_task
+    piper_health = await piper_task
+    lm_studio_health = await lm_studio_task
 
     services: list[ServiceHealth] = [
         db_health,
         redis_health,
+        worker_health,
         *comfyui_healths,
         ffmpeg_health,
         piper_health,
