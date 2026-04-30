@@ -53,8 +53,10 @@ function SceneGrid({
           onMouseEnter={() => setHoveredScene(scene.sceneNumber)}
           onMouseLeave={() => setHoveredScene(null)}
         >
-          {/* Thumbnail */}
-          <div className="aspect-video bg-bg-base relative overflow-hidden">
+          {/* Thumbnail — design system §3 specifies 9:16 (vertical), matching
+              the dominant 9:16 short-form output. The previous aspect-video
+              (16:9) was leftover from an earlier landscape-first grid layout. */}
+          <div className="aspect-[9/16] bg-bg-base relative overflow-hidden">
             {scene.imageUrl ? (
               <img
                 src={scene.imageUrl}
