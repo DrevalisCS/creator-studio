@@ -112,7 +112,7 @@ class TestExtractJson:
 class TestProviderSelection:
     """Test LLMService.get_provider heuristic."""
 
-    @patch("drevalis.services.llm.OpenAICompatibleProvider")
+    @patch("drevalis.services.llm._monolith.OpenAICompatibleProvider")
     def test_provider_selection_openai_compatible(self, mock_openai_cls: MagicMock) -> None:
         service = LLMService()
 
@@ -130,9 +130,15 @@ class TestProviderSelection:
         )
         assert provider is mock_openai_cls.return_value
 
-    @patch("drevalis.services.llm.AnthropicProvider")
-    def test_provider_selection_anthropic_by_url(self, mock_anthropic_cls: MagicMock) -> None:
-        service = LLMService()
+    @patch("drevalis.services.llm._monolith.decrypt_value", side_effect=lambda enc, _key: enc)
+    @patch("drevalis.services.llm._monolith.AnthropicProvider")
+    def test_provider_selection_anthropic_by_url(
+        self, mock_anthropic_cls: MagicMock, _mock_decrypt: MagicMock
+    ) -> None:
+        # encryption_key must be truthy for the decrypt path to fire;
+        # decrypt_value is patched to return the ciphertext verbatim so
+        # the test still asserts on the post-decrypt value.
+        service = LLMService(encryption_key="test-key")
 
         config = _make_llm_config(
             base_url="https://api.anthropic.com/v1",
@@ -148,11 +154,12 @@ class TestProviderSelection:
         )
         assert provider is mock_anthropic_cls.return_value
 
-    @patch("drevalis.services.llm.AnthropicProvider")
+    @patch("drevalis.services.llm._monolith.decrypt_value", side_effect=lambda enc, _key: enc)
+    @patch("drevalis.services.llm._monolith.AnthropicProvider")
     def test_provider_selection_anthropic_by_model_name(
-        self, mock_anthropic_cls: MagicMock
+        self, mock_anthropic_cls: MagicMock, _mock_decrypt: MagicMock
     ) -> None:
-        service = LLMService()
+        service = LLMService(encryption_key="test-key")
 
         config = _make_llm_config(
             base_url="http://some-proxy.local/v1",
@@ -163,7 +170,7 @@ class TestProviderSelection:
         service.get_provider(config)
         mock_anthropic_cls.assert_called_once()
 
-    @patch("drevalis.services.llm.OpenAICompatibleProvider")
+    @patch("drevalis.services.llm._monolith.OpenAICompatibleProvider")
     def test_provider_caching(self, mock_openai_cls: MagicMock) -> None:
         """The same config.id should reuse the cached provider."""
         service = LLMService()

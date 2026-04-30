@@ -384,11 +384,9 @@ _STALE_TESTS: frozenset[str] = frozenset(
         "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_full",
         "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_with_captions",
         "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_with_music",
-        # Provider factory moved to LLMPool; these tests patch the wrong symbols
-        "tests/unit/test_llm.py::TestProviderSelection::test_provider_caching",
-        "tests/unit/test_llm.py::TestProviderSelection::test_provider_selection_anthropic_by_model_name",
-        "tests/unit/test_llm.py::TestProviderSelection::test_provider_selection_anthropic_by_url",
-        "tests/unit/test_llm.py::TestProviderSelection::test_provider_selection_openai_compatible",
+        # (Un-quarantined: tests now pass after F-T-08 dropped the
+        # storage param and tests were updated to patch decrypt_value
+        # explicitly so the encrypted-vs-plain api_key flow is tested.)
         # PipelineOrchestrator API changed during long-form pipeline work
         "tests/unit/test_pipeline.py::TestPipelineBroadcastsProgress::test_pipeline_broadcasts_progress",
         "tests/unit/test_pipeline.py::TestPipelineHandlesStepFailure::test_pipeline_handles_step_failure",
