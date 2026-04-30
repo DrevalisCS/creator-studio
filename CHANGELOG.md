@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.14] - 2026-04-30
+
+### Added
+
+- **F-Tst-03** — 49 new tests for ``FFmpegService`` pure helpers
+  (``test_ffmpeg_helpers.py``). FFmpeg coverage rose from 28% to 38%.
+  The new tests pin every branch of the audio mastering chain
+  builder + watermark filter + xfade transition resolver + image
+  extension recogniser + the long-form Wan-2.6 video-concat
+  command builder — all without ffmpeg on PATH:
+
+  - ``_build_audio_filtergraph`` — voice-only passthrough,
+    EQ + compressor + loudnorm chains, master limiter on/off,
+    music branch with sidechain ducking + amix, music volume +
+    reverb (aecho) + low-pass + duck threshold/ratio, and the
+    bracket-handling contract on input labels (``"1:a"`` →
+    ``[1:a]``, no double-bracketing).
+  - ``_build_watermark_filter`` — None when path missing, all
+    four corner positions in the position map, fallback to
+    bottom-right on unknown corner, opacity clamping at both
+    ends (-0.3 → 0, 2.5 → 1), and colon-escaping in the
+    movie= path argument so Windows drive letters don't trip
+    the ffmpeg option parser.
+  - ``_resolve_xfade_transition`` — ``"fade"``, ``"random"``
+    (deterministic with seed, varies across seeds),
+    ``"variety"`` round-robin, literal pass-through, and unknown
+    token fallback.
+  - ``_is_image`` — every recognised extension, case-insensitivity,
+    and explicit confirmation that ``.gif`` and ``.mp4`` are NOT
+    treated as images.
+  - ``_build_video_concat_command`` — argv shape, captions
+    burn-in via ``subtitles=`` filter, music input + sidechain
+    wiring, and that ``video_codec`` / ``preset`` /
+    ``video_bitrate`` from ``AssemblyConfig`` propagate into
+    the final command.
+
+  Total suite: 824 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.13] - 2026-04-30
 
 ### Added
