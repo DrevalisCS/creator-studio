@@ -2355,34 +2355,34 @@ async def export_bundle(
             detail="No video asset found for this episode; cannot create bundle",
         )
 
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        # Video
-        video_path = base / video_assets[-1].file_path
-        if video_path.exists():
-            zf.write(str(video_path), f"{safe_name}.mp4")
+    description_content = _build_description(episode)
+    video_path = base / video_assets[-1].file_path
+    thumb_path = (base / thumb_assets[-1].file_path) if thumb_assets else None
+    srt_path = (base / caption_assets[-1].file_path) if caption_assets else None
 
-        # Thumbnail
-        if thumb_assets:
-            thumb_path = base / thumb_assets[-1].file_path
-            if thumb_path.exists():
+    def _build() -> bytes:
+        # MP4/JPG/SRT are already compressed (or tiny); ZIP_STORED keeps
+        # the bundle ~the same size and skips the DEFLATE CPU cost
+        # which previously blocked the uvicorn event loop for several
+        # seconds on a 100 MB+ video.
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+            if video_path.exists():
+                zf.write(str(video_path), f"{safe_name}.mp4")
+            if thumb_path and thumb_path.exists():
                 zf.write(str(thumb_path), f"{safe_name}_thumbnail.jpg")
-
-        # Description
-        description_content = _build_description(episode)
-        zf.writestr(f"{safe_name}_description.txt", description_content)
-
-        # Captions (SRT)
-        if caption_assets:
-            srt_path = base / caption_assets[-1].file_path
-            if srt_path.exists():
+            zf.writestr(f"{safe_name}_description.txt", description_content)
+            if srt_path and srt_path.exists():
                 zf.write(str(srt_path), f"{safe_name}_captions.srt")
+        return buf.getvalue()
 
-    buffer.seek(0)
+    # Run in a thread so file I/O and ZipFile.write() don't block the
+    # event loop while the uvicorn worker waits on a large MP4.
+    payload = await asyncio.to_thread(_build)
 
-    logger.info("export_bundle", episode_id=str(episode_id), zip_size=buffer.getbuffer().nbytes)
+    logger.info("export_bundle", episode_id=str(episode_id), zip_size=len(payload))
     return Response(
-        content=buffer.getvalue(),
+        content=payload,
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{safe_name}_bundle.zip"',
@@ -2834,57 +2834,55 @@ async def export_raw_assets(
     for a in all_assets:
         per_kind.setdefault(a.asset_type, []).append(a)
 
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+    def _build() -> tuple[bytes, dict[str, int]]:
         included: dict[str, int] = {}
-        for kind, assets in per_kind.items():
-            # Sort by scene_number when present, otherwise by created_at
-            # so segment_01 < segment_02 inside the archive.
-            assets.sort(key=lambda a: (a.scene_number or 0, a.created_at or 0))
-            for a in assets:
-                src = base / a.file_path
-                if not src.exists():
-                    continue
-                ext = Path(a.file_path).suffix or ""
-                if a.scene_number is not None:
-                    entry = f"{safe_name}/{kind}/{kind}_{a.scene_number:02d}{ext}"
-                else:
-                    # Stable deterministic filename for "only one of these" kinds.
-                    entry = f"{safe_name}/{kind}/{kind}{ext}"
-                    # If multiple assets of the same kind exist without scene
-                    # numbers, suffix with the asset id's short form.
-                    if included.get(kind):
-                        entry = f"{safe_name}/{kind}/{kind}_{str(a.id)[:8]}{ext}"
-                zf.write(str(src), entry)
-                included[kind] = included.get(kind, 0) + 1
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_STORED) as zf:
+            for kind, assets in per_kind.items():
+                # Sort by scene_number when present, otherwise by created_at
+                # so segment_01 < segment_02 inside the archive.
+                assets.sort(key=lambda a: (a.scene_number or 0, a.created_at or 0))
+                for a in assets:
+                    src = base / a.file_path
+                    if not src.exists():
+                        continue
+                    ext = Path(a.file_path).suffix or ""
+                    if a.scene_number is not None:
+                        entry = f"{safe_name}/{kind}/{kind}_{a.scene_number:02d}{ext}"
+                    else:
+                        entry = f"{safe_name}/{kind}/{kind}{ext}"
+                        if included.get(kind):
+                            entry = f"{safe_name}/{kind}/{kind}_{str(a.id)[:8]}{ext}"
+                    zf.write(str(src), entry)
+                    included[kind] = included.get(kind, 0) + 1
 
-        # README with a machine-readable manifest of what went in.
-        readme_lines = [
-            f"Drevalis raw-assets export for: {series_name} — {episode.title}",
-            f"Episode ID: {episode.id}",
-            f"Generated: {episode.created_at}",
-            "",
-            "Contents:",
-        ]
-        for kind, count in sorted(included.items()):
-            readme_lines.append(f"  {kind:<12} {count} file(s)")
-        readme_lines.append("")
-        readme_lines.append(
-            "Regenerating any asset rebuilds the database row with a new "
-            "UUID — so re-running an export after edits will overwrite this "
-            "archive, not merge with it."
-        )
-        zf.writestr(f"{safe_name}/README.txt", "\n".join(readme_lines))
+            readme_lines = [
+                f"Drevalis raw-assets export for: {series_name} — {episode.title}",
+                f"Episode ID: {episode.id}",
+                f"Generated: {episode.created_at}",
+                "",
+                "Contents:",
+            ]
+            for kind, count in sorted(included.items()):
+                readme_lines.append(f"  {kind:<12} {count} file(s)")
+            readme_lines.append("")
+            readme_lines.append(
+                "Regenerating any asset rebuilds the database row with a new "
+                "UUID — so re-running an export after edits will overwrite this "
+                "archive, not merge with it."
+            )
+            zf.writestr(f"{safe_name}/README.txt", "\n".join(readme_lines))
+        return buf.getvalue(), included
 
-    buffer.seek(0)
+    payload, included = await asyncio.to_thread(_build)
     logger.info(
         "export_raw_assets",
         episode_id=str(episode_id),
-        zip_size=buffer.getbuffer().nbytes,
+        zip_size=len(payload),
         kinds=list(per_kind.keys()),
     )
     return Response(
-        content=buffer.getvalue(),
+        content=payload,
         media_type="application/zip",
         headers={
             "Content-Disposition": f'attachment; filename="{safe_name}_raw_assets.zip"',
