@@ -62,7 +62,7 @@ async def _resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> 
     return await resolve_youtube_credentials(settings, db)
 
 
-async def _build_youtube_service(settings: Settings, db: AsyncSession) -> YouTubeService:
+async def build_youtube_service(settings: Settings, db: AsyncSession) -> YouTubeService:
     """Build a YouTubeService, pulling credentials from env + DB store."""
     client_id, client_secret = await _resolve_youtube_credentials(settings, db)
     if not client_id or not client_secret:
@@ -113,7 +113,7 @@ async def _build_youtube_service(settings: Settings, db: AsyncSession) -> YouTub
 def _get_youtube_service(settings: Settings) -> YouTubeService:
     """Legacy sync wrapper — kept only for callers that haven't been
     converted to the async resolver yet. Ignores the DB-stored keys;
-    new code should call ``_build_youtube_service(settings, db)``.
+    new code should call ``build_youtube_service(settings, db)``.
     """
     if not settings.youtube_client_id or not settings.youtube_client_secret:
         raise HTTPException(
@@ -153,7 +153,7 @@ async def get_auth_url(
     CSRF attacks where an attacker tricks the operator into binding an
     attacker-controlled YouTube channel to this install.
     """
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
     url, state = svc.get_auth_url()
     try:
         await redis.setex(f"youtube_oauth_state:{state}", 600, "1")
@@ -204,7 +204,7 @@ async def oauth_callback(
             detail="Invalid or expired OAuth state; retry the connect flow.",
         )
 
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
 
     try:
         channel_info = await svc.handle_callback(code, state=state)
@@ -467,7 +467,7 @@ async def delete_video(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, str]:
     """Delete a video from YouTube using the owning channel's tokens."""
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
     channel_repo = YouTubeChannelRepository(db)
     channel = await channel_repo.get_by_id(channel_id)
     if channel is None:
@@ -534,7 +534,7 @@ async def upload_episode(
             updated_at=now,
         )
 
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
 
     # Validate episode exists.
     ep_repo = EpisodeRepository(db)
@@ -943,7 +943,7 @@ async def create_playlist(
     Pass ``?channel_id=<uuid>`` to target a specific channel. When only
     one channel is connected, the parameter is optional.
     """
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
 
     channel_repo = YouTubeChannelRepository(db)
     channel = await _resolve_channel(channel_repo, channel_id)
@@ -1034,7 +1034,7 @@ async def add_video_to_playlist(
     from the playlist's ``channel_id`` so operators never have to pass
     it alongside.
     """
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
 
     playlist_repo = YouTubePlaylistRepository(db)
     playlist = await playlist_repo.get_by_id(playlist_id)
@@ -1111,7 +1111,7 @@ async def delete_playlist(
 
     Channel is inferred from the playlist's ``channel_id``.
     """
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
 
     playlist_repo = YouTubePlaylistRepository(db)
     playlist = await playlist_repo.get_by_id(playlist_id)
@@ -1219,7 +1219,7 @@ async def get_video_analytics(
             for vid in ids[:50]
         ]
 
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
 
     channel_repo = YouTubeChannelRepository(db)
     channel = await _resolve_channel(channel_repo, channel_id)
@@ -1362,7 +1362,7 @@ async def get_channel_analytics(
             "fetched_at": _dt.now(tz=_UTC).isoformat(),
         }
 
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
     channel_repo = YouTubeChannelRepository(db)
     channel = await _resolve_channel(channel_repo, channel_id)
 
@@ -1424,7 +1424,7 @@ async def get_channel_scopes(
     ``token_introspection_failed`` is true, Google rejected the token
     (revoked, expired, network failure) — reconnect is the cure.
     """
-    svc = await _build_youtube_service(settings, db)
+    svc = await build_youtube_service(settings, db)
     channel_repo = YouTubeChannelRepository(db)
     channel = await _resolve_channel(channel_repo, channel_id)
 

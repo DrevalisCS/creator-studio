@@ -41,7 +41,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 if TYPE_CHECKING:
-    from drevalis.services.llm._monolith import LLMProvider
+    from drevalis.services.llm import LLMProvider
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 

@@ -42,10 +42,10 @@ if TYPE_CHECKING:
     from redis.asyncio import Redis
     from sqlalchemy.ext.asyncio import AsyncSession
 
-    from drevalis.services.captions._monolith import CaptionService
-    from drevalis.services.comfyui._monolith import ComfyUIService
-    from drevalis.services.ffmpeg._monolith import FFmpegService
-    from drevalis.services.llm._monolith import LLMPool
+    from drevalis.services.captions import CaptionService
+    from drevalis.services.comfyui import ComfyUIService
+    from drevalis.services.ffmpeg import FFmpegService
+    from drevalis.services.llm import LLMPool
     from drevalis.services.music import MusicService
     from drevalis.services.storage import LocalStorage
 
@@ -392,8 +392,8 @@ class MusicVideoOrchestrator:
             self.log.info("music_video.captions.skipped_no_service")
             return None
 
-        from drevalis.services.captions._monolith import CaptionStyle
-        from drevalis.services.tts._monolith import WordTimestamp
+        from drevalis.services.captions import CaptionStyle
+        from drevalis.services.tts import WordTimestamp
 
         await self._broadcast("captions", 0, "Building lyric captions...")
 
@@ -469,7 +469,7 @@ class MusicVideoOrchestrator:
         captions_path: Path | None,
     ) -> Path:
         """Composite the song + scenes + captions into a final MP4."""
-        from drevalis.services.ffmpeg._monolith import (
+        from drevalis.services.ffmpeg import (
             AssemblyConfig,
             AudioMixConfig,
             SceneInput,

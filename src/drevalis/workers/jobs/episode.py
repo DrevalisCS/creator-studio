@@ -139,7 +139,7 @@ async def generate_episode(ctx: dict[str, Any], episode_id: str) -> dict[str, An
 
         if _fmt == "music_video":
             from drevalis.repositories.llm_config import LLMConfigRepository
-            from drevalis.services.llm._monolith import LLMPool
+            from drevalis.services.llm import LLMPool
             from drevalis.services.music_video_orchestrator import (
                 MusicVideoOrchestrator,
             )
