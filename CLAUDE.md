@@ -258,6 +258,14 @@ React + TS + Tailwind, Vite. **Outfit** (display) + **DM Sans** (body), glass mo
 | `/help` | Help | App info, pipeline viz, troubleshooting |
 | `/settings` | Settings | ComfyUI, LLM, voices, YouTube |
 | `/youtube/callback` | YouTubeCallback | OAuth redirect |
+| `/usage` | Usage | Per-day pipeline runs, compute time, token totals |
+| `/cloud-gpu` | CloudGPU | Manage RunPod / Vast / Lambda pods |
+| `/assets` | Assets | Reference-asset library (images, video, audio) |
+| `/episodes/:id/edit` | EpisodeEditor | Video timeline editor |
+| `/episodes/:id/shot-list` | ShotList | Per-shot annotations for the episode |
+| `/audiobooks/:id/edit` | AudiobookEditor | Audiobook chapter / track-mix editor |
+| `/social/:platform` | SocialPlatform | Per-platform connection + upload settings |
+| `/login` | Login | Team-mode email + password gate (only when team_mode=true) |
 
 ### Sidebar
 
