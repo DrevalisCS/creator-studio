@@ -7,6 +7,24 @@
     <title>Drevalis Creator Studio</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <!-- Preload the two faces that render above-the-fold content (DM Sans
+         body 400, Outfit display 600). Without these the first paint waits
+         on the CSS file -> font-file chain, then re-lays-out when the
+         webfonts swap in — visible CLS on Dashboard headings and body copy. -->
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="https://fonts.gstatic.com/s/dmsans/v15/rP2Hp2ywxg089UriCZOIHTWEBlw.woff2"
+      crossorigin
+    />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="https://fonts.gstatic.com/s/outfit/v11/QGYyz_MVcBeNP4NJuktqkY.woff2"
+      crossorigin
+    />
     <!-- Font loadout: Inter is the default body face; the display
          font swaps per theme preset (see src/lib/theme.tsx). All
          fonts are loaded up-front so switching themes is instant
