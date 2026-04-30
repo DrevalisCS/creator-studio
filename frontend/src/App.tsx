@@ -7,6 +7,7 @@ import { LoginGate } from '@/components/LoginGate';
 import { ToastProvider } from '@/components/ui/Toast';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { ThemeProvider } from '@/lib/theme';
+import { ProgressProvider } from '@/lib/progress-context';
 import { Spinner } from '@/components/ui/Spinner';
 
 // ---------------------------------------------------------------------------
@@ -76,6 +77,7 @@ function App() {
     <ThemeProvider>
     <ToastProvider>
     <TooltipProvider delayDuration={300}>
+    <ProgressProvider>
     <LicenseGate>
     <Suspense fallback={<PageLoadingFallback />}>
     <Routes>
@@ -122,6 +124,7 @@ function App() {
     </Routes>
     </Suspense>
     </LicenseGate>
+    </ProgressProvider>
     </TooltipProvider>
     </ToastProvider>
     </ThemeProvider>

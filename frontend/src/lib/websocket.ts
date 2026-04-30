@@ -18,7 +18,7 @@ interface WSOptions {
   maxRetries?: number;
 }
 
-class ProgressWebSocket {
+export class ProgressWebSocket {
   private ws: WebSocket | null = null;
   private retryCount = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -183,47 +183,8 @@ export function useEpisodeProgress(
 // ---------------------------------------------------------------------------
 // React Hook: useActiveJobsProgress (all active jobs)
 // ---------------------------------------------------------------------------
+// The active-jobs hook is implemented in ./progress-context so that one
+// shared WebSocket backs every consumer. Re-exported here so existing
+// imports keep working.
 
-export function useActiveJobsProgress(): {
-  connected: boolean;
-  latestByEpisode: Record<string, Record<string, ProgressMessage>>;
-} {
-  const [connected, setConnected] = useState(false);
-  const [latestByEpisode, setLatestByEpisode] = useState<
-    Record<string, Record<string, ProgressMessage>>
-  >({});
-  const wsRef = useRef<ProgressWebSocket | null>(null);
-
-  const handleMessage = useCallback((msg: ProgressMessage) => {
-    setLatestByEpisode((prev) => ({
-      ...prev,
-      [msg.episode_id]: {
-        ...(prev[msg.episode_id] ?? {}),
-        [msg.step]: msg,
-      },
-    }));
-  }, []);
-
-  useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const wsUrl = `${protocol}//${host}/ws/progress/all`;
-
-    const ws = new ProgressWebSocket(wsUrl, {
-      onMessage: handleMessage,
-      onOpen: () => setConnected(true),
-      onClose: () => setConnected(false),
-      reconnectInterval: 5000,
-      maxRetries: 15,
-    });
-
-    wsRef.current = ws;
-
-    return () => {
-      ws.close();
-      wsRef.current = null;
-    };
-  }, [handleMessage]);
-
-  return { connected, latestByEpisode };
-}
+export { useActiveJobsProgress, ProgressProvider } from './progress-context';
