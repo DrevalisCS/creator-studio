@@ -247,6 +247,7 @@ async def restore_backup(
         allow_key_mismatch=allow_key_mismatch,
         restore_db=restore_db,
         restore_media=restore_media,
+        delete_archive_when_done=True,
     )
     logger.info(
         "restore_enqueued",
@@ -259,6 +260,84 @@ async def restore_backup(
         "status": "queued",
         "message": (
             f"Restore enqueued. Poll GET /api/v1/backup/restore-status/{job_id} for progress."
+        ),
+    }
+
+
+@router.post(
+    "/restore-existing/{filename}",
+    summary="Restore from an archive already in BACKUP_DIRECTORY (no upload)",
+    description=(
+        "Skips the multi-GB upload path entirely. The archive must already "
+        "exist in BACKUP_DIRECTORY (e.g. placed via docker cp or a host "
+        "bind-mount). Same X-Confirm-Restore + restore_db / restore_media "
+        "flags as POST /restore. The original archive is kept on disk."
+    ),
+)
+async def restore_from_existing(
+    filename: str,
+    confirm: str = Header(..., alias="X-Confirm-Restore"),
+    allow_key_mismatch: bool = False,
+    restore_db: bool = True,
+    restore_media: bool = True,
+    settings: Settings = Depends(get_settings),
+) -> dict[str, object]:
+    """Enqueue a restore against an existing archive in BACKUP_DIRECTORY.
+
+    Why this exists: a 22GB browser upload through nginx / Docker /
+    Cloudflare hits proxy timeouts long before the body finishes, and
+    a single navigation in the operator's browser tab kills the XHR.
+    Operators with multi-GB archives place the file via
+    ``docker cp drevalis-app-1:/app/storage/backups/<name>.tar.gz``
+    or directly into the host-mounted ``BACKUP_DIRECTORY``, then pick
+    it from the dropdown — zero upload, instant enqueue.
+    """
+    if confirm != "i-understand":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="missing or invalid X-Confirm-Restore header",
+        )
+
+    archive_path = _safe_backup_path(settings, filename)
+    if not archive_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"backup not found in BACKUP_DIRECTORY: {filename}",
+        )
+    if not filename.endswith(".tar.gz"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="expected a .tar.gz archive",
+        )
+
+    from uuid import uuid4
+
+    from drevalis.core.redis import get_arq_pool
+
+    job_id = str(uuid4())
+    arq = get_arq_pool()
+    await arq.enqueue_job(
+        "restore_backup_async",
+        job_id,
+        str(archive_path),
+        allow_key_mismatch=allow_key_mismatch,
+        restore_db=restore_db,
+        restore_media=restore_media,
+        delete_archive_when_done=False,
+    )
+    logger.info(
+        "restore_existing_enqueued",
+        job_id=job_id,
+        archive=filename,
+        size_mb=round(archive_path.stat().st_size / (1024 * 1024), 1),
+    )
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "filename": filename,
+        "message": (
+            f"Restore enqueued from existing archive. Poll "
+            f"GET /api/v1/backup/restore-status/{job_id} for progress."
         ),
     }
 

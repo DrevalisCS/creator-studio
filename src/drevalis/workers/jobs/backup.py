@@ -68,17 +68,26 @@ async def restore_backup_async(
     allow_key_mismatch: bool = False,
     restore_db: bool = True,
     restore_media: bool = True,
+    delete_archive_when_done: bool = True,
 ) -> dict[str, Any]:
-    """Restore a previously-uploaded archive in the background.
+    """Restore a previously-uploaded or pre-existing archive.
 
-    The route uploads the tarball to a temp file synchronously (so the
-    21GB+ multipart body finishes streaming) and then enqueues this
-    job with the temp file path. Progress + final status are written
-    to Redis at ``backup:restore:{job_id}`` so the UI can poll without
-    a long-lived HTTP connection.
+    Two call paths:
 
-    The temp file is deleted at the end whether the restore succeeded
-    or not.
+    1. **Browser upload** — the route streams the multipart body to a
+       temp file under BACKUP_DIRECTORY and enqueues this job with
+       ``delete_archive_when_done=True`` (default). The temp file is
+       removed in the ``finally`` block whether the restore succeeded
+       or not.
+    2. **From-existing archive** (multi-GB-friendly path) — the route
+       resolves a filename already in BACKUP_DIRECTORY and enqueues
+       with ``delete_archive_when_done=False``. The original archive
+       is kept so the operator can retry the same restore without
+       re-uploading the 22GB body.
+
+    Progress + final status are written to Redis at
+    ``backup:restore:{job_id}`` so the UI can poll without a long-lived
+    HTTP connection.
     """
     import json as _json
     from pathlib import Path
@@ -185,8 +194,9 @@ async def restore_backup_async(
         logger.error("restore_backup_async.failed", error=str(exc)[:200], exc_info=True)
         return {"status": "failed", "error": str(exc)[:500]}
     finally:
-        try:
-            archive.unlink(missing_ok=True)
-        except OSError:
-            logger.debug("restore_archive_cleanup_failed", path=str(archive))
+        if delete_archive_when_done:
+            try:
+                archive.unlink(missing_ok=True)
+            except OSError:
+                logger.debug("restore_archive_cleanup_failed", path=str(archive))
         await redis.aclose()

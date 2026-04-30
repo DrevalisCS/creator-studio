@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.5] - 2026-04-30
+
+### Added
+
+- **Restore from existing archive (no upload).** New endpoint
+  ``POST /api/v1/backup/restore-existing/{filename}`` enqueues the
+  same ``restore_backup_async`` job against an archive that's
+  already in ``BACKUP_DIRECTORY`` — operators with multi-GB archives
+  drop the file via ``docker cp`` or the host bind-mount and pick it
+  from a dropdown. Skips the browser upload entirely; no proxy
+  timeouts, no navigation issues, instant enqueue. The original
+  archive is preserved on disk (the upload-path tempfile is still
+  cleaned up post-restore via the new
+  ``delete_archive_when_done`` worker arg).
+
+- **BackupSection picker UI.** Operators see all archives in
+  ``BACKUP_DIRECTORY`` in a dropdown labelled "1a. Pick an archive
+  already on disk (recommended for archives >5 GB)". The legacy
+  upload path is now relabelled "1b. …or upload a new archive
+  (only safe for <5 GB)". Two buttons — "Restore from picked
+  archive" and "Upload + restore" — make the path explicit.
+
+### Fixed
+
+- **22 GB upload restarts at 0% mid-stream** (user report). The
+  single-POST multipart body was hitting reverse-proxy / Docker
+  Desktop default timeouts well before 22 GB finished streaming. The
+  new restore-existing path bypasses the upload entirely. The
+  upload path remains for sub-5 GB cases.
+
+- **Navigation away during upload abandons the restore** (user
+  report). XHR upload is browser-tab-bound — switching to /episodes
+  killed the body and the worker never got the file. New
+  ``beforeunload`` handler fires the browser's "Leave site?" dialog
+  while the stage is ``uploading`` so an accidental click doesn't
+  silently scrap a multi-GB upload. Once the upload lands and the
+  job is enqueued, navigation is safe again (the resume-on-mount
+  effect from v0.29.2 still picks the bar back up after navigation).
+
+- **Progress overlay messaging** now distinguishes "Don't navigate
+  away — upload is browser-bound" from "Safe to navigate away —
+  restore is on the worker" depending on the current stage.
+
 ## [0.29.4] - 2026-04-30
 
 ### Added

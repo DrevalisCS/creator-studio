@@ -134,6 +134,7 @@ export function BackupSection() {
     progress_pct: number;
     message: string;
   } | null>(null);
+  const [selectedExisting, setSelectedExisting] = useState<string>('');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const pollRef = useRef<number | null>(null);
 
@@ -378,6 +379,77 @@ export function BackupSection() {
     },
     [toast, refresh],
   );
+
+  // F-USER-FIX (v0.29.5): browser-blocking guard during the upload
+  // phase. The 22GB single-POST upload dies on tab navigation and on
+  // any reverse-proxy timeout, so we set up beforeunload + a confirm
+  // dialog while ``restoring`` is true AND the stage is still
+  // "uploading". After enqueue (stage transitions to "queued" /
+  // "extract" / etc.) the work is fully on the worker — the user can
+  // navigate freely and the resume-on-mount effect picks the bar
+  // back up.
+  useEffect(() => {
+    if (!restoring || restoreProgress?.stage !== 'uploading') return;
+    const handler = (ev: BeforeUnloadEvent) => {
+      ev.preventDefault();
+      ev.returnValue =
+        'Restore upload is in progress. Leaving this page aborts the upload — you will have to start over.';
+      return ev.returnValue;
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [restoring, restoreProgress?.stage]);
+
+  const onRestoreFromExisting = async () => {
+    if (!selectedExisting) {
+      toast.error('Pick an existing archive from the dropdown first');
+      return;
+    }
+    if (restoreConfirm !== 'RESTORE') {
+      toast.error('Type RESTORE in the confirmation field to proceed');
+      return;
+    }
+    if (!restoreDb && !restoreMedia) {
+      toast.error('Select at least one of database or media to restore');
+      return;
+    }
+    setRestoring(true);
+    setRestoreProgress({
+      stage: 'queued',
+      progress_pct: 0,
+      message: 'Enqueueing restore from existing archive…',
+    });
+    try {
+      const params = new URLSearchParams();
+      if (allowKeyMismatch) params.set('allow_key_mismatch', 'true');
+      if (!restoreDb) params.set('restore_db', 'false');
+      if (!restoreMedia) params.set('restore_media', 'false');
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const res = await fetch(
+        `/api/v1/backup/restore-existing/${encodeURIComponent(selectedExisting)}${qs}`,
+        {
+          method: 'POST',
+          headers: { 'X-Confirm-Restore': 'i-understand' },
+        },
+      );
+      if (!res.ok) {
+        const detail = await res.json().catch(() => ({}));
+        throw new ApiError(res.status, res.statusText, detail.detail ?? res.statusText);
+      }
+      const data = await res.json();
+      if (!data.job_id) throw new ApiError(0, 'no job_id', JSON.stringify(data));
+      setRestoreProgress({
+        stage: 'queued',
+        progress_pct: 0,
+        message: 'Restore enqueued. Waiting for worker…',
+      });
+      pollRestoreStatus(data.job_id);
+    } catch (err) {
+      toast.error('Restore enqueue failed', { description: formatError(err) });
+      setRestoring(false);
+      setRestoreProgress(null);
+    }
+  };
 
   const onRestore = async () => {
     const file = fileInputRef.current?.files?.[0];
@@ -876,15 +948,60 @@ export function BackupSection() {
           </div>
         </div>
         <div className="space-y-3 mt-4">
+          {/* Path A — pick an archive already in BACKUP_DIRECTORY (no upload). */}
+          {state && state.archives.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-txt-secondary mb-1">
+                1a. Pick an archive already on disk{' '}
+                <span className="text-txt-muted font-normal">
+                  (recommended for archives &gt;5 GB)
+                </span>
+              </label>
+              <select
+                value={selectedExisting}
+                onChange={(e) => {
+                  setSelectedExisting(e.target.value);
+                  // Clear the file picker so the two paths stay mutually exclusive.
+                  if (e.target.value && fileInputRef.current) {
+                    fileInputRef.current.value = '';
+                  }
+                }}
+                disabled={restoring}
+                className="block w-full text-sm bg-bg-elevated text-txt-primary rounded p-2 border border-bg-hover"
+              >
+                <option value="">— pick an archive —</option>
+                {state.archives.map((a) => (
+                  <option key={a.filename} value={a.filename}>
+                    {a.filename} · {formatBytes(a.size_bytes)} ·{' '}
+                    {new Date(a.created_at).toLocaleString()}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-[11px] text-txt-muted leading-relaxed">
+                Place multi-GB archives directly in{' '}
+                <span className="font-mono">BACKUP_DIRECTORY</span> via{' '}
+                <span className="font-mono">docker cp</span> or the host bind-mount, then refresh
+                the list. This skips the browser upload entirely — no proxy timeouts, no
+                navigation issues.
+              </p>
+            </div>
+          )}
+
           <div>
             <label className="block text-xs font-medium text-txt-secondary mb-1">
-              1. Select archive (.tar.gz)
+              1b. …or upload a new archive (.tar.gz){' '}
+              <span className="text-txt-muted font-normal">(only safe for &lt;5 GB)</span>
             </label>
             <input
               ref={fileInputRef}
               type="file"
               accept=".tar.gz,application/gzip"
-              className="block w-full text-sm text-txt-primary file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-bg-elevated file:text-txt-primary hover:file:bg-bg-hover"
+              disabled={restoring}
+              onChange={() => {
+                // Mutually exclusive with the existing-archive picker.
+                if (fileInputRef.current?.files?.[0]) setSelectedExisting('');
+              }}
+              className="block w-full text-sm text-txt-primary file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:bg-bg-elevated file:text-txt-primary hover:file:bg-bg-hover disabled:opacity-50"
             />
           </div>
           <div className="space-y-2">
@@ -936,17 +1053,37 @@ export function BackupSection() {
               placeholder="RESTORE"
             />
           </div>
-          <Button
-            onClick={onRestore}
-            disabled={
-              restoring || restoreConfirm !== 'RESTORE' || (!restoreDb && !restoreMedia)
-            }
-            variant="primary"
-            className="bg-amber-500 hover:bg-amber-400 text-bg-base"
-          >
-            <Upload className="w-4 h-4 mr-1" />
-            {restoring ? 'Restoring...' : 'Restore (destructive)'}
-          </Button>
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              onClick={onRestoreFromExisting}
+              disabled={
+                restoring ||
+                !selectedExisting ||
+                restoreConfirm !== 'RESTORE' ||
+                (!restoreDb && !restoreMedia)
+              }
+              variant="primary"
+              className="bg-amber-500 hover:bg-amber-400 text-bg-base"
+            >
+              <Archive className="w-4 h-4 mr-1" />
+              {restoring && selectedExisting
+                ? 'Restoring...'
+                : 'Restore from picked archive'}
+            </Button>
+            <Button
+              onClick={onRestore}
+              disabled={
+                restoring ||
+                restoreConfirm !== 'RESTORE' ||
+                (!restoreDb && !restoreMedia)
+              }
+              variant="primary"
+              className="bg-amber-500/80 hover:bg-amber-500 text-bg-base"
+            >
+              <Upload className="w-4 h-4 mr-1" />
+              {restoring && !selectedExisting ? 'Restoring...' : 'Upload + restore'}
+            </Button>
+          </div>
 
           {restoreProgress && (
             <div
@@ -981,10 +1118,18 @@ export function BackupSection() {
                 />
               </div>
               <div className="mt-2 text-xs text-txt-secondary">{restoreProgress.message}</div>
-              <div className="mt-1 text-[11px] text-txt-muted">
-                Safe to navigate away — the restore runs in the background. Come back to this page
-                to see progress.
-              </div>
+              {restoreProgress.stage === 'uploading' ? (
+                <div className="mt-1 text-[11px] text-red-400 leading-relaxed">
+                  <strong>Don't navigate away.</strong> The upload is browser-bound — leaving
+                  this page aborts it and you'll have to start over. For multi-GB archives,
+                  cancel and use "Restore from picked archive" instead.
+                </div>
+              ) : (
+                <div className="mt-1 text-[11px] text-txt-muted">
+                  Safe to navigate away — the restore runs in the background on the worker.
+                  Come back to this page to see progress.
+                </div>
+              )}
             </div>
           )}
         </div>
