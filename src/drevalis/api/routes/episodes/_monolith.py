@@ -22,8 +22,6 @@ from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_redis, get_settings
 from drevalis.core.redis import get_arq_pool
 from drevalis.models.episode import Episode
-from drevalis.repositories.episode import EpisodeRepository
-from drevalis.repositories.media_asset import MediaAssetRepository
 from drevalis.schemas.episode import (
     BulkGenerateRequest,
     BulkGenerateResponse,
@@ -60,79 +58,6 @@ def _episode_service(db: AsyncSession = Depends(get_db)) -> EpisodeService:
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/episodes", tags=["episodes"])
-
-# Pipeline steps in execution order.
-_PIPELINE_STEPS: list[str] = [
-    "script",
-    "voice",
-    "scenes",
-    "captions",
-    "assembly",
-    "thumbnail",
-]
-
-# ── Concurrency gate (DB-based) ───────────────────────────────────────────
-
-
-_slot_cache: dict[str, Any] = {"value": None, "expires": 0.0}
-
-
-async def _get_dynamic_max_slots(settings: Settings, db: AsyncSession) -> int:
-    """Calculate max concurrent generation slots based on registered infrastructure.
-
-    Base: ``settings.max_concurrent_generations`` (default 4).
-    Bonus: +2 slots per additional ComfyUI server beyond the first.
-    Cached for 60 seconds to avoid querying the DB on every request.
-    """
-    import time
-
-    if _slot_cache["value"] is not None and time.time() < _slot_cache["expires"]:
-        return int(_slot_cache["value"])
-
-    base = settings.max_concurrent_generations
-    result = base
-    try:
-        from drevalis.repositories.comfyui import ComfyUIServerRepository
-
-        repo = ComfyUIServerRepository(db)
-        servers = await repo.get_active_servers()
-        if len(servers) > 1:
-            bonus = (len(servers) - 1) * 2
-            result = base + bonus
-    except Exception:
-        pass
-
-    _slot_cache["value"] = result
-    _slot_cache["expires"] = time.time() + 60
-    return result
-
-
-async def _check_generation_slots(
-    ep_repo: EpisodeRepository,
-    settings: Settings,
-    db: AsyncSession | None = None,
-) -> None:
-    """Raise HTTP 429 if the maximum number of concurrent generations is reached.
-
-    Uses a DB count of episodes with status ``"generating"`` instead of an
-    in-memory counter so the check survives API restarts and works correctly
-    across separate worker processes.
-
-    The max slots scale dynamically with registered ComfyUI servers.
-    """
-    if db is not None:
-        max_slots = await _get_dynamic_max_slots(settings, db)
-    else:
-        max_slots = settings.max_concurrent_generations
-
-    generating_count = await ep_repo.count_by_status("generating")
-    if generating_count >= max_slots:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=f"Maximum concurrent generations ({max_slots}) reached. "
-            "Please wait for existing jobs to complete.",
-        )
-
 
 # ── Helper: build EpisodeResponse with relations ─────────────────────────
 
@@ -1639,23 +1564,17 @@ def _grade_for(score: int) -> str:
 )
 async def get_seo_score(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> SEOScoreResponse:
     """Pure heuristics — no LLM call. Returns a list of pass/fail checks
-    against YouTube-style SEO best practices (title length, description
-    depth, tag count, hook presence, CTA density). Used by the script
-    review panel to surface quick-wins before the user ships.
-
-    Points per check are hard-coded and sum to 100; the overall grade
-    is a function of the total.
-    """
-    repo = EpisodeRepository(db)
-    episode = await repo.get_by_id(episode_id)
-    if not episode:
+    against YouTube-style SEO best practices."""
+    try:
+        episode = await svc.get_or_raise(episode_id)
+    except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="episode_not_found",
-        )
+        ) from exc
 
     meta = episode.metadata_ or {}
     seo = meta.get("seo") if isinstance(meta, dict) else None
@@ -2114,8 +2033,8 @@ async def export_raw_assets(
 async def edit_video(
     episode_id: UUID,
     payload: VideoEditRequest,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> VideoEditResponse:
     """Apply edits to the episode's final video.
 
@@ -2124,17 +2043,13 @@ async def edit_video(
     """
     from drevalis.services.ffmpeg import FFmpegService
 
-    asset_repo = MediaAssetRepository(db)
     base = Path(settings.storage_base_path)
-
-    video_assets = await asset_repo.get_by_episode_and_type(episode_id, "video")
-    if not video_assets:
+    video_asset = await svc.get_latest_video_asset(episode_id)
+    if video_asset is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No video asset found for this episode",
         )
-
-    video_asset = video_assets[-1]
     video_path = base / video_asset.file_path
     if not video_path.exists():
         raise HTTPException(
@@ -2142,14 +2057,12 @@ async def edit_video(
             detail="Video file not found on disk",
         )
 
-    # Back up original on first edit
     original_path = video_path.parent / "final_original.mp4"
     if not original_path.exists():
         import shutil
 
         await asyncio.to_thread(shutil.copy2, str(video_path), str(original_path))
 
-    # Apply edits
     ffmpeg = FFmpegService(ffmpeg_path=settings.ffmpeg_path)
     edited_path = video_path.parent / "final_edited.mp4"
 
@@ -2165,20 +2078,15 @@ async def edit_video(
         speed=payload.speed,
     )
 
-    # Replace the final video with the edited version
     import shutil
 
     await asyncio.to_thread(shutil.move, str(edited_path), str(video_path))
 
-    # Update asset metadata
     duration = await ffmpeg.get_duration(video_path)
     file_size = video_path.stat().st_size
-    await asset_repo.update(
-        video_asset.id,
-        file_size_bytes=file_size,
-        duration_seconds=duration,
+    await svc.update_asset_metadata(
+        video_asset.id, file_size_bytes=file_size, duration_seconds=duration
     )
-    await db.commit()
 
     logger.info("video_edited", episode_id=str(episode_id))
     return VideoEditResponse(
@@ -2198,23 +2106,21 @@ async def edit_video(
 async def edit_preview(
     episode_id: UUID,
     payload: VideoEditRequest,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> VideoEditResponse:
     """Generate a quick low-res preview with the requested edits applied."""
     from drevalis.services.ffmpeg import FFmpegService
 
-    asset_repo = MediaAssetRepository(db)
     base = Path(settings.storage_base_path)
 
-    video_assets = await asset_repo.get_by_episode_and_type(episode_id, "video")
-    if not video_assets:
+    video_rel = await svc.get_video_asset_path(episode_id)
+    if video_rel is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No video asset found for this episode",
         )
-
-    video_path = base / video_assets[-1].file_path
+    video_path = base / video_rel
     # Use the original if it exists, otherwise use the current video
     original_path = video_path.parent / "final_original.mp4"
     source_path = original_path if original_path.exists() else video_path
@@ -2253,49 +2159,39 @@ async def edit_preview(
 )
 async def edit_reset(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> VideoEditResponse:
     """Restore the original assembled video, undoing all edits."""
     from drevalis.services.ffmpeg import FFmpegService
 
-    asset_repo = MediaAssetRepository(db)
     base = Path(settings.storage_base_path)
-
-    video_assets = await asset_repo.get_by_episode_and_type(episode_id, "video")
-    if not video_assets:
+    video_asset = await svc.get_latest_video_asset(episode_id)
+    if video_asset is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No video asset found for this episode",
         )
 
-    video_asset = video_assets[-1]
     video_path = base / video_asset.file_path
     original_path = video_path.parent / "final_original.mp4"
-
     if not original_path.exists():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="No original video backup found -- video has not been edited",
         )
 
-    # Restore original
     import shutil
 
     await asyncio.to_thread(shutil.copy2, str(original_path), str(video_path))
 
-    # Update asset metadata
     ffmpeg = FFmpegService(ffmpeg_path=settings.ffmpeg_path)
     duration = await ffmpeg.get_duration(video_path)
     file_size = video_path.stat().st_size
-    await asset_repo.update(
-        video_asset.id,
-        file_size_bytes=file_size,
-        duration_seconds=duration,
+    await svc.update_asset_metadata(
+        video_asset.id, file_size_bytes=file_size, duration_seconds=duration
     )
-    await db.commit()
 
-    # Clean up preview if it exists
     preview_path = video_path.parent / "preview.mp4"
     if preview_path.exists():
         preview_path.unlink()
@@ -2320,21 +2216,16 @@ async def edit_reset(
 )
 async def generate_seo(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     redis: ArqRedis = Depends(get_redis),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, Any]:
-    """Enqueue SEO generation as a background job.
-
-    The actual LLM inference runs in the arq worker to avoid blocking
-    a uvicorn worker for up to 30 minutes on slow local models.
-    """
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode or not episode.script:
-        raise HTTPException(404, "Episode not found or has no script")
+    """Enqueue SEO generation as a background job."""
+    try:
+        await svc.get_with_script_or_raise(episode_id)
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
+        raise HTTPException(404, "Episode not found or has no script") from exc
 
     await redis.enqueue_job("generate_seo_async", str(episode_id))
-
     return {"status": "queued", "message": "SEO generation started in background"}
 
 
@@ -2377,6 +2268,7 @@ async def publish_all(
     episode_id: UUID,
     body: PublishAllRequest,
     db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> PublishAllResponse:
     """Cross-platform bulk publish.
 
@@ -2385,31 +2277,27 @@ async def publish_all(
     - **youtube**: requires the episode's series to have ``youtube_channel_id``
       set. Creates a YouTubeUpload row; the worker's upload cron picks it up.
     - **tiktok** / **instagram**: requires a connected SocialPlatform row
-      for that platform. Creates a SocialUpload row; the social worker
-      picks it up.
+      for that platform. Creates a SocialUpload row; the social worker picks
+      it up.
 
     Each platform that can't be fulfilled (no connection, missing video,
     tier gate, etc.) is returned in ``skipped`` with a human-readable
-    reason rather than aborting the whole request. That way a Pro-tier
-    customer who hits Publish-All gets YouTube through and sees a
-    friendly "TikTok requires Studio tier" note for the other two.
+    reason rather than aborting the whole request.
     """
     from drevalis.models.social_platform import SocialPlatform, SocialUpload
     from drevalis.models.youtube_channel import YouTubeUpload
 
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if not episode:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
+    try:
+        episode = await svc.get_or_raise(episode_id)
+    except EpisodeNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found") from exc
     if episode.status not in ("review", "exported", "editing"):
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             f"Episode must be in review/exported/editing; current status is '{episode.status}'.",
         )
 
-    asset_repo = MediaAssetRepository(db)
-    video_assets = await asset_repo.get_by_episode_and_type(episode_id, "video")
-    if not video_assets:
+    if await svc.get_video_asset_path(episode_id) is None:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
             "Episode has no finished video yet. Generate / reassemble first.",
@@ -2566,22 +2454,20 @@ class PreflightResponse(BaseModel):
 )
 async def seo_preflight(
     episode_id: UUID,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> PreflightResponse:
     """Run the richer pre-upload checks on the current episode state.
 
     Does NOT hit the LLM. Combines stored SEO metadata (from
-    ``generate_seo_async``) with the live script fields. Frontend
-    calls this on the upload dialog every time the user edits the
-    title/description.
+    ``generate_seo_async``) with the live script fields.
     """
     from drevalis.services.seo_preflight import preflight as run_preflight
 
-    repo = EpisodeRepository(db)
-    episode = await repo.get_by_id(episode_id)
-    if not episode:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
+    try:
+        episode = await svc.get_or_raise(episode_id)
+    except EpisodeNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found") from exc
 
     meta = episode.metadata_ or {}
     seo = meta.get("seo") if isinstance(meta, dict) else None
@@ -2590,21 +2476,11 @@ async def seo_preflight(
     script_payload = episode.script or {}
     hook_text: str = str((seo.get("hook") or script_payload.get("hook") or "") or "")
 
-    # Derive content-format for platform mapping. Long-form episodes use
-    # the long-form YouTube rule set; everything else defaults to shorts.
     content_format = getattr(episode, "content_format", "shorts") or "shorts"
     platform = "youtube_longform" if content_format == "longform" else "youtube_shorts"
 
-    # Thumbnail asset (if any)
-    from drevalis.repositories.media_asset import MediaAssetRepository
-
-    asset_repo = MediaAssetRepository(db)
-    thumbs = await asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
-    thumb_path = None
-    if thumbs:
-        from pathlib import Path as _Path
-
-        thumb_path = _Path(settings.storage_base_path) / thumbs[-1].file_path
+    thumb_rel = await svc.get_thumbnail_asset_path(episode_id)
+    thumb_path = Path(settings.storage_base_path) / thumb_rel if thumb_rel else None
 
     result = run_preflight(
         title=str(seo.get("title") or episode.title or ""),
@@ -2635,21 +2511,22 @@ async def seo_variants(
     episode_id: UUID,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> VariantResponse:
     """Quick A/B options without mutating the episode. The frontend's
     pre-flight dialog offers one-click "Apply" for each suggestion.
     """
     import json as _json
 
-    from drevalis.repositories.llm_config import LLMConfigRepository
     from drevalis.services.llm import LLMService, extract_json
+    from drevalis.services.llm_config import LLMConfigService
 
-    repo = EpisodeRepository(db)
-    episode = await repo.get_by_id(episode_id)
-    if not episode or not episode.script:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
+    try:
+        episode, _script = await svc.get_with_script_or_raise(episode_id)
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found") from exc
 
-    configs = await LLMConfigRepository(db).get_all(limit=1)
+    configs = (await LLMConfigService(db, settings.encryption_key).list_all())[:1]
     if not configs:
         # No LLM configured — degrade gracefully with template variants
         # derived from the existing title.
@@ -2674,7 +2551,9 @@ async def seo_variants(
 
     llm_service = LLMService(encryption_key=settings.encryption_key)
     provider = llm_service.get_provider(configs[0])
-    narration = " ".join((s.get("narration") or "") for s in episode.script.get("scenes") or [])
+    narration = " ".join(
+        (s.get("narration") or "") for s in (episode.script or {}).get("scenes") or []
+    )
 
     system = (
         "You are a short-form video SEO editor. Return ONLY valid JSON in this shape:\n"
@@ -2729,25 +2608,19 @@ async def inpaint_scene(
     episode_id: UUID,
     scene_number: int,
     body: InpaintRequest,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     redis: Redis = Depends(get_redis),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> dict[str, str]:
     """Store the mask and enqueue a ``regenerate_scene`` run tagged
     with an inpaint flag in Redis so the scenes worker invokes the
-    inpaint workflow instead of full regeneration.
-
-    The mask is written next to the scene image as
-    ``scene_{NN}.mask.png`` — the ComfyUI inpaint workflow reads it
-    from that path. Workflows without an inpaint slot fall back to a
-    normal regenerate.
-    """
+    inpaint workflow instead of full regeneration."""
     import base64
 
-    repo = EpisodeRepository(db)
-    episode = await repo.get_by_id(episode_id)
-    if not episode:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found")
+    try:
+        await svc.get_or_raise(episode_id)
+    except EpisodeNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found") from exc
 
     try:
         mask_bytes = base64.b64decode(body.mask_png_base64, validate=True)
@@ -2808,27 +2681,26 @@ async def check_script_continuity(
     episode_id: UUID,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: EpisodeService = Depends(_episode_service),
 ) -> ContinuityResponse:
     """Run the LLM-driven continuity check over the current script.
 
     No-op (returns issues=[]) when no LLM config exists. Non-destructive —
     the caller decides whether to act on the warnings.
     """
-    from drevalis.repositories.llm_config import LLMConfigRepository
-    from drevalis.schemas.script import EpisodeScript as _EpisodeScript
     from drevalis.services.continuity import check_continuity
     from drevalis.services.llm import LLMService
+    from drevalis.services.llm_config import LLMConfigService
 
-    repo = EpisodeRepository(db)
-    episode = await repo.get_by_id(episode_id)
-    if not episode or not episode.script:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode or script missing")
+    try:
+        _episode, script = await svc.get_with_script_or_raise(episode_id)
+    except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode or script missing") from exc
 
-    configs = await LLMConfigRepository(db).get_all(limit=1)
+    configs = (await LLMConfigService(db, settings.encryption_key).list_all())[:1]
     if not configs:
         return ContinuityResponse(issues=[])
 
-    script = _EpisodeScript.model_validate(episode.script)
     llm_service = LLMService(encryption_key=settings.encryption_key)
     issues = await check_continuity(script=script, llm_service=llm_service, llm_config=configs[0])
     return ContinuityResponse(

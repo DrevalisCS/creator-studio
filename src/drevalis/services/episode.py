@@ -952,6 +952,31 @@ class EpisodeService:
     async def get_all_assets(self, episode_id: UUID) -> list[Any]:
         return list(await self._asset_repo.get_by_episode(episode_id))
 
+    async def get_latest_video_asset(self, episode_id: UUID) -> Any | None:
+        """Return the most recent ``video`` MediaAsset row, or None."""
+        video_assets = await self._asset_repo.get_by_episode_and_type(episode_id, "video")
+        return video_assets[-1] if video_assets else None
+
+    async def get_latest_thumbnail_asset(self, episode_id: UUID) -> Any | None:
+        thumbs = await self._asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
+        return thumbs[-1] if thumbs else None
+
+    async def update_asset_metadata(
+        self,
+        asset_id: UUID,
+        *,
+        file_size_bytes: int | None = None,
+        duration_seconds: float | None = None,
+    ) -> None:
+        kwargs: dict[str, Any] = {}
+        if file_size_bytes is not None:
+            kwargs["file_size_bytes"] = file_size_bytes
+        if duration_seconds is not None:
+            kwargs["duration_seconds"] = duration_seconds
+        if kwargs:
+            await self._asset_repo.update(asset_id, **kwargs)
+            await self._db.commit()
+
     # ── Custom thumbnail upload ────────────────────────────────────
 
     async def replace_thumbnail_asset(
