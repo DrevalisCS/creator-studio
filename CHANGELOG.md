@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.13] - 2026-04-30
+
+### Added
+
+- **F-Tst-02 follow-up** — 14 new tests for
+  ``PipelineOrchestrator`` lifecycle helpers
+  (``test_pipeline_lifecycle.py``):
+
+  - ``_check_cancelled`` — Redis cancel-key handling: missing key
+    returns silently, empty bytes are treated as falsy (no false
+    cancellation), any truthy value raises ``CancelledError``.
+  - ``_clear_cancel_flag`` — deletes the episode-specific key,
+    swallows Redis exceptions so cleanup never masks the
+    cancellation itself.
+  - ``_handle_step_failure`` — pins the contract that on step
+    failure the job row is marked ``failed`` with truncated error
+    message + incremented retry count, the episode mirrors the
+    error with a step prefix, ``db.commit`` is awaited, the
+    broadcast carries ``status="failed"`` plus the auto-suggestion
+    in ``detail.suggestion``, an explicit ``suggestion`` argument
+    overrides the auto-mapper, and a DB failure during write does
+    NOT block the user-facing broadcast (otherwise the UI sticks
+    at "running"). Retry-count carry-forward also pinned.
+
+  Total suite: 775 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.12] - 2026-04-30
 
 ### Added
