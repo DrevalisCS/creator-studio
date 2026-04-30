@@ -268,10 +268,16 @@ function EpisodesList() {
   // raw list once means each tab render reads from a constant-time map
   // instead of running .filter four times per render.
   const statusCounts = useMemo(() => {
-    const counts: Record<string, number> = { draft: 0, generating: 0, review: 0, exported: 0, failed: 0 };
+    const counts: Record<string, number> = {
+      draft: 0,
+      generating: 0,
+      review: 0,
+      exported: 0,
+      failed: 0,
+    };
     for (const ep of episodesList) {
       const k = ep.status ?? '';
-      if (k in counts) counts[k] += 1;
+      if (k in counts) counts[k] = (counts[k] ?? 0) + 1;
     }
     return counts;
   }, [episodesList]);
@@ -343,14 +349,9 @@ function EpisodesList() {
     }
   };
 
-  // Count drafts for the "Generate All Draft" button
-  const draftCount = episodesList.filter((ep) => ep.status === 'draft').length;
-
-  // Status counts for tab badges
-  const statusCounts: Record<string, number> = {};
-  for (const ep of episodesList) {
-    statusCounts[ep.status] = (statusCounts[ep.status] ?? 0) + 1;
-  }
+  // Count drafts for the "Generate All Draft" button (reads from the
+  // memoised counts above instead of running another .filter pass).
+  const draftCount = statusCounts.draft ?? 0;
 
   if (loading) {
     return (

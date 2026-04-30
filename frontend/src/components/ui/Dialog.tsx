@@ -65,8 +65,8 @@ function Dialog({
       panelRef.current.focus();
       return;
     }
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
+    const first = focusables[0]!;
+    const last = focusables[focusables.length - 1]!;
     const active = document.activeElement as HTMLElement | null;
     if (e.shiftKey && (active === first || active === panelRef.current)) {
       e.preventDefault();
