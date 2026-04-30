@@ -1,10 +1,15 @@
-"""Audiobooks API router -- CRUD, generation, cover image upload, and AI script generation."""
+"""Audiobooks API router — CRUD, generation, cover image upload, and AI
+script generation.
+
+Layering: this router calls ``AudiobookAdminService`` (route
+orchestration) + the existing ``AudiobookService`` (heavy generation
+helpers) only. No repository imports here (audit F-A-01).
+"""
 
 from __future__ import annotations
 
-import json
+import io
 import re
-import shutil
 from pathlib import Path
 from typing import Any
 from uuid import UUID, uuid4
@@ -12,24 +17,32 @@ from uuid import UUID, uuid4
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel, Field
-from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
-from drevalis.core.redis import get_arq_pool, get_pool
-from drevalis.repositories.audiobook import AudiobookRepository
-from drevalis.repositories.voice_profile import VoiceProfileRepository
+from drevalis.core.exceptions import NotFoundError, ValidationError
 from drevalis.schemas.audiobook import (
     AudiobookCreate,
     AudiobookListResponse,
     AudiobookResponse,
     AudiobookUpdate,
 )
+from drevalis.services.audiobook_admin import (
+    AudiobookAdminService,
+    NoChannelSelectedError,
+)
 
 log = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/audiobooks", tags=["audiobooks"])
+
+
+def _service(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> AudiobookAdminService:
+    return AudiobookAdminService(db, settings.storage_base_path)
 
 
 # ── AI Script Generation schemas ───────────────────────────────────────
@@ -53,9 +66,6 @@ class AudiobookScriptResponse(BaseModel):
     estimated_minutes: float
 
 
-# ── AI Script Generation endpoint (async via arq) ─────────────────────
-
-
 class ScriptJobResponse(BaseModel):
     job_id: str
     status: str
@@ -68,6 +78,9 @@ class ScriptJobStatusResponse(BaseModel):
     error: str | None = None
 
 
+# ── AI Script Generation endpoints ─────────────────────────────────────
+
+
 @router.post(
     "/generate-script",
     response_model=ScriptJobResponse,
@@ -76,36 +89,18 @@ class ScriptJobStatusResponse(BaseModel):
 )
 async def generate_audiobook_script(
     payload: AudiobookScriptRequest,
-    settings: Settings = Depends(get_settings),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> ScriptJobResponse:
-    """Enqueue an LLM job to generate a full audiobook script.
-
-    Returns immediately with a ``job_id``.  Poll
-    ``GET /api/v1/audiobooks/script-job/{job_id}`` for the result.
-    """
-    job_id = str(uuid4())
-
-    redis_client: Redis = Redis(connection_pool=get_pool())
-    try:
-        await redis_client.set(f"script_job:{job_id}:status", "generating", ex=3600)
-        await redis_client.set(
-            f"script_job:{job_id}:input",
-            json.dumps(payload.model_dump()),
-            ex=3600,
-        )
-
-        arq = get_arq_pool()
-        await arq.enqueue_job("generate_script_async", job_id, payload.model_dump())
-    finally:
-        await redis_client.aclose()
-
+    """Enqueue an LLM job to generate a full audiobook script. Returns
+    immediately with a ``job_id``; poll
+    ``GET /api/v1/audiobooks/script-job/{job_id}`` for the result."""
+    job_id = await svc.enqueue_script_job(payload.model_dump())
     log.info(
         "audiobook.script.job_enqueued",
         job_id=job_id,
         concept_length=len(payload.concept),
         target_minutes=payload.target_minutes,
     )
-
     return ScriptJobResponse(job_id=job_id, status="generating")
 
 
@@ -115,40 +110,23 @@ async def generate_audiobook_script(
     status_code=status.HTTP_200_OK,
     summary="Poll for script generation job status",
 )
-async def get_script_job(job_id: str) -> ScriptJobStatusResponse:
-    """Return the current status (and result when done) of a script job."""
-    redis_client: Redis = Redis(connection_pool=get_pool())
+async def get_script_job(
+    job_id: str,
+    svc: AudiobookAdminService = Depends(_service),
+) -> ScriptJobStatusResponse:
     try:
-        raw_status = await redis_client.get(f"script_job:{job_id}:status")
-        if not raw_status:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found",
-            )
-
-        job_status = raw_status if isinstance(raw_status, str) else raw_status.decode()
-
-        result: AudiobookScriptResponse | None = None
-        error: str | None = None
-
-        if job_status == "done":
-            result_json = await redis_client.get(f"script_job:{job_id}:result")
-            if result_json:
-                raw = result_json if isinstance(result_json, str) else result_json.decode()
-                result = AudiobookScriptResponse.model_validate(json.loads(raw))
-        elif job_status == "failed":
-            raw_error = await redis_client.get(f"script_job:{job_id}:error")
-            if raw_error:
-                error = raw_error if isinstance(raw_error, str) else raw_error.decode()
-
-        return ScriptJobStatusResponse(
-            job_id=job_id,
-            status=job_status,
-            result=result,
-            error=error,
-        )
-    finally:
-        await redis_client.aclose()
+        job = await svc.get_script_job(job_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found") from exc
+    result_obj: AudiobookScriptResponse | None = None
+    if job["result"] is not None:
+        result_obj = AudiobookScriptResponse.model_validate(job["result"])
+    return ScriptJobStatusResponse(
+        job_id=job_id,
+        status=job["status"],
+        result=result_obj,
+        error=job["error"],
+    )
 
 
 @router.post(
@@ -156,21 +134,14 @@ async def get_script_job(job_id: str) -> ScriptJobStatusResponse:
     status_code=status.HTTP_200_OK,
     summary="Cancel a script generation job",
 )
-async def cancel_script_job(job_id: str) -> dict[str, str]:
-    """Mark a script generation job as cancelled."""
-    redis_client: Redis = Redis(connection_pool=get_pool())
+async def cancel_script_job(
+    job_id: str,
+    svc: AudiobookAdminService = Depends(_service),
+) -> dict[str, str]:
     try:
-        existing = await redis_client.get(f"script_job:{job_id}:status")
-        if not existing:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Job not found",
-            )
-        await redis_client.set(f"script_job:{job_id}:status", "cancelled", ex=3600)
-    finally:
-        await redis_client.aclose()
-
-    log.info("audiobook.script.job_cancelled", job_id=job_id)
+        await svc.cancel_script_job(job_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Job not found") from exc
     return {"message": "Cancelled"}
 
 
@@ -178,11 +149,9 @@ async def cancel_script_job(job_id: str) -> dict[str, str]:
 
 
 class AudiobookAICreateRequest(BaseModel):
-    """Request body for the single-form AI audiobook creator.
-
-    The LLM writes the script, then TTS generates audio -- all in one
-    background job.
-    """
+    """Request body for the single-form AI audiobook creator. The LLM
+    writes the script, then TTS generates audio — all in one
+    background job."""
 
     concept: str = Field(..., min_length=10)
     characters: list[dict[str, Any]] = Field(
@@ -214,118 +183,21 @@ class AudiobookAICreateRequest(BaseModel):
 )
 async def create_ai_audiobook(
     payload: AudiobookAICreateRequest,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
-    """Create an AI audiobook: the LLM writes the script, then TTS generates
-    audio.  All heavy work runs in the background.
-
-    Returns immediately with the audiobook ID and ``generating`` status.
-    """
-    # 1. Build a title from the concept (first 50 chars)
-    title = payload.concept.strip()[:50].rstrip(".") + "..."
-
-    # 2. Build voice_casting dict from characters
-    # ALL characters get a voice — use explicit assignment or auto-assign by gender
-    voice_casting: dict[str, str] = {}
-    default_voice_id: str | None = None
-
-    # Get available voices for auto-assignment
-    vp_repo = VoiceProfileRepository(db)
-    all_voices = await vp_repo.get_all()
-    male_voices = [v for v in all_voices if getattr(v, "gender", None) == "male"]
-    female_voices = [v for v in all_voices if getattr(v, "gender", None) == "female"]
-
-    # Round-robin counters per gender. When the unique-voice pool is
-    # exhausted, the counter wraps so character N+pool_size gets a
-    # *different* voice from char 1 (instead of all of them collapsing
-    # onto pool[0] like the pre-fix code did).
-    gender_counters: dict[str, int] = {"male": 0, "female": 0}
-
-    for char in payload.characters:
-        vp_id = char.get("voice_profile_id")
-        if vp_id:
-            voice_casting[char["name"]] = vp_id
-            if not default_voice_id:
-                default_voice_id = vp_id
-        else:
-            # Auto-assign based on gender. Prefer voices not used by
-            # earlier characters; once every voice in the pool is
-            # claimed, rotate via ``count % len(pool)`` so subsequent
-            # characters cycle through different voices instead of
-            # all collapsing on pool[0].
-            gender = char.get("gender", "male")
-            pool = female_voices if gender == "female" else male_voices
-            if pool:
-                used_ids = set(voice_casting.values())
-                available = [v for v in pool if str(v.id) not in used_ids]
-                if available:
-                    chosen = available[0]
-                else:
-                    idx = gender_counters[gender] % len(pool)
-                    chosen = pool[idx]
-                gender_counters[gender] += 1
-                voice_casting[char["name"]] = str(chosen.id)
-                if not default_voice_id:
-                    default_voice_id = str(chosen.id)
-
-    if not default_voice_id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No voice profiles available. Create voice profiles first.",
-        )
-
-    # Validate the default voice profile exists
-    vp_repo = VoiceProfileRepository(db)
-    voice_profile = await vp_repo.get_by_id(UUID(default_voice_id))
-    if voice_profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VoiceProfile {default_voice_id} not found",
-        )
-
-    # Validate output_format
-    valid_formats = ("audio_only", "audio_image", "audio_video")
-    if payload.output_format not in valid_formats:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"output_format must be one of {valid_formats}",
-        )
-
-    # 3. Create audiobook record
-    repo = AudiobookRepository(db)
-    audiobook = await repo.create(
-        title=title,
-        text="",  # Will be filled by the LLM in the background job
-        voice_profile_id=UUID(default_voice_id),
-        status="generating",
-        output_format=payload.output_format,
-        voice_casting=voice_casting if voice_casting else None,
-        music_enabled=payload.music_enabled,
-        music_mood=payload.music_mood,
-        music_volume_db=payload.music_volume_db,
-        speed=payload.speed,
-        pitch=payload.pitch,
-        image_generation_enabled=payload.image_generation_enabled,
-    )
-    await db.commit()
-
-    # 4. Enqueue combined LLM + TTS job
-    arq = get_arq_pool()
-    await arq.enqueue_job("generate_ai_audiobook", str(audiobook.id), payload.model_dump())
-
-    log.info(
-        "audiobook.ai_create.enqueued",
-        audiobook_id=str(audiobook.id),
-        concept_length=len(payload.concept),
-        character_count=len(payload.characters),
-        target_minutes=payload.target_minutes,
-    )
-
+    """Create an AI audiobook: the LLM writes the script, then TTS
+    generates audio. All heavy work runs in the background. Returns
+    immediately with the audiobook ID and ``generating`` status."""
+    try:
+        audiobook = await svc.create_ai(payload)
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.detail) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
     return {
         "audiobook_id": str(audiobook.id),
         "status": "generating",
-        "title": title,
+        "title": audiobook.title,
     }
 
 
@@ -351,7 +223,6 @@ async def generate_audiobook_script_sync(
     )
 
     target_words = payload.target_minutes * 150
-
     char_list = "\n".join(f"- {c['name']}: {c['description']}" for c in payload.characters)
 
     system_prompt = """You are a professional audiobook scriptwriter.
@@ -415,11 +286,6 @@ Write the complete script now. Start with a title line, then ## Chapter 1, and c
     lines = script_text.split("\n")
     title = lines[0].strip().lstrip("#").strip() if lines else "Untitled"
     chapters = re.findall(r"^##\s+(.+)$", script_text, re.MULTILINE)
-    # Exclude ``[SFX:...]`` tags from the character list — those are
-    # sound effects routed through ``ComfyUIElevenLabsSoundEffectsProvider``,
-    # not voices. Pre-fix the auto-voice-assigner treated each SFX
-    # description as a separate "speaker" and wasted a voice profile
-    # on it.
     raw_tags = re.findall(r"^\[([^\]]+)\]", script_text, re.MULTILINE)
     characters_found = sorted(
         {t.strip() for t in raw_tags if not t.strip().lower().startswith("sfx")}
@@ -444,7 +310,7 @@ Write the complete script now. Start with a title line, then ## Chapter 1, and c
     )
 
 
-# ── List audiobooks ─────────────────────────────────────────────────────
+# ── List / Create ──────────────────────────────────────────────────────
 
 
 @router.get(
@@ -457,18 +323,10 @@ async def list_audiobooks(
     status_filter: str | None = Query(default=None, alias="status", description="Filter by status"),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> list[AudiobookListResponse]:
-    """Return all audiobooks, optionally filtered by status."""
-    repo = AudiobookRepository(db)
-    if status_filter is not None:
-        audiobooks = await repo.get_by_status(status_filter)
-    else:
-        audiobooks = await repo.get_all(offset=offset, limit=limit)
+    audiobooks = await svc.list_filtered(status_filter=status_filter, offset=offset, limit=limit)
     return [AudiobookListResponse.model_validate(a) for a in audiobooks]
-
-
-# ── Create audiobook ────────────────────────────────────────────────────
 
 
 @router.post(
@@ -479,52 +337,11 @@ async def list_audiobooks(
 )
 async def create_audiobook(
     payload: AudiobookCreate,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> AudiobookResponse:
-    """Create an audiobook record and enqueue the generation job.
-
-    The response is returned immediately with status ``generating``.
-    The actual TTS work runs asynchronously in the arq worker.
-    """
-    # Validate voice profile exists
-    vp_repo = VoiceProfileRepository(db)
-    voice_profile = await vp_repo.get_by_id(payload.voice_profile_id)
-    if voice_profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"VoiceProfile {payload.voice_profile_id} not found",
-        )
-
-    # Validate voice casting profiles exist (if provided)
-    if payload.voice_casting:
-        for speaker, vp_id in payload.voice_casting.items():
-            try:
-                from uuid import UUID as _UUID
-
-                cast_vp = await vp_repo.get_by_id(_UUID(vp_id))
-                if cast_vp is None:
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"VoiceProfile {vp_id} for speaker '{speaker}' not found",
-                    )
-            except ValueError:
-                raise HTTPException(
-                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                    detail=f"Invalid UUID '{vp_id}' for speaker '{speaker}'",
-                ) from None
-
-    # Validate output_format
-    valid_formats = ("audio_only", "audio_image", "audio_video")
-    if payload.output_format not in valid_formats:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"output_format must be one of {valid_formats}",
-        )
-
-    # Task 9: resolve preset + settings_override into the persisted blob.
-    # Validation happens here so an unknown override field is rejected
-    # at request time instead of mid-generation.
+    """Create an audiobook record and enqueue the generation job. The
+    response is returned immediately with status ``generating``; the
+    actual TTS work runs asynchronously in the arq worker."""
     from drevalis.schemas.audiobook import resolve_audiobook_settings
 
     try:
@@ -533,52 +350,18 @@ async def create_audiobook(
             overrides=payload.settings_override,
         )
         settings_blob: dict[str, Any] | None = resolved_settings.model_dump()
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail=f"Invalid audiobook settings: {exc}",
         ) from exc
 
-    repo = AudiobookRepository(db)
-    audiobook = await repo.create(
-        title=payload.title,
-        text=payload.text,
-        voice_profile_id=payload.voice_profile_id,
-        status="generating",
-        background_image_path=payload.background_image_path,
-        output_format=payload.output_format,
-        cover_image_path=payload.cover_image_path,
-        voice_casting=payload.voice_casting,
-        music_enabled=payload.music_enabled,
-        music_mood=payload.music_mood,
-        music_volume_db=payload.music_volume_db,
-        speed=payload.speed,
-        pitch=payload.pitch,
-        video_orientation=payload.video_orientation,
-        caption_style_preset=payload.caption_style_preset,
-        image_generation_enabled=payload.image_generation_enabled,
-        settings_json=settings_blob,
-    )
-    await db.commit()
-    await db.refresh(audiobook)
-
-    # Enqueue arq job for async generation
-    arq = get_arq_pool()
-    await arq.enqueue_job(
-        "generate_audiobook",
-        str(audiobook.id),
-        payload.generate_video,
-    )
-
-    log.info(
-        "audiobook.created",
-        audiobook_id=str(audiobook.id),
-        text_length=len(payload.text),
-        output_format=payload.output_format,
-        generate_video=payload.generate_video,
-        music_enabled=payload.music_enabled,
-        has_voice_casting=payload.voice_casting is not None,
-    )
+    try:
+        audiobook = await svc.create(payload, settings_blob)
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.detail) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
     return AudiobookResponse.model_validate(audiobook)
 
@@ -611,9 +394,6 @@ async def upload_cover_image(
             detail=f"File must be an image, got {file.content_type}",
         )
 
-    # Stream-read with an explicit cap so `file.read()` can't be used to
-    # exhaust process memory. `UploadFile` chunks into a SpooledTemporaryFile
-    # so memory usage stays bounded until we copy out.
     chunks: list[bytes] = []
     total = 0
     while True:
@@ -629,15 +409,11 @@ async def upload_cover_image(
         chunks.append(chunk)
     content = b"".join(chunks)
 
-    # Verify real image bytes (magic + structure) — rejects HTML polyglots
-    # and corrupt uploads. Fail fast before anything hits disk.
     try:
-        import io as _io
-
         from PIL import Image as _Image
         from PIL import UnidentifiedImageError as _UnidentifiedImageError
 
-        with _Image.open(_io.BytesIO(content)) as img:
+        with _Image.open(io.BytesIO(content)) as img:
             img.verify()
     except (_UnidentifiedImageError, Exception) as exc:  # noqa: BLE001
         raise HTTPException(
@@ -645,7 +421,6 @@ async def upload_cover_image(
             detail="Uploaded file is not a valid image.",
         ) from exc
 
-    # Generate a unique filename
     ext = Path(file.filename).suffix.lower() if file.filename else ".png"
     if ext not in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
         ext = ".png"
@@ -658,18 +433,16 @@ async def upload_cover_image(
     dest.write_bytes(content)
 
     rel_path = f"audiobooks/covers/{unique_name}"
-
     log.info(
         "audiobook.cover_uploaded",
         path=rel_path,
         size_bytes=len(content),
         content_type=file.content_type,
     )
-
     return {"cover_image_path": rel_path}
 
 
-# ── Get audiobook detail ────────────────────────────────────────────────
+# ── Get / Update / Update text ─────────────────────────────────────────
 
 
 @router.get(
@@ -680,20 +453,15 @@ async def upload_cover_image(
 )
 async def get_audiobook(
     audiobook_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> AudiobookResponse:
-    """Fetch a single audiobook by ID."""
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
+    try:
+        audiobook = await svc.get(audiobook_id)
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
     return AudiobookResponse.model_validate(audiobook)
-
-
-# ── Update audiobook ────────────────────────────────────────────────────
 
 
 @router.put(
@@ -705,28 +473,17 @@ async def get_audiobook(
 async def update_audiobook(
     audiobook_id: UUID,
     payload: AudiobookUpdate,
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> AudiobookResponse:
-    """Update an audiobook's title or status."""
-    repo = AudiobookRepository(db)
-    update_data = payload.model_dump(exclude_unset=True)
-    if not update_data:
+    try:
+        audiobook = await svc.update_metadata(audiobook_id, payload.model_dump(exclude_unset=True))
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.detail) from exc
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="No fields to update",
-        )
-    audiobook = await repo.update(audiobook_id, **update_data)
-    if audiobook is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-    await db.commit()
-    await db.refresh(audiobook)
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
     return AudiobookResponse.model_validate(audiobook)
-
-
-# ── Update audiobook text ──────────────────────────────────────────────
 
 
 class AudiobookTextUpdate(BaseModel):
@@ -742,34 +499,19 @@ class AudiobookTextUpdate(BaseModel):
 async def update_audiobook_text(
     audiobook_id: UUID,
     payload: AudiobookTextUpdate,
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> AudiobookResponse:
-    """Update the audiobook's text content. Does NOT regenerate audio.
-
-    The user can then manually trigger regeneration after editing.
-    """
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
+    """Update the audiobook's text content. Does NOT regenerate audio."""
+    try:
+        audiobook = await svc.update_text(audiobook_id, payload.text)
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-
-    audiobook = await repo.update(audiobook_id, text=payload.text)
-    await db.commit()
-    await db.refresh(audiobook)
-
-    log.info(
-        "audiobook.text_updated",
-        audiobook_id=str(audiobook_id),
-        text_length=len(payload.text),
-    )
-
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
     return AudiobookResponse.model_validate(audiobook)
 
 
-# ── Regenerate chapter ─────────────────────────────────────────────────
+# ── Regenerate chapter / chapter image ────────────────────────────────
 
 
 class ChapterRegeneratePayload(BaseModel):
@@ -785,48 +527,18 @@ async def regenerate_chapter(
     audiobook_id: UUID,
     chapter_index: int,
     payload: ChapterRegeneratePayload | None = None,
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
-    """Regenerate a single chapter's audio, then re-concatenate the full audiobook.
-
-    If ``text`` is provided in the payload, the chapter text is updated before
-    regeneration.  The response is returned immediately with status 202.
-    The actual work runs asynchronously in the arq worker.
-    """
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-
-    # Validate chapter index
-    if audiobook.chapters:
-        if chapter_index < 0 or chapter_index >= len(audiobook.chapters):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=f"chapter_index {chapter_index} is out of range (0..{len(audiobook.chapters) - 1})",
-            )
-
+    """Regenerate a single chapter's audio, then re-concatenate the full audiobook."""
     new_text = payload.text if payload else None
-
-    # Enqueue arq job
-    arq = get_arq_pool()
-    await arq.enqueue_job(
-        "regenerate_audiobook_chapter",
-        str(audiobook_id),
-        chapter_index,
-        new_text,
-    )
-
-    log.info(
-        "audiobook.regenerate_chapter.enqueued",
-        audiobook_id=str(audiobook_id),
-        chapter_index=chapter_index,
-        has_new_text=new_text is not None,
-    )
-
+    try:
+        await svc.regenerate_chapter(audiobook_id, chapter_index, new_text)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.detail) from exc
     return {
         "message": f"Chapter {chapter_index} regeneration enqueued",
         "audiobook_id": str(audiobook_id),
@@ -853,54 +565,19 @@ async def regenerate_chapter_image(
     audiobook_id: UUID,
     chapter_index: int,
     payload: ChapterImageRegeneratePayload | None = None,
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
-    """Regenerate a single chapter's image only.
-
-    Faster than the full chapter regen (which re-synthesizes audio +
-    re-assembles the audiobook). Only the ComfyUI image generation
-    runs; the audiobook video is NOT re-rendered, but the chapter's
-    ``image_path`` is updated so the next assembly picks it up.
-    """
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-    if audiobook.chapters:
-        if chapter_index < 0 or chapter_index >= len(audiobook.chapters):
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail=(
-                    f"chapter_index {chapter_index} is out of range "
-                    f"(0..{len(audiobook.chapters) - 1})"
-                ),
-            )
-    else:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Audiobook has no chapters yet",
-        )
-
+    """Regenerate a single chapter's image only. Faster than the full
+    chapter regen (no TTS, no reassembly)."""
     prompt_override = payload.prompt_override if payload else None
-
-    arq = get_arq_pool()
-    await arq.enqueue_job(
-        "regenerate_audiobook_chapter_image",
-        str(audiobook_id),
-        chapter_index,
-        prompt_override,
-    )
-
-    log.info(
-        "audiobook.regenerate_chapter_image.enqueued",
-        audiobook_id=str(audiobook_id),
-        chapter_index=chapter_index,
-        has_prompt_override=prompt_override is not None,
-    )
-
+    try:
+        await svc.regenerate_chapter_image(audiobook_id, chapter_index, prompt_override)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, exc.detail) from exc
     return {
         "message": f"Chapter {chapter_index} image regeneration enqueued",
         "audiobook_id": str(audiobook_id),
@@ -908,7 +585,7 @@ async def regenerate_chapter_image(
     }
 
 
-# ── Regenerate full audiobook ──────────────────────────────────────────
+# ── Voices / cancel / regenerate / remix ──────────────────────────────
 
 
 @router.put(
@@ -918,38 +595,21 @@ async def regenerate_chapter_image(
 )
 async def update_audiobook_voices(
     audiobook_id: UUID,
-    payload: dict[
-        str, Any
-    ],  # {"voice_casting": {"Narrator": "id", "Jack": "id"}, "regenerate": true}
-    db: AsyncSession = Depends(get_db),
+    payload: dict[str, Any],
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
     """Update voice assignments for an audiobook. Optionally regenerate audio."""
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
-        raise HTTPException(status_code=404, detail="Audiobook not found")
-
-    voice_casting = payload.get("voice_casting")
-    default_voice_id = payload.get("voice_profile_id")
-
-    updates: dict[str, Any] = {}
-    if voice_casting:
-        updates["voice_casting"] = voice_casting
-    if default_voice_id:
-        updates["voice_profile_id"] = UUID(default_voice_id)
-
-    if updates:
-        await repo.update(audiobook_id, **updates)
-        await db.commit()
-
-    # Optionally regenerate
-    if payload.get("regenerate", False):
-        await repo.update(audiobook_id, status="generating", error_message=None)
-        await db.commit()
-        arq = get_arq_pool()
-        await arq.enqueue_job("generate_audiobook", str(audiobook_id))
+    try:
+        regenerated = await svc.update_voices(
+            audiobook_id,
+            payload.get("voice_casting"),
+            payload.get("voice_profile_id"),
+            bool(payload.get("regenerate", False)),
+        )
+    except NotFoundError as exc:
+        raise HTTPException(404, "Audiobook not found") from exc
+    if regenerated:
         return {"message": "Voices updated and regeneration started", "status": "generating"}
-
     return {"message": "Voices updated"}
 
 
@@ -960,41 +620,23 @@ async def update_audiobook_voices(
 )
 async def cancel_audiobook(
     audiobook_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
-    """Set the cancel flag for a running audiobook generation.
-
-    The arq job inside ``AudiobookService.generate`` polls
-    ``cancel:audiobook:{id}`` between major steps (per-chapter TTS,
-    mixing, music, captions, video) and raises ``CancelledError`` on
-    a hit. The job handler catches that, marks the audiobook as
-    ``failed`` with ``Cancelled by user``, and clears the flag.
-
-    Returns immediately — actual cancellation lands at the next
-    step boundary (typically <30s during TTS, sub-second outside it).
-    """
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
+    """Set the cancel flag for a running audiobook generation. Returns
+    immediately — actual cancellation lands at the next step boundary."""
+    try:
+        new_status = await svc.cancel(audiobook_id)
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-    if audiobook.status != "generating":
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
+
+    if new_status != "cancel-signalled":
         return {
             "message": "Audiobook is not generating; nothing to cancel.",
             "audiobook_id": str(audiobook_id),
-            "status": audiobook.status,
+            "status": new_status,
         }
-
-    pool = get_pool()
-    redis = Redis(connection_pool=pool)
-    try:
-        await redis.set(f"cancel:audiobook:{audiobook_id}", "1", ex=3600)
-    finally:
-        await redis.aclose()
-
-    log.info("audiobook.cancel.signalled", audiobook_id=str(audiobook_id))
     return {
         "message": "Cancel signal sent. The job will stop at the next step boundary.",
         "audiobook_id": str(audiobook_id),
@@ -1013,44 +655,35 @@ async def music_preview(
     volume_db: float = Query(-14.0, ge=-30.0, le=0.0),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
     """Mix a short preview snippet so the user can hear the mood +
-    ducking behaviour before committing to a full generation run.
+    ducking behaviour before committing to a full generation run."""
+    from typing import cast
 
-    Reuses the audiobook's existing voiceover (``audiobook.wav``)
-    when one exists, or mixes against silence. Output written to
-    ``audiobooks/{id}/music_preview.wav`` and accessible via the
-    static ``/storage/`` mount.
-    """
+    from redis.asyncio import Redis
+
+    from drevalis.core.redis import get_pool
     from drevalis.services.audiobook import AudiobookService
     from drevalis.services.comfyui import ComfyUIPool, ComfyUIService
     from drevalis.services.ffmpeg import FFmpegService
     from drevalis.services.storage import LocalStorage
 
-    repo = AudiobookRepository(db)
-    ab = await repo.get_by_id(audiobook_id)
-    if ab is None:
+    try:
+        await svc.get(audiobook_id)
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
 
     storage = LocalStorage(base_path=settings.storage_base_path)
     pool = ComfyUIPool()
     await pool.sync_from_db(db)
     comfyui_svc = ComfyUIService(pool=pool, storage=storage) if pool._servers else None
 
-    pool_redis = get_pool()
-    redis = Redis(connection_pool=pool_redis)
+    redis = Redis(connection_pool=get_pool())
     try:
-        # render_music_preview only uses storage + ffmpeg + comfyui;
-        # the TTS service isn't touched on this code path. We pass
-        # ``None`` via a typing.cast through ``Any`` to avoid pulling
-        # the full Piper/ElevenLabs/Edge stack into the request just
-        # to mix a 30s preview.
-        from typing import cast
-
-        svc = AudiobookService(
+        ab_svc = AudiobookService(
             tts_service=cast(Any, None),
             ffmpeg_service=FFmpegService(),
             storage=storage,
@@ -1058,7 +691,7 @@ async def music_preview(
             comfyui_service=comfyui_svc,
             redis=redis,
         )
-        preview_path = await svc.render_music_preview(
+        preview_path = await ab_svc.render_music_preview(
             audiobook_id=audiobook_id,
             mood=mood,
             volume_db=volume_db,
@@ -1096,35 +729,15 @@ async def music_preview(
 )
 async def regenerate_audiobook(
     audiobook_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
-    """Regenerate the entire audiobook from its current text.
-
-    Marks the audiobook as ``generating`` and enqueues the job.
-    """
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
+    """Regenerate the entire audiobook from its current text."""
+    try:
+        await svc.regenerate(audiobook_id)
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-
-    await repo.update(audiobook_id, status="generating", error_message=None)
-    await db.commit()
-
-    arq = get_arq_pool()
-    await arq.enqueue_job(
-        "generate_audiobook",
-        str(audiobook_id),
-        False,
-    )
-
-    log.info(
-        "audiobook.regenerate.enqueued",
-        audiobook_id=str(audiobook_id),
-    )
-
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
     return {
         "message": "Full audiobook regeneration enqueued",
         "audiobook_id": str(audiobook_id),
@@ -1140,51 +753,37 @@ async def list_clips(
     audiobook_id: UUID,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
-    """Return per-track clip lists + the current per-clip overrides.
+    """Return per-track clip lists + the current per-clip overrides."""
+    from typing import cast
 
-    The audiobook editor uses this to render its timeline. Clips are
-    discovered by walking the audiobook's storage directory; no
-    separate registry is persisted because the filename schema is
-    deterministic (see ``AudiobookService._CLIP_PATTERNS``).
-    """
     from drevalis.services.audiobook import AudiobookService
     from drevalis.services.ffmpeg import FFmpegService
     from drevalis.services.storage import LocalStorage
 
-    repo = AudiobookRepository(db)
-    ab = await repo.get_by_id(audiobook_id)
-    if ab is None:
+    try:
+        ab = await svc.get(audiobook_id)
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
 
     storage = LocalStorage(base_path=settings.storage_base_path)
-    from typing import cast
-
-    svc = AudiobookService(
+    ab_svc = AudiobookService(
         tts_service=cast(Any, None),
         ffmpeg_service=FFmpegService(),
         storage=storage,
         db_session=db,
         comfyui_service=None,
     )
-    payload = await svc.list_clips(audiobook_id)
+    payload = await ab_svc.list_clips(audiobook_id)
     overrides = (ab.track_mix or {}).get("clips") or {}
     payload["overrides"] = overrides
     return payload
 
 
 class TrackMixPayload(BaseModel):
-    """User-tweakable per-track mix offsets + per-clip overrides.
-
-    All fields optional; missing fields fall back to the existing
-    audiobook record value (or passthrough defaults). The ``clips``
-    field is the editor's per-clip override surface — keys are clip
-    IDs returned by ``GET /audiobooks/{id}/clips``.
-    """
-
     voice_db: float | None = Field(default=None, ge=-30, le=20)
     music_db: float | None = Field(default=None, ge=-30, le=20)
     sfx_db: float | None = Field(default=None, ge=-30, le=20)
@@ -1202,44 +801,15 @@ class TrackMixPayload(BaseModel):
 async def remix_audiobook(
     audiobook_id: UUID,
     payload: TrackMixPayload,
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
-    """Persist new ``track_mix`` settings and enqueue a remix job.
-
-    The remix path reuses every cached TTS / SFX / image asset and
-    only re-runs the concat + ducking + master loudnorm steps, so it
-    completes in seconds even on a multi-hour audiobook.
-    """
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
+    """Persist new ``track_mix`` settings and enqueue a remix job."""
+    try:
+        current_mix = await svc.remix(audiobook_id, payload.model_dump(exclude_none=True))
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-
-    # Merge new fields into the existing track_mix; never wipe
-    # per-clip overrides the editor will store under ``clips``.
-    current_mix: dict[str, Any] = dict(audiobook.track_mix or {})
-    delta = payload.model_dump(exclude_none=True)
-    current_mix.update(delta)
-
-    await repo.update(
-        audiobook_id,
-        status="generating",
-        error_message=None,
-        track_mix=current_mix,
-    )
-    await db.commit()
-
-    arq = get_arq_pool()
-    await arq.enqueue_job("generate_audiobook", str(audiobook_id), False)
-
-    log.info(
-        "audiobook.remix.enqueued",
-        audiobook_id=str(audiobook_id),
-        applied=list(delta.keys()),
-    )
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
     return {
         "message": "Remix enqueued",
         "audiobook_id": str(audiobook_id),
@@ -1247,7 +817,7 @@ async def remix_audiobook(
     }
 
 
-# ── Delete audiobook ────────────────────────────────────────────────────
+# ── Delete ─────────────────────────────────────────────────────────────
 
 
 @router.delete(
@@ -1257,38 +827,20 @@ async def remix_audiobook(
 )
 async def delete_audiobook(
     audiobook_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> None:
-    """Delete an audiobook record and clean up generated files."""
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
+    try:
+        await svc.delete(audiobook_id)
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-
-    # Clean up files on disk
-    audiobook_dir = settings.storage_base_path / "audiobooks" / str(audiobook_id)
-    if audiobook_dir.exists():
-        shutil.rmtree(audiobook_dir, ignore_errors=True)
-        log.info(
-            "audiobook.files_deleted",
-            audiobook_id=str(audiobook_id),
-            path=str(audiobook_dir),
-        )
-
-    await repo.delete(audiobook_id)
-    await db.commit()
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
 
 
-# ── YouTube upload ────────────────────────────────────────────────────
+# ── YouTube upload ─────────────────────────────────────────────────────
 
 
 class AudiobookYouTubeUploadRequest(BaseModel):
-    """Payload for uploading an audiobook video to YouTube."""
-
     title: str = Field(..., min_length=1, max_length=100)
     description: str = Field(default="", max_length=5000)
     tags: list[str] = Field(default_factory=list)
@@ -1305,46 +857,22 @@ async def upload_audiobook_to_youtube(
     payload: AudiobookYouTubeUploadRequest,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> dict[str, Any]:
-    """Upload the audiobook's video to YouTube.
-
-    Requires an active YouTube channel connection and a generated video
-    (``output_format`` must be ``audio_image`` or ``audio_video``).
-
-    Creates a :class:`YouTubeAudiobookUpload` record to track the upload.
-    """
+    """Upload the audiobook's video to YouTube. Requires an active
+    YouTube channel connection and a generated video (``output_format``
+    must be ``audio_image`` or ``audio_video``)."""
     from drevalis.api.routes.youtube import build_youtube_service
-    from drevalis.repositories.youtube import (
-        YouTubeAudiobookUploadRepository,
-        YouTubeChannelRepository,
-    )
 
-    # Build the YouTube service with env OR db-stored credentials.
-    # Raises 503 with a helpful message if neither source has keys set.
     yt_service = await build_youtube_service(settings, db)
 
-    # Validate audiobook exists and has a video FIRST so we can use its
-    # per-audiobook youtube_channel_id to resolve the channel (respects
-    # the multi-channel contract; falls back to single-channel install).
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-
-    channel_repo = YouTubeChannelRepository(db)
-    channel = None
-    # 1. Per-audiobook assignment.
-    if getattr(audiobook, "youtube_channel_id", None):
-        channel = await channel_repo.get_by_id(audiobook.youtube_channel_id)
-    # 2. Single-channel install: implicit pick.
-    if channel is None:
-        all_channels = await channel_repo.get_all_channels()
-        if len(all_channels) == 1:
-            channel = all_channels[0]
-    if channel is None:
+    try:
+        audiobook, channel, video_path = await svc.prepare_youtube_upload(audiobook_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, exc.detail) from exc
+    except NoChannelSelectedError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail={
@@ -1354,23 +882,8 @@ async def upload_audiobook_to_youtube(
                     "single YouTube channel so the target is unambiguous."
                 ),
             },
-        )
+        ) from exc
 
-    if not audiobook.video_path:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No video file found for this audiobook. "
-            "Generate with output_format 'audio_image' or 'audio_video' first.",
-        )
-
-    video_path = Path(settings.storage_base_path) / audiobook.video_path
-    if not video_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video file not found on disk",
-        )
-
-    # Refresh tokens if needed
     updated_tokens = await yt_service.refresh_tokens_if_needed(
         channel.access_token_encrypted or "",
         channel.refresh_token_encrypted,
@@ -1381,19 +894,13 @@ async def upload_audiobook_to_youtube(
             setattr(channel, key, value)
         await db.flush()
 
-    # Create an upload tracking record before the network call
-    upload_repo = YouTubeAudiobookUploadRepository(db)
-    upload = await upload_repo.create(
+    upload = await svc.create_youtube_upload_row(
         audiobook_id=audiobook_id,
         channel_id=channel.id,
         title=payload.title,
         privacy_status=payload.privacy_status,
-        upload_status="uploading",
     )
-    await db.commit()
-    await db.refresh(upload)
 
-    # Perform the upload
     try:
         result = await yt_service.upload_video(
             access_token_encrypted=channel.access_token_encrypted or "",
@@ -1406,31 +913,23 @@ async def upload_audiobook_to_youtube(
             privacy_status=payload.privacy_status,
             thumbnail_path=None,
         )
-
-        upload.youtube_video_id = result["video_id"]
-        upload.youtube_url = result["url"]
-        upload.upload_status = "done"
-        await db.commit()
-
+        await svc.record_youtube_upload_success(
+            upload, video_id=result["video_id"], url=result["url"]
+        )
         log.info(
             "audiobook.youtube_upload_success",
             audiobook_id=str(audiobook_id),
             video_id=result["video_id"],
             upload_id=str(upload.id),
         )
-
         return {
             "status": "done",
             "youtube_video_id": result["video_id"],
             "youtube_url": result["url"],
             "upload_id": str(upload.id),
         }
-
     except Exception as exc:
-        upload.upload_status = "failed"
-        upload.error_message = str(exc)[:1000]
-        await db.commit()
-
+        await svc.record_youtube_upload_failure(upload, str(exc))
         log.error(
             "audiobook.youtube_upload_failed",
             audiobook_id=str(audiobook_id),
@@ -1450,22 +949,15 @@ async def upload_audiobook_to_youtube(
 )
 async def list_audiobook_uploads(
     audiobook_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: AudiobookAdminService = Depends(_service),
 ) -> list[dict[str, Any]]:
     """Return all YouTube upload attempts for a given audiobook, newest first."""
-    from drevalis.repositories.youtube import YouTubeAudiobookUploadRepository
-
-    # Verify the audiobook exists first
-    repo = AudiobookRepository(db)
-    audiobook = await repo.get_by_id(audiobook_id)
-    if audiobook is None:
+    try:
+        uploads = await svc.list_youtube_uploads(audiobook_id)
+    except NotFoundError as exc:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Audiobook {audiobook_id} not found",
-        )
-
-    upload_repo = YouTubeAudiobookUploadRepository(db)
-    uploads = await upload_repo.get_by_audiobook(audiobook_id)
+            status.HTTP_404_NOT_FOUND, f"Audiobook {audiobook_id} not found"
+        ) from exc
 
     return [
         {
