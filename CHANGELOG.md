@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-04-30
+
+### Layering refactor (audit F-A-01) — complete
+
+Every file under `src/drevalis/api/routes/` now depends only on services.
+`grep -rE "from drevalis\.repositories" src/drevalis/api/routes/` returns
+zero matches across all 21 flat routes and all 4 monolith packages.
+
+Fourteen new or significantly-expanded services own ~7000 LOC of
+orchestration that previously lived in route handlers:
+
+- **New services**: `services/schedule.py`, `services/voice_profile.py`,
+  `services/runpod_orchestrator.py`, `services/license.py`,
+  `services/editor.py`, `services/series.py`, `services/social.py`,
+  `services/video_ingest.py`, `services/jobs.py`,
+  `services/audiobook_admin.py`, `services/youtube_admin.py`.
+- **Significantly expanded**: `services/episode.py` (~120 → ~1000 LOC,
+  ~30 methods covering full lifecycle, script editing, scene operations,
+  music tab, exports, thumbnail uploads, video edits, SEO orchestration,
+  publish-all, inpainting, continuity check).
+- **Re-used**: `services/llm_config.py`, `services/comfyui_admin.py`,
+  `services/api_key_store.py`, `services/character_pack.py`,
+  `services/asset.py`, `services/ab_test.py`,
+  `services/prompt_template.py`, `services/video_template.py`.
+
+Domain exceptions (~20 new) preserve the rich HTTP error shapes that
+the frontend and operators rely on (e.g. `youtube_key_decrypt_failed`
+503, `channel_cap_exceeded` 402, `series_field_locked` 409,
+`migration_missing` 500, `youtube_token_expired` 401,
+`channel_id_required` 400 with `connected_channels` list,
+`no_channel_selected` 400, `duplicate_create` 409,
+`license_server_not_configured` 400, `license_not_active` 400,
+`scope_missing` 403).
+
+Notable architectural decisions:
+
+- `services/audiobook_admin.py` and `services/youtube_admin.py` are
+  *route-orchestration* services distinct from the existing heavy
+  `services/audiobook.py` and `services/youtube.py` (the upstream API
+  clients). The worker keeps importing the heavy ones unchanged.
+- `services/runpod_orchestrator.py` wraps the GraphQL client at
+  `services/runpod.py` (same pattern).
+- The episodes monolith was layered in 3 phases: lifecycle (21
+  endpoints), music + export + thumbnail (10 endpoints), then
+  video-edit + SEO-LLM + publish-all + inpaint + continuity (~18
+  endpoints). Dead helpers (`_check_generation_slots`,
+  `_get_dynamic_max_slots`, `_PIPELINE_STEPS`) removed once their
+  EpisodeService equivalents covered every call site.
+
+All 630 unit tests pass throughout. `mypy --no-strict-optional`
+remains clean across the touched packages; `ruff check src/` passes.
+
 ### Added
 
 - `SESSION_SECRET` env var for the team-mode session cookie HMAC, decoupling
