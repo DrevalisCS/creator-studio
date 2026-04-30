@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import jwt
 import structlog
@@ -101,22 +101,38 @@ def verify_jwt(token: str, *, public_key_override_pem: str | None = None) -> Lic
     """
     public_keys = get_public_keys(public_key_override_pem)
 
+    # F-S-11 gradual tightening: peek at the unverified payload to see
+    # whether the token carries an ``aud`` claim. If yes, decode with
+    # ``audience=_EXPECTED_AUD`` so the value must match. If no (legacy
+    # token minted before the audience pin), decode WITHOUT audience
+    # checking. Skipping signature verification on the peek is safe —
+    # the real ``jwt.decode`` below verifies the signature, and an
+    # attacker can't forge a payload that round-trips both the legacy
+    # and new branches without the signing key.
+    try:
+        unverified = jwt.decode(token, options={"verify_signature": False})
+    except jwt.PyJWTError as exc:
+        raise LicenseVerificationError(f"malformed token: {exc}") from exc
+    has_aud = bool(unverified.get("aud"))
+
     last_err: Exception | None = None
     for key in public_keys:
         try:
-            payload = jwt.decode(
-                token,
-                key=key,
-                algorithms=["EdDSA"],
-                issuer=_EXPECTED_ISS,
-                audience=_EXPECTED_AUD,
-                options={
+            decode_kwargs: dict[str, Any] = {
+                "key": key,
+                "algorithms": ["EdDSA"],
+                "issuer": _EXPECTED_ISS,
+                "options": {
                     "require": ["iss", "sub", "exp", "nbf", "iat", "jti"],
-                    # Don't require ``aud`` yet — gradual tightening for
-                    # legacy tokens. See _EXPECTED_AUD comment above.
-                    "verify_aud": True,
+                    # ``verify_aud`` only fires when ``audience`` is also
+                    # provided. Disable for legacy tokens so PyJWT
+                    # doesn't trip on the absent claim.
+                    "verify_aud": has_aud,
                 },
-            )
+            }
+            if has_aud:
+                decode_kwargs["audience"] = _EXPECTED_AUD
+            payload = jwt.decode(token, **decode_kwargs)
             return LicenseClaims.model_validate(payload)
         except jwt.InvalidSignatureError as exc:
             last_err = exc

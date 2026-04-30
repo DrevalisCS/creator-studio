@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.7] - 2026-04-30
+
+### Fixed
+
+- **License verifier rejected legacy JWTs after v0.29.3** (user
+  report: ``Token is missing the "aud" claim``). The F-S-11 audience
+  pin passed ``audience=_EXPECTED_AUD`` to ``jwt.decode`` for every
+  token. PyJWT's actual semantics: when ``audience`` is set, a missing
+  ``aud`` claim raises ``MissingRequiredClaimError`` even if
+  ``"aud"`` isn't in ``options["require"]``. My v0.29.3 comment
+  ("legacy tokens accepted") was wrong about PyJWT's behavior — every
+  install that booted on a pre-audience-pin license JWT got bricked
+  back to the activation screen.
+
+  The fix peeks at the token via an unverified decode, checks for
+  the presence of an ``aud`` claim, then runs the real signature-
+  verifying decode with ``audience=_EXPECTED_AUD`` only when the
+  claim is present. Tokens minted with ``aud`` must still match the
+  expected value (the F-S-11 invariant); tokens without ``aud``
+  validate via the legacy path.
+
+  The unverified peek is safe: the second decode still verifies the
+  signature, and an attacker can't forge a payload that round-trips
+  both branches without the signing key.
+
+  License-server update to start minting tokens with ``aud=
+  "drevalis-creator-studio"`` is a separate follow-up (lives in the
+  gitignored ``license-server/`` repo). Once every legacy token has
+  expired, the verifier should bump
+  ``options["require"] = ["aud", ...]`` for full enforcement.
+
 ## [0.29.6] - 2026-04-30
 
 ### Added
