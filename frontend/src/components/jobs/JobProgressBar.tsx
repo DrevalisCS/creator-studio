@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import type { PipelineStep, ProgressMessage } from '@/types';
+import { useNow } from '@/lib/use-now';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -84,10 +85,12 @@ function JobProgressBar({
   // Track when progress last changed to detect "stale" / waiting states
   const lastProgressRef = useRef<string>('');
   const lastChangeRef = useRef<number>(Date.now());
-  const [isStale, setIsStale] = useState(false);
 
-  // Tick for elapsed time display
-  const [, setTick] = useState(0);
+  // Single shared 1-Hz tick rather than a per-instance setInterval.
+  // The Activity Monitor renders ~8 of these at once; collapsing the
+  // timers from N → 1 cuts the per-second React reconciliation work.
+  const now = useNow(1000);
+  const isStale = now - lastChangeRef.current > STALE_THRESHOLD_MS;
 
   // Serialize current progress for change detection
   const progressKey = JSON.stringify(
@@ -98,19 +101,8 @@ function JobProgressBar({
     if (progressKey !== lastProgressRef.current) {
       lastProgressRef.current = progressKey;
       lastChangeRef.current = Date.now();
-      setIsStale(false);
     }
   }, [progressKey]);
-
-  // Check staleness periodically + tick for elapsed time
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const timeSinceChange = Date.now() - lastChangeRef.current;
-      setIsStale(timeSinceChange > STALE_THRESHOLD_MS);
-      setTick((t) => t + 1);
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   // Determine overall progress
   const totalSteps = PIPELINE_STEPS.length;
