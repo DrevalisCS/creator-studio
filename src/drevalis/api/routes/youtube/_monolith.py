@@ -594,7 +594,7 @@ async def upload_episode(
             from drevalis.services.llm import (
                 LLMService,
                 OpenAICompatibleProvider,
-                _extract_json,
+                extract_json,
             )
 
             script_obj = EpisodeScript.model_validate(episode.script)
@@ -623,7 +623,7 @@ async def upload_episode(
                 max_tokens=1024,
                 json_mode=True,
             )
-            seo_data = _json.loads(_extract_json(result.content))
+            seo_data = _json.loads(extract_json(result.content))
 
             # Cache it in episode metadata
             new_meta = dict(episode_meta)

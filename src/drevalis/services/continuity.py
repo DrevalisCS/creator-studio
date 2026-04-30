@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from drevalis.schemas.script import EpisodeScript, SceneScript
-from drevalis.services.llm import LLMService, _extract_json
+from drevalis.services.llm import LLMService, extract_json
 
 
 @dataclass(frozen=True)
@@ -87,7 +87,7 @@ async def check_continuity(
 
     text = getattr(result, "content", None) or getattr(result, "text", "") or ""
     try:
-        data = _json.loads(_extract_json(text))
+        data = _json.loads(extract_json(text))
     except Exception:
         return []
 

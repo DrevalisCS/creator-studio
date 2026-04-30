@@ -32,7 +32,7 @@ async def generate_seo_async(ctx: dict[str, Any], episode_id: str) -> dict[str, 
     from drevalis.services.llm import (
         LLMService,
         OpenAICompatibleProvider,
-        _extract_json,
+        extract_json,
     )
 
     db = ctx["db"]
@@ -81,7 +81,7 @@ async def generate_seo_async(ctx: dict[str, Any], episode_id: str) -> dict[str, 
         system_prompt, user_prompt, temperature=0.7, max_tokens=1024, json_mode=True
     )
     try:
-        data = _json.loads(_extract_json(result.content))
+        data = _json.loads(extract_json(result.content))
     except Exception:
         data = {
             "title": episode.title,

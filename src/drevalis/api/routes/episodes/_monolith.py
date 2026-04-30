@@ -3430,7 +3430,7 @@ async def seo_variants(
     import json as _json
 
     from drevalis.repositories.llm_config import LLMConfigRepository
-    from drevalis.services.llm import LLMService, _extract_json
+    from drevalis.services.llm import LLMService, extract_json
 
     repo = EpisodeRepository(db)
     episode = await repo.get_by_id(episode_id)
@@ -3481,7 +3481,7 @@ async def seo_variants(
     )
     result = await provider.generate(system, user, temperature=0.8, max_tokens=1200, json_mode=True)
     try:
-        data = _json.loads(_extract_json(result.content))
+        data = _json.loads(extract_json(result.content))
     except Exception:
         data = {"titles": [], "thumbnail_prompts": [], "descriptions": []}
 

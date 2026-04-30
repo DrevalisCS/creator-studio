@@ -27,7 +27,7 @@ from drevalis.schemas.series import (
 from drevalis.services.llm import (
     LLMService,
     OpenAICompatibleProvider,
-    _extract_json,
+    extract_json,
 )
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -274,7 +274,7 @@ async def generate_series_sync(
             )
 
             raw = result.content
-            extracted = _extract_json(raw)
+            extracted = extract_json(raw)
             data = json.loads(extracted)
 
             # Validate minimum structure
@@ -605,7 +605,7 @@ async def add_episodes_ai(
                 max_tokens=2048,
                 json_mode=True,
             )
-            extracted = _extract_json(result.content)
+            extracted = extract_json(result.content)
             data = json.loads(extracted)
             if not isinstance(data, dict) or "episodes" not in data:
                 raise ValueError("Missing 'episodes' key")
@@ -697,7 +697,7 @@ async def suggest_trending_topics(
         system_prompt, user_prompt, temperature=0.8, max_tokens=2048, json_mode=True
     )
     try:
-        data = json.loads(_extract_json(result.content))
+        data = json.loads(extract_json(result.content))
     except Exception:
         data = {"topics": []}
 

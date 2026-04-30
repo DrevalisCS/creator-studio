@@ -55,7 +55,7 @@ async def generate_series_async(
         from drevalis.services.llm import (
             LLMService,
             OpenAICompatibleProvider,
-            _extract_json,
+            extract_json,
         )
 
         settings = Settings()
@@ -126,7 +126,7 @@ Each episode topic should be specific and actionable, not vague."""
                     )
 
                     raw = result.content
-                    extracted = _extract_json(raw)
+                    extracted = extract_json(raw)
                     data = json.loads(extracted)
 
                     if not isinstance(data, dict) or "name" not in data or "episodes" not in data:

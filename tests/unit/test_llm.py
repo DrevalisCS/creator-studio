@@ -11,7 +11,7 @@ import pytest
 from drevalis.services.llm import (
     LLMResult,
     LLMService,
-    _extract_json,
+    extract_json,
 )
 
 
@@ -61,48 +61,48 @@ def _make_llm_result(content: str) -> LLMResult:
 
 
 class TestExtractJson:
-    """Test _extract_json helper function."""
+    """Test extract_json helper function."""
 
-    def test_extract_json_from_markdown_fenced(self) -> None:
+    def testextract_json_from_markdown_fenced(self) -> None:
         text = '```json\n{"title": "Test", "scenes": []}\n```'
-        result = _extract_json(text)
+        result = extract_json(text)
         parsed = json.loads(result)
         assert parsed["title"] == "Test"
 
-    def test_extract_json_from_markdown_fenced_no_json_label(self) -> None:
+    def testextract_json_from_markdown_fenced_no_json_label(self) -> None:
         text = '```\n{"key": "value"}\n```'
-        result = _extract_json(text)
+        result = extract_json(text)
         parsed = json.loads(result)
         assert parsed["key"] == "value"
 
-    def test_extract_json_plain(self) -> None:
+    def testextract_json_plain(self) -> None:
         text = '{"title": "Plain JSON", "data": 42}'
-        result = _extract_json(text)
+        result = extract_json(text)
         parsed = json.loads(result)
         assert parsed["title"] == "Plain JSON"
         assert parsed["data"] == 42
 
-    def test_extract_json_with_leading_prose(self) -> None:
+    def testextract_json_with_leading_prose(self) -> None:
         text = 'Here is the JSON:\n{"title": "Extracted"}\n'
-        result = _extract_json(text)
+        result = extract_json(text)
         parsed = json.loads(result)
         assert parsed["title"] == "Extracted"
 
-    def test_extract_json_array(self) -> None:
+    def testextract_json_array(self) -> None:
         text = "Some text before [1, 2, 3] some after"
-        result = _extract_json(text)
+        result = extract_json(text)
         parsed = json.loads(result)
         assert parsed == [1, 2, 3]
 
-    def test_extract_json_nested_braces(self) -> None:
+    def testextract_json_nested_braces(self) -> None:
         text = '{"outer": {"inner": "value"}}'
-        result = _extract_json(text)
+        result = extract_json(text)
         parsed = json.loads(result)
         assert parsed["outer"]["inner"] == "value"
 
-    def test_extract_json_no_json_returns_stripped(self) -> None:
+    def testextract_json_no_json_returns_stripped(self) -> None:
         text = "No JSON here at all"
-        result = _extract_json(text)
+        result = extract_json(text)
         assert result == "No JSON here at all"
 
 

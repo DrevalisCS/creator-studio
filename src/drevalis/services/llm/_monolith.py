@@ -356,7 +356,7 @@ class LLMPool:
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
-def _extract_json(text: str) -> str:
+def extract_json(text: str) -> str:
     """Try to extract a JSON object or array from *text*.
 
     Handles common LLM quirks: markdown fences, leading prose, etc.
@@ -478,7 +478,7 @@ class LLMService:
             )
 
             raw = result.content
-            extracted = _extract_json(raw)
+            extracted = extract_json(raw)
 
             try:
                 parsed: dict[str, Any] = json.loads(extracted)
