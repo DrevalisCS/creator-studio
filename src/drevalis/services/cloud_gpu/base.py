@@ -122,3 +122,37 @@ class CloudGPUConfigError(CloudGPUProviderError):
 
     def __init__(self, *, provider: str, hint: str) -> None:
         super().__init__(provider=provider, status_code=503, detail=hint)
+
+
+def wrap_httpx_error(provider: str, action: str, exc: Exception) -> CloudGPUProviderError:
+    """Build a CloudGPUProviderError out of a raised httpx exception.
+
+    The raise-from-httpx.HTTPError boilerplate was duplicated 26x across
+    runpod / vastai / lambda_labs providers; centralising it ensures
+    every provider surfaces upstream status codes the same way and that
+    the UI gets one consistent shape to render.
+    """
+    status_code = 500
+    response = getattr(exc, "response", None)
+    if response is not None:
+        status_code = getattr(response, "status_code", 500)
+    return CloudGPUProviderError(
+        provider=provider,
+        status_code=status_code,
+        detail=f"Failed to {action}: {exc}",
+    )
+
+
+def wrap_provider_api_error(provider: str, exc: Any) -> CloudGPUProviderError:
+    """Build a CloudGPUProviderError from a provider-specific API exception.
+
+    Use for upstream-SDK exception classes (e.g. RunPodAPIError) that
+    already expose ``status_code`` and ``detail`` attributes — the
+    helper just lifts them onto our shared error type so callers don't
+    repeat the same construction boilerplate at every call site.
+    """
+    return CloudGPUProviderError(
+        provider=provider,
+        status_code=int(getattr(exc, "status_code", 500) or 500),
+        detail=str(getattr(exc, "detail", "") or str(exc)),
+    )
