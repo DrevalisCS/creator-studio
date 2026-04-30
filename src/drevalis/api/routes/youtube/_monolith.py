@@ -1,9 +1,16 @@
-"""YouTube integration API routes — OAuth, upload, and status."""
+"""YouTube integration API routes — OAuth, upload, playlists, analytics.
+
+Layering: this router calls ``YouTubeAdminService`` (route
+orchestration) + the existing ``YouTubeService`` (upstream API client)
+only. No repository imports here (audit F-A-01).
+
+The module-level ``build_youtube_service`` re-export is kept because
+the audiobooks route imports it directly.
+"""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any, cast
 from uuid import UUID, uuid4
 
@@ -14,13 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_redis, get_settings
-from drevalis.repositories.episode import EpisodeRepository
-from drevalis.repositories.media_asset import MediaAssetRepository
-from drevalis.repositories.youtube import (
-    YouTubeChannelRepository,
-    YouTubePlaylistRepository,
-    YouTubeUploadRepository,
-)
+from drevalis.core.exceptions import NotFoundError, ValidationError
 from drevalis.schemas.youtube import (
     PlaylistAddVideo,
     PlaylistCreate,
@@ -39,60 +40,47 @@ from drevalis.services.youtube import (
     YouTubeService,
     fetch_token_scopes,
 )
+from drevalis.services.youtube_admin import (
+    ChannelCapExceededError,
+    MultipleChannelsAmbiguousError,
+    NoChannelConnectedError,
+    TokenRefreshError,
+    YouTubeAdminService,
+    YouTubeNotConfiguredError,
+)
+from drevalis.services.youtube_admin import (
+    build_youtube_service as _build_youtube_service,
+)
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/youtube", tags=["youtube"])
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────
-
-
-async def _resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> tuple[str, str]:
-    """Resolve the YouTube OAuth client credentials.
-
-    Pre-v0.28.1 the resolution body lived inline here and the worker
-    ``publish_scheduled_posts`` path bypassed it entirely (read straight
-    from ``settings``), so DB-stored credentials were ignored when
-    publishing. The logic moved to ``services.integration_keys`` so
-    both call sites share the same env→DB-with-decrypt resolver.
-    """
-    from drevalis.services.integration_keys import resolve_youtube_credentials
-
-    return await resolve_youtube_credentials(settings, db)
-
-
+# Public re-export — audiobooks route imports this directly. Mapping
+# the YouTubeNotConfiguredError to HTTP happens here so callers get a
+# consistent 503 shape.
 async def build_youtube_service(settings: Settings, db: AsyncSession) -> YouTubeService:
-    """Build a YouTubeService, pulling credentials from env + DB store."""
-    client_id, client_secret = await _resolve_youtube_credentials(settings, db)
-    if not client_id or not client_secret:
-        # If there ARE rows in api_key_store for these names but we still
-        # ended up with blanks, decryption failed — ENCRYPTION_KEY was
-        # rotated or the rows came from a backup made with a different
-        # key. Surface that specifically.
-        from drevalis.repositories.api_key_store import ApiKeyStoreRepository
-
-        repo = ApiKeyStoreRepository(db)
-        has_id_row = await repo.get_by_key_name("youtube_client_id") is not None
-        has_secret_row = await repo.get_by_key_name("youtube_client_secret") is not None
-        if has_id_row or has_secret_row:
+    try:
+        return await _build_youtube_service(settings, db)
+    except YouTubeNotConfiguredError as exc:
+        if exc.has_id_row or exc.has_secret_row:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
                 detail={
                     "error": "youtube_key_decrypt_failed",
                     "hint": (
-                        "YouTube keys ARE stored in the DB but can't be "
-                        "decrypted with the current ENCRYPTION_KEY. This "
-                        "usually means a backup was restored onto a "
-                        "different encryption key. Either restore the "
-                        "original ENCRYPTION_KEY in your .env, or delete "
-                        "the old keys under Settings → API Keys and "
+                        "YouTube keys ARE stored in the DB but can't be decrypted "
+                        "with the current ENCRYPTION_KEY. This usually means a "
+                        "backup was restored onto a different encryption key. "
+                        "Either restore the original ENCRYPTION_KEY in your .env, "
+                        "or delete the old keys under Settings → API Keys and "
                         "re-enter them so they're re-encrypted."
                     ),
-                    "id_stored": has_id_row,
-                    "secret_stored": has_secret_row,
+                    "id_stored": exc.has_id_row,
+                    "secret_stored": exc.has_secret_row,
                 },
-            )
+            ) from exc
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=(
@@ -101,34 +89,30 @@ async def build_youtube_service(settings: Settings, db: AsyncSession) -> YouTube
                 "file, OR add them via Settings → Integrations → YouTube "
                 "(they'll be Fernet-encrypted at rest)."
             ),
-        )
-    return YouTubeService(
-        client_id=client_id,
-        client_secret=client_secret,
-        redirect_uri=settings.youtube_redirect_uri,
-        encryption_key=settings.encryption_key,
-    )
+        ) from exc
 
 
-def _get_youtube_service(settings: Settings) -> YouTubeService:
-    """Legacy sync wrapper — kept only for callers that haven't been
-    converted to the async resolver yet. Ignores the DB-stored keys;
-    new code should call ``build_youtube_service(settings, db)``.
-    """
-    if not settings.youtube_client_id or not settings.youtube_client_secret:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "YouTube integration is not configured. Set "
-                "YOUTUBE_CLIENT_ID + YOUTUBE_CLIENT_SECRET in your .env, "
-                "OR add them via Settings → Integrations → YouTube."
+def _service(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> YouTubeAdminService:
+    return YouTubeAdminService(db, settings)
+
+
+def _ambiguous_channel_400(exc: MultipleChannelsAmbiguousError) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail={
+            "error": "channel_id_required",
+            "reason": (
+                "Multiple YouTube channels are connected. Pass "
+                "?channel_id=<uuid> to specify which channel this operation targets."
             ),
-        )
-    return YouTubeService(
-        client_id=settings.youtube_client_id,
-        client_secret=settings.youtube_client_secret,
-        redirect_uri=settings.youtube_redirect_uri,
-        encryption_key=settings.encryption_key,
+            "connected_channels": [
+                {"id": str(c.id), "channel_id": c.channel_id, "name": c.channel_name}
+                for c in exc.channels
+            ],
+        },
     )
 
 
@@ -175,14 +159,9 @@ async def oauth_callback(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     redis: Redis = Depends(get_redis),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> YouTubeChannelResponse:
-    """Exchange the OAuth authorization code for tokens, store channel info.
-
-    Validates that ``state`` was issued by this install (via Redis lookup).
-    Rejects callbacks where ``state`` is missing, unknown, or already
-    consumed — these indicate either a forged/replayed flow or a stale
-    browser tab, neither of which should be allowed to bind a channel.
-    """
+    """Exchange the OAuth authorization code for tokens, store channel info."""
     if not state:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -190,7 +169,6 @@ async def oauth_callback(
         )
     state_key = f"youtube_oauth_state:{state}"
     try:
-        # GETDEL is atomic — prevents state reuse (double-submit replay).
         stored = await redis.getdel(state_key)
     except Exception as exc:
         logger.error("youtube_oauth_state_lookup_failed", exc_info=True)
@@ -204,10 +182,9 @@ async def oauth_callback(
             detail="Invalid or expired OAuth state; retry the connect flow.",
         )
 
-    svc = await build_youtube_service(settings, db)
-
+    yt_service = await build_youtube_service(settings, db)
     try:
-        channel_info = await svc.handle_callback(code, state=state)
+        channel_info = await yt_service.handle_callback(code, state=state)
     except Exception as exc:
         logger.error("youtube_oauth_callback_failed", exc_info=True)
         raise HTTPException(
@@ -215,63 +192,22 @@ async def oauth_callback(
             detail="OAuth callback failed. Check server logs for details.",
         ) from exc
 
-    repo = YouTubeChannelRepository(db)
-
-    # Check if this channel already exists.
-    existing = await repo.get_by_channel_id(channel_info["channel_id"])
-    if existing:
-        existing.channel_name = channel_info["channel_name"]
-        existing.access_token_encrypted = channel_info["access_token_encrypted"]
-        existing.refresh_token_encrypted = channel_info["refresh_token_encrypted"]
-        existing.token_key_version = channel_info["token_key_version"]
-        existing.token_expiry = channel_info.get("token_expiry")
-        existing.is_active = True
-        await db.flush()
-        await db.refresh(existing)
-        channel = existing
-    else:
-        # Enforce tier-based YouTube channel cap before creating a new one.
-        # Re-connecting an already-linked channel is always allowed (above).
-        from drevalis.core.license.features import TIER_CHANNEL_CAP
-        from drevalis.core.license.state import get_state as _get_license_state
-
-        _lic = _get_license_state()
-        if _lic.is_usable and _lic.claims is not None:
-            cap = TIER_CHANNEL_CAP.get(_lic.claims.tier, 1)
-            existing_count = len(await repo.get_all_channels())
-            if existing_count >= cap:
-                raise HTTPException(
-                    status_code=status.HTTP_402_PAYMENT_REQUIRED,
-                    detail={
-                        "error": "channel_cap_exceeded",
-                        "tier": _lic.claims.tier,
-                        "limit": cap,
-                        "hint": "Upgrade tier to connect more YouTube channels.",
-                    },
-                )
-
-        channel = await repo.create(
-            channel_id=channel_info["channel_id"],
-            channel_name=channel_info["channel_name"],
-            access_token_encrypted=channel_info["access_token_encrypted"],
-            refresh_token_encrypted=channel_info["refresh_token_encrypted"],
-            token_key_version=channel_info["token_key_version"],
-            token_expiry=channel_info.get("token_expiry"),
-            is_active=True,
-        )
-
-    await db.commit()
-    await db.refresh(channel)
-
-    logger.info(
-        "youtube_channel_connected",
-        channel_id=channel.channel_id,
-        channel_name=channel.channel_name,
-    )
+    try:
+        channel = await admin.upsert_oauth_channel(channel_info)
+    except ChannelCapExceededError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail={
+                "error": "channel_cap_exceeded",
+                "tier": exc.tier,
+                "limit": exc.limit,
+                "hint": "Upgrade tier to connect more YouTube channels.",
+            },
+        ) from exc
     return YouTubeChannelResponse.model_validate(channel)
 
 
-# ── Connection status ────────────────────────────────────────────────────
+# ── Connection status / channels ─────────────────────────────────────────
 
 
 @router.get(
@@ -281,25 +217,15 @@ async def oauth_callback(
     summary="Check YouTube connection status",
 )
 async def connection_status(
-    db: AsyncSession = Depends(get_db),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> YouTubeConnectionStatus:
-    """Return whether a YouTube channel is connected and its basic info."""
-    repo = YouTubeChannelRepository(db)
-    all_channels = await repo.get_all_channels()
-    channel = await repo.get_active()
-
+    all_channels, active = await admin.connection_status()
     if not all_channels:
         return YouTubeConnectionStatus(connected=False, channel=None, channels=[])
 
     channel_responses = [YouTubeChannelResponse.model_validate(c) for c in all_channels]
-    return YouTubeConnectionStatus(
-        connected=True,
-        channel=YouTubeChannelResponse.model_validate(channel) if channel else channel_responses[0],
-        channels=channel_responses,
-    )
-
-
-# ── Disconnect ───────────────────────────────────────────────────────────
+    primary = YouTubeChannelResponse.model_validate(active) if active else channel_responses[0]
+    return YouTubeConnectionStatus(connected=True, channel=primary, channels=channel_responses)
 
 
 @router.post(
@@ -309,55 +235,32 @@ async def connection_status(
 )
 async def disconnect(
     channel_id: UUID | None = Query(None, description="Specific channel to disconnect"),
-    db: AsyncSession = Depends(get_db),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> dict[str, str]:
-    """Remove a YouTube channel connection.
-
-    Destructive by design. When multiple channels are connected,
-    ``channel_id`` is REQUIRED so the operator can't accidentally
-    disconnect the wrong account via the UI's default state.
-    """
-    repo = YouTubeChannelRepository(db)
-
-    if channel_id:
-        channel = await repo.get_by_id(channel_id)
-    else:
-        all_channels = await repo.get_all_channels()
-        if len(all_channels) > 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={
-                    "error": "channel_id_required",
-                    "reason": (
-                        "Multiple channels are connected; disconnect is "
-                        "destructive, so the caller must specify which one. "
-                        "Pass ?channel_id=<uuid>."
-                    ),
-                    "connected_channels": [
-                        {"id": str(c.id), "name": c.channel_name} for c in all_channels
-                    ],
-                },
-            )
-        channel = all_channels[0] if all_channels else None
-
-    if channel is None:
+    """Remove a YouTube channel connection. Destructive by design — when
+    multiple channels are connected, ``channel_id`` is REQUIRED."""
+    try:
+        name = await admin.disconnect(channel_id)
+    except MultipleChannelsAmbiguousError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": "channel_id_required",
+                "reason": (
+                    "Multiple channels are connected; disconnect is destructive, "
+                    "so the caller must specify which one. Pass ?channel_id=<uuid>."
+                ),
+                "connected_channels": [
+                    {"id": str(c.id), "name": c.channel_name} for c in exc.channels
+                ],
+            },
+        ) from exc
+    except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="No YouTube channel found to disconnect",
-        )
-
-    # Wipe tokens and deactivate.
-    channel.access_token_encrypted = None
-    channel.refresh_token_encrypted = None
-    channel.token_expiry = None
-    channel.is_active = False
-    await db.commit()
-
-    logger.info(
-        "youtube_channel_disconnected",
-        channel_id=channel.channel_id,
-    )
-    return {"message": f"Disconnected YouTube channel: {channel.channel_name}"}
+        ) from exc
+    return {"message": f"Disconnected YouTube channel: {name}"}
 
 
 @router.get(
@@ -368,29 +271,13 @@ async def disconnect(
 )
 async def list_channels(
     include_inactive: bool = Query(
-        False,
-        description="Include channels that have been disconnected",
+        False, description="Include channels that have been disconnected"
     ),
-    db: AsyncSession = Depends(get_db),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> list[YouTubeChannelResponse]:
-    """Return connected YouTube channels.
-
-    By default only *active* (currently-connected) channels are returned.
-    A "disconnected" channel still exists in the database (so we can
-    preserve its upload history and re-upsert tokens on reconnect via the
-    OAuth callback), but it should not appear in the default list — the
-    UI would otherwise render stale, token-less rows that look broken.
-    Callers that genuinely need the full history (e.g. admin tooling)
-    can pass ``?include_inactive=true``.
-    """
-    repo = YouTubeChannelRepository(db)
-    channels = await repo.get_all_channels()
-    if not include_inactive:
-        channels = [c for c in channels if c.is_active]
+    """Return connected YouTube channels (active only by default)."""
+    channels = await admin.list_channels(include_inactive=include_inactive)
     return [YouTubeChannelResponse.model_validate(c) for c in channels]
-
-
-# ── Delete (full removal) ────────────────────────────────────────────────
 
 
 @router.delete(
@@ -400,27 +287,15 @@ async def list_channels(
 )
 async def delete_channel(
     channel_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> dict[str, str]:
-    """Hard-delete a channel row plus its cascaded upload history.
-
-    Differs from ``/disconnect`` which only wipes tokens and sets
-    ``is_active=False``. This endpoint is for operators who genuinely
-    want the channel (and all of its bookkeeping) gone — e.g. because
-    they connected the wrong Google account. Upload records pointing
-    at this channel cascade-delete via the FK constraint.
-    """
-    repo = YouTubeChannelRepository(db)
-    channel = await repo.get_by_id(channel_id)
-    if channel is None:
+    try:
+        name = await admin.delete_channel(channel_id)
+    except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"YouTube channel {channel_id} not found",
-        )
-    name = channel.channel_name
-    await db.delete(channel)
-    await db.commit()
-    logger.info("youtube_channel_deleted", channel_id=str(channel_id))
+        ) from exc
     return {"message": f"Deleted YouTube channel: {name}"}
 
 
@@ -433,26 +308,20 @@ async def delete_channel(
 async def update_channel(
     channel_id: UUID,
     payload: YouTubeChannelUpdate,
-    db: AsyncSession = Depends(get_db),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> YouTubeChannelResponse:
     """Update upload_days and upload_time for a channel."""
-    repo = YouTubeChannelRepository(db)
-    channel = await repo.get_by_id(channel_id)
-    if channel is None:
+    try:
+        channel = await admin.update_channel(channel_id, payload.model_dump(exclude_unset=True))
+    except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"YouTube channel {channel_id} not found",
-        )
-
-    updates = payload.model_dump(exclude_unset=True)
-    for key, value in updates.items():
-        setattr(channel, key, value)
-    await db.commit()
-    await db.refresh(channel)
+        ) from exc
     return YouTubeChannelResponse.model_validate(channel)
 
 
-# ── Delete video ─────────────────────────────────────────────────────────
+# ── Delete video on YouTube ──────────────────────────────────────────────
 
 
 @router.delete(
@@ -465,37 +334,38 @@ async def delete_video(
     channel_id: UUID = Query(..., description="Channel that owns the video"),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> dict[str, str]:
     """Delete a video from YouTube using the owning channel's tokens."""
-    svc = await build_youtube_service(settings, db)
-    channel_repo = YouTubeChannelRepository(db)
-    channel = await channel_repo.get_by_id(channel_id)
-    if channel is None:
-        raise HTTPException(status_code=404, detail="Channel not found")
+    yt_service = await build_youtube_service(settings, db)
+    try:
+        channel = await admin.resolve_channel(channel_id)
+    except NotFoundError as exc:
+        raise HTTPException(404, "Channel not found") from exc
 
-    # Refresh tokens if needed
-    updated = await svc.refresh_tokens_if_needed(
-        channel.access_token_encrypted or "",
-        channel.refresh_token_encrypted,
-        channel.token_expiry,
-    )
-    if updated:
-        for key, value in updated.items():
-            setattr(channel, key, value)
-        await db.flush()
+    try:
+        await admin.refresh_and_persist_tokens(channel, yt_service)
+    except TokenRefreshError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "error": "youtube_token_expired",
+                "reason": str(exc),
+                "hint": "Reconnect this channel via Settings -> YouTube.",
+            },
+        ) from exc
 
-    await svc.delete_video(
+    await yt_service.delete_video(
         channel.access_token_encrypted or "",
         channel.refresh_token_encrypted,
         channel.token_expiry,
         youtube_video_id,
     )
     await db.commit()
-
     return {"message": f"Deleted video {youtube_video_id}"}
 
 
-# ── Upload ───────────────────────────────────────────────────────────────
+# ── Episode upload ───────────────────────────────────────────────────────
 
 
 @router.post(
@@ -509,14 +379,11 @@ async def upload_episode(
     payload: YouTubeUploadRequest,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> YouTubeUploadResponse:
-    """Upload the episode's video to YouTube.
-
-    Requires an active YouTube channel connection.  The upload runs
-    asynchronously via ``asyncio.to_thread``.
-    """
-    # Demo mode: return a simulated successful upload instead of calling
-    # the real YouTube API (the demo install has no real OAuth tokens).
+    """Upload the episode's video to YouTube. Auto-generates SEO if not
+    cached, refreshes tokens, performs the upload, and best-effort adds
+    the video to the series playlist."""
     if settings.demo_mode:
         fake_id = "demo_" + episode_id.hex[:11]
         now = datetime.now(tz=UTC)
@@ -534,119 +401,30 @@ async def upload_episode(
             updated_at=now,
         )
 
-    svc = await build_youtube_service(settings, db)
+    yt_service = await build_youtube_service(settings, db)
 
-    # Validate episode exists.
-    ep_repo = EpisodeRepository(db)
-    episode = await ep_repo.get_by_id(episode_id)
-    if episode is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Episode {episode_id} not found",
+    try:
+        episode, channel, video_path = await admin.resolve_episode_upload_target(
+            episode_id, payload.channel_id
         )
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.detail) from exc
 
-    # Resolve YouTube channel: request override > series assignment.
-    channel_repo = YouTubeChannelRepository(db)
-    channel = None
-    if payload.channel_id:
-        channel = await channel_repo.get_by_id(payload.channel_id)
-    if channel is None and episode.series_id:
-        from drevalis.repositories.series import SeriesRepository
+    seo_data = await admin.get_or_generate_seo(episode)
 
-        series_repo = SeriesRepository(db)
-        series = await series_repo.get_by_id(episode.series_id)
-        if series and series.youtube_channel_id:
-            channel = await channel_repo.get_by_id(series.youtube_channel_id)
-    if channel is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No YouTube channel assigned to this series. "
-            "Assign a channel in the series settings or pass channel_id in the request.",
-        )
-
-    asset_repo = MediaAssetRepository(db)
-    video_assets = await asset_repo.get_by_episode_and_type(episode_id, "video")
-    if not video_assets:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No video asset found for this episode",
-        )
-
-    video_path = Path(settings.storage_base_path) / video_assets[-1].file_path
-    if not video_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Video file not found on disk",
-        )
-
-    # Auto-generate SEO-optimized metadata using LLM if not already cached.
-    seo_data: dict[str, Any] = {}
-    episode_meta = episode.metadata_ or {}
-    if isinstance(episode_meta, dict) and "seo" in episode_meta:
-        seo_data = episode_meta["seo"]
-    elif episode.script:
-        # Generate SEO on-the-fly
-        try:
-            import json as _json
-
-            from drevalis.repositories.llm_config import LLMConfigRepository
-            from drevalis.schemas.script import EpisodeScript
-            from drevalis.services.llm import (
-                LLMService,
-                OpenAICompatibleProvider,
-                extract_json,
-            )
-
-            script_obj = EpisodeScript.model_validate(episode.script)
-            narration = " ".join(s.narration for s in script_obj.scenes if s.narration)
-
-            configs = await LLMConfigRepository(db).get_all(limit=1)
-            if configs:
-                llm_svc = LLMService(encryption_key=settings.encryption_key)
-                provider = llm_svc.get_provider(configs[0])
-            else:
-                provider = OpenAICompatibleProvider(
-                    base_url=settings.lm_studio_base_url,
-                    model=settings.lm_studio_default_model,
-                )
-
-            seo_prompt = (
-                "You are a YouTube SEO expert. Generate optimized metadata. "
-                "Output ONLY valid JSON: "
-                '{"title": "SEO title (max 60 chars)", "description": "engaging description with keywords and hashtags (max 2000 chars)", '
-                '"hashtags": ["#tag1", "#tag2"], "tags": ["keyword1", "keyword2"]}'
-            )
-            result = await provider.generate(
-                seo_prompt,
-                f"Video title: {episode.title}\nContent: {narration[:1000]}\nGenerate SEO metadata:",
-                temperature=0.7,
-                max_tokens=1024,
-                json_mode=True,
-            )
-            seo_data = _json.loads(extract_json(result.content))
-
-            # Cache it in episode metadata
-            new_meta = dict(episode_meta)
-            new_meta["seo"] = seo_data
-            await ep_repo.update(episode_id, metadata_=new_meta)
-            await db.flush()
-            logger.info("seo_auto_generated_for_upload", episode_id=str(episode_id))
-        except Exception as exc:
-            logger.warning("seo_auto_generation_failed", error=str(exc)[:200])
-
-    # Use SEO data for upload, with payload overrides
     upload_title = payload.title or seo_data.get("title", episode.title)
     upload_description = payload.description or seo_data.get("description", "")
     upload_tags = payload.tags if payload.tags else seo_data.get("tags", [])
 
-    # Append hashtags to description
     seo_hashtags = seo_data.get("hashtags", [])
     if seo_hashtags and isinstance(seo_hashtags, list):
         hashtag_str = " ".join(h if h.startswith("#") else f"#{h}" for h in seo_hashtags)
         if hashtag_str and hashtag_str not in upload_description:
             upload_description = f"{upload_description}\n\n{hashtag_str}"
 
-    # Fallback to script data if no SEO
+    # Fallback to script data if SEO produced nothing.
     script = episode.script or {}
     if not upload_description and isinstance(script, dict):
         parts: list[str] = []
@@ -664,33 +442,16 @@ async def upload_episode(
             if hashtag_str:
                 parts.append(hashtag_str)
         upload_description = "\n\n".join(parts)
-
     if not upload_tags and isinstance(script, dict):
         script_hashtags = script.get("hashtags")
         if script_hashtags and isinstance(script_hashtags, list):
             upload_tags = [h.lstrip("#") for h in script_hashtags if isinstance(h, str)]
 
-    # Check for thumbnail.
-    thumb_path: Path | None = None
-    thumb_assets = await asset_repo.get_by_episode_and_type(episode_id, "thumbnail")
-    if thumb_assets:
-        candidate = Path(settings.storage_base_path) / thumb_assets[-1].file_path
-        if candidate.exists():
-            thumb_path = candidate
-
-    # Refresh tokens if needed. COMMIT immediately so a crash during the
-    # multi-minute upload_video call below doesn't lose the newly-minted
-    # token - Google has already rotated on their side, and the old one
-    # in-memory is stale once upload_video returns or errors.
-    from drevalis.services.youtube import YouTubeTokenExpiredError
+    thumb_path = await admin.get_thumbnail_path(episode_id)
 
     try:
-        updated_tokens = await svc.refresh_tokens_if_needed(
-            channel.access_token_encrypted or "",
-            channel.refresh_token_encrypted,
-            channel.token_expiry,
-        )
-    except YouTubeTokenExpiredError as exc:
+        await admin.refresh_and_persist_tokens(channel, yt_service, commit=True)
+    except TokenRefreshError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={
@@ -699,28 +460,17 @@ async def upload_episode(
                 "hint": "Reconnect this channel via Settings -> YouTube.",
             },
         ) from exc
-    if updated_tokens:
-        for key, value in updated_tokens.items():
-            setattr(channel, key, value)
-        await db.flush()
-        await db.commit()
 
-    # Create upload record.
-    upload_repo = YouTubeUploadRepository(db)
-    upload = await upload_repo.create(
+    upload = await admin.create_upload_row(
         episode_id=episode_id,
         channel_id=channel.id,
         title=upload_title,
         description=upload_description,
         privacy_status=payload.privacy_status,
-        upload_status="uploading",
     )
-    await db.commit()
-    await db.refresh(upload)
 
-    # Perform the upload.
     try:
-        upload_result = await svc.upload_video(
+        upload_result = await yt_service.upload_video(
             access_token_encrypted=channel.access_token_encrypted or "",
             refresh_token_encrypted=channel.refresh_token_encrypted,
             token_expiry=channel.token_expiry,
@@ -731,89 +481,27 @@ async def upload_episode(
             privacy_status=payload.privacy_status,
             thumbnail_path=thumb_path,
         )
-
-        upload.youtube_video_id = upload_result["video_id"]
-        upload.youtube_url = upload_result["url"]
-        upload.upload_status = "done"
-
-        # Update episode status to exported
-        await ep_repo.update_status(episode_id, "exported")
-
-        await db.commit()
-        await db.refresh(upload)
-
+        await admin.record_upload_success(
+            upload,
+            video_id=upload_result["video_id"],
+            url=upload_result["url"],
+            episode_id=episode_id,
+        )
         logger.info(
             "youtube_upload_success",
             episode_id=str(episode_id),
             video_id=upload_result["video_id"],
         )
 
-        # Auto-add to series playlist (create playlist if it doesn't exist)
-        try:
-            from drevalis.repositories.series import SeriesRepository
-
-            series_repo = SeriesRepository(db)
-            series = await series_repo.get_by_id(episode.series_id)
-            if series:
-                series_meta = series.metadata_ if hasattr(series, "metadata_") else {}
-                if not isinstance(series_meta, dict):
-                    series_meta = {}
-
-                playlist_id = series_meta.get("youtube_playlist_id")
-
-                if not playlist_id:
-                    # Create a new playlist for this series
-                    playlist_result = await svc.create_playlist(
-                        access_token_encrypted=channel.access_token_encrypted or "",
-                        refresh_token_encrypted=channel.refresh_token_encrypted,
-                        token_expiry=channel.token_expiry,
-                        title=series.name,
-                        description=series.description or f"Episodes from {series.name}",
-                        privacy_status=payload.privacy_status,
-                    )
-                    playlist_id = playlist_result.get("playlist_id", "")
-                    if playlist_id:
-                        # Store playlist ID in series metadata for reuse
-                        series_meta["youtube_playlist_id"] = playlist_id
-                        # Use raw SQL update to avoid model attribute issues
-                        import json as _json
-
-                        from sqlalchemy import text as sa_text
-
-                        await db.execute(
-                            sa_text("UPDATE series SET metadata = :meta WHERE id = :sid"),
-                            {"meta": _json.dumps(series_meta), "sid": str(series.id)},
-                        )
-                        await db.commit()
-                        logger.info(
-                            "youtube_playlist_created", series=series.name, playlist_id=playlist_id
-                        )
-
-                if playlist_id:
-                    # Add video to the playlist
-                    await svc.add_to_playlist(
-                        access_token_encrypted=channel.access_token_encrypted or "",
-                        refresh_token_encrypted=channel.refresh_token_encrypted,
-                        token_expiry=channel.token_expiry,
-                        playlist_id=playlist_id,
-                        video_id=upload_result["video_id"],
-                    )
-                    logger.info(
-                        "youtube_added_to_playlist",
-                        video_id=upload_result["video_id"],
-                        playlist_id=playlist_id,
-                    )
-
-        except Exception as playlist_exc:
-            # Non-fatal — video is uploaded, playlist is bonus
-            logger.warning("youtube_playlist_failed", error=str(playlist_exc)[:200])
-
+        await admin.auto_add_to_series_playlist(
+            yt_service=yt_service,
+            episode=episode,
+            channel=channel,
+            video_id=upload_result["video_id"],
+            privacy_status=payload.privacy_status,
+        )
     except Exception as exc:
-        upload.upload_status = "failed"
-        upload.error_message = str(exc)[:1000]
-        await db.commit()
-        await db.refresh(upload)
-
+        await admin.record_upload_failure(upload, str(exc))
         logger.error(
             "youtube_upload_failed",
             episode_id=str(episode_id),
@@ -839,91 +527,13 @@ async def upload_episode(
 )
 async def list_uploads(
     limit: int = Query(default=50, ge=1, le=200),
-    db: AsyncSession = Depends(get_db),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> list[YouTubeUploadListResponse]:
-    """Return the most recent YouTube upload records."""
-    repo = YouTubeUploadRepository(db)
-    uploads = await repo.get_recent(limit=limit)
+    uploads = await admin.list_uploads(limit)
     return [YouTubeUploadListResponse.model_validate(u) for u in uploads]
 
 
-# ── Playlist management ───────────────────────────────────────────────────
-
-
-def _require_active_channel(channel: Any | None) -> Any:
-    """Raise 400 if no active channel is connected.
-
-    Deprecated: prefer :func:`_resolve_channel` which respects the
-    multi-channel contract (several connected channels, operator
-    explicitly picks one).
-    """
-    if channel is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No YouTube channel connected. Please authorize first.",
-        )
-    return channel
-
-
-async def _resolve_channel(
-    repo: YouTubeChannelRepository,
-    channel_id: UUID | None,
-) -> Any:
-    """Resolve which YouTube channel a playlist / analytics call should
-    target.
-
-    Rules (in order):
-      1. If ``channel_id`` is supplied, look it up; 404 on miss.
-      2. Otherwise, if exactly one channel is connected, use it
-         implicitly - single-channel installs don't need to specify.
-      3. In demo mode, default to the first channel rather than 400
-         so casual clicks through the UI don't trip errors.
-      4. Otherwise, 400 with instructions to pass ``channel_id``.
-
-    Prevents the multi-channel foot-gun where a legacy call to
-    ``get_active()`` picked an arbitrary row and silently sent
-    playlist mutations to the wrong account.
-    """
-    if channel_id is not None:
-        ch = await repo.get_by_id(channel_id)
-        if ch is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"YouTube channel {channel_id} not found",
-            )
-        return ch
-    all_channels = await repo.get_all_channels()
-    if not all_channels:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="No YouTube channel connected. Please authorize first.",
-        )
-    if len(all_channels) == 1:
-        return all_channels[0]
-    # Demo mode: casual clicks to /youtube/playlists etc. without a
-    # channel_id shouldn't 400. Fall back to the first channel.
-    try:
-        from drevalis.core.deps import get_settings
-
-        if get_settings().demo_mode:
-            return all_channels[0]
-    except Exception:
-        pass
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail={
-            "error": "channel_id_required",
-            "reason": (
-                "Multiple YouTube channels are connected. Pass "
-                "?channel_id=<uuid> to specify which channel this "
-                "operation targets."
-            ),
-            "connected_channels": [
-                {"id": str(c.id), "channel_id": c.channel_id, "name": c.channel_name}
-                for c in all_channels
-            ],
-        },
-    )
+# ── Playlist management ──────────────────────────────────────────────────
 
 
 @router.post(
@@ -937,29 +547,39 @@ async def create_playlist(
     channel_id: UUID | None = None,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> PlaylistResponse:
     """Create a new playlist on the specified YouTube channel.
 
-    Pass ``?channel_id=<uuid>`` to target a specific channel. When only
-    one channel is connected, the parameter is optional.
+    Pass ``?channel_id=<uuid>`` to target a specific channel. With a
+    single connected channel the parameter is optional.
     """
-    svc = await build_youtube_service(settings, db)
-
-    channel_repo = YouTubeChannelRepository(db)
-    channel = await _resolve_channel(channel_repo, channel_id)
-
-    updated_tokens = await svc.refresh_tokens_if_needed(
-        channel.access_token_encrypted or "",
-        channel.refresh_token_encrypted,
-        channel.token_expiry,
-    )
-    if updated_tokens:
-        for key, value in updated_tokens.items():
-            setattr(channel, key, value)
-        await db.flush()
+    yt_service = await build_youtube_service(settings, db)
+    try:
+        channel = await admin.resolve_channel(channel_id)
+    except NoChannelConnectedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No YouTube channel connected. Please authorize first.",
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"YouTube channel {channel_id} not found",
+        ) from exc
+    except MultipleChannelsAmbiguousError as exc:
+        raise _ambiguous_channel_400(exc) from exc
 
     try:
-        yt_playlist = await svc.create_playlist(
+        await admin.refresh_and_persist_tokens(channel, yt_service)
+    except TokenRefreshError as exc:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            {"error": "youtube_token_expired", "reason": str(exc)},
+        ) from exc
+
+    try:
+        yt_playlist = await yt_service.create_playlist(
             access_token_encrypted=channel.access_token_encrypted or "",
             refresh_token_encrypted=channel.refresh_token_encrypted,
             token_expiry=channel.token_expiry,
@@ -974,8 +594,7 @@ async def create_playlist(
             detail=f"Failed to create playlist: {exc}",
         ) from exc
 
-    playlist_repo = YouTubePlaylistRepository(db)
-    playlist = await playlist_repo.create(
+    playlist = await admin.create_playlist_row(
         channel_id=channel.id,
         youtube_playlist_id=yt_playlist["playlist_id"],
         title=yt_playlist["title"],
@@ -983,9 +602,6 @@ async def create_playlist(
         privacy_status=yt_playlist["privacy_status"],
         item_count=yt_playlist["item_count"],
     )
-    await db.commit()
-    await db.refresh(playlist)
-
     logger.info(
         "youtube_playlist_created_local",
         playlist_db_id=str(playlist.id),
@@ -1002,18 +618,24 @@ async def create_playlist(
 )
 async def list_playlists(
     channel_id: UUID | None = None,
-    db: AsyncSession = Depends(get_db),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> list[PlaylistResponse]:
-    """Return all playlists stored locally for a channel.
+    try:
+        channel = await admin.resolve_channel(channel_id)
+    except NoChannelConnectedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No YouTube channel connected. Please authorize first.",
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"YouTube channel {channel_id} not found",
+        ) from exc
+    except MultipleChannelsAmbiguousError as exc:
+        raise _ambiguous_channel_400(exc) from exc
 
-    Pass ``?channel_id=<uuid>`` to scope to that channel. With a single
-    channel connected the parameter is optional.
-    """
-    channel_repo = YouTubeChannelRepository(db)
-    channel = await _resolve_channel(channel_repo, channel_id)
-
-    playlist_repo = YouTubePlaylistRepository(db)
-    playlists = await playlist_repo.get_by_channel(channel.id)
+    playlists = await admin.list_playlists_for_channel(channel.id)
     return [PlaylistResponse.model_validate(p) for p in playlists]
 
 
@@ -1027,45 +649,26 @@ async def add_video_to_playlist(
     payload: PlaylistAddVideo,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> dict[str, str]:
-    """Add a YouTube video to one of the managed playlists.
-
-    ``playlist_id`` is the local database UUID; the channel is inferred
-    from the playlist's ``channel_id`` so operators never have to pass
-    it alongside.
-    """
-    svc = await build_youtube_service(settings, db)
-
-    playlist_repo = YouTubePlaylistRepository(db)
-    playlist = await playlist_repo.get_by_id(playlist_id)
-    if playlist is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Playlist {playlist_id} not found",
-        )
-
-    # Resolve the channel from the playlist itself. Multi-channel safe:
-    # the playlist knows which account created it.
-    channel_repo = YouTubeChannelRepository(db)
-    channel = await channel_repo.get_by_id(playlist.channel_id)
-    if channel is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Channel {playlist.channel_id} for playlist not found",
-        )
-
-    updated_tokens = await svc.refresh_tokens_if_needed(
-        channel.access_token_encrypted or "",
-        channel.refresh_token_encrypted,
-        channel.token_expiry,
-    )
-    if updated_tokens:
-        for key, value in updated_tokens.items():
-            setattr(channel, key, value)
-        await db.flush()
+    """Add a YouTube video to one of the managed playlists."""
+    yt_service = await build_youtube_service(settings, db)
 
     try:
-        item = await svc.add_to_playlist(
+        playlist, channel = await admin.get_playlist_with_channel(playlist_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    try:
+        await admin.refresh_and_persist_tokens(channel, yt_service)
+    except TokenRefreshError as exc:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            {"error": "youtube_token_expired", "reason": str(exc)},
+        ) from exc
+
+    try:
+        item = await yt_service.add_to_playlist(
             access_token_encrypted=channel.access_token_encrypted or "",
             refresh_token_encrypted=channel.refresh_token_encrypted,
             token_expiry=channel.token_expiry,
@@ -1085,9 +688,7 @@ async def add_video_to_playlist(
             detail=f"Failed to add video to playlist: {exc}",
         ) from exc
 
-    # Increment local item count to keep it roughly in sync.
-    await playlist_repo.update(playlist_id, item_count=playlist.item_count + 1)
-    await db.commit()
+    await admin.increment_playlist_item_count(playlist)
 
     return {
         "message": "Video added to playlist",
@@ -1106,40 +707,26 @@ async def delete_playlist(
     playlist_id: UUID,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> dict[str, str]:
-    """Delete a playlist from YouTube and remove it from the local database.
-
-    Channel is inferred from the playlist's ``channel_id``.
-    """
-    svc = await build_youtube_service(settings, db)
-
-    playlist_repo = YouTubePlaylistRepository(db)
-    playlist = await playlist_repo.get_by_id(playlist_id)
-    if playlist is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Playlist {playlist_id} not found",
-        )
-    channel_repo = YouTubeChannelRepository(db)
-    channel = await channel_repo.get_by_id(playlist.channel_id)
-    if channel is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Channel {playlist.channel_id} for playlist not found",
-        )
-
-    updated_tokens = await svc.refresh_tokens_if_needed(
-        channel.access_token_encrypted or "",
-        channel.refresh_token_encrypted,
-        channel.token_expiry,
-    )
-    if updated_tokens:
-        for key, value in updated_tokens.items():
-            setattr(channel, key, value)
-        await db.flush()
+    """Delete a playlist from YouTube and remove it from the local database."""
+    yt_service = await build_youtube_service(settings, db)
 
     try:
-        await svc.delete_playlist(
+        playlist, channel = await admin.get_playlist_with_channel(playlist_id)
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+    try:
+        await admin.refresh_and_persist_tokens(channel, yt_service)
+    except TokenRefreshError as exc:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            {"error": "youtube_token_expired", "reason": str(exc)},
+        ) from exc
+
+    try:
+        await yt_service.delete_playlist(
             access_token_encrypted=channel.access_token_encrypted or "",
             refresh_token_encrypted=channel.refresh_token_encrypted,
             token_expiry=channel.token_expiry,
@@ -1159,21 +746,20 @@ async def delete_playlist(
         ) from exc
 
     youtube_playlist_id = playlist.youtube_playlist_id
-    await playlist_repo.delete(playlist_id)
-    await db.commit()
-
+    title = playlist.title
+    await admin.delete_playlist_row(playlist_id)
     logger.info(
         "youtube_playlist_deleted_local",
         playlist_db_id=str(playlist_id),
         youtube_playlist_id=youtube_playlist_id,
     )
     return {
-        "message": f"Playlist '{playlist.title}' deleted",
+        "message": f"Playlist '{title}' deleted",
         "youtube_playlist_id": youtube_playlist_id,
     }
 
 
-# ── Analytics ─────────────────────────────────────────────────────────────
+# ── Analytics ────────────────────────────────────────────────────────────
 
 
 @router.get(
@@ -1183,10 +769,7 @@ async def delete_playlist(
     summary="Fetch YouTube video statistics",
 )
 async def get_video_analytics(
-    video_ids: str = Query(
-        ...,
-        description="Comma-separated list of YouTube video IDs (max 50)",
-    ),
+    video_ids: str = Query(..., description="Comma-separated list of YouTube video IDs (max 50)"),
     channel_id: UUID | None = Query(
         None,
         description="Channel whose OAuth token is used to query the Data API. "
@@ -1194,14 +777,9 @@ async def get_video_analytics(
     ),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> list[VideoStatsResponse]:
-    """Return view, like, and comment counts for a list of YouTube video IDs.
-
-    ``video_ids`` is a comma-separated string. Pass ``channel_id`` to
-    specify which connected channel's credentials to use (optional with
-    a single channel connected).
-    """
-    # Demo mode: return plausible fake stats; no external API call.
+    """Return view, like, and comment counts for a list of YouTube video IDs."""
     if settings.demo_mode:
         import random as _r
 
@@ -1219,10 +797,21 @@ async def get_video_analytics(
             for vid in ids[:50]
         ]
 
-    svc = await build_youtube_service(settings, db)
-
-    channel_repo = YouTubeChannelRepository(db)
-    channel = await _resolve_channel(channel_repo, channel_id)
+    yt_service = await build_youtube_service(settings, db)
+    try:
+        channel = await admin.resolve_channel(channel_id)
+    except NoChannelConnectedError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No YouTube channel connected. Please authorize first.",
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"YouTube channel {channel_id} not found",
+        ) from exc
+    except MultipleChannelsAmbiguousError as exc:
+        raise _ambiguous_channel_400(exc) from exc
 
     ids = [v.strip() for v in video_ids.split(",") if v.strip()]
     if not ids:
@@ -1236,25 +825,9 @@ async def get_video_analytics(
             detail="video_ids must contain at most 50 IDs per request",
         )
 
-    # v0.20.30 — wrap token refresh in the same error-handling envelope
-    # as the stats call itself. Previously an expired refresh token (or
-    # a corrupted ciphertext after a key rotation) propagated as an
-    # unhandled exception → FastAPI returned an opaque 500 that the UI
-    # couldn't distinguish from a real server bug. Now it surfaces as
-    # a structured 502 with a helpful reason.
     try:
-        updated_tokens = await svc.refresh_tokens_if_needed(
-            channel.access_token_encrypted or "",
-            channel.refresh_token_encrypted,
-            channel.token_expiry,
-        )
-        if updated_tokens:
-            for key, value in updated_tokens.items():
-                setattr(channel, key, value)
-            await db.flush()
-            await db.commit()
-
-        stats = await svc.get_video_stats(
+        await admin.refresh_and_persist_tokens(channel, yt_service, commit=True)
+        stats = await yt_service.get_video_stats(
             access_token_encrypted=channel.access_token_encrypted or "",
             refresh_token_encrypted=channel.refresh_token_encrypted,
             token_expiry=channel.token_expiry,
@@ -1269,32 +842,22 @@ async def get_video_analytics(
             error=str(exc),
             exc_info=True,
         )
-        # Reason string carries just enough detail for the UI to show
-        # a useful message without leaking tokens. Most common cases:
-        # "invalid_grant" (refresh token expired — reconnect channel),
-        # "quotaExceeded" (wait for daily reset), "forbidden" (OAuth
-        # scope missing — reconnect with the needed scope).
-        reason = str(exc)[:240]
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail={
                 "error": "youtube_analytics_failed",
-                "reason": reason,
+                "reason": str(exc)[:240],
                 "channel_id": str(channel.id),
                 "hint": (
-                    "If this says 'invalid_grant' or 'unauthorized', the "
-                    "channel's OAuth token expired — disconnect and "
-                    "reconnect the channel in Settings. If it says "
-                    "'quotaExceeded', YouTube's daily quota is exhausted "
-                    "— retry tomorrow."
+                    "If this says 'invalid_grant' or 'unauthorized', the channel's "
+                    "OAuth token expired — disconnect and reconnect the channel "
+                    "in Settings. If it says 'quotaExceeded', YouTube's daily "
+                    "quota is exhausted — retry tomorrow."
                 ),
             },
         ) from exc
 
     return [VideoStatsResponse(**s) for s in stats]
-
-
-# ── Channel analytics (Analytics API v2) ──────────────────────────────────
 
 
 @router.get(
@@ -1305,25 +868,15 @@ async def get_video_analytics(
 async def get_channel_analytics(
     channel_id: UUID | None = Query(
         None,
-        description="Channel whose OAuth token is used. Required when multiple channels are connected.",
+        description="Channel whose OAuth token is used. "
+        "Required when multiple channels are connected.",
     ),
     days: int = Query(28, ge=1, le=365, description="Window length in days (1-365)."),
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> dict[str, Any]:
-    """Fetch aggregate + daily KPIs for the window.
-
-    Returns ``{window_days, start_date, end_date, totals, daily}`` where
-    ``totals`` is a dict of integer KPIs (views / watch time / subs gained
-    / etc.) and ``daily`` is a list of ``{day, views, minutes_watched}``.
-
-    If the channel's OAuth token was minted before v0.3.7 it won't carry
-    the ``yt-analytics.readonly`` scope; this endpoint returns 403 with
-    ``{"error": "analytics_scope_missing"}`` so the frontend can prompt
-    the user to reconnect the channel.
-    """
-    # Demo mode: synthesise a plausible time series so the analytics UI
-    # lights up without touching Google.
+    """Fetch aggregate + daily KPIs for the window."""
     if settings.demo_mode:
         import random as _r
         from datetime import UTC as _UTC
@@ -1362,23 +915,31 @@ async def get_channel_analytics(
             "fetched_at": _dt.now(tz=_UTC).isoformat(),
         }
 
-    svc = await build_youtube_service(settings, db)
-    channel_repo = YouTubeChannelRepository(db)
-    channel = await _resolve_channel(channel_repo, channel_id)
-
-    updated_tokens = await svc.refresh_tokens_if_needed(
-        channel.access_token_encrypted or "",
-        channel.refresh_token_encrypted,
-        channel.token_expiry,
-    )
-    if updated_tokens:
-        for key, value in updated_tokens.items():
-            setattr(channel, key, value)
-        await db.flush()
-        await db.commit()
+    yt_service = await build_youtube_service(settings, db)
+    try:
+        channel = await admin.resolve_channel(channel_id)
+    except NoChannelConnectedError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No YouTube channel connected. Please authorize first.",
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"YouTube channel {channel_id} not found"
+        ) from exc
+    except MultipleChannelsAmbiguousError as exc:
+        raise _ambiguous_channel_400(exc) from exc
 
     try:
-        result = await svc.get_channel_analytics(
+        await admin.refresh_and_persist_tokens(channel, yt_service, commit=True)
+    except TokenRefreshError as exc:
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            {"error": "youtube_token_expired", "reason": str(exc)},
+        ) from exc
+
+    try:
+        result = await yt_service.get_channel_analytics(
             access_token_encrypted=channel.access_token_encrypted or "",
             refresh_token_encrypted=channel.refresh_token_encrypted,
             token_expiry=channel.token_expiry,
@@ -1411,35 +972,33 @@ async def get_channel_scopes(
     channel_id: UUID,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
+    admin: YouTubeAdminService = Depends(_service),
 ) -> dict[str, Any]:
     """Returns the OAuth scopes the stored access token actually carries.
 
     Definitive answer to "did the user grant analytics scope" — hits
     Google's tokeninfo endpoint instead of inferring from a 403 on the
-    Analytics API. Use this when the analytics page reports "scope
-    missing" but the user insists the channel is reconnected.
-
-    Returns ``{channel_id, scopes, has_analytics_scope, has_upload_scope,
-    expected_scopes, token_introspection_failed}``. When
-    ``token_introspection_failed`` is true, Google rejected the token
-    (revoked, expired, network failure) — reconnect is the cure.
+    Analytics API.
     """
-    svc = await build_youtube_service(settings, db)
-    channel_repo = YouTubeChannelRepository(db)
-    channel = await _resolve_channel(channel_repo, channel_id)
+    yt_service = await build_youtube_service(settings, db)
+    try:
+        channel = await admin.resolve_channel(channel_id)
+    except NoChannelConnectedError as exc:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            "No YouTube channel connected. Please authorize first.",
+        ) from exc
+    except NotFoundError as exc:
+        raise HTTPException(
+            status.HTTP_404_NOT_FOUND, f"YouTube channel {channel_id} not found"
+        ) from exc
 
-    # Refresh first so we're inspecting a live token, not an expired
-    # one (which would tokeninfo-fail for the wrong reason).
-    updated_tokens = await svc.refresh_tokens_if_needed(
-        channel.access_token_encrypted or "",
-        channel.refresh_token_encrypted,
-        channel.token_expiry,
-    )
-    if updated_tokens:
-        for key, value in updated_tokens.items():
-            setattr(channel, key, value)
-        await db.flush()
-        await db.commit()
+    try:
+        await admin.refresh_and_persist_tokens(channel, yt_service, commit=True)
+    except TokenRefreshError:
+        # Continue with stale token — we'll surface "introspection failed"
+        # below instead of bailing here.
+        pass
 
     if not channel.access_token_encrypted:
         return {
@@ -1452,12 +1011,11 @@ async def get_channel_scopes(
             "hint": "No access token stored — channel must be reconnected.",
         }
 
-    # Decrypt and introspect.
     from drevalis.core.security import decrypt_value
 
     try:
         access_token = decrypt_value(channel.access_token_encrypted, settings.encryption_key)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         logger.warning("youtube.scope_introspect.decrypt_failed", error=str(exc)[:120])
         return {
             "channel_id": str(channel.id),
