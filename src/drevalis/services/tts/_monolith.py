@@ -850,7 +850,7 @@ def _classify_comfyui_token(token: str) -> str:
     return "unknown"
 
 
-def _build_comfyui_auth_extra_data(token: str | None) -> dict[str, str]:
+def build_comfyui_auth_extra_data(token: str | None) -> dict[str, str]:
     """Build the ``extra_data`` dict for a ComfyUI ``/prompt``.
 
     Only inserts the field whose shape the token matches, so the
@@ -987,7 +987,7 @@ class ComfyUIElevenLabsTTSProvider:
         )
         client = ComfyUIClient(base_url=server_url, api_key=server_key)
         try:
-            extra_data = dict(_build_comfyui_auth_extra_data(server_key))
+            extra_data = dict(build_comfyui_auth_extra_data(server_key))
             kind = _classify_comfyui_token(server_key) if server_key else "unknown"
             log.debug(
                 "comfyui_elevenlabs.auth",
@@ -1294,7 +1294,7 @@ class ComfyUIElevenLabsSoundEffectsProvider:
 
         client = ComfyUIClient(base_url=self.comfyui_base_url, api_key=self.comfyui_api_key)
         try:
-            extra_data = dict(_build_comfyui_auth_extra_data(self.comfyui_api_key))
+            extra_data = dict(build_comfyui_auth_extra_data(self.comfyui_api_key))
             kind = (
                 _classify_comfyui_token(self.comfyui_api_key) if self.comfyui_api_key else "unknown"
             )

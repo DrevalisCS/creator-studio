@@ -22,6 +22,7 @@ from drevalis.services.tts._monolith import (
     _estimate_mp3_duration,
     _generate_silence_wav,
     _wav_info,
+    build_comfyui_auth_extra_data,
 )
 
 __all__ = [
@@ -41,4 +42,5 @@ __all__ = [
     "_estimate_mp3_duration",
     "_generate_silence_wav",
     "_wav_info",
+    "build_comfyui_auth_extra_data",
 ]
