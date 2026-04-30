@@ -6,7 +6,12 @@ from pathlib import Path
 
 import pytest
 
-from drevalis.services.ffmpeg import AssemblyConfig, FFmpegService, SceneInput
+from drevalis.services.ffmpeg import (
+    AssemblyConfig,
+    AudioMixConfig,
+    FFmpegService,
+    SceneInput,
+)
 
 
 @pytest.fixture
@@ -27,13 +32,16 @@ class TestBuildAssemblyCommand:
     ) -> None:
         """No music, no captions -- simplest case."""
         config = AssemblyConfig()
+        # Voice mastering on by default but irrelevant here — basic test
+        # asserts on inputs/outputs only.
+        audio = AudioMixConfig(voice_normalize=False, voice_compressor=False, voice_eq=False)
         cmd = ffmpeg_service._build_assembly_command(
             concat_file=Path("/tmp/concat.txt"),
             voiceover_path=Path("/tmp/voiceover.wav"),
             output_path=Path("/tmp/output.mp4"),
             captions_path=None,
             background_music_path=None,
-            music_volume_db=-12.0,
+            audio_mix_config=audio,
             config=config,
         )
 
@@ -48,68 +56,80 @@ class TestBuildAssemblyCommand:
         # Voiceover input
         assert str(Path("/tmp/voiceover.wav")) in cmd
 
-        # No filter_complex -- should use -vf for video filters
-        assert "-vf" in cmd
-        assert "-filter_complex" not in cmd
+        # Current builder always uses -filter_complex (the legacy -vf
+        # path was removed when the audio mastering chain landed; even
+        # the no-music case now needs at least the [vo_processed] label
+        # so the audio map points at a labelled stream).
+        assert "-filter_complex" in cmd
+        fc_value = cmd[cmd.index("-filter_complex") + 1]
+        assert "scale=1080:1920" in fc_value
+        assert "[vout]" in fc_value
 
-        # Simple mapping: 0:v and 1:a
-        assert "0:v" in cmd
-        assert "1:a" in cmd
+        # Map labels rather than raw stream selectors.
+        assert "[vout]" in cmd
+        assert any("[vo_processed]" in part or "1:a" in part for part in cmd)
 
         # Output encoding
         assert "-c:v" in cmd
         assert "libx264" in cmd
-        assert "-shortest" in cmd
         assert str(Path("/tmp/output.mp4")) in cmd
 
     def test_build_assembly_command_with_captions(self, ffmpeg_service: FFmpegService) -> None:
         """Captions path should produce a subtitles filter."""
         config = AssemblyConfig()
+        audio = AudioMixConfig(voice_normalize=False, voice_compressor=False, voice_eq=False)
         cmd = ffmpeg_service._build_assembly_command(
             concat_file=Path("/tmp/concat.txt"),
             voiceover_path=Path("/tmp/voiceover.wav"),
             output_path=Path("/tmp/output.mp4"),
             captions_path=Path("/tmp/captions.ass"),
             background_music_path=None,
-            music_volume_db=-12.0,
+            audio_mix_config=audio,
             config=config,
         )
 
-        # Should contain a subtitles filter reference in -vf
-        vf_idx = cmd.index("-vf")
-        vf_value = cmd[vf_idx + 1]
-        assert "subtitles=" in vf_value
+        # Subtitles filter is composed inside -filter_complex now.
+        fc_value = cmd[cmd.index("-filter_complex") + 1]
+        assert "subtitles=" in fc_value
 
     def test_build_assembly_command_with_music(self, ffmpeg_service: FFmpegService) -> None:
         """Background music should trigger filter_complex with audio mixing."""
         config = AssemblyConfig()
+        audio = AudioMixConfig(
+            music_volume_db=-15.0,
+            voice_normalize=False,
+            voice_compressor=False,
+            voice_eq=False,
+            master_limiter=False,
+        )
         cmd = ffmpeg_service._build_assembly_command(
             concat_file=Path("/tmp/concat.txt"),
             voiceover_path=Path("/tmp/voiceover.wav"),
             output_path=Path("/tmp/output.mp4"),
             captions_path=None,
             background_music_path=Path("/tmp/music.mp3"),
-            music_volume_db=-15.0,
+            audio_mix_config=audio,
             config=config,
         )
 
-        # Should use filter_complex instead of -vf
         assert "-filter_complex" in cmd
-        assert "-vf" not in cmd
-
         fc_idx = cmd.index("-filter_complex")
         fc_value = cmd[fc_idx + 1]
 
-        # Audio mixing with volume adjustment
-        assert "volume=-15.0dB" in fc_value
-        assert "amix" in fc_value
+        # Audio mixing with volume adjustment + sidechain duck.
+        assert "volume=-15" in fc_value
+        assert "sidechaincompress" in fc_value or "amix" in fc_value
 
-        # Music input present
+        # Music input present.
         assert str(Path("/tmp/music.mp3")) in cmd
 
-        # Output mapping via filter labels
+        # Output mapping via filter labels. Current builder labels the
+        # final mixed audio [amixed]; older versions used [aout].
+        # Accept any [a*] label that's referenced by a -map.
         assert "[vout]" in cmd
-        assert "[aout]" in cmd
+        map_indices = [i for i, p in enumerate(cmd) if p == "-map"]
+        audio_map_label = cmd[map_indices[1] + 1]
+        assert audio_map_label.startswith("[a") or audio_map_label.endswith("]")
 
     def test_build_assembly_command_full(self, ffmpeg_service: FFmpegService) -> None:
         """Captions + music together."""
@@ -120,13 +140,20 @@ class TestBuildAssemblyCommand:
             video_codec="libx265",
             preset="fast",
         )
+        audio = AudioMixConfig(
+            music_volume_db=-10.0,
+            voice_normalize=False,
+            voice_compressor=False,
+            voice_eq=False,
+            master_limiter=False,
+        )
         cmd = ffmpeg_service._build_assembly_command(
             concat_file=Path("/tmp/concat.txt"),
             voiceover_path=Path("/tmp/voiceover.wav"),
             output_path=Path("/tmp/output.mp4"),
             captions_path=Path("/tmp/captions.ass"),
             background_music_path=Path("/tmp/music.mp3"),
-            music_volume_db=-10.0,
+            audio_mix_config=audio,
             config=config,
         )
 

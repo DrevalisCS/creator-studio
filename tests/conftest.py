@@ -379,11 +379,9 @@ _STALE_TESTS: frozenset[str] = frozenset(
     {
         # (Un-quarantined: replaced with test_pool_round_robin_selection
         # which exercises the actual selector + total_capacity helper.)
-        # FFmpegService.build_assembly_command signature changed; mocks stale
-        "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_basic",
-        "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_full",
-        "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_with_captions",
-        "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_with_music",
+        # (Un-quarantined: tests now build an AudioMixConfig matching the
+        # current _build_assembly_command signature instead of the legacy
+        # music_volume_db float kwarg.)
         # (Un-quarantined: tests now pass after F-T-08 dropped the
         # storage param and tests were updated to patch decrypt_value
         # explicitly so the encrypted-vs-plain api_key flow is tested.)
