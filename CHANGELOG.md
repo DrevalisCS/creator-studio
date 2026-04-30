@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.4] - 2026-04-30
+
+### Added
+
+- **F-Tst-08** — 18 new unit tests for ``LongFormScriptService``.
+  Covers chapter-count auto-derivation, outline + chapter call
+  ordering, scene renumbering across chapter boundaries, chapter
+  metadata shape (scene-range, mood, music_mood), continuity context
+  carryover, visual-consistency prefix application,
+  list/dict/string LLM response shapes, and the ``_parse_json``
+  helper's markdown-fence + embedded-prose handling. Closes the
+  highest-impact coverage cliff identified in the audit (the entire
+  3-phase chunked LLM workflow had 0% coverage).
+
+### Changed
+
+- **F-CQ-15** — ``OpenAICompatibleProvider.generate`` retry logic
+  no longer substring-matches on exception text. The previous
+  ``"524" in err_str or "timeout" in err_str.lower() or "502" / "503"``
+  block accidentally swallowed unrelated errors (asyncio.CancelledError
+  semantics, JSON validation errors) and broke silently across SDK
+  version bumps that changed the error message format. The retry now
+  catches the typed OpenAI exceptions
+  (``APIConnectionError``, ``APITimeoutError``, ``InternalServerError``)
+  + 5xx via ``APIStatusError.status_code`` for the RunPod proxy 502/
+  503/524 case. 4xx auth/quota errors fail fast instead of burning
+  the retry budget. The json_mode fallback (drop ``response_format``)
+  remains for local backends that 400 on the field.
+
 ## [0.29.3] - 2026-04-30
 
 ### Security
