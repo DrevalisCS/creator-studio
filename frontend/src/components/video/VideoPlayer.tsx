@@ -234,7 +234,11 @@ function VideoPlayer({
       onMouseEnter={() => setShowControls(true)}
       onKeyDown={handleKeyDown}
       tabIndex={0}
-      role="application"
+      // role="region" + aria-label is the WAI-ARIA-recommended container
+      // for a media widget. role="application" hijacks every key from the
+      // user's screen reader and isn't appropriate when our keys are just
+      // play/pause/seek shortcuts on a regular HTML5 video.
+      role="region"
       aria-label="Video player"
     >
       {/* Video Element */}
@@ -278,11 +282,19 @@ function VideoPlayer({
           showControls ? 'opacity-100' : 'opacity-0',
         ].join(' ')}
       >
-        {/* Scrubber bar */}
+        {/* Scrubber bar — exposed as an ARIA slider so screen readers
+            announce the playback position and accept keyboard seek. */}
         <div
           ref={progressRef}
           className="relative h-1.5 bg-white/20 rounded-full cursor-pointer mb-2 group/scrubber"
           onClick={handleScrubberClick}
+          role="slider"
+          tabIndex={0}
+          aria-label="Seek video"
+          aria-valuemin={0}
+          aria-valuemax={Math.max(0, Math.round(duration))}
+          aria-valuenow={Math.round(currentTime)}
+          aria-valuetext={`${Math.floor(currentTime / 60)}:${String(Math.floor(currentTime % 60)).padStart(2, '0')} of ${Math.floor(duration / 60)}:${String(Math.floor(duration % 60)).padStart(2, '0')}`}
         >
           {/* Scene segments */}
           {scenes.map((scene, i) => {
