@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -218,7 +218,11 @@ function EpisodesList() {
 
   // Filtered + sorted view — server returns episodes filtered by
   // status/series; search + sort are client-side over that result.
-  const visibleEpisodes = (() => {
+  // Memoise so unrelated state changes (selectMode, dialog flags,
+  // bulkBusy, etc.) don't reorder the up-to-500 episode list every
+  // render. Deps are explicit: only the inputs that actually affect
+  // the output trigger a recompute.
+  const visibleEpisodes = useMemo(() => {
     let list = episodesList;
     const q = search.trim().toLowerCase();
     if (q) {
@@ -258,7 +262,19 @@ function EpisodesList() {
         break;
     }
     return sorted;
-  })();
+  }, [episodesList, search, sort]);
+
+  // The status-tab counts also iterate the full list; memoising on the
+  // raw list once means each tab render reads from a constant-time map
+  // instead of running .filter four times per render.
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { draft: 0, generating: 0, review: 0, exported: 0, failed: 0 };
+    for (const ep of episodesList) {
+      const k = ep.status ?? '';
+      if (k in counts) counts[k] += 1;
+    }
+    return counts;
+  }, [episodesList]);
 
   // Toggle selection for one card; respect selectMode being on.
   const toggleSelected = (id: string) => {
@@ -387,9 +403,7 @@ function EpisodesList() {
           const isActive = statusFilter === tab.value;
           // For the "All" tab, use total; for specific statuses, use current unfiltered count
           // (We show the count from currently fetched list which respects series filter)
-          const count = tab.value === ''
-            ? episodesList.length
-            : episodesList.filter((ep) => ep.status === tab.value).length;
+          const count = tab.value === '' ? episodesList.length : statusCounts[tab.value] ?? 0;
 
           return (
             <button
