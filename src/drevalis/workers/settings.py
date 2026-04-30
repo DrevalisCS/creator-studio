@@ -38,6 +38,7 @@ from drevalis.workers.jobs.episode import (
 from drevalis.workers.jobs.heartbeat import worker_heartbeat
 from drevalis.workers.jobs.license_heartbeat import license_heartbeat
 from drevalis.workers.jobs.music import generate_episode_music
+from drevalis.workers.jobs.prune_scheduled_posts import prune_orphaned_scheduled_posts
 from drevalis.workers.jobs.runpod import auto_deploy_runpod_pod
 from drevalis.workers.jobs.scheduled import publish_scheduled_posts
 from drevalis.workers.jobs.seo import generate_seo_async
@@ -139,6 +140,7 @@ class WorkerSettings:
         analyze_video_ingest,
         commit_video_ingest_clip,
         render_from_edit,
+        prune_orphaned_scheduled_posts,
     ]
     cron_jobs = [
         # Check for due scheduled posts every 5 minutes
@@ -157,6 +159,10 @@ class WorkerSettings:
         # backup_auto_enabled and no-ops when disabled, so it's safe to
         # register unconditionally.
         cron(scheduled_backup, hour={3}, minute={0}),
+        # Drop scheduled_posts rows whose episode/audiobook was deleted.
+        # 03:13 UTC — runs after the backup so the orphan rows are still
+        # captured in the nightly snapshot in case rollback is needed.
+        cron(prune_orphaned_scheduled_posts, hour={3}, minute={13}),
     ]
     on_startup = startup
     on_shutdown = shutdown
