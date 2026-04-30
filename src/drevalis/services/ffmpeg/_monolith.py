@@ -1374,6 +1374,55 @@ class FFmpegService:
 
     # -- Video clip concatenation -------------------------------------------
 
+    async def concat_videos(
+        self,
+        video_clips: list[Path],
+        output_path: Path,
+    ) -> Path:
+        """Concatenate video clips into a single MP4 with no audio mixing.
+
+        Used by the edit-session render path which mixes voice and music
+        in later stages. Uses the concat demuxer with stream copy when
+        all inputs share codec/parameters; falls back to re-encode otherwise.
+        """
+        if not video_clips:
+            raise ValueError("At least one video clip is required")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+
+        concat_path = output_path.parent / "_video_only_concat_list.txt"
+        lines = [f"file '{str(clip).replace(chr(92), '/')}'" for clip in video_clips]
+        await asyncio.to_thread(concat_path.write_text, "\n".join(lines) + "\n", "utf-8")
+
+        try:
+            cmd = [
+                self.ffmpeg_path,
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(concat_path),
+                "-c:v",
+                "libx264",
+                "-preset",
+                "veryfast",
+                "-pix_fmt",
+                "yuv420p",
+                "-an",
+                str(output_path),
+            ]
+            await self._run_ffmpeg(cmd, description="concat_videos")
+        finally:
+            try:
+                concat_path.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        if not output_path.exists():
+            raise FileNotFoundError(f"FFmpeg did not produce output file: {output_path}")
+        return output_path
+
     async def concat_video_clips(
         self,
         video_clips: list[Path],

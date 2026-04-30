@@ -236,13 +236,13 @@ async def generate_series_sync(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="LLM config not found",
             )
-        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+        llm_service = LLMService(encryption_key=settings.encryption_key)
         provider = llm_service.get_provider(llm_config)
     else:
         # Auto-select first available LLM config from DB
         configs = await LLMConfigRepository(db).get_all(limit=1)
         if configs:
-            llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+            llm_service = LLMService(encryption_key=settings.encryption_key)
             provider = llm_service.get_provider(configs[0])
         else:
             provider = OpenAICompatibleProvider(
@@ -572,13 +572,13 @@ async def add_episodes_ai(
         llm_config = await LLMConfigRepository(db).get_by_id(payload.llm_config_id)
         if not llm_config:
             raise HTTPException(status_code=404, detail="LLM config not found")
-        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+        llm_service = LLMService(encryption_key=settings.encryption_key)
         provider = llm_service.get_provider(llm_config)
     else:
         # Auto-select first available LLM config
         configs = await LLMConfigRepository(db).get_all(limit=1)
         if configs:
-            llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+            llm_service = LLMService(encryption_key=settings.encryption_key)
             provider = llm_service.get_provider(configs[0])
         else:
             provider = OpenAICompatibleProvider(
@@ -672,7 +672,7 @@ async def suggest_trending_topics(
     # Resolve LLM
     configs = await LLMConfigRepository(db).get_all(limit=1)
     if configs:
-        llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+        llm_service = LLMService(encryption_key=settings.encryption_key)
         provider = llm_service.get_provider(configs[0])
     else:
         provider = OpenAICompatibleProvider(

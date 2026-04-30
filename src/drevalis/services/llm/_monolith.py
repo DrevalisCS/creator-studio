@@ -27,7 +27,6 @@ from drevalis.schemas.script import EpisodeScript
 if TYPE_CHECKING:
     from drevalis.models.llm_config import LLMConfig
     from drevalis.models.prompt_template import PromptTemplate
-    from drevalis.services.storage import StorageBackend
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -339,7 +338,8 @@ class LLMPool:
                     logger.warning(
                         "llm_pool_provider_failed",
                         name=name,
-                        error=err_str[:100],
+                        error=err_str[:200],
+                        exc_info=True,
                     )
                 else:
                     # Client error (400, 422, auth failure, etc.) — don't
@@ -389,8 +389,7 @@ class LLMService:
     Providers are lazily instantiated and cached by :class:`LLMConfig` id.
     """
 
-    def __init__(self, storage: StorageBackend, encryption_key: str = "") -> None:
-        self._storage = storage
+    def __init__(self, encryption_key: str = "") -> None:
         self._encryption_key = encryption_key
         self._providers: dict[UUID, LLMProvider] = {}
 

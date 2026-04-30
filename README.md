@@ -175,8 +175,13 @@ Copy `.env.example` to `.env` and configure as needed. Only `ENCRYPTION_KEY` is 
 | `API_AUTH_TOKEN` | *(empty)* | If set, all API/WebSocket requests require `Authorization: Bearer <token>`. |
 | `MAX_CONCURRENT_GENERATIONS` | `4` | Hard cap on simultaneous pipeline runs (actual slots = 4 + 2 × extra ComfyUI servers). |
 | `RUNPOD_API_KEY` | *(empty)* | RunPod API key for cloud GPU pod management. |
-| `DB_POOL_SIZE` | `10` | asyncpg connection pool size. |
-| `DB_MAX_OVERFLOW` | `20` | asyncpg pool overflow limit. |
+| `DB_POOL_SIZE` | `10` | API process asyncpg connection pool size. |
+| `DB_MAX_OVERFLOW` | `20` | API process asyncpg pool overflow limit. |
+| `WORKER_DB_POOL_SIZE` | `5` | arq worker pool size — sequential per job, smaller than the API pool. |
+| `WORKER_DB_MAX_OVERFLOW` | `10` | arq worker pool overflow limit. |
+| `SESSION_SECRET` | *(empty)* | HMAC secret for the team-mode session cookie. Falls back to `ENCRYPTION_KEY` when unset; production should set independently. |
+| `COOKIE_SECURE` | `false` | Set the `Secure` flag on session cookies. Flip to `true` behind HTTPS. |
+| `DEMO_MODE` | `false` | When `true`, replaces real generation with a fake state machine, blocks destructive routes, and bypasses the license gate. Public-playground only. |
 
 ### YouTube Setup
 

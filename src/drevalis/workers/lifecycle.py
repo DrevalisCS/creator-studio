@@ -43,10 +43,12 @@ async def startup(ctx: dict[str, Any]) -> None:
     )
 
     # ── Database engine & session factory ──────────────────────────────
+    # Worker uses its own (smaller) pool — it's sequential per job and
+    # max_jobs=8, so a pool the size of FastAPI's (10+20) is wasted.
     engine = create_async_engine(
         settings.database_url,
-        pool_size=settings.db_pool_size,
-        max_overflow=settings.db_max_overflow,
+        pool_size=settings.worker_db_pool_size,
+        max_overflow=settings.worker_db_max_overflow,
         echo=settings.db_echo,
     )
     session_factory = async_sessionmaker(
@@ -82,7 +84,7 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["storage"] = storage
 
     # ── LLM service ───────────────────────────────────────────────────
-    llm_service = LLMService(storage=storage, encryption_key=settings.encryption_key)
+    llm_service = LLMService(encryption_key=settings.encryption_key)
     ctx["llm_service"] = llm_service
 
     # ── ComfyUI pool & service ────────────────────────────────────────
@@ -113,9 +115,18 @@ async def startup(ctx: dict[str, Any]) -> None:
                         max_concurrent=_srv.max_concurrent,
                     )
                 except Exception:
-                    logger.warning("comfyui_pool_register_failed", name=_srv.name)
+                    logger.warning(
+                        "comfyui_pool_register_failed",
+                        name=_srv.name,
+                        url=_srv.url[:40],
+                        exc_info=True,
+                    )
     except Exception:
-        logger.debug("comfyui_pool_startup_failed", exc_info=True)
+        # Startup pool init failure is loud — without an empty pool the
+        # next pipeline run will fail at scenes step, not here. Promote
+        # from DEBUG to ERROR so operators don't have to bump log level
+        # to find out why generation is dying.
+        logger.error("comfyui_pool_startup_failed", exc_info=True)
 
     comfyui_service = ComfyUIService(pool=comfyui_pool, storage=storage)
     ctx["comfyui_pool"] = comfyui_pool

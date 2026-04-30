@@ -48,7 +48,11 @@ _POLL_MAX_DELAY: float = 5.0
 _POLL_BACKOFF_FACTOR: float = 2.0
 _POLL_MAX_TOTAL_SECONDS: float = 1200.0  # 20 min — Qwen Image at 50 steps is slow
 
-# Maximum concurrent scene image generation tasks.
+# Fallback cap for scene-image/video parallelism when the pool's
+# advertised capacity is unknown (e.g. a unit test that constructs
+# ComfyUIService without registering any servers). The real production
+# value is derived dynamically from registered server capacity via
+# ComfyUIPool.total_capacity().
 _MAX_SCENE_CONCURRENCY: int = 4
 
 # Type alias for scene-level progress callbacks.
@@ -278,6 +282,9 @@ class ComfyUIPool:
     def __init__(self) -> None:
         # Maps server_id -> (client, semaphore)
         self._servers: dict[UUID, tuple[ComfyUIClient, asyncio.Semaphore]] = {}
+        # Mirror of registered max_concurrent so total_capacity() works
+        # without poking at semaphore internals.
+        self._capacity: dict[UUID, int] = {}
 
     def register_server(
         self,
@@ -287,6 +294,7 @@ class ComfyUIPool:
     ) -> None:
         """Register a ComfyUI server in the pool."""
         self._servers[server_id] = (client, asyncio.Semaphore(max_concurrent))
+        self._capacity[server_id] = max_concurrent
         logger.info(
             "comfyui_server_registered",
             server_id=str(server_id),
@@ -297,7 +305,18 @@ class ComfyUIPool:
     def unregister_server(self, server_id: UUID) -> None:
         """Remove a server from the pool."""
         self._servers.pop(server_id, None)
+        self._capacity.pop(server_id, None)
         logger.info("comfyui_server_unregistered", server_id=str(server_id))
+
+    def total_capacity(self) -> int:
+        """Return the sum of registered server capacities.
+
+        Returns ``_MAX_SCENE_CONCURRENCY`` when the pool is empty so
+        callers (scene gen) don't divide-by-zero on an unconfigured
+        install — they just won't actually run, the per-server
+        semaphore acquire fails first.
+        """
+        return sum(self._capacity.values()) or _MAX_SCENE_CONCURRENCY
 
     async def sync_from_db(self, session: AsyncSession) -> None:
         """Re-sync the pool with currently active ComfyUI servers from the DB.
@@ -316,6 +335,7 @@ class ComfyUIPool:
         stale_ids = set(self._servers.keys()) - active_ids
         for sid in stale_ids:
             old_client, _ = self._servers.pop(sid)
+            self._capacity.pop(sid, None)
             await old_client.close()
             logger.info("comfyui_pool_removed_stale_server", server_id=str(sid))
 
@@ -334,9 +354,11 @@ class ComfyUIPool:
                     await existing_client.close()
                     client = ComfyUIClient(base_url=srv.url, api_key=None)
                     self._servers[srv.id] = (client, asyncio.Semaphore(srv.max_concurrent))
+                    self._capacity[srv.id] = srv.max_concurrent
             else:
                 client = ComfyUIClient(base_url=srv.url, api_key=None)
                 self._servers[srv.id] = (client, asyncio.Semaphore(srv.max_concurrent))
+                self._capacity[srv.id] = srv.max_concurrent
                 logger.info(
                     "comfyui_pool_added_server",
                     server_id=str(srv.id),
@@ -429,6 +451,7 @@ class ComfyUIPool:
                 logger.warning(
                     "comfyui_server_unhealthy_cooldown",
                     server_id=str(chosen_id),
+                    server_url=client.base_url[:60],
                     error=str(ping_exc)[:120],
                     cooldown_seconds=60,
                     remaining_candidates=len(candidates) - candidates.index(chosen_id) - 1,
@@ -883,7 +906,7 @@ class ComfyUIService:
 
     async def generate_scene_images(
         self,
-        server_id: UUID,
+        server_id: UUID | None,
         workflow_path: str,
         input_mappings: WorkflowInputMapping,
         scenes: list[SceneScript],
@@ -902,8 +925,8 @@ class ComfyUIService:
     ) -> list[GeneratedImage]:
         """Generate images for all scenes in an episode.
 
-        Runs up to :data:`_MAX_SCENE_CONCURRENCY` concurrent generation
-        tasks.  Each scene's ``visual_prompt`` is prefixed with the
+        Runs up to ``ComfyUIPool.total_capacity()`` concurrent generation
+        tasks (sum of per-server max_concurrent).  Each scene's ``visual_prompt`` is prefixed with the
         *visual_style* and *character_description* for consistency.
         A quality suffix is automatically appended to every positive prompt,
         and a default negative prompt is used unless overridden via
@@ -951,7 +974,10 @@ class ComfyUIService:
                 style_lora=(style_lock or {}).get("lora"),
             )
 
-        semaphore = asyncio.Semaphore(_MAX_SCENE_CONCURRENCY)
+        # Outer cap = total registered server capacity; per-server
+        # semaphores still bound each individual server's GPU slots,
+        # so this only governs the asyncio.gather fan-out width.
+        semaphore = asyncio.Semaphore(self._pool.total_capacity())
 
         async def _gen_one(scene: SceneScript) -> GeneratedImage:
             # Scene description FIRST so the main subject is prioritized by
@@ -1182,7 +1208,7 @@ class ComfyUIService:
 
     async def generate_scene_videos(
         self,
-        server_id: UUID,
+        server_id: UUID | None,
         workflow_path: str,
         input_mappings: WorkflowInputMapping,
         scenes: list[SceneScript],
@@ -1226,7 +1252,10 @@ class ComfyUIService:
         # Resolve quality suffix once per call.
         quality = self._resolve_quality_suffix(visual_style, self.QUALITY_SUFFIXES)
 
-        semaphore = asyncio.Semaphore(_MAX_SCENE_CONCURRENCY)
+        # Outer cap = total registered server capacity; per-server
+        # semaphores still bound each individual server's GPU slots,
+        # so this only governs the asyncio.gather fan-out width.
+        semaphore = asyncio.Semaphore(self._pool.total_capacity())
 
         async def _build_prompt(scene: SceneScript) -> str:
             prompt_parts: list[str] = [scene.visual_prompt]

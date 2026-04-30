@@ -79,6 +79,10 @@ class LongFormScriptService:
         if chapter_count is None:
             chapter_count = max(3, target_duration_minutes // 8)
 
+        # Bind phase explicitly per phase below so log lines coming
+        # from individual provider.generate() calls inside helpers
+        # carry the phase tag rather than only inheriting episode_id
+        # and step from the calling pipeline.
         log.info(
             "longform_script.generate.start",
             topic=topic[:80],
@@ -88,6 +92,7 @@ class LongFormScriptService:
         )
 
         # Phase 1: Outline
+        structlog.contextvars.bind_contextvars(longform_phase="outline")
         outline = await self._generate_outline(
             topic=topic,
             series_description=series_description,
@@ -103,6 +108,7 @@ class LongFormScriptService:
         )
 
         # Phase 2: Chapter-by-chapter scene generation
+        structlog.contextvars.bind_contextvars(longform_phase="chapters")
         all_scenes: list[dict[str, Any]] = []
         chapter_metadata: list[dict[str, Any]] = []
         previous_last_scene: str = ""

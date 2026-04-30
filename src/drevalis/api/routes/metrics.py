@@ -14,10 +14,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query, status
+from redis.asyncio import Redis
 from sqlalchemy import Integer, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from drevalis.core.deps import get_db
+from drevalis.core.deps import get_db, get_redis
 from drevalis.core.metrics import metrics
 from drevalis.models.episode import Episode
 from drevalis.models.generation_job import GenerationJob
@@ -30,7 +31,7 @@ router = APIRouter(prefix="/api/v1/metrics", tags=["metrics"])
     status_code=status.HTTP_200_OK,
     summary="Per-step pipeline statistics",
 )
-async def step_stats() -> dict[str, Any]:
+async def step_stats(redis: Redis = Depends(get_redis)) -> dict[str, Any]:
     """Return average duration, min/max, and success rate for each pipeline step.
 
     Response shape::
@@ -47,7 +48,7 @@ async def step_stats() -> dict[str, Any]:
             ...
         }
     """
-    return await metrics.get_step_stats()
+    return await metrics.get_step_stats(redis)
 
 
 @router.get(
@@ -55,7 +56,7 @@ async def step_stats() -> dict[str, Any]:
     status_code=status.HTTP_200_OK,
     summary="Overall generation pipeline statistics",
 )
-async def generation_stats() -> dict[str, Any]:
+async def generation_stats(redis: Redis = Depends(get_redis)) -> dict[str, Any]:
     """Return total, success, and failed generation counts plus success rate.
 
     Response shape::
@@ -67,7 +68,7 @@ async def generation_stats() -> dict[str, Any]:
             "success_rate": 0.8
         }
     """
-    return await metrics.get_generation_stats()
+    return await metrics.get_generation_stats(redis)
 
 
 @router.get(
@@ -77,13 +78,14 @@ async def generation_stats() -> dict[str, Any]:
 )
 async def recent_metrics(
     limit: int = Query(default=50, ge=1, le=500, description="Max entries to return"),
+    redis: Redis = Depends(get_redis),
 ) -> list[dict[str, Any]]:
     """Return the most recent step executions (newest first).
 
     Each entry contains step name, duration, success flag, episode ID,
     and timestamp.
     """
-    return await metrics.get_recent_metrics(limit=limit)
+    return await metrics.get_recent_metrics(redis, limit=limit)
 
 
 @router.get(

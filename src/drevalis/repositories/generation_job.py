@@ -115,3 +115,21 @@ class GenerationJobRepository(BaseRepository[GenerationJob]):
         )
         result = await self.session.execute(stmt)
         return result.scalar_one_or_none()
+
+    async def get_done_steps(self, episode_id: UUID) -> set[str]:
+        """Return the set of pipeline steps that completed successfully.
+
+        One query replaces a per-step loop of
+        ``get_latest_by_episode_and_step`` calls when all the caller
+        wants to know is "which steps can I skip on this regenerate".
+        """
+        stmt = (
+            select(GenerationJob.step)
+            .where(
+                GenerationJob.episode_id == episode_id,
+                GenerationJob.status == "done",
+            )
+            .distinct()
+        )
+        result = await self.session.execute(stmt)
+        return {row for row in result.scalars().all()}

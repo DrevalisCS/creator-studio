@@ -218,7 +218,7 @@ class PipelineOrchestrator:
             # a mid-step crash between delete+commit previously lost
             # the cancellation signal.
             await self._clear_cancel_flag()
-            await metrics.record_generation(success=False)
+            await metrics.record_generation(self.redis, success=False)
             clear_pipeline_context()
             return
 
@@ -244,7 +244,7 @@ class PipelineOrchestrator:
                 await self.episode_repo.update_status(self.episode_id, "failed")
                 await self.db.commit()
                 await self._clear_cancel_flag()
-                await metrics.record_generation(success=False)
+                await metrics.record_generation(self.redis, success=False)
                 clear_pipeline_context()
                 return  # Exit cleanly.
 
@@ -295,6 +295,7 @@ class PipelineOrchestrator:
                 # Record successful step metric
                 step_duration = time.perf_counter() - step_start
                 await metrics.record_step(
+                    self.redis,
                     step=step.value,
                     duration=step_duration,
                     success=True,
@@ -315,6 +316,7 @@ class PipelineOrchestrator:
                     duration_seconds=round(step_duration, 3),
                 )
                 await metrics.record_step(
+                    self.redis,
                     step=step.value,
                     duration=step_duration,
                     success=False,
@@ -327,7 +329,7 @@ class PipelineOrchestrator:
                     "Generation cancelled by user",
                     error="Cancelled by user",
                 )
-                await metrics.record_generation(success=False)
+                await metrics.record_generation(self.redis, success=False)
                 clear_pipeline_context()
                 return  # Exit cleanly.
 
@@ -335,6 +337,7 @@ class PipelineOrchestrator:
                 # Record failed step metric
                 step_duration = time.perf_counter() - step_start
                 await metrics.record_step(
+                    self.redis,
                     step=step.value,
                     duration=step_duration,
                     success=False,
@@ -366,7 +369,7 @@ class PipelineOrchestrator:
                 await self._handle_step_failure(job, step, exc, suggestion=suggestion)
 
                 # Record failed generation
-                await metrics.record_generation(success=False)
+                await metrics.record_generation(self.redis, success=False)
                 clear_pipeline_context()
                 end_accumulator(token_reset)
                 raise  # Let arq handle retry
@@ -385,7 +388,7 @@ class PipelineOrchestrator:
         await self._broadcast_progress(PipelineStep.THUMBNAIL, 100, "done", "pipeline_complete")
 
         # Record successful generation
-        await metrics.record_generation(success=True)
+        await metrics.record_generation(self.redis, success=True)
         self.log.info("pipeline_complete")
         clear_pipeline_context()
 
@@ -607,18 +610,15 @@ class PipelineOrchestrator:
             "Refine this prompt: {prompt}"
         )
 
-        refined_count = 0
-        for scene_data in scenes:
+        async def _refine_one(scene_data: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
             raw_vp: str = scene_data.get("visual_prompt", "")
             if not raw_vp:
-                continue
-
+                return scene_data, None
             refine_user = user_template.replace("{prompt}", raw_vp)
             if visual_style:
                 refine_user += f"\nVisual style: {visual_style}"
             if character_description:
                 refine_user += f"\nCharacter: {character_description}"
-
             try:
                 result = await provider.generate(
                     refine_system,
@@ -627,16 +627,27 @@ class PipelineOrchestrator:
                     max_tokens=256,
                 )
                 refined = result.content.strip().strip('"')
-                if len(refined) > 20:  # sanity-check: reject trivially short output
-                    scene_data["visual_prompt"] = refined
-                    refined_count += 1
+                if len(refined) > 20:
+                    return scene_data, refined
             except Exception as exc:
-                # Log but never propagate — original prompt remains intact.
-                self.log.debug(
+                # Refinement failure means the scene falls back to the
+                # raw LLM-generated prompt — visible quality degradation
+                # the user can't otherwise diagnose. Log at warning so
+                # the cause (provider 5xx, timeout, rate limit) is in
+                # the operator's normal log stream.
+                self.log.warning(
                     "step_script.visual_prompt_refine_failed",
                     scene=scene_data.get("scene_number"),
                     error=str(exc)[:120],
                 )
+            return scene_data, None
+
+        results = await asyncio.gather(*(_refine_one(s) for s in scenes), return_exceptions=False)
+        refined_count = 0
+        for scene_data, refined in results:
+            if refined is not None:
+                scene_data["visual_prompt"] = refined
+                refined_count += 1
 
         self.log.info(
             "step_script.visual_prompts_refined",
@@ -1210,13 +1221,22 @@ class PipelineOrchestrator:
         out: list[str] = []
         if not reference_asset_ids:
             return out
-        asset_repo = _AssetRepo(self.db)
+        # Parse all UUIDs first; skip strings that don't parse so the
+        # IN-clause stays clean and we still preserve insertion order
+        # for the existing-asset lookup.
+        parsed: list[_UUID] = []
         for raw_id in reference_asset_ids:
             try:
-                asset_uuid = _UUID(str(raw_id))
+                parsed.append(_UUID(str(raw_id)))
             except ValueError:
                 continue
-            asset = await asset_repo.get_by_id(asset_uuid)
+        if not parsed:
+            return out
+        asset_repo = _AssetRepo(self.db)
+        # One query for the whole list instead of one per id.
+        assets_by_id = await asset_repo.get_by_ids(parsed)
+        for asset_uuid in parsed:
+            asset = assets_by_id.get(asset_uuid)
             if asset is None or asset.kind not in kinds:
                 continue
             abs_path = _Path(self.storage.base_path) / asset.file_path

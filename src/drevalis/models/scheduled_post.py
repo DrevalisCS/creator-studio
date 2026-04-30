@@ -36,6 +36,7 @@ class ScheduledPost(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         Index("ix_scheduled_posts_status", "status"),
         Index("ix_scheduled_posts_scheduled_at", "scheduled_at"),
         Index("ix_scheduled_posts_status_scheduled_at", "status", "scheduled_at"),
+        Index("ix_scheduled_posts_youtube_channel_id", "youtube_channel_id"),
     )
 
     content_type: Mapped[str] = mapped_column(TEXT, nullable=False)

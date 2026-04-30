@@ -58,7 +58,7 @@ pip-audit
 
 ### Generation Pipeline
 
-Single arq job, `PipelineOrchestrator` state machine (`services/pipeline.py`). Steps run sequentially; each completion is persisted to `generation_jobs` before the next. Completed steps are skipped on retry.
+Single arq job, `PipelineOrchestrator` state machine (`services/pipeline/_monolith.py`, re-exported from `services/pipeline/__init__.py`). Steps run sequentially; each completion is persisted to `generation_jobs` before the next. Completed steps are skipped on retry.
 
 Steps: `script` → `voice` → `scenes` → `captions` → `assembly` → `thumbnail`
 
@@ -176,7 +176,7 @@ Engineering patterns to follow when adding or changing code in this repo.
 
 - **Single orchestrator job**: state machine, no inter-job coordination. Completed steps skipped on retry.
 - **Cancellation via Redis flags**, checked between steps.
-- **Fernet w/ key versioning**: API keys + OAuth tokens encrypted at rest. `key_version` stored. Rotation via `ENCRYPTION_KEY_V1`, `_V2`, etc.
+- **Fernet w/ key versioning**: API keys + OAuth tokens encrypted at rest. `key_version` stored alongside each ciphertext. The `decrypt_value_multi(ciphertext, {1: ..., 2: ...})` helper supports mixed-version reads, but `Settings` does not currently auto-load `ENCRYPTION_KEY_V*` env vars — wiring is per-caller. Rotation today means: re-encrypt all rows with the new key, then drop the old. True multi-version env loading is a follow-up.
 - **structlog JSON logs**: pipeline binds `episode_id`, `step`, `job_id`. Requests bind `request_id`.
 - **ComfyUI server pool**: round-robin, per-server semaphores, `max_concurrent_video_jobs` separate cap.
 - **File-first**: write to disk before DB record creation/update — avoids orphan refs on crash.
@@ -192,7 +192,7 @@ Engineering patterns to follow when adding or changing code in this repo.
 - **Safe WAV replacement**: backup before rename in audiobook music mixing.
 - **Chunk cleanup**: temp files cleaned *after* DB commit, not before.
 - **Scene duration scaling**: FFmpeg scales scene durations proportionally to audio length — prevents frozen last frames.
-- **Worker heartbeat**: every 60s to Redis (`worker:heartbeat`). `GET /api/v1/jobs/worker/health` reads it; healthy if <90s old.
+- **Worker heartbeat**: every 60s to Redis (`worker:heartbeat`, TTL 120s). `GET /api/v1/jobs/worker/health` reads it; healthy if <120s old (one full beat of slack).
 - **YouTube OAuth**: manual URL construction (no PKCE) to dodge state persistence issues with `google_auth_oauthlib`.
 - **Service extraction**: `EpisodeService` (`services/episode.py`) reusable ops (`get_or_raise`, `create_reassembly_jobs`, `require_status`). Domain exceptions in `core/exceptions.py` keep services FastAPI-free.
 - **Background jobs**: music gen + SEO gen moved from sync HTTP handlers to arq jobs (was blocking 10+ min).
@@ -221,7 +221,7 @@ Surprising behaviors and footguns. Read before changing related code.
 - `publish_scheduled_posts` cron every 5 min (was 15). 3× retry w/ backoff. Missing `youtube_channel_id` skips + logs error rather than crashing.
 - LLMPool failover transparent to callers — round-robin, retries on next provider on 5xx/timeout.
 - Scene gen `asyncio.gather(..., return_exceptions=True)` saves completed scenes to `media_assets` before raising. Retry skips them.
-- Worker heartbeat key: `worker:heartbeat`. Health = healthy if <90s old.
+- Worker heartbeat key: `worker:heartbeat`. Health = healthy if <120s old.
 - Service/route packages: code in `_monolith.py` + re-exports in `__init__.py`. **Never import from `_monolith` directly.**
 - `UnsafeURLError` inherits from `ValueError`. **Don't catch `ValueError` broadly** in code calling SSRF validators — use explicit `except UnsafeURLError`.
 - Music + SEO gen are now arq jobs. HTTP endpoints enqueue + return immediately. Frontend polls or uses WebSocket.
@@ -246,15 +246,17 @@ React + TS + Tailwind, Vite. **Outfit** (display) + **DM Sans** (body), glass mo
 | `/calendar` | Calendar | Month grid + scheduling dialog |
 | `/jobs` | Jobs | Background job monitor |
 | `/logs` | Logs | App logs |
-| `/about` | About | App info, pipeline viz |
+| `/help` | Help | App info, pipeline viz, troubleshooting |
 | `/settings` | Settings | ComfyUI, LLM, voices, YouTube |
 | `/youtube/callback` | YouTubeCallback | OAuth redirect |
 
 ### Sidebar
 
-- **Content Studio**: Dashboard, Series, Episodes, Text to Voice (badge: live count of generating episodes)
-- **Social Media**: YouTube, Calendar
-- **System**: Settings
+- **Top (no header)**: Dashboard
+- **Content Studio**: Episodes (badge: live count of generating episodes), Series, Text to Voice
+- **Publish**: Calendar, plus YouTube and any connected social platforms (TikTok / IG / X / Facebook) rendered conditionally
+- **System**: Jobs, Logs, Settings
+- **Bottom (no header)**: Help, About
 
 ### Activity Monitor
 

@@ -19,7 +19,7 @@ import structlog
 
 from drevalis.services.cloud_gpu.base import (
     CloudGPUConfigError,
-    CloudGPUProviderError,
+    wrap_httpx_error,
 )
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -69,13 +69,7 @@ class VastAIProvider:
             resp = await self._client.put("/bundles", json=body)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=f"Failed to fetch Vast.ai offers: {exc}",
-            ) from exc
+            raise wrap_httpx_error(self.name, "fetch Vast.ai offers", exc) from exc
 
         offers = (resp.json() or {}).get("offers", [])
         per_model: dict[str, dict[str, Any]] = {}
@@ -103,13 +97,7 @@ class VastAIProvider:
             resp = await self._client.get("/instances")
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=f"Failed to list Vast.ai instances: {exc}",
-            ) from exc
+            raise wrap_httpx_error(self.name, "list Vast.ai instances", exc) from exc
         instances = (resp.json() or {}).get("instances", [])
         return [self._normalise_pod(i) for i in instances]
 
@@ -147,13 +135,7 @@ class VastAIProvider:
             resp = await self._client.put(f"/asks/{gpu_type_id}/", json=payload)
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=f"Failed to create Vast.ai instance: {exc}",
-            ) from exc
+            raise wrap_httpx_error(self.name, "create Vast.ai instance", exc) from exc
         data = resp.json() or {}
         new_id = str(data.get("new_contract") or data.get("id") or "")
         # Poll list to get the normalised shape.
@@ -175,13 +157,7 @@ class VastAIProvider:
             resp = await self._client.put(f"/instances/{pod_id}/", json={"state": "stopped"})
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=str(exc),
-            ) from exc
+            raise wrap_httpx_error(self.name, f"stop Vast.ai instance {pod_id}", exc) from exc
         return (await self.get_pod(pod_id)) or {"id": pod_id, "status": "stopped"}
 
     async def start_pod(self, pod_id: str) -> dict[str, Any]:
@@ -189,13 +165,7 @@ class VastAIProvider:
             resp = await self._client.put(f"/instances/{pod_id}/", json={"state": "running"})
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=str(exc),
-            ) from exc
+            raise wrap_httpx_error(self.name, f"start Vast.ai instance {pod_id}", exc) from exc
         return (await self.get_pod(pod_id)) or {"id": pod_id, "status": "starting"}
 
     async def delete_pod(self, pod_id: str) -> None:
@@ -203,13 +173,7 @@ class VastAIProvider:
             resp = await self._client.delete(f"/instances/{pod_id}/")
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=str(exc),
-            ) from exc
+            raise wrap_httpx_error(self.name, f"delete Vast.ai instance {pod_id}", exc) from exc
 
     # ── Helpers ───────────────────────────────────────────────────────
 

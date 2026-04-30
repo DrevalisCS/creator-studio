@@ -414,13 +414,18 @@ class BackupService:
 
     @staticmethod
     def _safe_extract(tar: tarfile.TarFile, dst: Path) -> None:
-        """Guard against tar path traversal (CVE-2007-4559)."""
+        """Guard against tar path traversal (CVE-2007-4559) and symlink/special-file escape.
+
+        The pre-walk catches name-based escapes; ``filter='data'`` rejects symlinks,
+        hardlinks, devices, and FIFOs so an attacker-prepared archive cannot pivot
+        through a symlink into a path outside ``dst``.
+        """
         dst_resolved = dst.resolve()
         for member in tar.getmembers():
             member_path = (dst / member.name).resolve()
             if not str(member_path).startswith(str(dst_resolved)):
                 raise BackupError(f"tar entry escapes target: {member.name!r}")
-        tar.extractall(dst)
+        tar.extractall(dst, filter="data")
 
     # ── Listing / housekeeping ───────────────────────────────────────────
 

@@ -215,20 +215,38 @@ async def tiktok_callback(
             status_code=status.HTTP_302_FOUND,
         )
 
-    # ── Step 0: retrieve PKCE code_verifier from Redis ──────────────────
+    # ── Step 0: validate state + retrieve PKCE code_verifier atomically ──
+    # An empty/forged/replayed `state` must not fall through to the token
+    # exchange — TikTok's PKCE enforcement is optional, so without state
+    # validation an attacker who tricks an operator into following a
+    # crafted callback URL can connect their TikTok account to the
+    # victim's install. `getdel` makes the lookup-and-consume atomic so
+    # a parallel callback cannot reuse the same state.
     from redis.asyncio import Redis as RedisClient
 
     from drevalis.core.redis import get_pool
 
+    if not state:
+        logger.warning("tiktok_oauth_state_missing")
+        return RedirectResponse(
+            url=f"{frontend_settings_url}&tiktok_error=invalid_state",
+            status_code=status.HTTP_302_FOUND,
+        )
+
     code_verifier = ""
     redis_client: RedisClient = RedisClient(connection_pool=get_pool())
     try:
-        raw = await redis_client.get(f"tiktok_pkce:{state}")
-        if raw:
-            code_verifier = raw if isinstance(raw, str) else raw.decode()
-            await redis_client.delete(f"tiktok_pkce:{state}")
+        raw = await redis_client.getdel(f"tiktok_pkce:{state}")
     finally:
         await redis_client.aclose()
+
+    if not raw:
+        logger.warning("tiktok_oauth_state_unknown_or_replayed")
+        return RedirectResponse(
+            url=f"{frontend_settings_url}&tiktok_error=invalid_state",
+            status_code=status.HTTP_302_FOUND,
+        )
+    code_verifier = raw if isinstance(raw, str) else raw.decode()
 
     # ── Step 1: exchange authorization code for tokens ──────────────────
     token_payload = {

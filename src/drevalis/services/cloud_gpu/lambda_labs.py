@@ -17,6 +17,7 @@ import structlog
 from drevalis.services.cloud_gpu.base import (
     CloudGPUConfigError,
     CloudGPUProviderError,
+    wrap_httpx_error,
 )
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -50,13 +51,7 @@ class LambdaLabsProvider:
             resp = await self._client.get("/instance-types")
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=f"Failed to fetch Lambda instance types: {exc}",
-            ) from exc
+            raise wrap_httpx_error(self.name, "fetch Lambda instance types", exc) from exc
 
         body = (resp.json() or {}).get("data", {})
         out: list[dict[str, Any]] = []
@@ -91,13 +86,7 @@ class LambdaLabsProvider:
             resp = await self._client.get("/instances")
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=f"Failed to list Lambda instances: {exc}",
-            ) from exc
+            raise wrap_httpx_error(self.name, "list Lambda instances", exc) from exc
         rows = (resp.json() or {}).get("data", [])
         return [self._normalise_pod(r) for r in rows]
 
@@ -108,13 +97,7 @@ class LambdaLabsProvider:
                 return None
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=str(exc),
-            ) from exc
+            raise wrap_httpx_error(self.name, f"fetch Lambda instance {pod_id}", exc) from exc
         row = (resp.json() or {}).get("data")
         return self._normalise_pod(row) if row else None
 
@@ -145,10 +128,10 @@ class LambdaLabsProvider:
             keys_resp = await self._client.get("/ssh-keys")
             keys_resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=500,
-                detail=f"Could not load SSH keys: {exc}. Add one at https://cloud.lambda.ai/ssh-keys first.",
+            raise wrap_httpx_error(
+                self.name,
+                "load SSH keys (add one at https://cloud.lambda.ai/ssh-keys first)",
+                exc,
             ) from exc
         keys = (keys_resp.json() or {}).get("data", [])
         if not keys:
@@ -172,13 +155,7 @@ class LambdaLabsProvider:
             )
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=f"Launch failed: {exc}",
-            ) from exc
+            raise wrap_httpx_error(self.name, "launch Lambda instance", exc) from exc
 
         launched_ids = (resp.json() or {}).get("data", {}).get("instance_ids", [])
         if not launched_ids:
@@ -227,13 +204,7 @@ class LambdaLabsProvider:
             )
             resp.raise_for_status()
         except httpx.HTTPError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=getattr(exc.response, "status_code", 500)
-                if hasattr(exc, "response")
-                else 500,
-                detail=f"Terminate failed: {exc}",
-            ) from exc
+            raise wrap_httpx_error(self.name, "terminate Lambda instance", exc) from exc
 
     def _normalise_pod(self, row: dict[str, Any]) -> dict[str, Any]:
         status_map = {

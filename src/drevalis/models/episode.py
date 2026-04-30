@@ -38,6 +38,7 @@ class Episode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         Index("ix_episodes_series_id_status", "series_id", "status"),
         Index("ix_episodes_status", "status"),
+        Index("ix_episodes_created_at", "created_at"),
     )
 
     series_id: Mapped[uuid.UUID] = mapped_column(
@@ -88,7 +89,7 @@ class Episode(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     content_format: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="'shorts'"
     )
-    chapters: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    chapters: Mapped[list[dict[str, Any]] | None] = mapped_column(JSONB, nullable=True)
     total_duration_seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # ── Asset-driven generation ──────────────────────────────────────

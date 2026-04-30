@@ -9,9 +9,129 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `SESSION_SECRET` env var for the team-mode session cookie HMAC, decoupling
+  session-token forgery from `ENCRYPTION_KEY` compromise. Falls back to
+  `ENCRYPTION_KEY` when unset for backwards compat.
+- `COOKIE_SECURE` env var to mark session cookies as Secure (set `true`
+  behind HTTPS).
+- `WORKER_DB_POOL_SIZE` (default 5) and `WORKER_DB_MAX_OVERFLOW` (default 10)
+  for a smaller worker-side DB pool — workers are sequential per job so the
+  API's 10+20 was wasted.
+- Indexes on hot-path columns: `episodes.created_at`, `audiobooks.status`,
+  `media_assets(episode_id, scene_number)`, `series.content_format`,
+  `scheduled_posts.youtube_channel_id` (migrations 035–039). Synchronised
+  the ORM with two indexes (`ix_generation_jobs_episode_id_step`,
+  `ix_series_youtube_channel_id`) that existed in the DB but not in models.
+- `FFmpegService.concat_videos` for video-only concat (audio mixing happens
+  later in the edit-session render flow).
+- `AssetRepository.get_by_ids` and `EpisodeRepository.get_by_ids` for batch
+  ID lookups, replacing N+1 patterns in pipeline + jobs cleanup.
+- `GenerationJobRepository.get_done_steps` (single DISTINCT query replacing
+  6 per-step calls in the regenerate handler).
+- `ComfyUIPool.total_capacity()` so scene-gen concurrency tracks the sum of
+  registered server capacity instead of a hardcoded 4.
+- `is_demo_mode` / `require_not_demo` FastAPI deps relocated to
+  `core/deps.py` (was `services/demo.py`, which violated layering).
+- `docs/security/websocket-token-logging.md` — per-proxy access-log
+  scrubber recipes for the WebSocket bearer-in-query-string risk.
+- 49 unit tests for `seo_preflight` (0% → 97% coverage) and
+  `quality_gates` pure functions.
+- Replaced the 18 quarantined xfails (per `docs/ops/techdebt.md` §1) with
+  current-API equivalents: pipeline orchestrator (5 tests), ffmpeg
+  command builder (4 tests), LLM provider selection (4 tests), worker
+  jobs (4 tests), ComfyUI pool round-robin + total_capacity (1 test
+  replacing the removed least-loaded selector).
+- CI workflow now triggers on push to `audit/**` branches in addition
+  to `main`, so audit work shows up in GitHub Actions without a PR.
+
 ### Changed
 
+- Bumped `cryptography>=46.0.7` (CVE-2026-34073, CVE-2026-39892) and
+  `anthropic>=0.87.0` (CVE-2026-34450, CVE-2026-34452).
+- Pipeline metrics now persist via Redis counters + a capped recent-events
+  list (`MetricsCollector` was per-process, so the `/api/v1/metrics/*`
+  endpoints permanently returned zeros — worker writes were never visible
+  to the API process).
+- Visual prompt refinement in the pipeline `script` step now runs scenes
+  in parallel via `asyncio.gather` (was sequential — 50–150s saved on a
+  50-scene long-form episode).
+- Per-function arq timeouts on short admin jobs: 120s for heartbeats,
+  900s for SEO / scheduled publish / AB winner. Long-running jobs
+  (pipeline, audiobook, music gen) keep the global 4h ceiling.
+- Worker heartbeat TTL bumped from 120s → 180s so a single missed beat
+  doesn't flip the key from "stale" to "absent" before the API's
+  liveness check fires.
+- Cloud-GPU provider error wrapping centralised: 26 duplicated
+  `raise CloudGPUProviderError(...)` sites collapsed into two helpers
+  (`wrap_httpx_error`, `wrap_provider_api_error`); -107 / +58 lines.
+- Export bundle endpoints (`/episodes/{id}/export-bundle`,
+  `/episodes/{id}/export-raw-assets`) now build the zip in a thread via
+  `asyncio.to_thread` and use `ZIP_STORED` instead of `ZIP_DEFLATED`
+  (MP4/JPG/SRT are already compressed). Multi-hundred-MB exports no
+  longer block the uvicorn event loop.
+- `MediaAsset.asset_type` CHECK constraint widened to allow
+  `scene_image`, `scene_video`, `video_proxy` — code was already
+  inserting these and failing at the DB.
+- Episode `chapters` ORM annotation corrected from `dict` to `list[dict]`
+  (matches the runtime value and the existing Pydantic schema).
+- `LLMService.storage` parameter dropped — never read; 13 call sites
+  updated.
+- `LongFormScriptService` binds a `longform_phase` contextvar
+  (`outline` / `chapters`) at each phase entry.
+- Audiobook generate() binds `audiobook_id` + `title` via structlog
+  contextvars at the job boundary so every helper log carries the id.
+- Worker job tarball restore now uses `tarfile.extractall(filter='data')`
+  to reject symlink / hardlink / device members — closes Bandit B202.
+- `LicenseGateMiddleware` heartbeat threshold doc aligned with the 120s
+  code (was documented as 90s).
+
 ### Fixed
+
+- TikTok OAuth callback now rejects requests with missing/forged/replayed
+  `state` and uses atomic `getdel` for PKCE verifier lookup (matches the
+  YouTube callback). Previously fell through silently to token exchange
+  on state miss.
+- Scene-image + scene-video generation handler signatures now declare
+  `server_id: UUID | None` to match the actual call sites (every caller
+  passes `None` for round-robin pool dispatch).
+- Audiobook chapter image generation no longer crashes with
+  `AttributeError` when `comfyui_service` is `None` — falls back to
+  title cards.
+- Edit-session render no longer raises `TypeError` on `concat_video_clips`
+  (the call was missing `voiceover_path` and was masked by a
+  `# type: ignore[call-arg]`).
+- `cancel:{episode_id}` Redis key now cleared on every enqueue, so a
+  worker crash mid-cancel can't silently abort the next regenerate run
+  for up to an hour.
+- `worker_heartbeat` failures now log at WARNING with `exc_info` instead
+  of silent `pass`.
+- ComfyUI pool startup failures now log at ERROR (was DEBUG); per-server
+  registration failures include the server URL and `exc_info`.
+- LLM-pool failover warnings now include `exc_info` and a longer
+  truncation budget; visual-prompt-refine failures bumped DEBUG → WARN
+  so silent quality degradation is visible.
+- ComfyUI server cooldown warning now includes the server URL so
+  operators don't have to cross-reference the UUID with the dashboard.
+- Audiobook cover/background image resolution failures now log at
+  WARNING with `exc_info` (were silently swallowed; users got the
+  auto-generated title card with no log).
+- `seo + music` worker jobs bind `episode_id` via structlog contextvars
+  at job entry; downstream provider/LLM logs now carry it.
+- N+1 cleanup in `/api/v1/jobs/cleanup`: episode-by-id loop replaced
+  with one IN-clause batch load.
+- N+1 in `/api/v1/jobs/tasks/active`: 2 GETs per matched key collapsed
+  into 2 MGETs total (Activity Monitor polls every 2–3s).
+- N+1 in `POST /episodes/{id}/generate`: 6 per-step `get_latest_by_*`
+  queries collapsed into one DISTINCT query.
+- Tar extraction for backup restore now uses Python 3.12+ data filter,
+  closing the symlink/hardlink/device escape vector flagged by Bandit
+  B202.
+- TikTok OAuth state-validation gap (CSRF + state replay).
+- Doc drift: `/about` → `/help` route, `services/pipeline.py` →
+  `services/pipeline/_monolith.py`, sidebar groups, README env table,
+  `ENCRYPTION_KEY_V*` rotation claim, cron comment.
+- SceneGrid card aspect ratio corrected to 9:16 per design system §3
+  (was leftover landscape `aspect-video` from earlier layout).
 
 ## [0.28.1] - 2026-04-29
 

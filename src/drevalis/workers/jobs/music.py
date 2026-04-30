@@ -46,9 +46,9 @@ async def generate_episode_music(
     db = ctx["db"]
     settings = Settings()
 
+    structlog.contextvars.bind_contextvars(episode_id=episode_id, job="generate_episode_music")
     logger.info(
         "music_generate_job.start",
-        episode_id=episode_id,
         mood=mood,
         duration=duration_seconds,
     )
@@ -56,7 +56,7 @@ async def generate_episode_music(
     ep_repo = EpisodeRepository(db)
     episode = await ep_repo.get_by_id(UUID(episode_id))
     if episode is None:
-        logger.error("music_generate_job.episode_not_found", episode_id=episode_id)
+        logger.error("music_generate_job.episode_not_found")
         return {"error": f"Episode {episode_id} not found"}
 
     # Resolve ComfyUI server

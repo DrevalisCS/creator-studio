@@ -1344,6 +1344,17 @@ class AudiobookService:
         dict with keys: audio_rel_path, video_rel_path, mp3_rel_path,
                         duration_seconds, file_size_bytes, chapters
         """
+        # Bind audiobook_id at the call boundary so every log line
+        # produced by helpers further down — including module-level
+        # `log = structlog.get_logger(__name__)` callers — carries the
+        # id without each helper having to take or rebind it. Cleared
+        # in the matching finally so other tasks running on this loop
+        # don't inherit the binding.
+        structlog.contextvars.bind_contextvars(
+            audiobook_id=str(audiobook_id),
+            title=title,
+        )
+
         # Refresh ComfyUI pool from DB so retries always use current servers
         if self.comfyui_service and self.db_session:
             try:
@@ -1909,12 +1920,23 @@ class AudiobookService:
                     try:
                         resolved_cover = str(self.storage.resolve_path(cover_image_path))
                     except Exception:
-                        pass
+                        # User-supplied path failed sanitisation or is
+                        # outside the storage root — log so they see why
+                        # the auto-generated title card replaced their art.
+                        log.warning(
+                            "audiobook.cover_image_resolve_failed",
+                            path=cover_image_path,
+                            exc_info=True,
+                        )
                 if not resolved_cover and background_image_path:
                     try:
                         resolved_cover = str(self.storage.resolve_path(background_image_path))
                     except Exception:
-                        pass
+                        log.warning(
+                            "audiobook.background_image_resolve_failed",
+                            path=background_image_path,
+                            exc_info=True,
+                        )
                 if not resolved_cover or not Path(resolved_cover).exists():
                     title_for_card = chapters[0]["title"] if chapters else "Audiobook"
                     resolved_cover = str(
@@ -3483,7 +3505,16 @@ class AudiobookService:
                     )
 
                 try:
-                    # Use ComfyUI pool to generate image
+                    # Use ComfyUI pool to generate image. Audiobooks
+                    # without a configured ComfyUI server have no way
+                    # to render chapter art — fall back to title cards
+                    # rather than crash with AttributeError.
+                    if self.comfyui_service is None:
+                        log.info(
+                            "audiobook.image_generation_skipped_no_comfyui",
+                            chapter=ch_idx,
+                        )
+                        return None
                     workflow = await self.comfyui_service._load_workflow(
                         "workflows/qwen_image_2512.json"
                     )
@@ -4433,7 +4464,10 @@ class AudiobookService:
         # deterministic for the "regenerate same chapter" retry case.
         import hashlib
 
-        slug = hashlib.sha1(title.encode("utf-8", errors="replace")).hexdigest()[:8]
+        slug = hashlib.sha1(
+            title.encode("utf-8", errors="replace"),
+            usedforsecurity=False,
+        ).hexdigest()[:8]
         card_path = output_dir / f"title_card_{slug}.jpg"
 
         # Drawtext escaping rules: backslash escapes itself; the

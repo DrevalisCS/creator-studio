@@ -36,6 +36,7 @@ class GenerationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         ),
         Index("ix_generation_jobs_episode_id", "episode_id"),
         Index("ix_generation_jobs_status", "status"),
+        Index("ix_generation_jobs_episode_id_step", "episode_id", "step"),
     )
 
     episode_id: Mapped[uuid.UUID] = mapped_column(

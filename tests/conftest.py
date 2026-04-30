@@ -10,7 +10,7 @@ import pytest
 from cryptography.fernet import Fernet
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import event
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
@@ -36,6 +36,12 @@ def _jsonb_to_json(element, compiler, **kw):
 @compiles(UUID, "sqlite")
 def _uuid_to_char(element, compiler, **kw):
     return "TEXT"
+
+
+@compiles(ARRAY, "sqlite")
+def _array_to_json(element, compiler, **kw):
+    # SQLite has no ARRAY; serialize as JSON for round-trip in tests.
+    return compiler.visit_JSON(JSON(), **kw)
 
 
 # Override UUID type processing for SQLite so that string <-> uuid.UUID
@@ -371,29 +377,20 @@ def sample_workflow_mapping() -> WorkflowInputMapping:
 
 _STALE_TESTS: frozenset[str] = frozenset(
     {
-        # Referenced ``_select_least_loaded`` which the ComfyUIPool no longer exposes
-        "tests/unit/test_comfyui.py::TestComfyUIPool::test_pool_least_loaded_selection",
-        # FFmpegService.build_assembly_command signature changed; mocks stale
-        "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_basic",
-        "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_full",
-        "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_with_captions",
-        "tests/unit/test_ffmpeg.py::TestBuildAssemblyCommand::test_build_assembly_command_with_music",
-        # Provider factory moved to LLMPool; these tests patch the wrong symbols
-        "tests/unit/test_llm.py::TestProviderSelection::test_provider_caching",
-        "tests/unit/test_llm.py::TestProviderSelection::test_provider_selection_anthropic_by_model_name",
-        "tests/unit/test_llm.py::TestProviderSelection::test_provider_selection_anthropic_by_url",
-        "tests/unit/test_llm.py::TestProviderSelection::test_provider_selection_openai_compatible",
-        # PipelineOrchestrator API changed during long-form pipeline work
-        "tests/unit/test_pipeline.py::TestPipelineBroadcastsProgress::test_pipeline_broadcasts_progress",
-        "tests/unit/test_pipeline.py::TestPipelineHandlesStepFailure::test_pipeline_handles_step_failure",
-        "tests/unit/test_pipeline.py::TestPipelineRunsAllSteps::test_pipeline_runs_all_steps_in_order",
-        "tests/unit/test_pipeline.py::TestPipelineSkipsCompletedSteps::test_pipeline_skips_completed_steps",
-        "tests/unit/test_pipeline.py::TestPipelineUpdatesEpisodeStatus::test_pipeline_updates_episode_status",
-        # Worker jobs migrated from sync HTTP handlers; mocks patch wrong paths
-        "tests/unit/test_worker_jobs.py::TestGenerateEpisodeMusicJob::test_returns_error_when_episode_not_found",
-        "tests/unit/test_worker_jobs.py::TestGenerateEpisodeMusicJob::test_returns_error_when_no_comfyui_server",
-        "tests/unit/test_worker_jobs.py::TestGenerateSeoAsyncJob::test_returns_error_when_episode_not_found",
-        "tests/unit/test_worker_jobs.py::TestGenerateSeoAsyncJob::test_returns_error_when_no_script",
+        # (Un-quarantined: replaced with test_pool_round_robin_selection
+        # which exercises the actual selector + total_capacity helper.)
+        # (Un-quarantined: tests now build an AudioMixConfig matching the
+        # current _build_assembly_command signature instead of the legacy
+        # music_volume_db float kwarg.)
+        # (Un-quarantined: tests now pass after F-T-08 dropped the
+        # storage param and tests were updated to patch decrypt_value
+        # explicitly so the encrypted-vs-plain api_key flow is tested.)
+        # (Un-quarantined: tests now patch metrics.record_* and pin
+        # redis.get to None so the pipeline executes through the
+        # _execute_step dispatcher to the patched _step_<name> handlers.)
+        # (Un-quarantined: tests now patch repo imports at the source
+        # module path that workers/jobs/* re-imports via in-function
+        # imports, plus stub Settings to avoid ENCRYPTION_KEY env need.)
     }
 )
 

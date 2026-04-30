@@ -13,7 +13,7 @@ import structlog
 
 from drevalis.services.cloud_gpu.base import (
     CloudGPUConfigError,
-    CloudGPUProviderError,
+    wrap_provider_api_error,
 )
 from drevalis.services.runpod import RunPodAPIError, RunPodService
 
@@ -43,11 +43,7 @@ class RunPodProvider:
         try:
             raw = await self._service.get_gpu_types()
         except RunPodAPIError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=exc.status_code,
-                detail=exc.detail,
-            ) from exc
+            raise wrap_provider_api_error(self.name, exc) from exc
 
         out: list[dict[str, Any]] = []
         for g in raw:
@@ -75,11 +71,7 @@ class RunPodProvider:
         try:
             raw = await self._service.list_pods()
         except RunPodAPIError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=exc.status_code,
-                detail=exc.detail,
-            ) from exc
+            raise wrap_provider_api_error(self.name, exc) from exc
         return [self._normalise_pod(p) for p in raw]
 
     async def get_pod(self, pod_id: str) -> dict[str, Any] | None:
@@ -112,38 +104,28 @@ class RunPodProvider:
                 kwargs["env"] = env
             raw = await self._service.create_pod(**kwargs)
         except RunPodAPIError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name,
-                status_code=exc.status_code,
-                detail=exc.detail,
-            ) from exc
+            raise wrap_provider_api_error(self.name, exc) from exc
         return self._normalise_pod(raw)
 
     async def stop_pod(self, pod_id: str) -> dict[str, Any]:
         try:
             raw = await self._service.stop_pod(pod_id)
         except RunPodAPIError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name, status_code=exc.status_code, detail=exc.detail
-            ) from exc
+            raise wrap_provider_api_error(self.name, exc) from exc
         return self._normalise_pod(raw)
 
     async def start_pod(self, pod_id: str) -> dict[str, Any]:
         try:
             raw = await self._service.start_pod(pod_id)
         except RunPodAPIError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name, status_code=exc.status_code, detail=exc.detail
-            ) from exc
+            raise wrap_provider_api_error(self.name, exc) from exc
         return self._normalise_pod(raw)
 
     async def delete_pod(self, pod_id: str) -> None:
         try:
             await self._service.delete_pod(pod_id)
         except RunPodAPIError as exc:
-            raise CloudGPUProviderError(
-                provider=self.name, status_code=exc.status_code, detail=exc.detail
-            ) from exc
+            raise wrap_provider_api_error(self.name, exc) from exc
 
     # ── Helpers ───────────────────────────────────────────────────────
 

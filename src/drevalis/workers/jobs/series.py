@@ -68,7 +68,7 @@ async def generate_series_async(
                 llm_config = await LLMConfigRepository(session).get_by_id(UUID(llm_config_id))
                 if not llm_config:
                     raise ValueError("LLM config not found")
-                llm_service = LLMService(storage=None, encryption_key=settings.encryption_key)
+                llm_service = LLMService(encryption_key=settings.encryption_key)
                 provider = llm_service.get_provider(llm_config)
             else:
                 provider = OpenAICompatibleProvider(
