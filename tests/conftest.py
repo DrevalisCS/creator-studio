@@ -385,12 +385,9 @@ _STALE_TESTS: frozenset[str] = frozenset(
         # (Un-quarantined: tests now pass after F-T-08 dropped the
         # storage param and tests were updated to patch decrypt_value
         # explicitly so the encrypted-vs-plain api_key flow is tested.)
-        # PipelineOrchestrator API changed during long-form pipeline work
-        "tests/unit/test_pipeline.py::TestPipelineBroadcastsProgress::test_pipeline_broadcasts_progress",
-        "tests/unit/test_pipeline.py::TestPipelineHandlesStepFailure::test_pipeline_handles_step_failure",
-        "tests/unit/test_pipeline.py::TestPipelineRunsAllSteps::test_pipeline_runs_all_steps_in_order",
-        "tests/unit/test_pipeline.py::TestPipelineSkipsCompletedSteps::test_pipeline_skips_completed_steps",
-        "tests/unit/test_pipeline.py::TestPipelineUpdatesEpisodeStatus::test_pipeline_updates_episode_status",
+        # (Un-quarantined: tests now patch metrics.record_* and pin
+        # redis.get to None so the pipeline executes through the
+        # _execute_step dispatcher to the patched _step_<name> handlers.)
         # (Un-quarantined: tests now patch repo imports at the source
         # module path that workers/jobs/* re-imports via in-function
         # imports, plus stub Settings to avoid ENCRYPTION_KEY env need.)

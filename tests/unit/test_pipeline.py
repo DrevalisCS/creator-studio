@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from contextlib import contextmanager
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
@@ -12,6 +13,28 @@ from drevalis.services.pipeline import (
     PipelineOrchestrator,
     PipelineStep,
 )
+
+
+@contextmanager
+def _no_metrics():
+    """Replace MetricsCollector calls with no-ops for the duration.
+
+    The production calls land on Redis pipelines; tests use AsyncMock
+    redis which doesn't satisfy that protocol. We're not testing
+    metrics here, so silence them.
+    """
+    with (
+        patch(
+            "drevalis.services.pipeline._monolith.metrics.record_step",
+            AsyncMock(return_value=None),
+        ),
+        patch(
+            "drevalis.services.pipeline._monolith.metrics.record_generation",
+            AsyncMock(return_value=None),
+        ),
+    ):
+        yield
+
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -98,9 +121,13 @@ def _build_orchestrator(
     """Build a PipelineOrchestrator with all services mocked."""
     eid = episode_id or uuid4()
 
+    redis_mock = AsyncMock()
+    # cancel-flag check returns None so the pipeline doesn't bail out
+    # before the first step.
+    redis_mock.get = AsyncMock(return_value=None)
     mocks = {
         "db_session": AsyncMock(),
-        "redis": AsyncMock(),
+        "redis": redis_mock,
         "llm_service": AsyncMock(),
         "comfyui_service": AsyncMock(),
         "tts_service": AsyncMock(),
@@ -193,7 +220,8 @@ class TestPipelineRunsAllSteps:
         orchestrator._mark_step_done = AsyncMock()
         orchestrator._ensure_job = AsyncMock(return_value=_make_mock_job())
 
-        await orchestrator.run()
+        with _no_metrics():
+            await orchestrator.run()
 
         # All 6 steps should have been called
         assert len(step_calls) == 6
@@ -231,7 +259,8 @@ class TestPipelineSkipsCompletedSteps:
             handler = AsyncMock(side_effect=lambda *a, sn=step.value: step_calls.append(sn))
             setattr(orchestrator, f"_step_{step.value}", handler)
 
-        await orchestrator.run()
+        with _no_metrics():
+            await orchestrator.run()
 
         # Script and voice should NOT be in step_calls
         assert "script" not in step_calls
@@ -260,7 +289,7 @@ class TestPipelineHandlesStepFailure:
         orchestrator._step_script = AsyncMock(side_effect=RuntimeError("LLM API down"))
         orchestrator._handle_step_failure = AsyncMock()
 
-        with pytest.raises(RuntimeError, match="LLM API down"):
+        with _no_metrics(), pytest.raises(RuntimeError, match="LLM API down"):
             await orchestrator.run()
 
         # _handle_step_failure should have been called
@@ -301,7 +330,8 @@ class TestPipelineBroadcastsProgress:
         orchestrator._step_script = AsyncMock()
         orchestrator._mark_step_done = AsyncMock()
 
-        await orchestrator.run()
+        with _no_metrics():
+            await orchestrator.run()
 
         # Should have broadcast at least "Starting..." (0%) and "complete" (100%)
         # for the script step
@@ -329,7 +359,8 @@ class TestPipelineUpdatesEpisodeStatus:
         orchestrator.episode_repo.update_status = AsyncMock()
         orchestrator._broadcast_progress = AsyncMock()
 
-        await orchestrator.run()
+        with _no_metrics():
+            await orchestrator.run()
 
         # Should update to "generating" at start and "review" at end
         status_calls = [
