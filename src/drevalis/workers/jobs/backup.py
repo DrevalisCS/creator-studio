@@ -55,3 +55,138 @@ async def scheduled_backup(ctx: dict[str, Any]) -> dict[str, Any]:
     except Exception as exc:  # noqa: BLE001 - background job; log + move on
         logger.error("scheduled_backup_failed", error=str(exc)[:200], exc_info=True)
         return {"status": "failed", "error": str(exc)[:200]}
+
+
+# ── Restore (manual, kicked off from Settings → Backup → Restore) ──────
+
+
+async def restore_backup_async(
+    ctx: dict[str, Any],
+    job_id: str,
+    archive_path: str,
+    *,
+    allow_key_mismatch: bool = False,
+    restore_db: bool = True,
+    restore_media: bool = True,
+) -> dict[str, Any]:
+    """Restore a previously-uploaded archive in the background.
+
+    The route uploads the tarball to a temp file synchronously (so the
+    21GB+ multipart body finishes streaming) and then enqueues this
+    job with the temp file path. Progress + final status are written
+    to Redis at ``backup:restore:{job_id}`` so the UI can poll without
+    a long-lived HTTP connection.
+
+    The temp file is deleted at the end whether the restore succeeded
+    or not.
+    """
+    import json as _json
+    from pathlib import Path
+
+    from redis.asyncio import Redis
+
+    from drevalis.core.config import Settings
+    from drevalis.core.redis import get_pool
+    from drevalis.services.backup import BackupError, BackupService
+    from drevalis.services.updates import _resolve_current_version
+
+    structlog.contextvars.bind_contextvars(restore_job_id=job_id)
+    logger.info("restore_backup_async.start", archive=archive_path)
+
+    settings = Settings()
+    redis = Redis(connection_pool=get_pool())
+    status_key = f"backup:restore:{job_id}"
+
+    async def _write_status(payload: dict[str, Any]) -> None:
+        # 1h TTL — UI typically polls within 30s of completion; the key
+        # cleans itself up so a forgotten job doesn't haunt Redis.
+        await redis.set(status_key, _json.dumps(payload), ex=3600)
+
+    async def _progress(stage: str, pct: int, message: str) -> None:
+        await _write_status(
+            {
+                "status": "running",
+                "stage": stage,
+                "progress_pct": pct,
+                "message": message,
+            }
+        )
+
+    archive = Path(archive_path)
+    session_factory = ctx["session_factory"]
+
+    try:
+        await _write_status(
+            {
+                "status": "running",
+                "stage": "starting",
+                "progress_pct": 0,
+                "message": "Restore starting…",
+            }
+        )
+
+        svc = BackupService(
+            storage_base_path=settings.storage_base_path,
+            backup_directory=settings.backup_directory,
+            encryption_key=settings.encryption_key,
+            app_version=_resolve_current_version(),
+        )
+
+        async with session_factory() as session:
+            result = await svc.restore_backup(
+                session,
+                archive,
+                allow_key_mismatch=allow_key_mismatch,
+                restore_db=restore_db,
+                restore_media=restore_media,
+                progress_cb=_progress,
+            )
+
+        rows_total = sum(result.get("rows_inserted", {}).values())
+        storage_count = len(result.get("storage_paths_restored", []))
+        await _write_status(
+            {
+                "status": "done",
+                "stage": "done",
+                "progress_pct": 100,
+                "message": (f"Restored {rows_total} rows + {storage_count} storage dirs."),
+                "result": result,
+            }
+        )
+        logger.info(
+            "restore_backup_async.done",
+            rows=rows_total,
+            storage_dirs=storage_count,
+        )
+        return {"status": "done", "result": result}
+
+    except BackupError as exc:
+        await _write_status(
+            {
+                "status": "failed",
+                "stage": "failed",
+                "progress_pct": 0,
+                "message": str(exc),
+                "error": str(exc),
+            }
+        )
+        logger.warning("restore_backup_async.invalid", error=str(exc))
+        return {"status": "failed", "error": str(exc)}
+    except Exception as exc:  # noqa: BLE001
+        await _write_status(
+            {
+                "status": "failed",
+                "stage": "failed",
+                "progress_pct": 0,
+                "message": f"Restore failed: {exc}",
+                "error": str(exc)[:500],
+            }
+        )
+        logger.error("restore_backup_async.failed", error=str(exc)[:200], exc_info=True)
+        return {"status": "failed", "error": str(exc)[:500]}
+    finally:
+        try:
+            archive.unlink(missing_ok=True)
+        except OSError:
+            logger.debug("restore_archive_cleanup_failed", path=str(archive))
+        await redis.aclose()

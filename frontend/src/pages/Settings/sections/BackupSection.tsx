@@ -129,7 +129,13 @@ export function BackupSection() {
   const [allowKeyMismatch, setAllowKeyMismatch] = useState(false);
   const [restoreDb, setRestoreDb] = useState(true);
   const [restoreMedia, setRestoreMedia] = useState(true);
+  const [restoreProgress, setRestoreProgress] = useState<{
+    stage: string;
+    progress_pct: number;
+    message: string;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const pollRef = useRef<number | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -147,6 +153,28 @@ export function BackupSection() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Resume polling on mount if a restore was in flight when the user
+  // navigated away. Survives full-page reloads + tab switches up to
+  // the Redis status TTL (1h on the worker side).
+  useEffect(() => {
+    let stashed: string | null = null;
+    try {
+      stashed = window.localStorage.getItem('restoreJobId');
+    } catch {
+      stashed = null;
+    }
+    if (!stashed) return;
+    setRestoring(true);
+    setRestoreProgress({
+      stage: 'resuming',
+      progress_pct: 0,
+      message: 'Reconnecting to in-flight restore…',
+    });
+    pollRestoreStatus(stashed);
+    // pollRestoreStatus is stable (useCallback) so empty-deps is fine.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onCreate = async () => {
     setCreating(true);
@@ -256,6 +284,101 @@ export function BackupSection() {
     }
   };
 
+  // Cleanup poll timer on unmount so a tab navigation away doesn't
+  // leak setInterval handlers. The active job_id is stashed in
+  // localStorage so a re-mount (or re-load) can pick the poll back up.
+  useEffect(() => {
+    return () => {
+      if (pollRef.current != null) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, []);
+
+  const pollRestoreStatus = useCallback(
+    (jobId: string) => {
+      if (pollRef.current != null) {
+        window.clearInterval(pollRef.current);
+      }
+      try {
+        window.localStorage.setItem('restoreJobId', jobId);
+      } catch {
+        // Private browsing / quota — non-fatal.
+      }
+      const tick = async () => {
+        try {
+          const res = await fetch(`/api/v1/backup/restore-status/${jobId}`);
+          if (!res.ok) return;
+          const data = await res.json();
+          if (data.status === 'running' || data.status === 'queued') {
+            setRestoreProgress({
+              stage: data.stage ?? data.status,
+              progress_pct: data.progress_pct ?? 0,
+              message: data.message ?? 'Restoring…',
+            });
+          } else if (data.status === 'done') {
+            if (pollRef.current != null) {
+              window.clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+            try {
+              window.localStorage.removeItem('restoreJobId');
+            } catch {
+              /* ignore */
+            }
+            setRestoreProgress({
+              stage: 'done',
+              progress_pct: 100,
+              message: data.message ?? 'Restore complete.',
+            });
+            const result = data.result ?? {};
+            const totalRows = Object.values(
+              (result.rows_inserted ?? {}) as Record<string, number>,
+            ).reduce((a, b) => a + b, 0);
+            const storageCount = (result.storage_paths_restored ?? []).length;
+            toast.success('Restore complete', {
+              description: `${totalRows} rows + ${storageCount} storage dirs. Reload the page to pick up the new state.`,
+            });
+            setRestoring(false);
+            setRestoreConfirm('');
+            if (fileInputRef.current) fileInputRef.current.value = '';
+            await refresh();
+            // Leave the progress bar visible at 100% so the user sees the
+            // success state until they navigate / refresh.
+          } else if (data.status === 'failed') {
+            if (pollRef.current != null) {
+              window.clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+            try {
+              window.localStorage.removeItem('restoreJobId');
+            } catch {
+              /* ignore */
+            }
+            setRestoreProgress({
+              stage: 'failed',
+              progress_pct: data.progress_pct ?? 0,
+              message: data.message ?? data.error ?? 'Restore failed',
+            });
+            toast.error('Restore failed', {
+              description: data.error ?? data.message ?? 'see worker logs',
+            });
+            setRestoring(false);
+          }
+        } catch {
+          // Network blip — keep polling. The job is on the worker side
+          // so a transient API blip doesn't lose progress.
+        }
+      };
+      // Kick off an immediate first poll so the bar appears within a
+      // second of the upload finishing, then settle into a 2s cadence.
+      void tick();
+      pollRef.current = window.setInterval(() => void tick(), 2000);
+    },
+    [toast, refresh],
+  );
+
   const onRestore = async () => {
     const file = fileInputRef.current?.files?.[0];
     if (!file) {
@@ -271,6 +394,11 @@ export function BackupSection() {
       return;
     }
     setRestoring(true);
+    setRestoreProgress({
+      stage: 'uploading',
+      progress_pct: 0,
+      message: `Uploading ${file.name}…`,
+    });
     try {
       const fd = new FormData();
       fd.append('file', file);
@@ -279,30 +407,48 @@ export function BackupSection() {
       if (!restoreDb) params.set('restore_db', 'false');
       if (!restoreMedia) params.set('restore_media', 'false');
       const qs = params.toString() ? `?${params.toString()}` : '';
-      const res = await fetch(`/api/v1/backup/restore${qs}`, {
-        method: 'POST',
-        headers: { 'X-Confirm-Restore': 'i-understand' },
-        body: fd,
+
+      // XHR (not fetch) so we get an upload-progress event for the
+      // multi-GB body. fetch() doesn't expose upload progress in any
+      // browser today.
+      const xhr = new XMLHttpRequest();
+      const responseText: string = await new Promise((resolve, reject) => {
+        xhr.open('POST', `/api/v1/backup/restore${qs}`);
+        xhr.setRequestHeader('X-Confirm-Restore', 'i-understand');
+        xhr.upload.addEventListener('progress', (ev) => {
+          if (ev.lengthComputable) {
+            const pct = Math.round((ev.loaded / ev.total) * 100);
+            setRestoreProgress({
+              stage: 'uploading',
+              progress_pct: pct,
+              message: `Uploading ${file.name} (${pct}%)…`,
+            });
+          }
+        });
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve(xhr.responseText);
+          else reject(new ApiError(xhr.status, xhr.statusText, xhr.responseText));
+        });
+        xhr.addEventListener('error', () =>
+          reject(new ApiError(xhr.status || 0, 'network error', xhr.responseText)),
+        );
+        xhr.send(fd);
       });
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({}));
-        throw new ApiError(res.status, res.statusText, detail.detail ?? res.statusText);
+
+      const data = JSON.parse(responseText) as { job_id?: string };
+      if (!data.job_id) {
+        throw new ApiError(0, 'no job_id', responseText);
       }
-      const data = await res.json();
-      const totalRows = Object.values(
-        (data.rows_inserted ?? {}) as Record<string, number>,
-      ).reduce((a, b) => a + b, 0);
-      const storageCount = (data.storage_paths_restored ?? []).length;
-      toast.success('Restore complete', {
-        description: `${totalRows} rows + ${storageCount} storage dirs. Reload the page to pick up the new state.`,
+      setRestoreProgress({
+        stage: 'queued',
+        progress_pct: 0,
+        message: 'Upload complete — restore enqueued. Waiting for worker…',
       });
-      setRestoreConfirm('');
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      await refresh();
+      pollRestoreStatus(data.job_id);
     } catch (err) {
-      toast.error('Restore failed', { description: formatError(err) });
-    } finally {
+      toast.error('Restore upload failed', { description: formatError(err) });
       setRestoring(false);
+      setRestoreProgress(null);
     }
   };
 
@@ -801,6 +947,46 @@ export function BackupSection() {
             <Upload className="w-4 h-4 mr-1" />
             {restoring ? 'Restoring...' : 'Restore (destructive)'}
           </Button>
+
+          {restoreProgress && (
+            <div
+              className="mt-4 rounded border border-amber-500/30 bg-amber-500/5 p-3"
+              role="status"
+              aria-live="polite"
+            >
+              <div className="flex items-center justify-between text-xs text-txt-secondary mb-1">
+                <span>
+                  Stage: <span className="font-mono text-txt-primary">{restoreProgress.stage}</span>
+                </span>
+                <span className="font-mono text-txt-primary">
+                  {restoreProgress.progress_pct}%
+                </span>
+              </div>
+              <div
+                className="h-2 w-full rounded bg-bg-elevated overflow-hidden"
+                role="progressbar"
+                aria-valuenow={restoreProgress.progress_pct}
+                aria-valuemin={0}
+                aria-valuemax={100}
+              >
+                <div
+                  className={
+                    restoreProgress.stage === 'failed'
+                      ? 'h-full bg-red-500 transition-all duration-200'
+                      : restoreProgress.stage === 'done'
+                        ? 'h-full bg-green-500 transition-all duration-200'
+                        : 'h-full bg-amber-500 transition-all duration-200'
+                  }
+                  style={{ width: `${restoreProgress.progress_pct}%` }}
+                />
+              </div>
+              <div className="mt-2 text-xs text-txt-secondary">{restoreProgress.message}</div>
+              <div className="mt-1 text-[11px] text-txt-muted">
+                Safe to navigate away — the restore runs in the background. Come back to this page
+                to see progress.
+              </div>
+            </div>
+          )}
         </div>
       </Card>
     </div>

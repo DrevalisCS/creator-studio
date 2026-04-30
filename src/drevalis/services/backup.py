@@ -28,7 +28,7 @@ import shutil
 import tarfile
 import tempfile
 import uuid
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from datetime import UTC, date, datetime, time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -292,6 +292,7 @@ class BackupService:
         allow_key_mismatch: bool = False,
         restore_db: bool = True,
         restore_media: bool = True,
+        progress_cb: Callable[[str, int, str], Awaitable[None]] | None = None,
     ) -> dict[str, Any]:
         """Restore a backup archive into the current install.
 
@@ -303,6 +304,10 @@ class BackupService:
         Does NOT touch ``license_state`` — a restored backup does not carry
         over the license; the target install stays on its own license.
 
+        ``progress_cb`` is an optional async callback invoked as
+        ``(stage, percent_0_to_100, message)`` so a worker can stream
+        progress to Redis for the UI to poll.
+
         Raises :class:`BackupError` if the archive is malformed, was created
         with a different Fernet key (unless ``allow_key_mismatch=True``), or
         refers to a schema version this code cannot read.
@@ -312,14 +317,33 @@ class BackupService:
         if not archive_path.exists():
             raise BackupError(f"archive not found: {archive_path}")
 
+        async def _emit(stage: str, pct: int, message: str) -> None:
+            if progress_cb is not None:
+                try:
+                    await progress_cb(stage, pct, message)
+                except Exception:
+                    logger.debug("restore_progress_cb_failed", exc_info=True)
+
         with tempfile.TemporaryDirectory(prefix="drevalis-restore-") as tmpdir:
             tmp = Path(tmpdir)
+            archive_size_mb = round(archive_path.stat().st_size / (1024 * 1024), 1)
+            await _emit("extract", 0, f"Extracting {archive_size_mb} MB archive…")
             try:
-                with tarfile.open(archive_path, "r:gz") as tar:
-                    self._safe_extract(tar, tmp)
+                # tarfile.extractall is synchronous + CPU-bound. Move it to
+                # a worker thread so the asyncio event loop can keep firing
+                # other tasks (Redis publish, heartbeat) while gzip+tar
+                # spool through 21GB+ archives.
+                import asyncio as _asyncio
+
+                def _do_extract() -> None:
+                    with tarfile.open(archive_path, "r:gz") as tar:
+                        self._safe_extract(tar, tmp)
+
+                await _asyncio.to_thread(_do_extract)
             except tarfile.TarError as exc:
                 raise BackupError(f"corrupt archive: {exc}") from exc
 
+            await _emit("verify", 10, "Verifying manifest…")
             manifest_path = tmp / "manifest.json"
             if not manifest_path.exists():
                 raise BackupError("archive missing manifest.json")
@@ -344,6 +368,7 @@ class BackupService:
 
             inserted: dict[str, int] = {}
             if restore_db:
+                await _emit("truncate", 15, "Truncating existing rows…")
                 # Disable user-defined + foreign-key triggers for this
                 # session so backups taken against slightly older schemas
                 # (enum value not yet migrated, tightened CHECK constraint,
@@ -362,7 +387,11 @@ class BackupService:
                     #    datetime/date/time into strings; coerce back before
                     #    handing rows to asyncpg.
                     data_dir = tmp / "data"
-                    for table_name, model in _TABLE_ORDER:
+                    n = len(_TABLE_ORDER)
+                    for i, (table_name, model) in enumerate(_TABLE_ORDER):
+                        # 25..70 reserved for db restore (45 pct band).
+                        pct = 25 + int(45 * i / max(n - 1, 1))
+                        await _emit("rows", pct, f"Inserting {table_name}…")
                         path = data_dir / f"{table_name}.json"
                         if not path.exists():
                             inserted[table_name] = 0
@@ -389,15 +418,26 @@ class BackupService:
             src_storage = tmp / "storage"
             restored_paths: list[str] = []
             if restore_media and src_storage.exists():
-                for subdir in _STORAGE_SUBDIRS_TO_BACKUP:
+                subdirs_present = [
+                    s for s in _STORAGE_SUBDIRS_TO_BACKUP if (src_storage / s).exists()
+                ]
+                n = len(subdirs_present)
+                for i, subdir in enumerate(subdirs_present):
+                    # 70..98 reserved for media copy (28 pct band).
+                    pct = 70 + int(28 * i / max(n - 1, 1))
+                    await _emit("media", pct, f"Restoring storage/{subdir}…")
                     src = src_storage / subdir
-                    if src.exists():
-                        dst = self.storage_base_path / subdir
-                        if dst.exists():
-                            shutil.rmtree(dst)
-                        shutil.copytree(src, dst)
-                        restored_paths.append(str(dst))
+                    dst = self.storage_base_path / subdir
+                    if dst.exists():
+                        shutil.rmtree(dst)
+                    # shutil.copytree is sync + I/O-bound. Run in a thread
+                    # so the worker stays responsive on huge media trees.
+                    import asyncio as _asyncio
 
+                    await _asyncio.to_thread(shutil.copytree, str(src), str(dst))
+                    restored_paths.append(str(dst))
+
+        await _emit("done", 100, "Restore complete.")
         logger.info(
             "backup_restored",
             archive=str(archive_path),

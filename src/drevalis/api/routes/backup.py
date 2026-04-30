@@ -40,7 +40,7 @@ from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — required
 # treating ``db`` as a query param, producing 422 on every request.
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
-from drevalis.services.backup import BackupError, BackupService
+from drevalis.services.backup import BackupService
 from drevalis.services.media_repair import repair_media_links
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
@@ -188,9 +188,18 @@ async def restore_backup(
     allow_key_mismatch: bool = False,
     restore_db: bool = True,
     restore_media: bool = True,
-    db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> dict[str, object]:
+    """Upload an archive and enqueue a background restore job.
+
+    The multipart upload streams to a temp file synchronously (the
+    HTTP body has to fully arrive before we can enqueue), then a
+    background ``restore_backup_async`` job does the heavy work. The
+    response carries a ``job_id`` that the UI polls at
+    ``GET /api/v1/backup/restore-status/{job_id}`` for stage +
+    progress_pct, so a 21GB+ restore doesn't sit on a single HTTP
+    connection while extracting + truncating + reinserting + copying.
+    """
     if confirm != "i-understand":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -202,37 +211,95 @@ async def restore_backup(
             detail="expected a .tar.gz archive",
         )
 
-    # Stream to a temp file so we don't have to buffer the whole thing.
     import tempfile
+    from uuid import uuid4
 
-    tmp = Path(tempfile.mkstemp(suffix=".tar.gz")[1])
+    from drevalis.core.redis import get_arq_pool
+
+    job_id = str(uuid4())
+
+    # Land the upload in BACKUP_DIRECTORY rather than /tmp so worker +
+    # API share the same path even when /tmp is per-container scratch.
+    settings.backup_directory.mkdir(parents=True, exist_ok=True)
+    fd, tmp_str = tempfile.mkstemp(
+        suffix=".tar.gz",
+        prefix=f"restore-{job_id}-",
+        dir=str(settings.backup_directory),
+    )
+    import os as _os
+
+    _os.close(fd)
+    tmp = Path(tmp_str)
+
     try:
         with tmp.open("wb") as f:
             while chunk := await file.read(4 * 1024 * 1024):
                 f.write(chunk)
+    except Exception:
+        tmp.unlink(missing_ok=True)
+        raise
 
-        svc = _service(settings)
-        try:
-            return await svc.restore_backup(
-                db,
-                tmp,
-                allow_key_mismatch=allow_key_mismatch,
-                restore_db=restore_db,
-                restore_media=restore_media,
-            )
-        except BackupError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
-        except Exception as exc:  # noqa: BLE001
-            logger.error("restore_failed", exc_info=True)
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"restore failed: {exc}",
-            ) from exc
+    arq = get_arq_pool()
+    await arq.enqueue_job(
+        "restore_backup_async",
+        job_id,
+        str(tmp),
+        allow_key_mismatch=allow_key_mismatch,
+        restore_db=restore_db,
+        restore_media=restore_media,
+    )
+    logger.info(
+        "restore_enqueued",
+        job_id=job_id,
+        archive_path=str(tmp),
+        size_mb=round(tmp.stat().st_size / (1024 * 1024), 1),
+    )
+    return {
+        "job_id": job_id,
+        "status": "queued",
+        "message": (
+            f"Restore enqueued. Poll GET /api/v1/backup/restore-status/{job_id} for progress."
+        ),
+    }
+
+
+@router.get(
+    "/restore-status/{job_id}",
+    summary="Poll the status of an in-flight restore job",
+)
+async def get_restore_status(job_id: str) -> dict[str, Any]:
+    """Return the latest progress payload written by the worker.
+
+    Possible ``status`` values: ``queued`` (job submitted but worker
+    hasn't started), ``running`` (in-flight; ``stage`` and
+    ``progress_pct`` populated), ``done``, ``failed``, or ``unknown``
+    (TTL expired or job_id never existed).
+    """
+    import json
+
+    from redis.asyncio import Redis
+
+    from drevalis.core.redis import get_pool
+
+    redis = Redis(connection_pool=get_pool())
+    try:
+        raw = await redis.get(f"backup:restore:{job_id}")
     finally:
-        try:
-            tmp.unlink()
-        except OSError:
-            pass
+        await redis.aclose()
+
+    if raw is None:
+        return {
+            "job_id": job_id,
+            "status": "unknown",
+            "message": (
+                "No status for this job_id (TTL expired, never existed, "
+                "or worker hasn't picked it up yet)."
+            ),
+        }
+    text = raw if isinstance(raw, str) else raw.decode()
+    payload: dict[str, Any] = json.loads(text)
+    payload["job_id"] = job_id
+    return payload
 
 
 def _detect_mount_fs(path: Path) -> str | None:

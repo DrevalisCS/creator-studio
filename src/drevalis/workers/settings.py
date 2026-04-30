@@ -22,7 +22,7 @@ from drevalis.workers.jobs.audiobook import (
     regenerate_audiobook_chapter,
     regenerate_audiobook_chapter_image,
 )
-from drevalis.workers.jobs.backup import scheduled_backup
+from drevalis.workers.jobs.backup import restore_backup_async, scheduled_backup
 from drevalis.workers.jobs.edit_render import render_from_edit
 
 # ---------------------------------------------------------------------------
@@ -137,6 +137,7 @@ class WorkerSettings:
         func(worker_heartbeat, timeout=_SHORT_TIMEOUT),
         func(license_heartbeat, timeout=_SHORT_TIMEOUT),
         scheduled_backup,
+        restore_backup_async,
         analyze_video_ingest,
         commit_video_ingest_clip,
         render_from_edit,

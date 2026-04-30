@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.2] - 2026-04-30
+
+### Added
+
+- Background restore with progress bar. The synchronous
+  ``POST /api/v1/backup/restore`` is gone — uploads now stream into
+  ``BACKUP_DIRECTORY``, hand off to a new ``restore_backup_async``
+  arq job, and return ``{job_id}`` immediately. The job writes
+  staged progress (``extract`` → ``verify`` → ``truncate`` →
+  ``rows`` → ``media`` → ``done``) to Redis at
+  ``backup:restore:{job_id}`` (1h TTL); the new
+  ``GET /api/v1/backup/restore-status/{job_id}`` endpoint surfaces
+  ``stage`` + ``progress_pct`` + ``message``.
+- Frontend ``BackupSection`` renders a real progress bar driven by
+  XHR upload-progress (so the browser sees the multi-GB body
+  uploading) and then 2s polling of the status endpoint until the
+  job hits ``done`` / ``failed``. The active ``job_id`` is mirrored
+  in ``localStorage`` so a tab navigation / page reload mid-restore
+  reconnects to the in-flight job instead of losing the bar.
+
+### Fixed
+
+- 21GB restore on v0.29.1 left the operator unable to tell whether
+  anything was happening. The route held a single HTTP connection
+  open for the whole multi-minute extract + truncate + insert + copy
+  flow; navigating away orphaned the request and dropped any
+  feedback. The async-job split + persisted poll cursor closes both
+  problems.
+- ``BackupService.restore_backup`` ran the gzip+tar extract and
+  ``shutil.copytree`` synchronously on the asyncio event loop. Both
+  now run in ``asyncio.to_thread`` so other coroutines (Redis
+  publish, worker heartbeat, status writes) stay responsive while
+  multi-GB I/O runs.
+
 ## [0.29.1] - 2026-04-30
 
 ### Strict-mode rollout — codebase-wide
