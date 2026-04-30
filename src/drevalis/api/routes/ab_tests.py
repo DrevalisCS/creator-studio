@@ -12,30 +12,32 @@ populated by a future scheduled worker that pulls YouTube analytics
 for both episodes 7 days after the later upload. For v1 we just
 surface the raw view counts side-by-side so the operator can eyeball
 the result.
+
+Layering: this router calls ``ABTestService`` only. No repository or
+ORM imports here.
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI Depends
 
-from drevalis.core.deps import get_db, get_settings
-from drevalis.models.ab_test import ABTest
-from drevalis.models.episode import Episode
-from drevalis.repositories.youtube import YouTubeUploadRepository
-
-if TYPE_CHECKING:
-    from drevalis.core.config import Settings
+from drevalis.core.deps import get_db
+from drevalis.core.exceptions import NotFoundError, ValidationError
+from drevalis.services.ab_test import ABTestService
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/ab-tests", tags=["ab-tests"])
+
+
+def _service(db: AsyncSession = Depends(get_db)) -> ABTestService:
+    return ABTestService(db)
 
 
 class ABTestCreate(BaseModel):
@@ -74,7 +76,7 @@ class ABTestDetail(ABTestResponse):
     episode_b_stats: ABTestStats
 
 
-def _serialise(t: ABTest) -> ABTestResponse:
+def _serialise(t: Any) -> ABTestResponse:
     return ABTestResponse(
         id=t.id,
         series_id=t.series_id,
@@ -88,6 +90,19 @@ def _serialise(t: ABTest) -> ABTestResponse:
     )
 
 
+def _missing_stats(episode_id: UUID) -> ABTestStats:
+    return ABTestStats(
+        episode_id=episode_id,
+        title="(missing episode)",
+        status="deleted",
+        youtube_video_id=None,
+        youtube_url=None,
+        youtube_views=None,
+        youtube_likes=None,
+        youtube_comments=None,
+    )
+
+
 @router.post(
     "",
     response_model=ABTestResponse,
@@ -96,42 +111,20 @@ def _serialise(t: ABTest) -> ABTestResponse:
 )
 async def create_ab_test(
     body: ABTestCreate,
-    db: AsyncSession = Depends(get_db),
+    svc: ABTestService = Depends(_service),
 ) -> ABTestResponse:
-    if body.episode_a_id == body.episode_b_id:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "An A/B test needs two different episodes.",
+    try:
+        test = await svc.create(
+            series_id=body.series_id,
+            episode_a_id=body.episode_a_id,
+            episode_b_id=body.episode_b_id,
+            variant_label=body.variant_label,
+            notes=body.notes,
         )
-
-    # Verify both episodes exist and belong to the same series.
-    ep_rows = await db.execute(
-        select(Episode).where(Episode.id.in_([body.episode_a_id, body.episode_b_id]))
-    )
-    eps = {e.id: e for e in ep_rows.scalars().all()}
-    if len(eps) != 2:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "One or both episodes not found.")
-    if eps[body.episode_a_id].series_id != body.series_id:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "episode_a does not belong to the specified series.",
-        )
-    if eps[body.episode_b_id].series_id != body.series_id:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            "episode_b does not belong to the specified series.",
-        )
-
-    test = ABTest(
-        series_id=body.series_id,
-        episode_a_id=body.episode_a_id,
-        episode_b_id=body.episode_b_id,
-        variant_label=body.variant_label,
-        notes=body.notes,
-    )
-    db.add(test)
-    await db.commit()
-    await db.refresh(test)
+    except ValidationError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.detail) from exc
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "One or both episodes not found.") from exc
     logger.info("ab_test_created", id=str(test.id), series_id=str(body.series_id))
     return _serialise(test)
 
@@ -139,20 +132,16 @@ async def create_ab_test(
 @router.get("", response_model=list[ABTestResponse])
 async def list_ab_tests(
     series_id: UUID | None = Query(None, description="Filter by series."),
-    db: AsyncSession = Depends(get_db),
+    svc: ABTestService = Depends(_service),
 ) -> list[ABTestResponse]:
-    q = select(ABTest).order_by(ABTest.created_at.desc())
-    if series_id is not None:
-        q = q.where(ABTest.series_id == series_id)
-    rows = (await db.execute(q)).scalars().all()
+    rows = await svc.list_all(series_id)
     return [_serialise(t) for t in rows]
 
 
 @router.get("/{test_id}", response_model=ABTestDetail)
 async def get_ab_test(
     test_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: ABTestService = Depends(_service),
 ) -> ABTestDetail:
     """Return the pair plus side-by-side YouTube view counts.
 
@@ -162,58 +151,23 @@ async def get_ab_test(
     fresh numbers they can hit YouTube → Analytics which does a live
     fetch.
     """
-    test = await db.get(ABTest, test_id)
-    if not test:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "ab_test_not_found")
+    try:
+        test = await svc.get(test_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "ab_test_not_found") from exc
 
-    stats: dict[UUID, ABTestStats] = {}
-    upload_repo = YouTubeUploadRepository(db)
-    for ep_id in (test.episode_a_id, test.episode_b_id):
-        ep = await db.get(Episode, ep_id)
-        if ep is None:
-            continue
-        uploads = await upload_repo.get_by_episode(ep_id)
-        last = uploads[-1] if uploads else None
-        stats[ep_id] = ABTestStats(
-            episode_id=ep_id,
-            title=ep.title,
-            status=ep.status,
-            youtube_video_id=last.youtube_video_id if last else None,
-            youtube_url=last.youtube_url if last else None,
-            # Views/likes/comments cached on upload row if the worker has
-            # refreshed them; otherwise None. The UI shows "—" for None.
-            youtube_views=getattr(last, "view_count", None) if last else None,
-            youtube_likes=getattr(last, "like_count", None) if last else None,
-            youtube_comments=getattr(last, "comment_count", None) if last else None,
-        )
-
+    raw_stats = await svc.stats_for_pair(test)
     return ABTestDetail(
         **_serialise(test).model_dump(),
-        episode_a_stats=stats.get(
-            test.episode_a_id,
-            ABTestStats(
-                episode_id=test.episode_a_id,
-                title="(missing episode)",
-                status="deleted",
-                youtube_video_id=None,
-                youtube_url=None,
-                youtube_views=None,
-                youtube_likes=None,
-                youtube_comments=None,
-            ),
+        episode_a_stats=(
+            ABTestStats(**raw_stats[test.episode_a_id])
+            if test.episode_a_id in raw_stats
+            else _missing_stats(test.episode_a_id)
         ),
-        episode_b_stats=stats.get(
-            test.episode_b_id,
-            ABTestStats(
-                episode_id=test.episode_b_id,
-                title="(missing episode)",
-                status="deleted",
-                youtube_video_id=None,
-                youtube_url=None,
-                youtube_views=None,
-                youtube_likes=None,
-                youtube_comments=None,
-            ),
+        episode_b_stats=(
+            ABTestStats(**raw_stats[test.episode_b_id])
+            if test.episode_b_id in raw_stats
+            else _missing_stats(test.episode_b_id)
         ),
     )
 
@@ -221,17 +175,7 @@ async def get_ab_test(
 @router.delete("/{test_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_ab_test(
     test_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: ABTestService = Depends(_service),
 ) -> None:
-    test = await db.get(ABTest, test_id)
-    if not test:
-        return
-    await db.delete(test)
-    await db.commit()
+    await svc.delete(test_id)
     logger.info("ab_test_deleted", id=str(test_id))
-
-
-async def _unused_settings(s: Any = Depends(get_settings)) -> Any:
-    """Kept to silence unused-import warnings — get_settings is on
-    the module path to allow future endpoints to use it."""
-    return s
