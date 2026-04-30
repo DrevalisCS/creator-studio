@@ -10,6 +10,9 @@ GET  /api/v1/settings/integrations               Report configuration status of 
 These endpoints let the frontend Settings UI read/write integration credentials
 without the user needing direct access to ``.env`` or environment variables.
 Values are Fernet-encrypted before being persisted to the ``api_key_store`` table.
+
+Layering: this router calls ``ApiKeyStoreService`` only — no
+``ApiKeyStoreRepository`` or ``encrypt_value`` imports here.
 """
 
 from __future__ import annotations
@@ -19,8 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
-from drevalis.core.security import encrypt_value
-from drevalis.repositories.api_key_store import ApiKeyStoreRepository
+from drevalis.core.exceptions import NotFoundError
 from drevalis.schemas.runpod import (
     ApiKeyStoreListItem,
     ApiKeyStoreListResponse,
@@ -28,8 +30,16 @@ from drevalis.schemas.runpod import (
     IntegrationsStatusResponse,
     IntegrationStatus,
 )
+from drevalis.services.api_key_store import ApiKeyStoreService
 
 router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
+
+
+def _service(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> ApiKeyStoreService:
+    return ApiKeyStoreService(db, settings.encryption_key)
 
 
 # ── API key CRUD ──────────────────────────────────────────────────────────
@@ -46,11 +56,10 @@ router = APIRouter(prefix="/api/v1/settings", tags=["settings"])
     ),
 )
 async def list_api_keys(
-    db: AsyncSession = Depends(get_db),
+    svc: ApiKeyStoreService = Depends(_service),
 ) -> ApiKeyStoreListResponse:
     """Return all stored API key names without their values."""
-    repo = ApiKeyStoreRepository(db)
-    entries = await repo.get_all()
+    entries = await svc.list()
     items = [
         ApiKeyStoreListItem(
             key_name=e.key_name,
@@ -76,19 +85,10 @@ async def list_api_keys(
 )
 async def upsert_api_key(
     payload: ApiKeyStoreRequest,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: ApiKeyStoreService = Depends(_service),
 ) -> ApiKeyStoreListItem:
     """Encrypt and persist a third-party API key."""
-    encrypted, key_version = encrypt_value(payload.api_key, settings.encryption_key)
-
-    repo = ApiKeyStoreRepository(db)
-    await repo.upsert(
-        key_name=payload.key_name,
-        encrypted_value=encrypted,
-        key_version=key_version,
-    )
-    await db.commit()
+    await svc.upsert(key_name=payload.key_name, api_key=payload.api_key)
     return ApiKeyStoreListItem(key_name=payload.key_name, has_value=True)
 
 
@@ -100,17 +100,16 @@ async def upsert_api_key(
 )
 async def delete_api_key(
     key_name: str,
-    db: AsyncSession = Depends(get_db),
+    svc: ApiKeyStoreService = Depends(_service),
 ) -> None:
     """Remove a stored API key entry by name."""
-    repo = ApiKeyStoreRepository(db)
-    deleted = await repo.delete_by_key_name(key_name)
-    if not deleted:
+    try:
+        await svc.delete(key_name)
+    except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"No API key stored for '{key_name}'.",
-        )
-    await db.commit()
+        ) from exc
 
 
 # ── Integrations status ───────────────────────────────────────────────────
@@ -128,13 +127,11 @@ async def delete_api_key(
     ),
 )
 async def get_integrations_status(
-    db: AsyncSession = Depends(get_db),
+    svc: ApiKeyStoreService = Depends(_service),
     settings: Settings = Depends(get_settings),
 ) -> IntegrationsStatusResponse:
     """Check which third-party integrations are configured."""
-    repo = ApiKeyStoreRepository(db)
-    all_entries = await repo.get_all()
-    stored_keys = {e.key_name for e in all_entries}
+    stored_keys = await svc.list_stored_names()
 
     def _status(key_name: str, env_value: str) -> IntegrationStatus:
         """Determine source for a given integration key."""
