@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.12] - 2026-04-30
+
+### Added
+
+- **F-Tst-11** — 21 direct tests for
+  ``PipelineOrchestrator._get_error_suggestion``
+  (``test_pipeline_error_suggestion.py``). The static method maps
+  exception keywords to user-facing suggestions surfaced in the UI
+  when a pipeline step fails; a copy-paste typo (``"comfui"`` vs
+  ``"comfyui"``) would silently route the user to the generic "Try
+  retrying this step" instead of the actionable ComfyUI / FFmpeg /
+  TTS / LLM hint. Each branch is now pinned (comfyui, connection,
+  timeout, piper, edge_tts, ffmpeg, cancelled, llm, openai,
+  anthropic, whisper, ``no X found``), plus case-insensitivity, the
+  comfyui-before-timeout priority, the generic fallback, and the
+  step-name interpolation across every ``PipelineStep`` value.
+  Total suite: 761 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.11] - 2026-04-30
 
 ### Fixed
