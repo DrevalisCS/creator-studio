@@ -16,6 +16,10 @@ Endpoints:
 - ``GET  /api/v1/assets/{id}/file``   streams the raw file for preview.
 - ``PATCH /api/v1/assets/{id}``       update tags / description.
 - ``DELETE /api/v1/assets/{id}``      remove from library + delete file.
+
+Layering: the route owns multipart parse + ffprobe + mime sniff
+(FastAPI / runtime concerns); ``AssetService`` owns DB unit-of-work
++ dedup + file teardown.
 """
 
 from __future__ import annotations
@@ -24,7 +28,6 @@ import asyncio
 import hashlib
 import json
 import re
-import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -37,7 +40,8 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI Depends
 
 from drevalis.core.deps import get_db, get_settings
-from drevalis.repositories.asset import AssetRepository
+from drevalis.core.exceptions import NotFoundError
+from drevalis.services.asset import AssetService
 
 if TYPE_CHECKING:
     from drevalis.core.config import Settings
@@ -46,6 +50,14 @@ if TYPE_CHECKING:
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 router = APIRouter(tags=["assets"])
+
+
+def _service(
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> AssetService:
+    return AssetService(db, settings.storage_base_path)
+
 
 # Kinds we sniff from mime type prefix. ``other`` is the catch-all.
 _MIME_KIND: dict[str, str] = {
@@ -171,7 +183,7 @@ async def upload_asset(
     file: UploadFile = File(...),
     tags: str | None = Form(default=None),  # comma-separated
     description: str | None = Form(default=None),
-    db: AsyncSession = Depends(get_db),
+    svc: AssetService = Depends(_service),
     settings: Settings = Depends(get_settings),
 ) -> AssetResponse:
     """Upload a new asset to the central library.
@@ -191,8 +203,7 @@ async def upload_asset(
 
     sha256 = hashlib.sha256(contents).hexdigest()
 
-    repo = AssetRepository(db)
-    existing = await repo.get_by_hash(sha256)
+    existing = await svc.get_by_hash(sha256)
     if existing is not None:
         logger.info("asset_upload_deduped", asset_id=str(existing.id), hash=sha256)
         return AssetResponse.from_orm(existing)
@@ -213,7 +224,7 @@ async def upload_asset(
     if tags:
         tag_list = [t.strip() for t in tags.split(",") if t.strip()][:20]
 
-    asset = await repo.create(
+    asset = await svc.create(
         id=asset_id,
         kind=kind,
         filename=filename,
@@ -229,7 +240,6 @@ async def upload_asset(
         created_at=datetime.now(tz=UTC),
         updated_at=datetime.now(tz=UTC),
     )
-    await db.commit()
     logger.info(
         "asset_uploaded",
         asset_id=str(asset.id),
@@ -246,34 +256,34 @@ async def list_assets(
     tag: str | None = Query(default=None, max_length=60),
     offset: int = Query(default=0, ge=0),
     limit: int = Query(default=100, ge=1, le=500),
-    db: AsyncSession = Depends(get_db),
+    svc: AssetService = Depends(_service),
 ) -> list[AssetResponse]:
-    repo = AssetRepository(db)
-    rows = await repo.list_filtered(kind=kind, search=search, tag=tag, offset=offset, limit=limit)
+    rows = await svc.list_filtered(kind=kind, search=search, tag=tag, offset=offset, limit=limit)
     return [AssetResponse.from_orm(a) for a in rows]
 
 
 @router.get("/api/v1/assets/{asset_id}", response_model=AssetResponse)
 async def get_asset(
     asset_id: UUID,
-    db: AsyncSession = Depends(get_db),
+    svc: AssetService = Depends(_service),
 ) -> AssetResponse:
-    a = await AssetRepository(db).get_by_id(asset_id)
-    if a is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found")
+    try:
+        a = await svc.get(asset_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found") from exc
     return AssetResponse.from_orm(a)
 
 
 @router.get("/api/v1/assets/{asset_id}/file")
 async def get_asset_file(
     asset_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: AssetService = Depends(_service),
 ) -> FileResponse:
-    a = await AssetRepository(db).get_by_id(asset_id)
-    if a is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found")
-    abs_path = Path(settings.storage_base_path) / a.file_path
+    try:
+        a = await svc.get(asset_id)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found") from exc
+    abs_path = svc.absolute_file_path(a)
     if not abs_path.exists():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "asset file missing on disk")
     return FileResponse(str(abs_path), media_type=a.mime_type or "application/octet-stream")
@@ -283,43 +293,23 @@ async def get_asset_file(
 async def update_asset(
     asset_id: UUID,
     body: AssetUpdate,
-    db: AsyncSession = Depends(get_db),
+    svc: AssetService = Depends(_service),
 ) -> AssetResponse:
-    repo = AssetRepository(db)
-    a = await repo.get_by_id(asset_id)
-    if a is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found")
     changes: dict[str, Any] = {}
     if body.tags is not None:
         changes["tags"] = [t.strip() for t in body.tags if t.strip()][:20]
     if body.description is not None:
         changes["description"] = body.description
-    if changes:
-        await repo.update(asset_id, **changes)
-        await db.commit()
-        a = await repo.get_by_id(asset_id)
-    assert a is not None
+    try:
+        a = await svc.update_metadata(asset_id, **changes)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "asset not found") from exc
     return AssetResponse.from_orm(a)
 
 
 @router.delete("/api/v1/assets/{asset_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_asset(
     asset_id: UUID,
-    db: AsyncSession = Depends(get_db),
-    settings: Settings = Depends(get_settings),
+    svc: AssetService = Depends(_service),
 ) -> None:
-    repo = AssetRepository(db)
-    a = await repo.get_by_id(asset_id)
-    if a is None:
-        return
-    # Best-effort file cleanup. If the file is missing we still drop the
-    # row — the library should never have zombie metadata pointing at a
-    # nonexistent file.
-    abs_dir = Path(settings.storage_base_path) / Path(a.file_path).parent
-    try:
-        if abs_dir.exists():
-            shutil.rmtree(abs_dir)
-    except OSError:
-        logger.warning("asset_file_cleanup_failed", asset_id=str(asset_id), exc_info=True)
-    await repo.delete(asset_id)
-    await db.commit()
+    await svc.delete(asset_id)
