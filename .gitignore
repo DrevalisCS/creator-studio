@@ -67,3 +67,6 @@ Desktop.ini
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 *.log
+
+# Avoid stray '-' files from typo'd shell redirects
+/-
