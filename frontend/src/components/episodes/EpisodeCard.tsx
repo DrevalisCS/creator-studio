@@ -65,6 +65,8 @@ function EpisodeCard({
           <img
             src={`/storage/episodes/${episode.id}/output/thumbnail.jpg`}
             alt={episode.title}
+            loading="lazy"
+            decoding="async"
             className={`w-full h-full ${isShortsThumb ? 'object-contain' : 'object-cover'}`}
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
           />

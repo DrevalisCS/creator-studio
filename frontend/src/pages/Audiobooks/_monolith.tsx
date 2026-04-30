@@ -1364,6 +1364,8 @@ function Audiobooks() {
                               <img
                                 src={`/storage/${ch.image_path}`}
                                 alt={ch.title}
+                                loading="lazy"
+                                decoding="async"
                                 className="w-10 h-10 rounded object-cover shrink-0"
                               />
                             )}

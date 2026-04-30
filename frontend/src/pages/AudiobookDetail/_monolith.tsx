@@ -1693,6 +1693,8 @@ function ChapterImageGallery({
                 <img
                   src={imageUrlFor(ch.image_path as string)}
                   alt={ch.title || `Chapter ${i + 1}`}
+                  loading="lazy"
+                  decoding="async"
                   className="absolute inset-0 w-full h-full object-cover"
                   draggable={false}
                 />
