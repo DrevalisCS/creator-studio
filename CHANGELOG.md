@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.9] - 2026-04-30
+
+### Added
+
+- **F-Tst-07** — 48 new unit tests for the audiobook monolith's
+  pure helpers (``services/audiobook/_monolith.py``). The 1631-stmt
+  monolith was previously at ~43% coverage; the testable seams now
+  have direct assertions:
+
+  - ``_build_music_mix_graph`` — static + sidechain ffmpeg
+    filter_complex strings (3 tests covering preset modes + signed
+    voice-gain rendering).
+  - ``_mp3_encoder_args`` — CBR/VBR argv builders + unknown-mode
+    fallback (4 tests).
+  - ``_resolve_ducking_preset`` — case-insensitive preset lookup +
+    unknown-name graceful fallback (3 tests).
+  - ``_chunk_limit`` and ``_provider_concurrency`` — substring
+    routing + longest-key-wins, ELEVENLABS_CONCURRENCY env override
+    semantics (10 tests).
+  - ``_chunk_cache_hash`` / ``_strip_chunk_hash`` — content-hash
+    determinism, input-sensitivity, hash-suffix stripping (5 tests).
+  - ``_provider_identity`` — best-effort attribute extraction across
+    different provider shapes (3 tests).
+  - ``AudiobookService._score_chapter_split`` — false-positive guard
+    + variance-aware scoring (3 tests).
+  - ``AudiobookService._filter_markdown_matches`` — blank-line
+    anchoring (3 tests).
+  - ``AudiobookService._filter_allcaps_matches`` — alpha-ratio +
+    trailing-comma guard (3 tests).
+  - ``AudiobookService._split_long_sentence`` — comma fallback +
+    runaway hard-split (3 tests).
+  - ``AudiobookService._repair_bracket_splits`` — bracket-balanced
+    pass-through (3 tests).
+  - ``AudiobookService._split_text`` — paragraph + sentence split
+    paths (4 tests).
+
+  Total test count 655 → 703.
+
+  The big-async generation paths (multi-voice rendering, ffmpeg
+  invocation, multi-output export) still need a heavy mock
+  harness — those remain a follow-up. This pass covers the
+  unit-testable seams that were most at risk of silent regression
+  (mp3 encoder argv, ducking preset selection, cache key
+  determinism, chapter-split heuristics).
+
 ## [0.29.8] - 2026-04-30
 
 ### Fixed
