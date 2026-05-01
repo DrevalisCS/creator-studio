@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.47] - 2026-05-01
+
+### Added
+
+- **publish_scheduled_posts cron** — 7 new tests for
+  ``workers/jobs/scheduled.py``
+  (``test_scheduled_publish_job.py``). Module coverage:
+  0% → 49%. Pinned all the safe-skip / failure-containment
+  branches:
+
+  - **cron_lock guard**: non-owner returns
+    ``{"status": "skipped_not_cron_owner"}`` immediately
+    (multi-worker double-fire prevention — tested with a
+    fake ``asynccontextmanager`` that yields False).
+  - **No pending posts**: returns the zero result dict.
+  - **Non-YouTube platform**: marked failed with a clear
+    "platform '<name>' upload not yet implemented" message.
+  - **Missing YouTube creds**: failed status with the
+    "YouTube not configured" message pointing the operator
+    at ``YOUTUBE_CLIENT_ID`` / ``_SECRET`` env vars OR the
+    Settings → API Keys path.
+  - **Missing channel**: failed status with "No YouTube
+    channel assigned" — pinned that the multi-channel contract
+    NEVER falls back to an "active channel" so uploads can't
+    silently land on the wrong channel.
+  - **Per-post error containment**: first post fails, second
+    still processes; transient DB errors during the
+    ``publishing → failed`` transition are caught so the batch
+    keeps draining the queue.
+
+  The remaining 51% (the YouTube happy-path with real upload +
+  retry + token refresh + youtube_uploads insert + Redis
+  progress broadcast) is integration territory and was left
+  for a future integration-test harness.
+
+  Total suite: 1372 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.46] - 2026-05-01
 
 ### Added
