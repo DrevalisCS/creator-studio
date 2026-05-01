@@ -1303,6 +1303,124 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _run_mp3_export_phase(
+        self,
+        *,
+        audiobook_id: UUID,
+        final_audio: Path,
+        chapters: list[dict[str, Any]],
+        title: str,
+        cover_image_path: str | None,
+    ) -> str | None:
+        """Convert WAV → MP3 with ID3 tags + CHAP frames.
+
+        Two nested non-fatal blocks:
+
+        - **Outer (mp3_export)**: ffmpeg WAV→MP3 conversion. Failure
+          flips DAG ``mp3_export`` → failed and returns ``None`` (the
+          caller's ``mp3_rel_path`` stays None and the audiobook ships
+          with WAV only).
+        - **Inner (id3_tags)**: write ID3 + CHAP frames using mutagen.
+          Failure flips DAG ``id3_tags`` → failed but does NOT abort
+          the export (the MP3 file is on disk and playable; only the
+          metadata is missing).
+
+        The LAME priming offset is computed from the WAV vs MP3
+        duration delta and applied to the RenderPlan's chapter
+        markers via ``apply_priming_offset``. This keeps CHAP frames
+        within ±5 ms of audible chapter boundaries instead of ±50 ms.
+
+        Returns the storage-relative MP3 path on success, or ``None``
+        when the conversion failed.
+
+        Pulled out of ``generate`` (F-CQ-01 step 11).
+        """
+        mp3_rel_path: str | None = None
+        try:
+            await self._dag_global("mp3_export", "in_progress")
+            await self._convert_to_mp3(final_audio)
+            mp3_rel_path = f"audiobooks/{audiobook_id}/audiobook.mp3"
+            await self._dag_global("mp3_export", "done")
+            log.info(
+                "audiobook.generate.mp3_done",
+                audiobook_id=str(audiobook_id),
+            )
+
+            # Best-effort ID3 + chapters. Failing here should not fail
+            # the whole generation - the MP3 itself is already on disk
+            # and playable. Distribution platforms (Audible, Apple Books,
+            # Google Play Books) use these tags to show titles, cover
+            # art, and chapter navigation.
+            try:
+                from drevalis.services.audiobook.id3 import write_audiobook_id3
+
+                await self._dag_global("id3_tags", "in_progress")
+                mp3_abs = final_audio.with_suffix(".mp3")
+                cover_abs: Path | None = None
+                if cover_image_path:
+                    maybe_cover = self.storage.resolve_path(cover_image_path)
+                    if maybe_cover.exists():
+                        cover_abs = maybe_cover
+
+                # Task 13: LAME priming offset. The encoder prepends
+                # ~26 ms of silence to the MP3 stream; CHAP frames
+                # written without compensation drift relative to the
+                # audible audio by that amount. Probe both files,
+                # take the difference, shift the plan's chapter
+                # timestamps by it. Within ±5 ms of audible
+                # boundaries instead of ±50 ms.
+                priming_offset_ms = 0
+                try:
+                    wav_dur = await self.ffmpeg.get_duration(final_audio)
+                    mp3_dur = await self.ffmpeg.get_duration(mp3_abs)
+                    if wav_dur > 0 and mp3_dur > 0:
+                        priming_offset_ms = int(round((mp3_dur - wav_dur) * 1000))
+                except Exception:
+                    priming_offset_ms = 0
+
+                shifted_plan = self._render_plan.apply_priming_offset(priming_offset_ms)
+                # Build chapter dicts in the shape ``write_audiobook_id3``
+                # expects (start_seconds / end_seconds / title), but
+                # source the timestamps from the priming-adjusted plan.
+                id3_chapters: list[dict[str, Any]] = []
+                for marker in shifted_plan.chapters:
+                    id3_chapters.append(
+                        {
+                            "title": marker.title,
+                            "start_seconds": marker.start_ms / 1000.0,
+                            "end_seconds": marker.end_ms / 1000.0,
+                        }
+                    )
+
+                await write_audiobook_id3(
+                    mp3_abs,
+                    title=title,
+                    album=title,
+                    chapters=id3_chapters or (chapters if isinstance(chapters, list) else None),
+                    cover_path=cover_abs,
+                )
+                log.info(
+                    "audiobook.generate.id3_tagged",
+                    audiobook_id=str(audiobook_id),
+                    priming_offset_ms=priming_offset_ms,
+                )
+                await self._dag_global("id3_tags", "done")
+            except Exception as id3_exc:
+                log.warning(
+                    "audiobook.generate.id3_failed",
+                    audiobook_id=str(audiobook_id),
+                    error=str(id3_exc),
+                )
+                await self._dag_global("id3_tags", "failed")
+        except Exception as exc:
+            log.warning(
+                "audiobook.generate.mp3_failed",
+                audiobook_id=str(audiobook_id),
+                error=str(exc),
+            )
+            await self._dag_global("mp3_export", "failed")
+        return mp3_rel_path
+
     async def _run_captions_phase(
         self,
         *,
@@ -2180,92 +2298,16 @@ class AudiobookService:
 
         audio_rel_path = f"audiobooks/{audiobook_id}/audiobook.wav"
         video_rel_path: str | None = None
-        mp3_rel_path: str | None = None
 
-        # 7. Convert to MP3 + write ID3 tags / chapter markers.
-        try:
-            await self._dag_global("mp3_export", "in_progress")
-            await self._convert_to_mp3(final_audio)
-            mp3_rel_path = f"audiobooks/{audiobook_id}/audiobook.mp3"
-            await self._dag_global("mp3_export", "done")
-            log.info(
-                "audiobook.generate.mp3_done",
-                audiobook_id=str(audiobook_id),
-            )
-
-            # Best-effort ID3 + chapters. Failing here should not fail
-            # the whole generation - the MP3 itself is already on disk
-            # and playable. Distribution platforms (Audible, Apple Books,
-            # Google Play Books) use these tags to show titles, cover
-            # art, and chapter navigation.
-            try:
-                from drevalis.services.audiobook.id3 import write_audiobook_id3
-
-                await self._dag_global("id3_tags", "in_progress")
-                mp3_abs = final_audio.with_suffix(".mp3")
-                cover_abs: Path | None = None
-                if cover_image_path:
-                    maybe_cover = self.storage.resolve_path(cover_image_path)
-                    if maybe_cover.exists():
-                        cover_abs = maybe_cover
-
-                # Task 13: LAME priming offset. The encoder prepends
-                # ~26 ms of silence to the MP3 stream; CHAP frames
-                # written without compensation drift relative to the
-                # audible audio by that amount. Probe both files,
-                # take the difference, shift the plan's chapter
-                # timestamps by it. Within ±5 ms of audible
-                # boundaries instead of ±50 ms.
-                priming_offset_ms = 0
-                try:
-                    wav_dur = await self.ffmpeg.get_duration(final_audio)
-                    mp3_dur = await self.ffmpeg.get_duration(mp3_abs)
-                    if wav_dur > 0 and mp3_dur > 0:
-                        priming_offset_ms = int(round((mp3_dur - wav_dur) * 1000))
-                except Exception:
-                    priming_offset_ms = 0
-
-                shifted_plan = self._render_plan.apply_priming_offset(priming_offset_ms)
-                # Build chapter dicts in the shape ``write_audiobook_id3``
-                # expects (start_seconds / end_seconds / title), but
-                # source the timestamps from the priming-adjusted plan.
-                id3_chapters: list[dict[str, Any]] = []
-                for marker in shifted_plan.chapters:
-                    id3_chapters.append(
-                        {
-                            "title": marker.title,
-                            "start_seconds": marker.start_ms / 1000.0,
-                            "end_seconds": marker.end_ms / 1000.0,
-                        }
-                    )
-
-                await write_audiobook_id3(
-                    mp3_abs,
-                    title=title,
-                    album=title,
-                    chapters=id3_chapters or (chapters if isinstance(chapters, list) else None),
-                    cover_path=cover_abs,
-                )
-                log.info(
-                    "audiobook.generate.id3_tagged",
-                    audiobook_id=str(audiobook_id),
-                    priming_offset_ms=priming_offset_ms,
-                )
-                await self._dag_global("id3_tags", "done")
-            except Exception as id3_exc:
-                log.warning(
-                    "audiobook.generate.id3_failed",
-                    audiobook_id=str(audiobook_id),
-                    error=str(id3_exc),
-                )
-                await self._dag_global("id3_tags", "failed")
-        except Exception as exc:
-            log.warning(
-                "audiobook.generate.mp3_failed",
-                audiobook_id=str(audiobook_id),
-                error=str(exc),
-            )
-            await self._dag_global("mp3_export", "failed")
+        # F-CQ-01 step 11: MP3 export + ID3 + CHAP frames + LAME
+        # priming offset extracted into ``_run_mp3_export_phase``.
+        mp3_rel_path = await self._run_mp3_export_phase(
+            audiobook_id=audiobook_id,
+            final_audio=final_audio,
+            chapters=chapters,
+            title=title,
+            cover_image_path=cover_image_path,
+        )
 
         # 8. Handle output format
         await self._check_cancelled(audiobook_id)

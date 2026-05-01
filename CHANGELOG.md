@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.43] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 11** — eleventh incision into
+  ``AudiobookService.generate``. The MP3 export phase (WAV→MP3
+  conversion + ID3 + CHAP frames + LAME priming offset)
+  extracted into ``_run_mp3_export_phase``. ~85 lines and 7
+  branch points lifted from ``generate``.
+
+  Two nested non-fatal blocks preserved:
+
+  - **Outer (mp3_export)**: ffmpeg WAV→MP3 conversion failure
+    flips DAG ``mp3_export`` → ``failed`` and returns ``None``
+    (audiobook ships WAV-only — still playable, just no MP3
+    file for distribution).
+  - **Inner (id3_tags)**: mutagen ID3 / CHAP write failure
+    flips DAG ``id3_tags`` → ``failed`` but does NOT abort the
+    export. The MP3 is on disk and playable; only the metadata
+    is missing.
+
+  The LAME priming offset (~26 ms) is computed from the WAV vs
+  MP3 duration delta and applied to the RenderPlan's chapter
+  markers via ``apply_priming_offset``. CHAP frames stay locked
+  to audible chapter boundaries within ±5 ms instead of ±50 ms.
+
+### Added
+
+- 10 new direct tests for ``_run_mp3_export_phase``
+  (``test_audiobook_run_mp3_export_phase.py``):
+
+  - **Happy path**: returns ``audiobooks/{id}/audiobook.mp3``,
+    DAG ``mp3_export`` and ``id3_tags`` both flip
+    ``in_progress`` → ``done``.
+  - **LAME priming offset**: 100.026s MP3 vs 100.0s WAV →
+    26 ms offset applied; equal durations → 0 ms offset; probe
+    failure falls back to 0 ms (CHAP frames still within ±50 ms,
+    just not the tighter ±5 ms).
+  - **CHAP from RenderPlan, not chapters list**: ID3 chapters
+    are sourced from the priming-adjusted plan's markers
+    (start_ms/end_ms → seconds), pinning the contract that
+    keeps CHAP within ±5 ms of audible boundaries.
+  - **Cover art**: ``cover_image_path=None`` → no cover; path
+    that resolves to an existing file → cover passed; path that
+    resolves to a non-existent file → silently None (the cover
+    is best-effort, never blocks the export).
+  - **Failure (CRITICAL)**: WAV→MP3 conversion failure →
+    returns ``None`` and DAG ``mp3_export`` → ``failed``;
+    ID3 failure does NOT abort the export — MP3 path still
+    returned, only ``id3_tags`` DAG flipped to ``failed``.
+
+  Total suite: 1333 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
+  F-CQ-01 progress: **11/N steps complete**. Remaining: video
+  creation (chapter-aware vs single-image fallback), cleanup.
+
 ## [0.29.42] - 2026-05-01
 
 ### Changed
