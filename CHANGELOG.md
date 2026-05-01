@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.58] - 2026-05-01
+
+### Added
+
+- **PromptTemplateService** — 10 new tests for
+  ``services/prompt_template.py``
+  (``test_prompt_template_service.py``). Module coverage:
+  29% → **100%**. Pinned the F-A-01 layering contract:
+
+  - ``list`` with ``template_type=None`` → ``get_all``;
+    with a type → ``get_by_type``.
+  - ``get`` returns the template; raises ``NotFoundError`` on
+    missing.
+  - ``create`` commits + refreshes inside the unit-of-work.
+  - ``update`` raises ``ValidationError`` on empty patch (no
+    DB write); raises ``NotFoundError`` when repo update
+    returns None; commits + refreshes on success.
+  - ``delete`` raises ``NotFoundError`` on missing (no commit);
+    commits when delete succeeded.
+
+  Total suite: 1471 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.57] - 2026-05-01
 
 ### Added
