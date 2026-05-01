@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.44] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 12** — twelfth incision into
+  ``AudiobookService.generate``. The video assembly phase
+  (chapter-aware Ken Burns vs single-image fallback)
+  extracted into ``_run_video_phase``, with the cover-resolution
+  fallback chain (cover → background → title card) lifted into
+  a small ``_resolve_video_cover`` helper. ~75 lines and 7 branch
+  points lifted from ``generate``.
+
+  Two assembly paths preserved:
+
+  - **Chapter-aware**: when there's exactly one image per chapter
+    (``len(chapter_image_paths) == len(chapters)``), uses
+    ``_create_chapter_aware_video`` with Ken Burns crossfades.
+  - **Single-image fallback**: resolves cover → background under
+    the storage root with sanitisation guards (path-traversal
+    failures log a warning and fall through). If neither resolves
+    to an existing file, generates a synthetic title card from
+    the first chapter's title (or "Audiobook" when none).
+
+### Added
+
+- 14 new direct tests for the video phase
+  (``test_audiobook_run_video_phase.py``):
+
+  - **audio_only skip**: returns ``None``, neither video helper
+    called (still fires the 90% progress event so the UI's
+    "Assembling video..." stage is consistent).
+  - **Chapter-aware**: 1:1 image-to-chapter coverage takes the
+    Ken Burns path; mismatched count (e.g. 2 chapters, 1 image)
+    falls back to single-image to avoid rendering a chapter
+    without a visual.
+  - **Single-image fallback**: existing resolved cover wins;
+    cover-resolves-but-missing falls through to title card;
+    no images supplied → title card from first chapter or
+    "Audiobook" default; ``with_waveform`` tied to
+    ``output_format == "audio_video"``.
+  - **Cover resolution helper**: ``None`` when neither input
+    supplied; cover wins over background; resolution failure on
+    cover falls back to background; double failure → ``None``.
+
+  Total suite: 1347 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
+  F-CQ-01 progress: **12/N steps complete**. Remaining: cleanup
+  + final return-dict assembly (small final phase).
+
 ## [0.29.43] - 2026-05-01
 
 ### Changed

@@ -1303,6 +1303,152 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _run_video_phase(
+        self,
+        *,
+        audiobook_id: UUID,
+        abs_dir: Path,
+        final_audio: Path,
+        duration: float,
+        chapters: list[dict[str, Any]],
+        chapter_timings: list[ChapterTiming],
+        chapter_image_paths: list[Path],
+        captions_ass_path: Path | None,
+        output_format: str,
+        video_width: int,
+        video_height: int,
+        cover_image_path: str | None,
+        background_image_path: str | None,
+    ) -> str | None:
+        """Assemble the final MP4 (chapter-aware Ken Burns OR single-image).
+
+        Skipped entirely (returns ``None``) for ``audio_only`` output.
+
+        For ``audio_image`` / ``audio_video``, two paths:
+
+        - **Chapter-aware**: when one image per chapter is available
+          (``len(chapter_image_paths) == len(chapters)``), uses
+          ``_create_chapter_aware_video`` with Ken Burns crossfades.
+        - **Single-image fallback**: resolves cover_image_path or
+          background_image_path under storage. If neither resolves to
+          an existing file (or sanitisation fails), generates a
+          synthetic title card from the first chapter's title.
+
+        DAG ``mp4_export`` flips ``in_progress`` → ``done`` regardless
+        of which path runs (any unhandled exception will propagate up
+        to the caller, which is intentional — a broken video phase is
+        the only legitimately fatal phase, since the audio + MP3 are
+        already on disk for the operator to recover).
+
+        Returns the storage-relative MP4 path on success, ``None`` for
+        audio-only output.
+
+        Pulled out of ``generate`` (F-CQ-01 step 12).
+        """
+        await self._check_cancelled(audiobook_id)
+        await self._broadcast_progress(audiobook_id, "assembly", 90, "Assembling video...")
+
+        if output_format not in ("audio_image", "audio_video"):
+            return None
+
+        await self._dag_global("mp4_export", "in_progress")
+        video_path = abs_dir / "audiobook.mp4"
+
+        # Check if we have chapter images for chapter-aware assembly
+        if chapter_image_paths and len(chapter_image_paths) == len(chapters):
+            # Chapter-aware video with Ken Burns transitions
+            await self._create_chapter_aware_video(
+                audio_path=final_audio,
+                output_path=video_path,
+                chapter_timings=chapter_timings,
+                chapter_image_paths=chapter_image_paths,
+                captions_path=captions_ass_path,
+                width=video_width,
+                height=video_height,
+                background_music_path=None,  # already mixed into audio
+                audiobook_id=audiobook_id,
+            )
+            log.info(
+                "audiobook.generate.chapter_video_done",
+                audiobook_id=str(audiobook_id),
+            )
+        else:
+            # Fallback: single-image video (existing behaviour)
+            resolved_cover = self._resolve_video_cover(
+                cover_image_path=cover_image_path,
+                background_image_path=background_image_path,
+            )
+            if not resolved_cover or not Path(resolved_cover).exists():
+                title_for_card = chapters[0]["title"] if chapters else "Audiobook"
+                resolved_cover = str(
+                    await self._generate_title_card(
+                        abs_dir,
+                        title_for_card,
+                        width=video_width,
+                        height=video_height,
+                    )
+                )
+            await self._create_audiobook_video(
+                audio_path=final_audio,
+                output_path=video_path,
+                cover_image_path=resolved_cover,
+                duration=duration,
+                captions_path=captions_ass_path,
+                with_waveform=output_format == "audio_video",
+                width=video_width,
+                height=video_height,
+                audiobook_id=audiobook_id,
+            )
+            log.info(
+                "audiobook.generate.video_done",
+                audiobook_id=str(audiobook_id),
+            )
+        await self._dag_global("mp4_export", "done")
+        return f"audiobooks/{audiobook_id}/audiobook.mp4"
+
+    def _resolve_video_cover(
+        self,
+        *,
+        cover_image_path: str | None,
+        background_image_path: str | None,
+    ) -> str | None:
+        """Resolve the user-supplied cover/background image to an
+        absolute path under storage.
+
+        Tries ``cover_image_path`` first, then falls back to
+        ``background_image_path``. Sanitisation failures (path
+        traversal, outside storage root) are logged at WARNING and
+        treated as "no cover supplied" — the caller falls through to
+        the synthetic title card generator.
+
+        Returns ``None`` when neither input resolves cleanly. The
+        caller still needs to verify the resolved path actually
+        exists on disk.
+        """
+        resolved_cover: str | None = None
+        if cover_image_path:
+            try:
+                resolved_cover = str(self.storage.resolve_path(cover_image_path))
+            except Exception:
+                # User-supplied path failed sanitisation or is
+                # outside the storage root — log so they see why
+                # the auto-generated title card replaced their art.
+                log.warning(
+                    "audiobook.cover_image_resolve_failed",
+                    path=cover_image_path,
+                    exc_info=True,
+                )
+        if not resolved_cover and background_image_path:
+            try:
+                resolved_cover = str(self.storage.resolve_path(background_image_path))
+            except Exception:
+                log.warning(
+                    "audiobook.background_image_resolve_failed",
+                    path=background_image_path,
+                    exc_info=True,
+                )
+        return resolved_cover
+
     async def _run_mp3_export_phase(
         self,
         *,
@@ -2309,84 +2455,23 @@ class AudiobookService:
             cover_image_path=cover_image_path,
         )
 
-        # 8. Handle output format
-        await self._check_cancelled(audiobook_id)
-        await self._broadcast_progress(audiobook_id, "assembly", 90, "Assembling video...")
-
-        if output_format in ("audio_image", "audio_video"):
-            await self._dag_global("mp4_export", "in_progress")
-            video_path = abs_dir / "audiobook.mp4"
-
-            # Check if we have chapter images for chapter-aware assembly
-            if chapter_image_paths and len(chapter_image_paths) == len(chapters):
-                # Chapter-aware video with Ken Burns transitions
-                await self._create_chapter_aware_video(
-                    audio_path=final_audio,
-                    output_path=video_path,
-                    chapter_timings=chapter_timings,
-                    chapter_image_paths=chapter_image_paths,
-                    captions_path=captions_ass_path,
-                    width=video_width,
-                    height=video_height,
-                    background_music_path=None,  # already mixed into audio
-                    audiobook_id=audiobook_id,
-                )
-                video_rel_path = f"audiobooks/{audiobook_id}/audiobook.mp4"
-                log.info(
-                    "audiobook.generate.chapter_video_done",
-                    audiobook_id=str(audiobook_id),
-                )
-            else:
-                # Fallback: single-image video (existing behaviour)
-                resolved_cover = None
-                if cover_image_path:
-                    try:
-                        resolved_cover = str(self.storage.resolve_path(cover_image_path))
-                    except Exception:
-                        # User-supplied path failed sanitisation or is
-                        # outside the storage root — log so they see why
-                        # the auto-generated title card replaced their art.
-                        log.warning(
-                            "audiobook.cover_image_resolve_failed",
-                            path=cover_image_path,
-                            exc_info=True,
-                        )
-                if not resolved_cover and background_image_path:
-                    try:
-                        resolved_cover = str(self.storage.resolve_path(background_image_path))
-                    except Exception:
-                        log.warning(
-                            "audiobook.background_image_resolve_failed",
-                            path=background_image_path,
-                            exc_info=True,
-                        )
-                if not resolved_cover or not Path(resolved_cover).exists():
-                    title_for_card = chapters[0]["title"] if chapters else "Audiobook"
-                    resolved_cover = str(
-                        await self._generate_title_card(
-                            abs_dir,
-                            title_for_card,
-                            width=video_width,
-                            height=video_height,
-                        )
-                    )
-                await self._create_audiobook_video(
-                    audio_path=final_audio,
-                    output_path=video_path,
-                    cover_image_path=resolved_cover,
-                    duration=duration,
-                    captions_path=captions_ass_path,
-                    with_waveform=output_format == "audio_video",
-                    width=video_width,
-                    height=video_height,
-                    audiobook_id=audiobook_id,
-                )
-                video_rel_path = f"audiobooks/{audiobook_id}/audiobook.mp4"
-                log.info(
-                    "audiobook.generate.video_done",
-                    audiobook_id=str(audiobook_id),
-                )
-            await self._dag_global("mp4_export", "done")
+        # F-CQ-01 step 12: video assembly phase (chapter-aware vs
+        # single-image fallback) extracted into ``_run_video_phase``.
+        video_rel_path = await self._run_video_phase(
+            audiobook_id=audiobook_id,
+            abs_dir=abs_dir,
+            final_audio=final_audio,
+            duration=duration,
+            chapters=chapters,
+            chapter_timings=chapter_timings,
+            chapter_image_paths=chapter_image_paths,
+            captions_ass_path=captions_ass_path,
+            output_format=output_format,
+            video_width=video_width,
+            video_height=video_height,
+            cover_image_path=cover_image_path,
+            background_image_path=background_image_path,
+        )
 
         # NOTE: Chunk files are NOT deleted here. The caller must clean them
         # up AFTER a successful DB commit to prevent data loss on retry.
