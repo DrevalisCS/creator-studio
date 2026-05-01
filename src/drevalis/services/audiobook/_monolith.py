@@ -1303,6 +1303,131 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _run_music_phase(
+        self,
+        *,
+        chapters: list[dict[str, Any]],
+        abs_dir: Path,
+        audiobook_id: UUID,
+        final_audio: Path,
+        chapter_timings: list[ChapterTiming],
+        duration: float,
+        file_size: int,
+        music_enabled: bool,
+        music_mood: str | None,
+        music_volume_db: float,
+        per_chapter_music: bool,
+    ) -> int:
+        """Mix per-chapter or global background music onto ``final_audio``.
+
+        Skipped when music is disabled OR no music_mood was supplied
+        AND per_chapter_music is False.
+
+        Per-chapter music takes precedence when ``per_chapter_music``
+        is True AND chapter_timings exist (without timings the
+        per-chapter crossfade can't be placed). Otherwise falls back to
+        the global ``_add_music`` path.
+
+        On a successful mix, the output WAV swaps into ``final_audio``
+        via the safe-rename pattern (backup → rename mixed → drop
+        backup; on failure → restore backup, re-raise). Returns the
+        post-swap file_size, or the original file_size when no mix
+        ran.
+
+        On any failure, every chapter's DAG ``music`` is flipped to
+        ``failed`` and the exception is swallowed — the audiobook
+        still completes with the un-music-mixed audio.
+
+        Pulled out of ``generate`` (F-CQ-01 step 8). The two-branch
+        backup-rename pattern is collapsed into ``_swap_in_mixed_audio``.
+        """
+        if not (music_enabled and (music_mood or per_chapter_music)):
+            return file_size
+
+        await self._check_cancelled(audiobook_id)
+        await self._broadcast_progress(audiobook_id, "music", 70, "Adding background music...")
+        for ch_idx in range(len(chapters)):
+            await self._dag_chapter(ch_idx, "music", "in_progress")
+        try:
+            music_output = abs_dir / "audiobook_with_music.wav"
+            if per_chapter_music and chapter_timings:
+                # Per-chapter music with crossfades
+                mixed_path = await self._add_chapter_music(
+                    audio_path=final_audio,
+                    output_path=music_output,
+                    chapter_timings=chapter_timings,
+                    chapters=chapters,
+                    global_mood=music_mood or "calm",
+                    volume_db=music_volume_db,
+                    audiobook_id=audiobook_id,
+                )
+                file_size = self._swap_in_mixed_audio(
+                    final_audio=final_audio,
+                    mixed_path=mixed_path,
+                    file_size=file_size,
+                    log_event="audiobook.generate.chapter_music_mixed",
+                    audiobook_id=audiobook_id,
+                )
+            elif music_mood:
+                # Global music (existing behaviour)
+                mixed_path = await self._add_music(
+                    audio_path=final_audio,
+                    output_path=music_output,
+                    mood=music_mood,
+                    volume_db=music_volume_db,
+                    duration=duration,
+                )
+                file_size = self._swap_in_mixed_audio(
+                    final_audio=final_audio,
+                    mixed_path=mixed_path,
+                    file_size=file_size,
+                    log_event="audiobook.generate.music_mixed",
+                    audiobook_id=audiobook_id,
+                )
+            for ch_idx in range(len(chapters)):
+                await self._dag_chapter(ch_idx, "music", "done")
+        except Exception as exc:
+            log.warning(
+                "audiobook.generate.music_failed",
+                audiobook_id=str(audiobook_id),
+                error=str(exc),
+            )
+            for ch_idx in range(len(chapters)):
+                await self._dag_chapter(ch_idx, "music", "failed")
+        return file_size
+
+    @staticmethod
+    def _swap_in_mixed_audio(
+        *,
+        final_audio: Path,
+        mixed_path: Path,
+        file_size: int,
+        log_event: str,
+        audiobook_id: UUID,
+    ) -> int:
+        """Atomically swap ``mixed_path`` into ``final_audio``.
+
+        Backup the existing WAV, rename the mixed output over it, drop
+        the backup. On failure, restore the backup and re-raise so
+        callers' ``except`` blocks see the original error.
+
+        Returns the post-swap ``file_size`` (or the original if the
+        mixer returned the same path → no swap needed).
+        """
+        if mixed_path == final_audio:
+            return file_size
+        backup = final_audio.with_suffix(".wav.bak")
+        final_audio.rename(backup)
+        try:
+            mixed_path.rename(final_audio)
+            backup.unlink(missing_ok=True)
+        except Exception:
+            backup.rename(final_audio)
+            raise
+        new_size = final_audio.stat().st_size
+        log.info(log_event, audiobook_id=str(audiobook_id))
+        return new_size
+
     async def _run_image_phase(
         self,
         *,
@@ -1892,73 +2017,21 @@ class AudiobookService:
             video_height=video_height,
         )
 
-        # 6. Optionally add background music
-        if music_enabled and (music_mood or per_chapter_music):
-            await self._check_cancelled(audiobook_id)
-            await self._broadcast_progress(audiobook_id, "music", 70, "Adding background music...")
-            for ch_idx in range(len(chapters)):
-                await self._dag_chapter(ch_idx, "music", "in_progress")
-            try:
-                if per_chapter_music and chapter_timings:
-                    # Per-chapter music with crossfades
-                    music_output = abs_dir / "audiobook_with_music.wav"
-                    mixed_path = await self._add_chapter_music(
-                        audio_path=final_audio,
-                        output_path=music_output,
-                        chapter_timings=chapter_timings,
-                        chapters=chapters,
-                        global_mood=music_mood or "calm",
-                        volume_db=music_volume_db,
-                        audiobook_id=audiobook_id,
-                    )
-                    if mixed_path != final_audio:
-                        backup = final_audio.with_suffix(".wav.bak")
-                        final_audio.rename(backup)
-                        try:
-                            mixed_path.rename(final_audio)
-                            backup.unlink(missing_ok=True)
-                        except Exception:
-                            backup.rename(final_audio)
-                            raise
-                        file_size = final_audio.stat().st_size
-                        log.info(
-                            "audiobook.generate.chapter_music_mixed",
-                            audiobook_id=str(audiobook_id),
-                        )
-                elif music_mood:
-                    # Global music (existing behaviour)
-                    music_output = abs_dir / "audiobook_with_music.wav"
-                    mixed_path = await self._add_music(
-                        audio_path=final_audio,
-                        output_path=music_output,
-                        mood=music_mood,
-                        volume_db=music_volume_db,
-                        duration=duration,
-                    )
-                    if mixed_path != final_audio:
-                        backup = final_audio.with_suffix(".wav.bak")
-                        final_audio.rename(backup)
-                        try:
-                            mixed_path.rename(final_audio)
-                            backup.unlink(missing_ok=True)
-                        except Exception:
-                            backup.rename(final_audio)
-                            raise
-                        file_size = final_audio.stat().st_size
-                        log.info(
-                            "audiobook.generate.music_mixed",
-                            audiobook_id=str(audiobook_id),
-                        )
-                for ch_idx in range(len(chapters)):
-                    await self._dag_chapter(ch_idx, "music", "done")
-            except Exception as exc:
-                log.warning(
-                    "audiobook.generate.music_failed",
-                    audiobook_id=str(audiobook_id),
-                    error=str(exc),
-                )
-                for ch_idx in range(len(chapters)):
-                    await self._dag_chapter(ch_idx, "music", "failed")
+        # F-CQ-01 step 8: music mixing (per-chapter or global) extracted
+        # into ``_run_music_phase``.
+        file_size = await self._run_music_phase(
+            chapters=chapters,
+            abs_dir=abs_dir,
+            audiobook_id=audiobook_id,
+            final_audio=final_audio,
+            chapter_timings=chapter_timings,
+            duration=duration,
+            file_size=file_size,
+            music_enabled=music_enabled,
+            music_mood=music_mood,
+            music_volume_db=music_volume_db,
+            per_chapter_music=per_chapter_music,
+        )
 
         # 6c. Master loudnorm — single audible loudness pass. Runs AFTER
         # music mixing so it integrates over the actual final content,

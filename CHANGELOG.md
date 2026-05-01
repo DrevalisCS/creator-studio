@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.40] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 8** — eighth incision into
+  ``AudiobookService.generate``. The music mixing phase
+  (per-chapter or global) extracted into ``_run_music_phase``,
+  with the duplicated backup-rename swap pattern collapsed into
+  a static ``_swap_in_mixed_audio`` helper. ~67 lines and 6 branch
+  points lifted from ``generate``; behaviour identical.
+
+  The helpers preserve two critical invariants:
+
+  - **Music mixing is non-fatal**: any failure (MusicGen OOM,
+    AceStep timeout) marks the chapter DAG ``failed`` but does
+    NOT propagate the exception. Audiobook still completes with
+    un-music-mixed audio.
+  - **Atomic swap with rollback**: backup → rename mixed → drop
+    backup. On rename failure (disk full mid-operation), the
+    backup is restored over the original ``audiobook.wav`` and
+    the exception re-raised. The test suite pins this with a
+    Path.rename monkey-patch that fails on the second call.
+
+### Added
+
+- 11 new direct tests for ``_run_music_phase`` and
+  ``_swap_in_mixed_audio`` (``test_audiobook_run_music_phase.py``):
+
+  - **Skip paths**: music disabled OR (no music_mood AND
+    not per_chapter_music) → returns original file_size, no
+    side effects.
+  - **Routing**: per_chapter_music + chapter_timings →
+    ``_add_chapter_music``; per_chapter_music + no timings →
+    fallback to ``_add_music`` (can't place crossfade); no
+    per_chapter_music + music_mood → global ``_add_music``.
+  - **Side effects**: 70% progress with stage ``music``;
+    DAG ``in_progress`` (per chapter, up front) → ``done``.
+  - **Failure**: exception caught, every chapter's DAG flipped
+    to ``failed``, original file_size returned, no re-raise.
+  - **_swap_in_mixed_audio**: no-op when mixer returns same
+    path; atomic swap replaces final and cleans backup on
+    success; **rollback restores backup and re-raises** when
+    rename fails mid-operation.
+
+  Total suite: 1311 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
+  F-CQ-01 progress: **8/N steps complete**. Remaining: master
+  loudnorm, captions, MP3 export, video creation, cleanup.
+
 ## [0.29.39] - 2026-05-01
 
 ### Changed
