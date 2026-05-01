@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.60] - 2026-05-01
+
+### Added
+
+- **core/redis** — 13 new tests for ``core/redis.py``
+  (``test_core_redis.py``). Module coverage: ~30% → **85%**.
+  Pinned the Redis pool lifecycle + DNS preflight contracts:
+
+  - **``_parse_redis_settings``**: full URL with password,
+    minimal URL falls back to localhost/6379/db0, bare URL
+    without ``/<db>`` defaults to database 0.
+  - **``get_pool``** raises ``RuntimeError("not initialised")``
+    before ``init_redis``; **``get_arq_pool``** raises with the
+    "arq connection pool" message; both return the set
+    singleton when populated.
+  - **``close_redis``**: no-op when uninitialised; closes BOTH
+    pools + clears both singletons; handles partial-init case
+    where only the arq pool is set.
+  - **``get_redis``** (FastAPI dep): yields a client from the
+    pool and **calls ``aclose`` in the finally block** so
+    request-scoped clients don't leak.
+  - **``_wait_for_redis_dns``** preflight: succeeds when the
+    host is reachable; loops with backoff until the deadline
+    on persistent ``gaierror`` (Docker DNS race); raises
+    ``RuntimeError("not reachable")`` once the deadline
+    expires (so worker / app startup fails fast on a bad
+    Redis URL rather than hanging forever).
+
+  **v0.29.60 milestone**: 50th release in the auto-mode arc.
+  Total suite: 1486 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.59] - 2026-05-01
 
 ### Added
