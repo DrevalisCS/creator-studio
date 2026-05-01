@@ -1297,6 +1297,64 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    def _apply_settings_and_mix(
+        self,
+        *,
+        audiobook_settings: AudiobookSettings | None,
+        ducking_preset: str | None,
+        track_mix: dict[str, Any] | None,
+        music_volume_db: float,
+    ) -> float:
+        """Resolve ``audiobook_settings`` + unpack ``track_mix``.
+
+        Mutates the per-call instance state (``self._settings``,
+        ``self._ducking_preset``, ``self._track_mix_full``, the six
+        gain/mute fields) and returns the (possibly user-gain-adjusted)
+        ``music_volume_db`` so the caller can keep using a local var.
+
+        Pulled out of ``generate`` (F-CQ-01) so the orchestrator stays
+        focused on phase sequencing rather than instance-state setup.
+        """
+        # Task 9: ``audiobook_settings`` is the single source of truth.
+        # If the caller supplies a settings object, every downstream
+        # consumer reads from it; otherwise we fall back to the
+        # narrative-default ``AudiobookSettings()`` so existing call
+        # sites behave exactly as before. The legacy ``ducking_preset``
+        # kwarg from Task 6 still works — when settings is None we
+        # build a settings instance carrying that preset.
+        if audiobook_settings is None:
+            base = AudiobookSettings()
+            if ducking_preset is not None:
+                base = base.model_copy(update={"ducking_preset": ducking_preset})
+            self._settings = base
+        else:
+            self._settings = audiobook_settings
+        # Backwards-compat: the Task-6 dict-shaped preset still feeds
+        # ``_build_music_mix_graph``. Sync from settings.
+        self._ducking_preset = _resolve_ducking_preset(self._settings.ducking_preset)
+
+        # Stash track_mix on the instance so the mix filter chains
+        # (in ``_add_music`` / ``_add_chapter_music``) can read user
+        # gain offsets without threading them through every helper.
+        # Default = passthrough.
+        mix = track_mix or {}
+        # Stash the full mix dict so the concat path can read
+        # ``track_mix.clips`` per-clip overrides without changing
+        # signatures down the call stack.
+        self._track_mix_full = mix
+        self._voice_gain_db = float(mix.get("voice_db", 0.0) or 0.0)
+        self._music_gain_db = float(mix.get("music_db", 0.0) or 0.0)
+        self._sfx_gain_db = float(mix.get("sfx_db", 0.0) or 0.0)
+        self._voice_muted = bool(mix.get("voice_mute", False))
+        self._music_muted = bool(mix.get("music_mute", False))
+        self._sfx_muted = bool(mix.get("sfx_mute", False))
+        # Music user gain stacks on top of the per-call ``volume_db``
+        # arg (which already represents the music bed level), so a
+        # +3 dB user gain on top of -14 dB call value = -11 dB.
+        if self._music_gain_db:
+            music_volume_db = music_volume_db + self._music_gain_db
+        return music_volume_db
+
     async def generate(
         self,
         audiobook_id: UUID,
@@ -1382,44 +1440,15 @@ class AudiobookService:
         # Task 13: parallel callback for the render_plan_json column.
         self._persist_render_plan_cb = persist_render_plan_cb
 
-        # Task 9: ``audiobook_settings`` is the single source of truth.
-        # If the caller supplies a settings object, every downstream
-        # consumer reads from it; otherwise we fall back to the
-        # narrative-default ``AudiobookSettings()`` so existing call
-        # sites behave exactly as before. The legacy ``ducking_preset``
-        # kwarg from Task 6 still works — when settings is None we
-        # build a settings instance carrying that preset.
-        if audiobook_settings is None:
-            base = AudiobookSettings()
-            if ducking_preset is not None:
-                base = base.model_copy(update={"ducking_preset": ducking_preset})
-            self._settings = base
-        else:
-            self._settings = audiobook_settings
-        # Backwards-compat: the Task-6 dict-shaped preset still feeds
-        # ``_build_music_mix_graph``. Sync from settings.
-        self._ducking_preset = _resolve_ducking_preset(self._settings.ducking_preset)
-
-        # Stash track_mix on the instance so the mix filter chains
-        # (in ``_add_music`` / ``_add_chapter_music``) can read user
-        # gain offsets without threading them through every helper.
-        # Default = passthrough.
-        mix = track_mix or {}
-        # Stash the full mix dict so the concat path can read
-        # ``track_mix.clips`` per-clip overrides without changing
-        # signatures down the call stack.
-        self._track_mix_full = mix
-        self._voice_gain_db = float(mix.get("voice_db", 0.0) or 0.0)
-        self._music_gain_db = float(mix.get("music_db", 0.0) or 0.0)
-        self._sfx_gain_db = float(mix.get("sfx_db", 0.0) or 0.0)
-        self._voice_muted = bool(mix.get("voice_mute", False))
-        self._music_muted = bool(mix.get("music_mute", False))
-        self._sfx_muted = bool(mix.get("sfx_mute", False))
-        # Music user gain stacks on top of the per-call ``volume_db``
-        # arg (which already represents the music bed level), so a
-        # +3 dB user gain on top of -14 dB call value = -11 dB.
-        if self._music_gain_db:
-            music_volume_db = music_volume_db + self._music_gain_db
+        # F-CQ-01 step 1: settings + track_mix unpacking extracted into
+        # ``_apply_settings_and_mix`` so this orchestrator stays focused
+        # on phase sequencing rather than per-instance state setup.
+        music_volume_db = self._apply_settings_and_mix(
+            audiobook_settings=audiobook_settings,
+            ducking_preset=ducking_preset,
+            track_mix=track_mix,
+            music_volume_db=music_volume_db,
+        )
 
         # Handle legacy generate_video flag
         if generate_video and output_format == "audio_only":

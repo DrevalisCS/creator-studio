@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.33] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 1** — refactor of ``AudiobookService.generate``
+  (CC=92, audit's #1 code-quality item) begins. First incision
+  extracts the audiobook-settings resolution + ``track_mix``
+  unpacking phase out of the ~700-line orchestrator into a new
+  private helper ``_apply_settings_and_mix``. ~30 lines and 6
+  branch points lifted out of ``generate``; behaviour identical
+  (verified by the existing 1219-test suite running green
+  before-and-after).
+
+  Why a step 1: F-CQ-01 is structural risk if done in one shot —
+  the function touches every audiobook generation, and a regression
+  there is multi-GB-of-output painful. Staging it across small
+  extractions, each guarded by both the existing suite and a fresh
+  set of direct tests for the extracted helper, keeps the blast
+  radius small at every step.
+
+### Added
+
+- 12 new direct tests for ``_apply_settings_and_mix``
+  (``test_audiobook_settings_and_mix.py``):
+
+  - **Settings resolution**: explicit settings argument wins,
+    default ``AudiobookSettings()`` when None, the legacy
+    ``ducking_preset`` kwarg threaded only when settings is None
+    (explicit settings preserve the caller's full configuration),
+    ``self._ducking_preset`` dict-shape kept in sync.
+  - **track_mix unpacking**: ``None`` yields passthrough
+    defaults (zero gain, no mute), full mix dict unpacked into
+    the six instance fields, falsy gain values
+    (``None`` / ``""`` / ``0``) all coerce to ``0.0``.
+  - **music_volume_db user-gain stacking**: no music_db keeps
+    the call value, +3 dB user gain on top of -14 dB call value
+    yields -11 dB final, negative user gain darkens, zero
+    music_db short-circuits without double-applying.
+
+  Total suite: 1231 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
 ## [0.29.32] - 2026-05-01
 
 ### Added
