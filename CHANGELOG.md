@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.51] - 2026-05-01
+
+### Added
+
+- **demo-pipeline worker** — 6 new tests for
+  ``workers/jobs/demo_pipeline.py``
+  (``test_demo_pipeline_job.py``). Module coverage: 0% → 43%.
+  Pinned the contracts that keep the demo install demo-able:
+
+  - **DEMO_STEPS shape**: covers all 6 real pipeline steps in
+    the canonical order (``script``, ``voice``, ``scenes``,
+    ``captions``, ``assembly``, ``thumbnail``). Frontend's
+    progress UI is shared between demo and prod — a missing or
+    out-of-order step here would leave the demo's progress bar
+    silently broken. Each step has positive duration + tick
+    count so the loop produces at least one progress event.
+  - **``_stage_demo_assets`` graceful degradation**: missing
+    demo-assets directory is a silent no-op (fresh install
+    without sample-pack download); partial sample pack
+    (only video.mp4, no thumbnail/scenes) copies what's
+    present without erroring; full sample pack copies video +
+    thumbnail + scene images and creates matching
+    ``media_assets`` rows; scene images keep monotonically
+    increasing ``scene_number`` indices.
+
+  Total suite: 1393 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.50] - 2026-05-01
 
 ### Added
