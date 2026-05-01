@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.49] - 2026-05-01
+
+### Added
+
+- **edit_render worker** — 6 new tests for
+  ``workers/jobs/edit_render.py``
+  (``test_edit_render_job.py``). Module coverage: 0% → 17%.
+  Pinned every early-exit branch:
+
+  - **No edit session**: episode never opened in editor → row
+    missing in ``video_edit_sessions`` → returns ``no_session``.
+  - **Episode missing**: edit session exists but the episode
+    row was deleted between editor save and render kick-off →
+    returns ``episode_missing``.
+  - **Empty timeline** (4 sub-cases): no tracks at all,
+    video track present but with empty clips, audio + caption
+    tracks but no video track, ``timeline = None`` (freshly-
+    created edit session). All four return ``empty_timeline``.
+
+  The remaining 83% (the actual ffmpeg-driven trim → concat →
+  audio-mix flow) is integration territory and was left for a
+  future harness — testing it requires real ffmpeg + storage +
+  DB, plus ~250 lines of trim/concat/assemble scaffolding.
+
+  Total suite: 1383 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.48] - 2026-05-01
 
 ### Added
