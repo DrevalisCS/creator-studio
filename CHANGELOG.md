@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.27] - 2026-05-01
+
+### Added
+
+- **Backup arq jobs** — 11 new tests for ``workers/jobs/backup.py``
+  (``test_backup_jobs.py``). Module coverage: 0% → 97%. Covers
+  both jobs:
+
+  - ``scheduled_backup`` (03:00 UTC cron):
+    - ``BACKUP_AUTO_ENABLED=false`` short-circuits with
+      ``{"skipped": "disabled"}``.
+    - Success returns archive name + size + pruned list.
+    - Exception returns ``failed`` with the error message
+      truncated to 200 chars (DB-friendly).
+
+  - ``restore_backup_async`` (user-triggered, destructive):
+    - **v0.29.8 invariant pinned**: uses ``ctx['redis']`` from
+      the arq worker pool, NOT a global ``get_pool()`` lookup.
+      Regression here caused real production downtime ("Redis
+      connection pool is not initialised" at first restore).
+    - Progress callback threaded into ``BackupService``;
+      every stage transition writes a ``running`` status to
+      Redis so the polling UI sees percentage updates.
+    - ``BackupError`` writes ``failed`` status with the
+      service's error message to Redis.
+    - Unexpected exceptions truncate the Redis ``error`` field
+      to 500 chars while keeping the full string in the return
+      value.
+    - ``delete_archive_when_done=True`` removes the archive
+      after success **and** after failure (cleanup must not
+      depend on success when temp files are involved).
+    - ``delete_archive_when_done=False`` keeps the archive
+      (the multi-GB-friendly "restore from existing archive"
+      path lets the operator retry without re-uploading).
+    - ``allow_key_mismatch`` / ``restore_db`` / ``restore_media``
+      flags are passed through to the service unchanged.
+
+  Total suite: 1110 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.26] - 2026-05-01
 
 ### Added
