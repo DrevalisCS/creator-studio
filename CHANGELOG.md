@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.50] - 2026-05-01
+
+### Added
+
+- **video_ingest worker** — 4 new tests for
+  ``workers/jobs/video_ingest.py``
+  (``test_video_ingest_job.py``). Module coverage: 0% → 31%.
+  Pinned the early-exit branches that handle missing inputs:
+
+  - **Job row missing** → ``not_found`` (operator hit
+    Cancel+Delete on the ingest-jobs page between enqueue and
+    pickup; worker must not crash).
+  - **Asset row missing OR not a video** → ``failed`` with
+    ``source_asset_missing`` (audio upload + ingest job is the
+    pathological case).
+  - **Source file not on disk** → ``failed`` with
+    ``source_file_missing`` (storage volume swap, manual
+    cleanup left a row with no underlying file).
+
+  The remaining 69% (ffmpeg WAV extraction → faster-whisper
+  transcribe → LLM clip-picker → candidate persist) is
+  integration territory — testing it requires a real LLM client +
+  ffmpeg + faster-whisper.
+
+  Total suite: 1387 passing, 2 skipped (ffmpeg-only).
+
+  **Milestone**: every worker job module in ``workers/jobs/``
+  now has at least early-exit / safety-branch coverage.
+
 ## [0.29.49] - 2026-05-01
 
 ### Added
