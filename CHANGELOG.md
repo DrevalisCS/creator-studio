@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.22] - 2026-05-01
+
+### Added
+
+- **ComfyUI bundled-template registry** — 27 new tests for
+  ``services/comfyui/templates/__init__.py``
+  (``test_comfyui_templates.py``). Module coverage: 0% → 100%.
+  Pins:
+
+  - ``TEMPLATES`` registry shape — every slug matches its entry,
+    every template has required metadata (name, description,
+    valid ``content_format`` ∈ {shorts, longform, animation},
+    valid ``scene_mode`` ∈ {image, video}, non-empty
+    ``input_mappings``).
+  - ``input_mappings`` use string node IDs (ComfyUI's contract,
+    even when they look numeric).
+  - ``WorkflowTemplate`` is a frozen dataclass — mutations raise.
+  - ``template_json_path`` returns the right filename for every
+    slug, points inside the templates package directory.
+  - **Strongest invariant**: every node_id referenced by a
+    template's ``input_mappings`` must exist in the actual
+    workflow JSON file on disk. Missing node IDs ship as silent
+    "prompt not applied" bugs at scene-gen time.
+  - Each bundled JSON file is parseable and non-empty.
+  - Slug + display-name uniqueness, slug filename-safety
+    (no ``/`` ``\\`` ``..`` or spaces).
+
+- **Worker heartbeat job** — 7 new tests for
+  ``workers/jobs/heartbeat.py`` (``test_worker_heartbeat.py``).
+  Module coverage: 0% → 100%. Pins:
+
+  - Writes ``worker:heartbeat`` to Redis with an ISO-8601 UTC
+    timestamp value and 180s TTL (one full beat margin over the
+    API's 120s liveness threshold — a single missed beat must
+    not make the worker look dead).
+  - Honours ``ctx['redis_url']`` when present, falls back to
+    ``redis://redis:6379/0`` when missing.
+  - Connection closed via ``aclose`` after the SET, **even when
+    the SET raises** (the finally clause guarantees it).
+  - Outer exceptions (``Redis.from_url`` itself failing) are
+    swallowed and logged loudly — a heartbeat failure must NOT
+    fail the arq job (would mask the underlying Redis problem).
+  - Returns ``None``.
+
+  Total suite: 1061 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.21] - 2026-05-01
 
 ### Added
