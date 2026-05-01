@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.24] - 2026-05-01
+
+### Added
+
+- **Distributed cron lock** — 11 new tests for
+  ``workers/cron_lock.py`` (``test_cron_lock.py``). Module
+  coverage: 0% → 100%. The lock is what prevents two arq workers
+  on the same Redis from double-firing scheduled posts to
+  YouTube / TikTok / X — high-stakes, every branch pinned:
+
+  - No-Redis-in-ctx degrades to a no-op (yields ``True``).
+  - SET NX EX claim succeeds → yields True with default 280s TTL,
+    custom ttl_s honoured.
+  - SET NX returns falsy → yields False; release NOT attempted
+    (don't delete a lock we don't own).
+  - Redis exception during SET NX → fail-open (yield True so the
+    cron still does its work, slightly worse than double-posting
+    but much better than missing every tick when Redis hiccups).
+  - Release uses the canonical Lua compare-and-delete (so a
+    TTL-reclaimed successor isn't accidentally clobbered) with
+    KEYS[1]=cron:<name> and ARGV[1]=owner token.
+  - Owner token shape is hostname:pid:uuid8 and is unique per
+    invocation.
+  - Release-time errors are swallowed.
+  - Body exceptions still trigger release (finally clause).
+  - Key prefix is ``cron:`` (single-SCAN-friendly).
+
+  Total suite: 1078 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.23] - 2026-05-01
 
 ### Added
