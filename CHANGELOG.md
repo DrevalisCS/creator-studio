@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.20] - 2026-05-01
+
+### Added
+
+- **Animation content-format service** — 30 new tests for
+  ``services/animation.py`` (``test_animation.py``). Module
+  coverage: 0% → 100% (every branch). Pins:
+
+  - ``resolve_direction`` — every documented style (anime_classic,
+    anime_modern, studio_ghibli, cartoon_network, pixar_3d,
+    disney_3d, motion_comic, stop_motion, pixel_art) returns its
+    matching prompt anchor with quality suffix and the shared
+    photorealistic-blocker negative prompt. Unknown / empty
+    style strings fall back to ``anime_modern`` (the prompt
+    template field can never silently hard-fail an episode).
+  - ``decorate_prompt`` — wraps the caller's prompt with the
+    style prefix + suffix, strips trailing ``,`` / ``.`` and
+    surrounding whitespace, handles empty prompts.
+  - ``pick_workflow`` — empty candidate list → None, no
+    animation-tagged workflows → None, falls back to first
+    animation-tagged when no keyword matches, prefers keyword
+    matches by name or description, scene-mode preference
+    (``image`` vs ``video``) with ``animate`` keyword treated
+    as video, style needle split on ``_`` so ``studio_ghibli``
+    matches a workflow named ``Studio-style watercolour``,
+    non-animation-tagged candidates filtered out even when
+    their name contains an animation keyword.
+
+  Total suite: 993 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.19] - 2026-05-01
 
 ### Added
