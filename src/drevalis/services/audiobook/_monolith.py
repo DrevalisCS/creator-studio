@@ -1303,6 +1303,56 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _finalize_generate_result(
+        self,
+        *,
+        audiobook_id: UUID,
+        audio_rel_path: str,
+        video_rel_path: str | None,
+        mp3_rel_path: str | None,
+        captions_ass_rel: str | None,
+        captions_srt_rel: str | None,
+        duration: float,
+        file_size: int,
+        chapters: list[dict[str, Any]],
+        all_chunks: list[AudioChunk],
+    ) -> dict[str, Any]:
+        """Final 100% progress broadcast + result-dict assembly.
+
+        Builds the dict the worker uses to update the DB and the route
+        uses to render the response. The ``_chunk_paths`` key is
+        intentionally prefixed with an underscore — it's an internal
+        handoff for **deferred chunk cleanup AFTER a successful DB
+        commit**. Cleaning up before commit would lose chunks on a
+        retry; cleaning up here at the end of ``generate`` would lose
+        them on a worker crash between this return and the commit.
+
+        Pulled out of ``generate`` (F-CQ-01 step 13, the final phase).
+        """
+        await self._broadcast_progress(audiobook_id, "done", 100, "Complete!")
+
+        log.info(
+            "audiobook.generate.done",
+            audiobook_id=str(audiobook_id),
+            duration_seconds=duration,
+            file_size_bytes=file_size,
+            has_video=video_rel_path is not None,
+            has_mp3=mp3_rel_path is not None,
+            chapter_count=len(chapters),
+        )
+
+        return {
+            "audio_rel_path": audio_rel_path,
+            "video_rel_path": video_rel_path,
+            "mp3_rel_path": mp3_rel_path,
+            "captions_ass_rel_path": captions_ass_rel,
+            "captions_srt_rel_path": captions_srt_rel,
+            "duration_seconds": duration,
+            "file_size_bytes": file_size,
+            "chapters": chapters,
+            "_chunk_paths": [c.path for c in all_chunks],
+        }
+
     async def _run_video_phase(
         self,
         *,
@@ -2473,33 +2523,20 @@ class AudiobookService:
             background_image_path=background_image_path,
         )
 
-        # NOTE: Chunk files are NOT deleted here. The caller must clean them
-        # up AFTER a successful DB commit to prevent data loss on retry.
-        # Chunk paths are returned in the result dict for deferred cleanup.
-
-        await self._broadcast_progress(audiobook_id, "done", 100, "Complete!")
-
-        log.info(
-            "audiobook.generate.done",
-            audiobook_id=str(audiobook_id),
-            duration_seconds=duration,
-            file_size_bytes=file_size,
-            has_video=video_rel_path is not None,
-            has_mp3=mp3_rel_path is not None,
-            chapter_count=len(chapters),
+        # F-CQ-01 step 13: final 100%-progress broadcast + result-dict
+        # assembly extracted into ``_finalize_generate_result``.
+        return await self._finalize_generate_result(
+            audiobook_id=audiobook_id,
+            audio_rel_path=audio_rel_path,
+            video_rel_path=video_rel_path,
+            mp3_rel_path=mp3_rel_path,
+            captions_ass_rel=captions_ass_rel,
+            captions_srt_rel=captions_srt_rel,
+            duration=duration,
+            file_size=file_size,
+            chapters=chapters,
+            all_chunks=all_chunks,
         )
-
-        return {
-            "audio_rel_path": audio_rel_path,
-            "video_rel_path": video_rel_path,
-            "mp3_rel_path": mp3_rel_path,
-            "captions_ass_rel_path": captions_ass_rel,
-            "captions_srt_rel_path": captions_srt_rel,
-            "duration_seconds": duration,
-            "file_size_bytes": file_size,
-            "chapters": chapters,
-            "_chunk_paths": [c.path for c in all_chunks],
-        }
 
     # ══════════════════════════════════════════════════════════════════════
     # Chapter parsing

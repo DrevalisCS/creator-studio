@@ -7,6 +7,79 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.45] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 13 — final phase**. The 100%-progress broadcast +
+  result-dict assembly extracted into ``_finalize_generate_result``.
+  ~30 more lines lifted from ``generate``.
+
+  **F-CQ-01 milestone reached.** ``AudiobookService.generate`` was
+  ~727 lines (CC=92, audit's #1 code-quality item); the orchestrator
+  is now **273 lines** (62% reduction). It's a sequence of clearly-
+  labelled phase calls plus the function signature + docstring.
+  Every extracted helper has a name that explains what it does, a
+  docstring that pins its contract, and direct unit tests that
+  guard the behaviour.
+
+  13 phases extracted in total:
+
+  1. ``_apply_settings_and_mix`` — settings + track_mix
+  2. ``_initialize_call_state`` — per-call state init
+  3. ``_resolve_output_format`` + ``_resolve_video_dims`` — pure
+     resolution helpers
+  4. ``_reshape_dag_for_chapters`` — DAG normalisation +
+     chapter_moods
+  5. ``_run_tts_phase`` — per-chapter TTS loop (~75 lines)
+  6. ``_run_concat_phase`` — concat + RenderPlan + silence trim
+  7. ``_run_image_phase`` — chapter image gen (non-fatal)
+  8. ``_run_music_phase`` + ``_swap_in_mixed_audio`` — music mix
+     with atomic rollback (non-fatal)
+  9. ``_run_master_mix_phase`` — loudnorm
+  10. ``_run_captions_phase`` — ASR + ASS/SRT generation
+  11. ``_run_mp3_export_phase`` — MP3 + ID3 + CHAP frames + LAME
+      priming offset
+  12. ``_run_video_phase`` + ``_resolve_video_cover`` — chapter-
+      aware vs single-image fallback
+  13. ``_finalize_generate_result`` — 100% broadcast + result dict
+
+### Added
+
+- 5 new direct tests for ``_finalize_generate_result``
+  (``test_audiobook_finalize_result.py``):
+
+  - **Progress**: 100% broadcast at stage ``done`` so the UI's
+    progress bar finishes (otherwise it would freeze at 90% from
+    the assembly stage).
+  - **Result dict shape**: pinned exact key set the route +
+    worker expect; full dict carries every output path; chapters
+    list passed through by reference.
+  - **Audio-only path**: video / mp3 / captions all ``None`` rather
+    than missing keys (the route serialiser counts on the keys
+    being present).
+  - **Chunk paths handoff**: ``_chunk_paths`` is the deferred-
+    cleanup signal — chunks are NOT deleted by ``generate`` so a
+    worker crash between return and DB commit doesn't lose them.
+    Underscore prefix flags it as internal (the API serialiser
+    drops underscore-prefixed keys).
+
+  Total suite: 1352 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
+  **F-CQ-01 final scorecard**:
+
+  - 13/13 phases extracted
+  - ``generate`` reduced from ~727 lines → 273 lines (62%)
+  - 13 new helpers, 102 direct tests across them
+  - Behaviour identical at every step (1219 → 1352 tests, all green)
+  - mypy ``--strict`` clean throughout
+  - Critical invariants pinned: non-fatal music/image/captions
+    phases, atomic mixed-audio swap with rollback, SFX→multi-voice
+    routing, master loudnorm placement (after music, before
+    captions/MP3), CHAP frames within ±5 ms of audible
+    boundaries via LAME priming offset, deferred chunk cleanup
+
 ## [0.29.44] - 2026-05-01
 
 ### Changed
