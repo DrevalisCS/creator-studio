@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.15] - 2026-05-01
+
+### Added
+
+- **F-Tst-10** — frontend test infrastructure bootstrap. Vitest +
+  @testing-library/react + @testing-library/jest-dom +
+  @testing-library/user-event + jsdom landed in
+  ``frontend/devDependencies``. ``vite.config.ts`` now carries a
+  ``test`` block (jsdom env, ``./src/test/setup.ts`` for the
+  jest-dom matcher extension, glob ``src/**/*.{test,spec}.{ts,tsx}``)
+  and ``package.json`` exposes ``npm test`` (one-shot) +
+  ``npm run test:watch``.
+
+  First round of pure-utility tests:
+
+  - ``stepColors.test.ts`` (15 specs) — pins the canonical pipeline
+    step palette: STEP_ORDER length + sequence, STEP_TEXT /
+    STEP_BG / STEP_MUTED carry one entry per step with the
+    matching Tailwind class, no extra keys creep in, and
+    ``isKnownStep`` correctly narrows the type and rejects
+    unknown values + casing variants.
+  - ``api/formatError.test.ts`` (15 specs) — pins the
+    error-string contract that decides what every toast shows.
+    Covers ``ApiError`` field accessors, ``toString`` shape,
+    ``formatError`` for ApiError / Error / empty-message Error /
+    string / object / array / circular-structure (catch-branch)
+    / null / number / boolean inputs.
+
+  After ``cd frontend && npm install``, ``npm test`` runs the
+  suite. CI integration deferred until the install is verified
+  on the deploy host; for now the suite is local-first with a
+  documented entrypoint.
+
 ## [0.29.14] - 2026-04-30
 
 ### Added
