@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.59] - 2026-05-01
+
+### Added
+
+- **Music generation job safety branches** — 2 new tests for
+  ``workers/jobs/music.py`` (``test_music_job.py``). Module
+  coverage at 27% — the ComfyUI workflow build/poll happy-path
+  is integration territory. Pinned the early-exit safety
+  branches that make the cron robust in real deployments:
+
+  - **Episode not found** → returns ``{"error": "Episode ... not found"}``
+    rather than crashing, so a deleted episode can't take down
+    the worker.
+  - **No active ComfyUI server** → returns
+    ``{"error": "No active ComfyUI server configured"}``
+    rather than failing on a NoneType deref.
+
+  Total suite: 1473 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.58] - 2026-05-01
 
 ### Added
