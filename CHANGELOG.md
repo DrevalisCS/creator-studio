@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.52] - 2026-05-01
+
+### Added
+
+- **Worker lifecycle hooks** — 9 new tests for
+  ``workers/lifecycle.py`` (``test_worker_lifecycle.py``).
+  Module coverage: 0% → 24%. Pinned the testable parts of the
+  worker lifecycle:
+
+  - **``on_job_start`` license gate**: ``worker_heartbeat`` and
+    ``publish_scheduled_posts`` exempt — they MUST keep running
+    even on an unactivated install (heartbeat keeps the API
+    liveness probe happy; scheduled-post cron self-gates at
+    upload time). Active license passes any job. Unactivated
+    or invalid license + non-exempt job → ``arq.Retry(defer=3600)``
+    so the job sits on the queue for an hour and resumes after
+    activation. Missing ``job_name`` falls through to the
+    license check (defensive — never silently skip the gate).
+  - **``shutdown`` clean teardown**: closes ComfyUI pool, Redis
+    client, Redis connection pool, and DB engine when each is
+    present. **No-op-safe** when resources are missing — a
+    worker killed mid-startup must still shut down cleanly.
+    Partial resources (only redis assigned) close just that one.
+
+  The full ``startup`` flow (DB engine + Redis + 7 services +
+  license bootstrap + orphan cleanup + missed-cron catch-up)
+  is integration territory and was left for a future harness.
+
+  Total suite: 1402 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.51] - 2026-05-01
 
 ### Added
