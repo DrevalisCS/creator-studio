@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.36] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 4** — fourth incision into
+  ``AudiobookService.generate``. The DAG-reshape phase
+  (chapter-count normalisation + mark-as-skipped flagging for
+  inapplicable stages + ``chapter_moods`` application) extracted
+  into a new private helper ``_reshape_dag_for_chapters``. ~20 more
+  lines and 4 branch points lifted out of ``generate``.
+
+  Also added a class-level ``_job_state`` annotation so mypy can
+  type-check helper methods that read it without needing to follow
+  every ``generate`` code path.
+
+### Added
+
+- 12 new direct tests for ``_reshape_dag_for_chapters``
+  (``test_audiobook_reshape_dag.py``):
+
+  - **DAG reshape**: normalises the chapter count, persists the
+    DAG once after reshape, image marked ``skipped`` when
+    generation disabled OR output_format is ``audio_only`` (no
+    place to display it), music marked ``skipped`` when
+    disabled, ``mp4_export`` marked ``skipped`` for
+    ``audio_only``, full-pipeline path leaves every stage
+    pending.
+  - **chapter_moods application**: ``None`` leaves chapters
+    untouched, full list applied 1:1, short list only mutates the
+    first N chapters, empty-string mood is falsy so it doesn't
+    overwrite an existing chapter-level mood, more-moods-than-
+    chapters silently ignores the extras.
+
+  Total suite: 1265 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
 ## [0.29.35] - 2026-05-01
 
 ### Changed

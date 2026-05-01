@@ -527,6 +527,12 @@ def _provider_identity(provider: Any, voice_profile: Any) -> tuple[str, str]:
 class AudiobookService:
     """High-level service for generating audiobooks from text."""
 
+    # Per-call state attributes are populated by ``_initialize_call_state``
+    # at the top of ``generate``. Declared at class scope so mypy can
+    # type-check helper methods that read them (``_dag_chapter`` etc.)
+    # without having to follow every ``generate`` code path.
+    _job_state: dict[str, Any]
+
     def __init__(
         self,
         tts_service: TTSService,
@@ -1297,6 +1303,46 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _reshape_dag_for_chapters(
+        self,
+        *,
+        chapters: list[dict[str, Any]],
+        image_generation_enabled: bool,
+        output_format: str,
+        music_enabled: bool,
+        chapter_moods: list[str] | None,
+    ) -> None:
+        """Reshape the persisted DAG to fit the parsed chapter count
+        and mark inapplicable stages as ``skipped`` so the progress
+        percentage stays honest.
+
+        Also applies ``chapter_moods[i]`` to each chapter's
+        ``music_mood`` slot when supplied (the per-chapter override
+        for the global ``music_mood`` arg).
+
+        Pulled out of ``generate`` (F-CQ-01 step 4) so the
+        orchestrator stays focused on phase sequencing.
+        """
+        # Task 11: reshape the DAG to fit the parsed chapter count.
+        # Stages that don't apply for this audiobook get marked
+        # ``skipped`` up front so the progress percentage is honest.
+        self._job_state = _js._normalise(self._job_state, len(chapters))
+        if not image_generation_enabled or output_format == "audio_only":
+            for ch_key in list(self._job_state["chapters"].keys()):
+                self._job_state["chapters"][ch_key]["image"] = "skipped"
+        if not music_enabled:
+            for ch_key in list(self._job_state["chapters"].keys()):
+                self._job_state["chapters"][ch_key]["music"] = "skipped"
+        if output_format == "audio_only":
+            self._job_state["mp4_export"] = "skipped"
+        await self._persist_dag()
+
+        # Apply chapter_moods to chapter metadata
+        if chapter_moods:
+            for i, chapter in enumerate(chapters):
+                if i < len(chapter_moods) and chapter_moods[i]:
+                    chapter["music_mood"] = chapter_moods[i]
+
     @staticmethod
     def _resolve_output_format(output_format: str, generate_video: bool) -> str:
         """Resolve the legacy ``generate_video`` flag.
@@ -1377,7 +1423,7 @@ class AudiobookService:
         # parsed chapter count once parsing has run. The persistence
         # callback is invoked after every state transition so a worker
         # crash leaves the DAG at the last successful step.
-        self._job_state: dict[str, Any] = initial_job_state or {}
+        self._job_state = initial_job_state or {}
         self._persist_job_state_cb = persist_job_state_cb
         # Task 13: parallel callback for the render_plan_json column.
         self._persist_render_plan_cb = persist_render_plan_cb
@@ -1555,25 +1601,15 @@ class AudiobookService:
             chapter_titles=[ch["title"] for ch in chapters],
         )
 
-        # Task 11: reshape the DAG to fit the parsed chapter count.
-        # Stages that don't apply for this audiobook get marked
-        # ``skipped`` up front so the progress percentage is honest.
-        self._job_state = _js._normalise(self._job_state, len(chapters))
-        if not image_generation_enabled or output_format == "audio_only":
-            for ch_key in list(self._job_state["chapters"].keys()):
-                self._job_state["chapters"][ch_key]["image"] = "skipped"
-        if not music_enabled:
-            for ch_key in list(self._job_state["chapters"].keys()):
-                self._job_state["chapters"][ch_key]["music"] = "skipped"
-        if output_format == "audio_only":
-            self._job_state["mp4_export"] = "skipped"
-        await self._persist_dag()
-
-        # Apply chapter_moods to chapter metadata
-        if chapter_moods:
-            for i, chapter in enumerate(chapters):
-                if i < len(chapter_moods) and chapter_moods[i]:
-                    chapter["music_mood"] = chapter_moods[i]
+        # F-CQ-01 step 4: DAG reshape + chapter_moods application
+        # extracted into ``_reshape_dag_for_chapters``.
+        await self._reshape_dag_for_chapters(
+            chapters=chapters,
+            image_generation_enabled=image_generation_enabled,
+            output_format=output_format,
+            music_enabled=music_enabled,
+            chapter_moods=chapter_moods,
+        )
 
         # 2. Generate TTS for all chapters
         all_chunks: list[AudioChunk] = []
