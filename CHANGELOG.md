@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.48] - 2026-05-01
+
+### Added
+
+- **RunPod auto-deploy cron** — 5 new tests for
+  ``workers/jobs/runpod.py``
+  (``test_runpod_deploy_job.py``). Module coverage: 0% → 28%.
+  Pinned the safety branches:
+
+  - **Pod not found**: empty pod list (user deleted between
+    create + poll) → failed status on first iteration.
+  - **Poll exhausted**: pod stays STARTING for all 30 attempts
+    → failed with "Timeout waiting for pod" message.
+  - **Polling resilience**: a transient GraphQL 502 on a single
+    attempt does NOT abort the cron — keeps polling and
+    eventually times out (or recovers).
+  - **Initial status write**: first Redis write is the
+    ``deploying`` status with pod_id + pod_type populated.
+  - **Redis key shape**: ``runpod_deploy:{pod_id}:status``
+    pinned so the
+    ``GET /api/v1/runpod/pods/{pod_id}/deploy-status``
+    polling endpoint never silently breaks.
+
+  The remaining 72% (the happy-path comfyui registration
+  flow + connection test + service-init grace period) is
+  integration territory — testing it requires a real RunPod
+  GraphQL endpoint and is deferred to a future harness.
+
+  Total suite: 1377 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.47] - 2026-05-01
 
 ### Added
