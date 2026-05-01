@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.56] - 2026-05-01
+
+### Added
+
+- **core/database + core/deps** — 11 new tests
+  (``test_database_and_deps.py``):
+
+  - ``core/database.py``: 42% → **100%**.
+    ``get_session_factory`` raises ``RuntimeError("not initialised")``
+    with a helpful message when called before ``init_db``.
+    ``init_db`` constructs the async engine + session factory with
+    the supplied settings (pool_size, max_overflow, echo), and
+    populates the module singletons. ``close_db`` is no-op when
+    uninitialised, disposes the engine when set, and clears both
+    singletons so a second call is clean. ``get_db_session``
+    **commits on clean yield**; on exception inside the generator,
+    **rolls back AND re-raises** so the route returns 500 and the
+    transaction can't silently swallow a partial write (verified
+    via ``gen.athrow(...)`` since ``async for`` body raises don't
+    propagate into the generator's ``except``).
+  - ``core/deps.py``: 55% → **69%**. ``is_demo_mode`` returns the
+    settings flag coerced to bool (handles non-bool truthy values
+    from env). ``require_not_demo`` passes when demo is off,
+    raises ``HTTPException(403, "disabled_in_demo")`` when on —
+    the detail string is machine-readable so the frontend can
+    route to the demo banner instead of showing a generic 403.
+
+  Total suite: 1453 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.55] - 2026-05-01
 
 ### Added
