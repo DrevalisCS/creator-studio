@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.30] - 2026-05-01
+
+### Added
+
+- **Pipeline hot-path repositories** — 32 new tests for the two
+  repos queried on every WebSocket progress event, every dashboard
+  load, and every pipeline retry (``test_episode_and_job_repos.py``).
+  Coverage:
+
+  - ``repositories/episode.py``: 35% → **100%**.
+    ``get_by_series`` (status filter, offset/limit, default 100),
+    ``get_with_assets`` (eager loads), ``update_status`` (delegates
+    to base), ``get_recent`` (default limit 10), ``get_by_ids``
+    (empty list short-circuits without query, otherwise IN filter
+    indexed by id), ``get_by_status`` (default limit 50, recent
+    first), ``count_by_status`` (scalar count), and
+    ``count_non_draft_for_series`` (``status != 'draft'`` filter).
+  - ``repositories/generation_job.py``: 33% → **100%**.
+    ``get_by_episode`` (ORDER BY step then created_at — defines
+    per-step retry order), ``get_active_jobs`` (queued+running),
+    ``get_failed_jobs``, ``update_progress``, ``update_status``
+    with the **defensive invariant** that ``error_message=None``
+    is NOT passed through to update (would clear a previous error
+    on queued→running transitions), ``get_all_filtered`` with
+    every combination of status/episode/step/offset/limit,
+    ``get_latest_by_episode_and_step`` (DESC limit 1), and
+    ``get_done_steps`` (DISTINCT set of completed step names).
+
+  Tests inspect the SQL passed to ``session.execute`` so column-
+  rename drift fails loudly here instead of returning silent
+  empty results in production.
+
+  Total suite: 1175 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.29] - 2026-05-01
 
 ### Added
