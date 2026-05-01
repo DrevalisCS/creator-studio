@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.28] - 2026-05-01
+
+### Added
+
+- **Small custom-query repositories** — 14 new tests for the
+  thin-wrapper repos that add a single ``get_by_<filter>`` method
+  on top of ``BaseRepository`` (``test_small_repos.py``). Five
+  modules taken from 67-74% → 100%:
+
+  - ``AudiobookRepository.get_by_status`` — status filter +
+    created_at DESC ordering.
+  - ``VoiceProfileRepository.get_by_provider`` — provider filter +
+    name ordering for the dropdown.
+  - ``PromptTemplateRepository.get_by_type`` — every documented
+    type (``script``, ``visual``, ``hook``, ``hashtag``)
+    parametrised; if a future rename drops one the test fails
+    loudly.
+  - ``ComfyUIServerRepository.get_active_servers`` — is_active
+    filter + name ordering. ``update_test_status`` delegates to
+    ``BaseRepository.update`` with the right kwargs.
+  - ``ComfyUIWorkflowRepository`` — pure inherited CRUD, smoke
+    test for the BaseRepository surface.
+  - ``VideoEditSessionRepository.get_by_episode`` — episode_id
+    filter, returns None when not found.
+
+  Tests inspect the SQL passed to ``session.execute`` so a typo
+  in a column reference (silent zero-result filter) shows up here
+  rather than at runtime.
+
+  Total suite: 1124 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.27] - 2026-05-01
 
 ### Added
