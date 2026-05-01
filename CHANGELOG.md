@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.16] - 2026-05-01
+
+### Fixed
+
+- **CI frontend job failed on `npm ci` after v0.29.15** because the
+  vitest / testing-library devDependencies weren't reflected in
+  ``frontend/package-lock.json`` — the bootstrap was authored from
+  an environment with no node toolchain available, so the lockfile
+  couldn't be regenerated in the same commit. ``npm ci`` requires
+  a perfectly-synced lockfile and bailed.
+
+  Loosened the frontend install step in ``.github/workflows/ci.yml``
+  to ``npm install --no-audit --no-fund`` so CI regenerates the
+  lockfile transparently. The Dockerfile already had a
+  ``npm ci || npm install`` fallback, so production builds were
+  never affected.
+
+  Re-tighten back to ``npm ci`` once ``npm install`` has been run
+  locally and the updated ``package-lock.json`` is committed.
+
 ## [0.29.15] - 2026-05-01
 
 ### Added
