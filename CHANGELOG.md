@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.25] - 2026-05-01
+
+### Added
+
+- **Daily license heartbeat job** — 13 new tests for
+  ``workers/jobs/license_heartbeat.py``
+  (``test_license_heartbeat_job.py``). Module coverage: 0% → 97%.
+
+  This is the highest-stakes branch in the entire license stack:
+  a 4xx response is treated as **revocation** (zero the JWT, lock
+  the app); a 5xx is treated as a **transient outage** (keep the
+  JWT). A bug in either direction either bricks every customer
+  during a brief license-server blip or silently lets revoked
+  customers keep using the app.
+
+  Tests pin every branch:
+
+  - **Skip paths**: no server URL configured (Phase 1 install),
+    no license row, empty stored JWT, JWT decrypt failure
+    (corrupted Fernet state), JWT signature-verify failure.
+  - **Network failure**: ``ActivationNetworkError`` records
+    ``network_error`` status — does NOT clear the JWT (offline
+    grace covers the gap).
+  - **5xx (transient)**: keeps the JWT, records
+    ``server_error:<code>`` status, **does NOT bump the
+    cross-process state version** (avoids forcing every uvicorn
+    worker to pointlessly re-bootstrap during the blip).
+  - **4xx (revocation)**: zeros the JWT, records
+    ``revoked:<error>`` status, bumps the cross-process state
+    version (Redis), re-bootstraps local state immediately.
+    Defensive: works even when Redis isn't plumbed in (no bump
+    but local clear still happens).
+  - **Success**: replaces the stored JWT with the freshly-minted
+    one, records ``ok``, bumps + re-bootstraps, uses
+    ``row.machine_id`` when set or falls back to
+    ``stable_machine_id()`` when the row is missing one, passes
+    the JWT's ``jti`` claim as the ``license_key`` to the server.
+
+  Total suite: 1091 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.24] - 2026-05-01
 
 ### Added
