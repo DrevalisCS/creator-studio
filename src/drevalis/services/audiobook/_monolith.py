@@ -1303,6 +1303,31 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _run_master_mix_phase(
+        self,
+        *,
+        audiobook_id: UUID,
+        final_audio: Path,
+    ) -> None:
+        """Apply master loudnorm to ``final_audio``.
+
+        Single audible-loudness pass. Runs AFTER music mixing so it
+        integrates over the actual final content, and BEFORE captions
+        ASR + MP3 export so both consume the already-mastered WAV.
+
+        Failures are non-fatal (warning is logged inside
+        ``_apply_master_loudnorm``); the un-mastered audiobook is still
+        produced — the user gets working output even when the loudnorm
+        ffmpeg pass blows up. Cancellation is honoured immediately
+        before the master pass.
+
+        Pulled out of ``generate`` (F-CQ-01 step 9).
+        """
+        await self._check_cancelled(audiobook_id)
+        await self._dag_global("master_mix", "in_progress")
+        await self._apply_master_loudnorm(final_audio)
+        await self._dag_global("master_mix", "done")
+
     async def _run_music_phase(
         self,
         *,
@@ -2033,16 +2058,12 @@ class AudiobookService:
             per_chapter_music=per_chapter_music,
         )
 
-        # 6c. Master loudnorm — single audible loudness pass. Runs AFTER
-        # music mixing so it integrates over the actual final content,
-        # and BEFORE captions ASR + MP3 export so both consume the
-        # already-mastered WAV. Failures are non-fatal (warning logged
-        # in ``_apply_master_loudnorm``); the un-mastered audiobook is
-        # still produced.
-        await self._check_cancelled(audiobook_id)
-        await self._dag_global("master_mix", "in_progress")
-        await self._apply_master_loudnorm(final_audio)
-        await self._dag_global("master_mix", "done")
+        # F-CQ-01 step 9: master loudnorm phase extracted into
+        # ``_run_master_mix_phase``.
+        await self._run_master_mix_phase(
+            audiobook_id=audiobook_id,
+            final_audio=final_audio,
+        )
 
         # 6b. Generate captions from audio
         await self._check_cancelled(audiobook_id)

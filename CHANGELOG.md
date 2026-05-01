@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.41] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 9** — ninth incision into
+  ``AudiobookService.generate``. The master loudnorm phase
+  (cancellation check, DAG transitions, ``_apply_master_loudnorm``
+  call) extracted into ``_run_master_mix_phase``. ~6 lines lifted —
+  small but worth the symmetry with the other phase helpers.
+
+  The phase placement is critical: AFTER music mixing (so loudnorm
+  integrates over the actual final content) and BEFORE captions
+  ASR + MP3 export (so both consume the already-mastered WAV).
+
+### Added
+
+- 4 new direct tests for ``_run_master_mix_phase``
+  (``test_audiobook_run_master_mix.py``):
+
+  - Calls ``_apply_master_loudnorm`` with the audio path.
+  - Operation order is strictly ``cancel → dag:in_progress →
+    loudnorm → dag:done`` (cancellation must precede the 30s
+    loudnorm pass so a Cancel button click at the boundary is
+    honoured immediately).
+  - DAG transitions ``in_progress`` → ``done``.
+  - Stage name is ``master_mix`` (pinned so the DAG persistence
+    schema and the UI progress legend stay in sync).
+
+  Total suite: 1315 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
+  F-CQ-01 progress: **9/N steps complete**. Remaining: captions,
+  MP3 export, video creation, cleanup.
+
 ## [0.29.40] - 2026-05-01
 
 ### Changed
