@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.26] - 2026-05-01
+
+### Added
+
+- **AI-generate-series job** — 8 new tests for
+  ``workers/jobs/series.py`` (``test_series_job.py``). Module
+  coverage: 0% → 88%. Tests pin every meaningful branch of the
+  LLM-orchestration flow (cancellation, retry, validation,
+  persistence) without spinning up real LM Studio / DB:
+
+  - **Cancellation**: ``script_job:{job_id}:status="cancelled"``
+    set BEFORE the job runs short-circuits with
+    ``{"status": "cancelled"}`` and the LLM is never called.
+  - **Success**: series row inserted with LLM-supplied fields,
+    episodes inserted up to the requested ``episode_count``
+    cap, result + status keys written to Redis with TTL,
+    DB committed.
+  - **Episode-count cap**: when the LLM hands back more episodes
+    than requested, only the first N are persisted (no silent
+    overshoot at the DB layer).
+  - **Long series name truncated**: 400-char LLM names cut to
+    255 chars (matches the column limit).
+  - **JSON retry**: invalid JSON triggers retry, ``max_retries+1``
+    = 3 attempts total, then ``failed`` status with the parse
+    error stored in Redis.
+  - **Recovery on second attempt**: garbage on attempt 1 + good
+    JSON on attempt 2 → series created, ``provider.generate``
+    awaited exactly twice.
+  - **Missing required keys**: valid JSON missing ``name`` or
+    ``episodes`` is treated as parse failure (the contract
+    requires both).
+  - **Outer exception**: provider blows up → ``failed`` status
+    + error message stored in Redis for the polling UI.
+
+  Total suite: 1099 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.25] - 2026-05-01
 
 ### Added
