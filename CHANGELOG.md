@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.53] - 2026-05-01
+
+### Added
+
+- **Three remaining repos taken to ~100%** — 19 new tests
+  (``test_misc_repos_round_two.py``):
+
+  - ``repositories/api_key_store.py``: 36% → **100%**.
+    ``get_by_key_name`` filter, ``upsert`` create-vs-update
+    branches (with proper ``repo.update`` vs ``repo.create``
+    delegation), ``delete_by_key_name`` returns False on
+    missing + True on delete (delegates to
+    ``BaseRepository.delete``).
+  - ``repositories/video_template.py``: 55% → **100%**.
+    ``get_default`` (is_default filter + recent-first ordering
+    + LIMIT 1 — handles the misconfiguration case where multiple
+    rows are flagged), ``increment_usage`` (server-side
+    ``times_used + 1`` so concurrent updates don't race),
+    ``clear_default_flag`` (bulk UPDATE before promoting a new
+    default).
+  - ``repositories/asset.py``: 29% → **96%**. ``get_by_hash``
+    (sha256 dedup lookup), ``get_by_ids`` (empty list short-
+    circuits without query), ``list_filtered`` (no-filter +
+    kind-only + search ilike + offset/limit propagation).
+  - ``VideoIngestJobRepository.get_by_asset_id``: filter +
+    None-on-missing.
+
+  Total suite: 1421 passing, 2 skipped (ffmpeg-only).
+
+  **All Python repository modules now at 96-100% coverage.**
+
 ## [0.29.52] - 2026-05-01
 
 ### Added
