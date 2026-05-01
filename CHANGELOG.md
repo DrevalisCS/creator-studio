@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.17] - 2026-05-01
+
+### Added
+
+- **License helper coverage** — 35 new tests for the small modules
+  in ``core/license/`` (``test_license_helpers.py``):
+
+  - ``stable_machine_id`` — 16-hex shape, stable across calls,
+    differs across hostnames, tolerates ``socket.gethostname`` /
+    ``uuid.getnode`` failures.
+  - ``get_public_keys`` — embedded default returns ≥1 key,
+    override replaces the list, override is distinct from default,
+    invalid PEM raises, non-Ed25519 PEM raises ``TypeError``.
+  - ``LicenseState`` — UNACTIVATED default, ACTIVE + GRACE both
+    ``is_usable=True``, EXPIRED + INVALID both ``is_usable=False``,
+    ``set_state`` flips the bootstrapped flag, ``set_local_version``
+    round-trips.
+  - ``LicenseClaims`` — ``is_lifetime`` flag, UTC datetime
+    coercion, ``is_in_grace`` window logic at all three ranges,
+    ``extra="ignore"`` tolerance for forward-compatibility fields.
+  - ``check_and_increment_episode_quota`` — 402 when unactivated,
+    short-circuits Redis on unlimited tier, increments + sets TTL
+    on first bump, skips TTL on subsequent bumps, fails open on
+    Redis errors, raises 402 + decrements on overshoot.
+  - ``get_daily_episode_usage`` — zero on unusable state, parses
+    Redis bytes counter, returns zero on Redis exception.
+
+  License module group coverage: 25% → 73% (machine + keys + state +
+  claims + quota all at 95–100%).
+
+- **Continuity service** — 15 new tests for
+  ``services/continuity.py:check_continuity`` and
+  ``ContinuityIssue`` (``test_continuity.py``):
+
+  - Single-scene and zero-scene short-circuit (no LLM call),
+    well-formed response parsed into typed issues, provider
+    exceptions swallowed (best-effort pre-flight), non-JSON
+    responses dropped, output capped at 20 issues, invalid
+    severity normalised to ``"warn"``, severity lowercased,
+    malformed entries (missing from_scene, non-int) silently
+    dropped, ``issue``/``suggestion`` truncated to 240 chars,
+    missing ``issues`` key returns empty, and the contract that
+    the LLM call uses ``json_mode=True`` + low temperature.
+  - ``ContinuityIssue.to_dict`` round-trip + frozen dataclass
+    immutability.
+
+  Service coverage: 0% → 100%.
+
+  Total suite: 874 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.16] - 2026-05-01
 
 ### Fixed
