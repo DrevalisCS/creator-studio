@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.32] - 2026-05-01
+
+### Added
+
+- **Three small remaining gaps closed** — 9 new tests
+  (``test_api_key_store_and_series_repo.py``):
+
+  - ``services/api_key_store.py``: 44% → **100%**.
+    ``ApiKeyStoreService`` is the only seam through which API
+    keys are encrypted on the way in and the orchestration layer
+    that keeps the router free of the encryption helper +
+    repository (audit F-A-01). Tests pin: ``list`` delegates to
+    repo, ``upsert`` Fernet-encrypts (round-trip-verified) +
+    persists with key_version + commits, ``delete`` raises
+    ``NotFoundError`` when key missing (no commit issued),
+    ``list_stored_names`` returns set semantics (deduplicates
+    repeated keys).
+  - ``repositories/series.py``: 60% → **100%**.
+    ``get_with_relations`` (eager-load + None on missing) and
+    ``list_with_episode_counts`` (LEFT OUTER JOIN, GROUP BY
+    series.id, ORDER BY name) covered.
+  - ``core/license/quota.py``: 96% → **100%**. Pinned the
+    overshoot DECR-rollback exception branch — Redis blip
+    during cleanup must NOT mask the 402 ``daily_quota_exceeded``
+    response.
+
+  Total suite: 1219 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.31] - 2026-05-01
 
 ### Added
