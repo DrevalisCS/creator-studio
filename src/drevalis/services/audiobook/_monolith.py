@@ -1303,6 +1303,70 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _run_image_phase(
+        self,
+        *,
+        chapters: list[dict[str, Any]],
+        abs_dir: Path,
+        audiobook_id: UUID,
+        output_format: str,
+        image_generation_enabled: bool,
+        video_width: int,
+        video_height: int,
+    ) -> list[Path]:
+        """Generate one image per chapter via ComfyUI when enabled.
+
+        Skipped entirely (returns ``[]``) when image generation is
+        disabled or the output format has no place to display an image
+        (``audio_only``). Otherwise:
+
+        - Broadcasts ``images`` stage at 55% and flips every chapter's
+          DAG ``image`` to ``in_progress``.
+        - Calls ``_generate_chapter_images`` to render the actual PNGs.
+        - On success: writes ``image_path`` into each chapter dict and
+          flips DAG to ``done``.
+        - On any failure: catches, logs a warning, flips every chapter's
+          DAG ``image`` to ``failed`` (the audiobook still completes —
+          missing chapter images are non-fatal).
+
+        Pulled out of ``generate`` (F-CQ-01 step 7).
+        """
+        chapter_image_paths: list[Path] = []
+        if not (image_generation_enabled and output_format in ("audio_image", "audio_video")):
+            return chapter_image_paths
+
+        await self._broadcast_progress(audiobook_id, "images", 55, "Generating chapter images...")
+        for ch_idx in range(len(chapters)):
+            await self._dag_chapter(ch_idx, "image", "in_progress")
+        try:
+            chapter_image_paths = await self._generate_chapter_images(
+                chapters=chapters,
+                output_dir=abs_dir,
+                audiobook_id=audiobook_id,
+                video_width=video_width,
+                video_height=video_height,
+            )
+            # Store image paths in chapter metadata
+            for i, img_path in enumerate(chapter_image_paths):
+                if i < len(chapters):
+                    chapters[i]["image_path"] = f"audiobooks/{audiobook_id}/images/ch{i:03d}.png"
+                await self._dag_chapter(i, "image", "done")
+            log.info(
+                "audiobook.generate.images_done",
+                audiobook_id=str(audiobook_id),
+                image_count=len(chapter_image_paths),
+            )
+        except Exception as exc:
+            log.warning(
+                "audiobook.generate.images_failed",
+                audiobook_id=str(audiobook_id),
+                error=str(exc),
+                exc_info=True,
+            )
+            for ch_idx in range(len(chapters)):
+                await self._dag_chapter(ch_idx, "image", "failed")
+        return chapter_image_paths
+
     async def _run_concat_phase(
         self,
         *,
@@ -1816,43 +1880,17 @@ class AudiobookService:
         duration = await self.ffmpeg.get_duration(final_audio)
         file_size = final_audio.stat().st_size
 
-        # 5. Generate per-chapter images via ComfyUI (if enabled)
-        chapter_image_paths: list[Path] = []
-        if image_generation_enabled and output_format in ("audio_image", "audio_video"):
-            await self._broadcast_progress(
-                audiobook_id, "images", 55, "Generating chapter images..."
-            )
-            for ch_idx in range(len(chapters)):
-                await self._dag_chapter(ch_idx, "image", "in_progress")
-            try:
-                chapter_image_paths = await self._generate_chapter_images(
-                    chapters=chapters,
-                    output_dir=abs_dir,
-                    audiobook_id=audiobook_id,
-                    video_width=video_width,
-                    video_height=video_height,
-                )
-                # Store image paths in chapter metadata
-                for i, img_path in enumerate(chapter_image_paths):
-                    if i < len(chapters):
-                        chapters[i]["image_path"] = (
-                            f"audiobooks/{audiobook_id}/images/ch{i:03d}.png"
-                        )
-                    await self._dag_chapter(i, "image", "done")
-                log.info(
-                    "audiobook.generate.images_done",
-                    audiobook_id=str(audiobook_id),
-                    image_count=len(chapter_image_paths),
-                )
-            except Exception as exc:
-                log.warning(
-                    "audiobook.generate.images_failed",
-                    audiobook_id=str(audiobook_id),
-                    error=str(exc),
-                    exc_info=True,
-                )
-                for ch_idx in range(len(chapters)):
-                    await self._dag_chapter(ch_idx, "image", "failed")
+        # F-CQ-01 step 7: per-chapter image generation extracted
+        # into ``_run_image_phase``.
+        chapter_image_paths = await self._run_image_phase(
+            chapters=chapters,
+            abs_dir=abs_dir,
+            audiobook_id=audiobook_id,
+            output_format=output_format,
+            image_generation_enabled=image_generation_enabled,
+            video_width=video_width,
+            video_height=video_height,
+        )
 
         # 6. Optionally add background music
         if music_enabled and (music_mood or per_chapter_music):

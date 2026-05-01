@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.39] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 7** — seventh incision into
+  ``AudiobookService.generate``. The per-chapter image generation
+  phase extracted into ``_run_image_phase``. ~37 lines and 4 branch
+  points lifted from ``generate``.
+
+  The helper enforces the **non-fatal** invariant: a ComfyUI failure
+  during image gen marks every chapter's DAG as ``failed`` but
+  doesn't propagate the exception. The audiobook still completes
+  with a usable WAV/MP3 even when chapter images can't be rendered.
+
+### Added
+
+- 10 new direct tests for ``_run_image_phase``
+  (``test_audiobook_run_image_phase.py``):
+
+  - **Skip paths**: returns ``[]`` without firing any side
+    effects when image generation is disabled OR
+    ``output_format == "audio_only"`` (parametrised across
+    both ``audio_image`` and ``audio_video`` for the run path).
+  - **Happy path**: 55% progress with stage ``images``;
+    DAG transitions ``in_progress`` (per chapter, up front) →
+    ``done``; image_path written into each chapter dict using
+    the storage-relative
+    ``audiobooks/{audiobook_id}/images/ch{NNN}.png`` shape;
+    returned list mirrors the helper's output.
+  - **Failure path (CRITICAL)**: a ``ComfyUI down`` exception
+    is caught, returned list is ``[]``, every chapter's DAG
+    is flipped to ``failed``, no chapter dict gets an
+    ``image_path`` mutation, and the function does NOT re-raise.
+  - **Dimension propagation**: ``video_width`` + ``video_height``
+    threaded through to ``_generate_chapter_images``.
+
+  Total suite: 1300 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
+  F-CQ-01 progress: **7/N steps complete**. Remaining: music
+  mixing, master loudnorm, captions, MP3 export, video creation,
+  cleanup.
+
 ## [0.29.38] - 2026-05-01
 
 ### Changed
