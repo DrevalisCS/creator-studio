@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.21] - 2026-05-01
+
+### Added
+
+- **License-server activation client** — 34 new tests for
+  ``core/license/activation.py`` (``test_license_activation.py``).
+  Module coverage: 12% → 95%. Tests use ``httpx.MockTransport`` so
+  the real network is never touched and every status / payload
+  shape is deterministic. Pins:
+
+  - ``looks_like_jwt`` — UUIDs are NOT JWTs, 3-segment dotted
+    base64 with > 40 chars IS, short or single-dot strings are
+    rejected, empty string is rejected.
+  - ``exchange_key_for_jwt`` — happy path returns the minted JWT;
+    ``version`` arg included when set, omitted when ``None``;
+    trailing slash on server URL stripped (no double-slash on the
+    ``/activate`` path); 4xx with ``{detail: {error: ...}}``
+    payload raises ``ActivationError`` carrying status_code,
+    error, detail; 4xx without payload uses the reason phrase;
+    non-dict detail normalised so we never crash; 200-with-no-token
+    raises ``malformed_response``; ``ConnectError`` and
+    ``ReadTimeout`` raise ``ActivationNetworkError``.
+  - ``heartbeat_with_server`` — same shape as exchange. 4xx
+    without an ``error`` key falls back to ``heartbeat_failed``.
+    Network errors raise ``ActivationNetworkError``.
+  - ``deactivate_with_server`` (best-effort) — success returns
+    None, 4xx does NOT raise (the local JWT is zeroed regardless),
+    network errors do NOT raise. Pins the contract that
+    server-side deactivate failures never block a local lockout.
+  - ``list_activations_with_server`` — happy path returns the
+    server's full body, 4xx raises ``ActivationError``,
+    ``NetworkError`` and ``ReadTimeout`` both raise
+    ``ActivationNetworkError``, fallback ``error`` name when
+    ``detail`` is empty.
+  - ``deactivate_machine_with_server`` (UI-facing) — surfaces
+    4xx as ``ActivationError`` with the server's ``error`` key
+    (e.g. ``machine_not_registered``) so the activations table
+    can show a meaningful row-level failure.
+  - ``ActivationError`` — message format ``"<status>: <error>"``,
+    default detail is ``{}``, status_code/error/detail attributes
+    preserved.
+
+  Total suite: 1027 passing, 2 skipped (ffmpeg-only). License
+  module group coverage: 51% → ~70% combined.
+
 ## [0.29.20] - 2026-05-01
 
 ### Added
