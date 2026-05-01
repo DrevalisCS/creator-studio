@@ -7,6 +7,58 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.42] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 10** — tenth incision into
+  ``AudiobookService.generate``. The captions phase (faster-whisper
+  ASR + ASS/SRT generation with the YouTube-highlight default
+  style) extracted into ``_run_captions_phase``. ~63 lines and 5
+  branch points lifted from ``generate``.
+
+  The helper distinguishes three terminal states:
+
+  - **success**: full captions written, DAG ``captions`` → done,
+    returns ``(ass_path, ass_rel, srt_rel)`` tuple.
+  - **skipped**: ``faster-whisper`` not installed (optional dep
+    via ``pip install .[captions]``); DAG ``captions`` → skipped;
+    all return values ``None`` so downstream video creation falls
+    through to the no-captions path.
+  - **failed**: any other ASR exception (CUDA OOM, model file
+    missing); logged at ERROR with full traceback, DAG
+    ``captions`` → failed, return values ``None`` (audiobook
+    still completes).
+
+### Added
+
+- 8 new direct tests for ``_run_captions_phase``
+  (``test_audiobook_run_captions_phase.py``):
+
+  - **Success path**: full path tuple returned, DAG transitions
+    ``in_progress`` → ``done``, 85% progress with stage
+    ``captions``, default preset ``youtube_highlight`` when
+    ``caption_style_preset=None``, explicit preset propagates,
+    video dimensions thread into ASS PlayResX/PlayResY (subtitle
+    positioning matches the actual frame size).
+  - **Skipped path**: ``ImportError`` from a missing
+    ``faster-whisper`` install yields all-``None`` returns and
+    DAG ``in_progress`` → ``skipped``.
+  - **Failed path**: arbitrary ``RuntimeError`` (e.g. CUDA OOM)
+    is caught, all-``None`` returns, DAG → ``failed``, no
+    re-raise.
+  - **Cancellation**: cancellation check precedes the DAG
+    ``in_progress`` transition so a Cancel button click at the
+    boundary doesn't trigger a wasted faster-whisper spin-up.
+
+  Total suite: 1323 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
+  F-CQ-01 progress: **10/N steps complete**. Remaining: MP3
+  export (with ID3 + CHAP frames + RenderPlan priming offset),
+  video creation (chapter-aware vs single-image fallback),
+  cleanup.
+
 ## [0.29.41] - 2026-05-01
 
 ### Changed

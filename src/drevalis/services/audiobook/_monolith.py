@@ -1303,6 +1303,108 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _run_captions_phase(
+        self,
+        *,
+        audiobook_id: UUID,
+        abs_dir: Path,
+        final_audio: Path,
+        caption_style_preset: str | None,
+        video_width: int,
+        video_height: int,
+    ) -> tuple[Path | None, str | None, str | None]:
+        """Generate ASS + SRT captions from the mastered audio.
+
+        Returns ``(ass_path, ass_rel, srt_rel)``. The .ass path is an
+        absolute filesystem path used downstream by the video assembly
+        step; the rel paths are storage-relative for API responses.
+
+        Three terminal states distinguished:
+
+        - **success**: full captions written, DAG ``captions`` → done.
+        - **skipped**: faster-whisper not installed (optional dep);
+          DAG ``captions`` → skipped, all return values ``None`` so
+          downstream video creation falls through to the no-captions
+          path.
+        - **failed**: any other exception during ASR; logged at
+          ERROR with full traceback, DAG ``captions`` → failed,
+          return values ``None`` (audiobook still completes).
+
+        The CaptionStyle is built with the YouTube-highlight defaults
+        — Impact 60pt, gold highlight, white text, black 5px outline,
+        bottom-positioned, 4 words/line, uppercase. The
+        ``caption_style_preset`` arg overrides only the preset name
+        (the per-field defaults stay constant so a future preset
+        addition doesn't silently change every other field).
+
+        Pulled out of ``generate`` (F-CQ-01 step 10).
+        """
+        await self._check_cancelled(audiobook_id)
+        await self._broadcast_progress(audiobook_id, "captions", 85, "Generating captions...")
+        await self._dag_global("captions", "in_progress")
+
+        captions_ass_path: Path | None = None
+        captions_ass_rel: str | None = None
+        captions_srt_rel: str | None = None
+
+        try:
+            from drevalis.services.captions import CaptionService, CaptionStyle
+
+            caption_service = CaptionService()
+            caption_dir = abs_dir / "captions"
+            caption_dir.mkdir(parents=True, exist_ok=True)
+
+            effective_preset = caption_style_preset or "youtube_highlight"
+            caption_style = CaptionStyle(
+                preset=effective_preset,
+                font_name="Impact",
+                font_size=60,
+                primary_color="#FFFFFF",
+                highlight_color="#FFD700",
+                outline_color="#000000",
+                outline_width=5,
+                position="bottom",
+                margin_v=100,
+                words_per_line=4,
+                uppercase=True,
+                play_res_x=video_width,
+                play_res_y=video_height,
+            )
+
+            caption_result = await caption_service.generate_from_audio(
+                audio_path=final_audio,
+                output_dir=caption_dir,
+                language="en",
+                style=caption_style,
+            )
+            captions_ass_path = Path(caption_result.ass_path)
+            captions_ass_rel = f"audiobooks/{audiobook_id}/captions/captions.ass"
+            captions_srt_rel = f"audiobooks/{audiobook_id}/captions/captions.srt"
+
+            log.info(
+                "audiobook.generate.captions_done",
+                audiobook_id=str(audiobook_id),
+                caption_count=len(caption_result.captions),
+            )
+            await self._dag_global("captions", "done")
+        except ImportError:
+            log.warning(
+                "audiobook.generate.captions_skipped",
+                audiobook_id=str(audiobook_id),
+                reason="faster-whisper not installed",
+            )
+            await self._dag_global("captions", "skipped")
+        except Exception as exc:
+            log.error(
+                "audiobook.generate.captions_failed",
+                audiobook_id=str(audiobook_id),
+                error=str(exc),
+                exc_info=True,
+            )
+            await self._dag_global("captions", "failed")
+
+        return captions_ass_path, captions_ass_rel, captions_srt_rel
+
     async def _run_master_mix_phase(
         self,
         *,
@@ -2065,69 +2167,16 @@ class AudiobookService:
             final_audio=final_audio,
         )
 
-        # 6b. Generate captions from audio
-        await self._check_cancelled(audiobook_id)
-        await self._broadcast_progress(audiobook_id, "captions", 85, "Generating captions...")
-        await self._dag_global("captions", "in_progress")
-        captions_ass_path: Path | None = None
-        captions_ass_rel: str | None = None
-        captions_srt_rel: str | None = None
-
-        try:
-            from drevalis.services.captions import CaptionService, CaptionStyle
-
-            caption_service = CaptionService()
-            caption_dir = abs_dir / "captions"
-            caption_dir.mkdir(parents=True, exist_ok=True)
-
-            effective_preset = caption_style_preset or "youtube_highlight"
-            caption_style = CaptionStyle(
-                preset=effective_preset,
-                font_name="Impact",
-                font_size=60,
-                primary_color="#FFFFFF",
-                highlight_color="#FFD700",
-                outline_color="#000000",
-                outline_width=5,
-                position="bottom",
-                margin_v=100,
-                words_per_line=4,
-                uppercase=True,
-                play_res_x=video_width,
-                play_res_y=video_height,
-            )
-
-            caption_result = await caption_service.generate_from_audio(
-                audio_path=final_audio,
-                output_dir=caption_dir,
-                language="en",
-                style=caption_style,
-            )
-            captions_ass_path = Path(caption_result.ass_path)
-            captions_ass_rel = f"audiobooks/{audiobook_id}/captions/captions.ass"
-            captions_srt_rel = f"audiobooks/{audiobook_id}/captions/captions.srt"
-
-            log.info(
-                "audiobook.generate.captions_done",
-                audiobook_id=str(audiobook_id),
-                caption_count=len(caption_result.captions),
-            )
-            await self._dag_global("captions", "done")
-        except ImportError:
-            log.warning(
-                "audiobook.generate.captions_skipped",
-                audiobook_id=str(audiobook_id),
-                reason="faster-whisper not installed",
-            )
-            await self._dag_global("captions", "skipped")
-        except Exception as exc:
-            log.error(
-                "audiobook.generate.captions_failed",
-                audiobook_id=str(audiobook_id),
-                error=str(exc),
-                exc_info=True,
-            )
-            await self._dag_global("captions", "failed")
+        # F-CQ-01 step 10: captions phase extracted into
+        # ``_run_captions_phase``.
+        captions_ass_path, captions_ass_rel, captions_srt_rel = await self._run_captions_phase(
+            audiobook_id=audiobook_id,
+            abs_dir=abs_dir,
+            final_audio=final_audio,
+            caption_style_preset=caption_style_preset,
+            video_width=video_width,
+            video_height=video_height,
+        )
 
         audio_rel_path = f"audiobooks/{audiobook_id}/audiobook.wav"
         video_rel_path: str | None = None
