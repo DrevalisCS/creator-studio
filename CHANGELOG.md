@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.38] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 6** — sixth incision into
+  ``AudiobookService.generate``. The concat → RenderPlan →
+  silence-trim → chapter-timing-store phase extracted into
+  ``_run_concat_phase``. ~50 lines and 5 branch points lifted
+  out of ``generate``.
+
+  Returns ``(final_audio_path, chapter_timings)`` for downstream
+  phases. Mutates the chapters list in-place to populate
+  ``start_seconds`` / ``end_seconds`` / ``duration_seconds``.
+
+  Also fixed the previously-implicit dependency on the now-extracted
+  local ``render_plan``: the MP3 priming-offset path inside
+  ``generate`` now reads ``self._render_plan`` (the helper sets
+  it) instead of an undefined local. Caught by mypy.
+
+### Added
+
+- 13 new direct tests for ``_run_concat_phase``
+  (``test_audiobook_run_concat_phase.py``):
+
+  - **Concat basics**: writes to ``audiobook.wav`` in the per-call
+    output dir; DAG concat transitions ``in_progress`` → ``done``;
+    cancellation checked before the concat fires; progress
+    broadcast at 50% with stage ``mixing``.
+  - **RenderPlan**: overlay SFX excluded from the inline-chunk
+    list (only inline durations probed via ffprobe); render plan
+    persisted via the callback; per-chunk ``get_duration`` failures
+    fall back to 0.0 without aborting the phase.
+  - **Silence trim**: skipped when
+    ``settings.trim_leading_trailing_silence=False``; called when
+    True; zero offset doesn't shift timings; positive offset
+    invokes ``_shift_chapter_timings`` with the right value.
+  - **Chapter timing storage**: each chapter dict gets timing
+    fields rounded to 3 decimal places; out-of-range chapter
+    indices in returned timings are silently skipped (defensive
+    against concat returning more timings than chapters).
+
+  Total suite: 1290 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
+  F-CQ-01 progress: **6/N steps complete**. Remaining: image
+  gen, music mixing, master loudnorm, captions, MP3 export,
+  video creation, cleanup.
+
 ## [0.29.37] - 2026-05-01
 
 ### Changed

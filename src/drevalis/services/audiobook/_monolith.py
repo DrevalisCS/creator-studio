@@ -1303,6 +1303,86 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _run_concat_phase(
+        self,
+        *,
+        all_chunks: list[AudioChunk],
+        abs_dir: Path,
+        audiobook_id: UUID,
+        chapters: list[dict[str, Any]],
+    ) -> tuple[Path, list[ChapterTiming]]:
+        """Concatenate per-chapter chunks, build the RenderPlan, and
+        optionally trim leading silence.
+
+        Returns:
+            ``(final_audio_path, chapter_timings)``. The chapters list
+            is mutated in-place — each chapter dict gets ``start_seconds``,
+            ``end_seconds``, ``duration_seconds`` populated from the
+            timings (rounded to 3 decimal places).
+
+        Side effects:
+            - Cancellation check at the top of the phase.
+            - Progress broadcast at 50% (mixing).
+            - DAG ``concat`` transitions: ``in_progress`` → ``done``.
+            - ``self._render_plan`` populated; persistence callback fired.
+            - When ``self._settings.trim_leading_trailing_silence`` is True,
+              shifts every chapter timing by the trimmed offset.
+
+        Pulled out of ``generate`` (F-CQ-01 step 6).
+        """
+        # 3. Concatenate all chunks with context-aware silence gaps
+        await self._check_cancelled(audiobook_id)
+        await self._broadcast_progress(audiobook_id, "mixing", 50, "Concatenating audio...")
+        final_audio = abs_dir / "audiobook.wav"
+        await self._dag_global("concat", "in_progress")
+        chapter_timings = await self._concatenate_with_context(all_chunks, final_audio)
+        await self._dag_global("concat", "done")
+
+        # Task 13: build the RenderPlan from concat outputs. Inline-only
+        # AudioChunk list (overlay SFX excluded — they don't appear on
+        # the inline timeline). Chunk durations probed via the FFmpeg
+        # service so each event carries a real ``duration_ms`` value.
+        # The plan is persisted as an inspectable artifact and
+        # consumed by ``list_clips`` + the ID3 CHAP writer; future
+        # tasks will rewire concat / captions / track-mix to drive
+        # off it directly.
+        inline_only = [c for c in all_chunks if not self._is_overlay_sfx(c)]
+        chunk_durations: dict[str, float] = {}
+        for c in inline_only:
+            try:
+                chunk_durations[c.path.stem] = await self.ffmpeg.get_duration(c.path)
+            except Exception:
+                chunk_durations[c.path.stem] = 0.0
+        render_plan: RenderPlan = RenderPlan.from_pipeline_outputs(
+            audiobook_id=audiobook_id,
+            inline_chunks=inline_only,
+            chapter_timings=chapter_timings,
+            chapters=chapters,
+            chunk_durations_seconds=chunk_durations,
+        )
+        self._render_plan = render_plan
+        await self._persist_render_plan(render_plan)
+
+        # 3b. Optional leading/trailing silence trim — runs BEFORE captions,
+        # MP3 export, and timing persistence so CHAP frames + ASS captions
+        # stay locked to audible boundaries within ±50 ms. Off by default;
+        # Task 9 routes the toggle through ``self._settings``.
+        if self._settings.trim_leading_trailing_silence:
+            leading_offset = await self._trim_silence_in_place(final_audio)
+            if leading_offset > 0:
+                chapter_timings = self._shift_chapter_timings(chapter_timings, leading_offset)
+
+        # Store timing metadata in chapters
+        for timing in chapter_timings:
+            if timing.chapter_index < len(chapters):
+                chapters[timing.chapter_index]["start_seconds"] = round(timing.start_seconds, 3)
+                chapters[timing.chapter_index]["end_seconds"] = round(timing.end_seconds, 3)
+                chapters[timing.chapter_index]["duration_seconds"] = round(
+                    timing.duration_seconds, 3
+                )
+
+        return final_audio, chapter_timings
+
     async def _run_tts_phase(
         self,
         *,
@@ -1723,56 +1803,14 @@ class AudiobookService:
             pitch=pitch,
         )
 
-        # 3. Concatenate all chunks with context-aware silence gaps
-        await self._check_cancelled(audiobook_id)
-        await self._broadcast_progress(audiobook_id, "mixing", 50, "Concatenating audio...")
-        final_audio = abs_dir / "audiobook.wav"
-        await self._dag_global("concat", "in_progress")
-        chapter_timings = await self._concatenate_with_context(all_chunks, final_audio)
-        await self._dag_global("concat", "done")
-
-        # Task 13: build the RenderPlan from concat outputs. Inline-only
-        # AudioChunk list (overlay SFX excluded — they don't appear on
-        # the inline timeline). Chunk durations probed via the FFmpeg
-        # service so each event carries a real ``duration_ms`` value.
-        # The plan is persisted as an inspectable artifact and
-        # consumed by ``list_clips`` + the ID3 CHAP writer; future
-        # tasks will rewire concat / captions / track-mix to drive
-        # off it directly.
-        inline_only = [c for c in all_chunks if not self._is_overlay_sfx(c)]
-        chunk_durations: dict[str, float] = {}
-        for c in inline_only:
-            try:
-                chunk_durations[c.path.stem] = await self.ffmpeg.get_duration(c.path)
-            except Exception:
-                chunk_durations[c.path.stem] = 0.0
-        render_plan: RenderPlan = RenderPlan.from_pipeline_outputs(
+        # F-CQ-01 step 6: concat + RenderPlan + silence trim + chapter
+        # timing storage extracted into ``_run_concat_phase``.
+        final_audio, chapter_timings = await self._run_concat_phase(
+            all_chunks=all_chunks,
+            abs_dir=abs_dir,
             audiobook_id=audiobook_id,
-            inline_chunks=inline_only,
-            chapter_timings=chapter_timings,
             chapters=chapters,
-            chunk_durations_seconds=chunk_durations,
         )
-        self._render_plan = render_plan
-        await self._persist_render_plan(render_plan)
-
-        # 3b. Optional leading/trailing silence trim — runs BEFORE captions,
-        # MP3 export, and timing persistence so CHAP frames + ASS captions
-        # stay locked to audible boundaries within ±50 ms. Off by default;
-        # Task 9 routes the toggle through ``self._settings``.
-        if self._settings.trim_leading_trailing_silence:
-            leading_offset = await self._trim_silence_in_place(final_audio)
-            if leading_offset > 0:
-                chapter_timings = self._shift_chapter_timings(chapter_timings, leading_offset)
-
-        # Store timing metadata in chapters
-        for timing in chapter_timings:
-            if timing.chapter_index < len(chapters):
-                chapters[timing.chapter_index]["start_seconds"] = round(timing.start_seconds, 3)
-                chapters[timing.chapter_index]["end_seconds"] = round(timing.end_seconds, 3)
-                chapters[timing.chapter_index]["duration_seconds"] = round(
-                    timing.duration_seconds, 3
-                )
 
         # 4. Get duration and file size
         duration = await self.ffmpeg.get_duration(final_audio)
@@ -2006,7 +2044,7 @@ class AudiobookService:
                 except Exception:
                     priming_offset_ms = 0
 
-                shifted_plan = render_plan.apply_priming_offset(priming_offset_ms)
+                shifted_plan = self._render_plan.apply_priming_offset(priming_offset_ms)
                 # Build chapter dicts in the shape ``write_audiobook_id3``
                 # expects (start_seconds / end_seconds / title), but
                 # source the timestamps from the priming-adjusted plan.
