@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.37] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 5** — fifth and biggest incision into
+  ``AudiobookService.generate``. The per-chapter TTS loop
+  (cancellation polling, progress broadcasts, DAG transitions,
+  multi-voice vs single-voice routing) extracted into
+  ``_run_tts_phase``. **~75 lines lifted** from ``generate`` —
+  by far the largest single phase removed in the F-CQ-01 staging.
+
+### Added
+
+- 12 new direct tests for ``_run_tts_phase``
+  (``test_audiobook_run_tts_phase.py``):
+
+  - **Single-voice routing**: no casting + no SFX takes the
+    simpler path; single-block chapters with a [Speaker] tag get
+    unwrapped to the BLOCK text (so the speaker tag itself isn't
+    read aloud).
+  - **Multi-voice routing**: multiple speaker blocks + casting
+    take multi-voice; **SFX blocks force multi-voice even
+    without casting** (sequential order matters); casting alone
+    without multiple blocks stays on single-voice (multi-voice
+    requires ``len(blocks) > 1``).
+  - **Side effects**: cancellation checked exactly once per
+    chapter, progress events strictly in the 5%-50% band and
+    monotonically increasing, DAG transitions ``in_progress`` →
+    ``done`` for every chapter.
+  - **Chunk accumulation**: returned list aggregates per-chapter
+    chunks in iteration order; empty chapters list returns ``[]``
+    without firing any side effects.
+  - **Speed/pitch propagation**: both threaded through to
+    ``_generate_single_voice`` AND ``_generate_multi_voice``.
+
+  Total suite: 1277 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
+  F-CQ-01 progress: **5/N steps complete**. Phases extracted so
+  far: settings/track_mix, per-call state init, resolution helpers
+  (output_format + video_dims), DAG reshape, TTS loop. Remaining:
+  concat/RenderPlan, image gen, music mixing, master loudnorm,
+  captions, MP3 export, video creation, cleanup.
+
 ## [0.29.36] - 2026-05-01
 
 ### Changed

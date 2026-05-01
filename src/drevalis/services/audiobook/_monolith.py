@@ -1303,6 +1303,105 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _run_tts_phase(
+        self,
+        *,
+        chapters: list[dict[str, Any]],
+        abs_dir: Path,
+        audiobook_id: UUID,
+        voice_profile: VoiceProfile,
+        voice_casting: dict[str, str] | None,
+        speed: float,
+        pitch: float,
+    ) -> list[AudioChunk]:
+        """Render TTS for every chapter and return the concat-input list.
+
+        Honours cancellation between chapters, broadcasts progress
+        (5%-50% range — TTS is the bulk of the wall-clock for most
+        audiobooks), and routes through ``_generate_multi_voice`` when
+        either ``voice_casting`` is non-empty AND there are multiple
+        speaker blocks, OR the chapter contains ``[SFX:]`` blocks
+        (sequential order matters in either case). Single-speaker
+        chapters take the simpler ``_generate_single_voice`` path.
+
+        Pulled out of ``generate`` (F-CQ-01 step 5) — by far the
+        biggest single phase, ~75 lines lifted.
+        """
+        all_chunks: list[AudioChunk] = []
+        total_chapters = len(chapters)
+        for ch_idx, chapter in enumerate(chapters):
+            # Honour the user's Cancel button between chapters. The
+            # in-flight TTS / ComfyUI calls aren't interruptible, but
+            # we won't queue another chapter once the flag is set.
+            await self._check_cancelled(audiobook_id)
+
+            chapter_text = chapter["text"]
+            voice_blocks = self._parse_voice_blocks(chapter_text)
+
+            # Task 11: skip TTS work entirely if this chapter is
+            # already ``done`` in the DAG. The chunk-cache fast path
+            # (Task 1) is the per-chunk equivalent — they coexist.
+            tts_already_done = self._dag_chapter_done(ch_idx, "tts")
+
+            pct = 5 + int((ch_idx / total_chapters) * 45)
+            await self._broadcast_progress(
+                audiobook_id,
+                "tts",
+                pct,
+                f"Generating speech for chapter {ch_idx + 1}/{total_chapters}...",
+            )
+
+            await self._dag_chapter(ch_idx, "tts", "in_progress")
+
+            has_sfx = any(b.get("kind") == "sfx" for b in voice_blocks)
+            multi_voice_active = bool(voice_casting) and len(voice_blocks) > 1
+            if multi_voice_active or has_sfx:
+                # SFX blocks must preserve sequential order with voice
+                # blocks, so route through the multi-voice path even
+                # when only one speaker exists. The voice-casting map
+                # may be empty in that case — _generate_multi_voice
+                # falls back to ``default_voice_profile`` per block.
+                log.info(
+                    "audiobook.generate.multi_voice",
+                    audiobook_id=str(audiobook_id),
+                    chapter=ch_idx,
+                    speakers=[b.get("speaker", "SFX") for b in voice_blocks],
+                    sfx_count=sum(1 for b in voice_blocks if b.get("kind") == "sfx"),
+                )
+                chunks = await self._generate_multi_voice(
+                    blocks=voice_blocks,
+                    voice_casting=voice_casting or {},
+                    default_voice_profile=voice_profile,
+                    output_dir=abs_dir,
+                    chapter_index=ch_idx,
+                    speed=speed,
+                    pitch=pitch,
+                )
+            else:
+                plain_text = chapter_text
+                if voice_blocks and len(voice_blocks) == 1:
+                    plain_text = voice_blocks[0]["text"]
+
+                chunks = await self._generate_single_voice(
+                    text=plain_text,
+                    voice_profile=voice_profile,
+                    output_dir=abs_dir,
+                    chapter_index=ch_idx,
+                    speed=speed,
+                    pitch=pitch,
+                )
+
+            all_chunks.extend(chunks)
+            await self._dag_chapter(ch_idx, "tts", "done")
+            log.debug(
+                "audiobook.generate.chapter_done",
+                audiobook_id=str(audiobook_id),
+                chapter_index=ch_idx,
+                chunks=len(chunks),
+                tts_already_done=tts_already_done,
+            )
+        return all_chunks
+
     async def _reshape_dag_for_chapters(
         self,
         *,
@@ -1611,80 +1710,18 @@ class AudiobookService:
             chapter_moods=chapter_moods,
         )
 
-        # 2. Generate TTS for all chapters
-        all_chunks: list[AudioChunk] = []
-        total_chapters = len(chapters)
-        for ch_idx, chapter in enumerate(chapters):
-            # Honour the user's Cancel button between chapters. The
-            # in-flight TTS / ComfyUI calls aren't interruptible, but
-            # we won't queue another chapter once the flag is set.
-            await self._check_cancelled(audiobook_id)
-
-            chapter_text = chapter["text"]
-            voice_blocks = self._parse_voice_blocks(chapter_text)
-
-            # Task 11: skip TTS work entirely if this chapter is
-            # already ``done`` in the DAG. The chunk-cache fast path
-            # (Task 1) is the per-chunk equivalent — they coexist.
-            tts_already_done = self._dag_chapter_done(ch_idx, "tts")
-
-            pct = 5 + int((ch_idx / total_chapters) * 45)
-            await self._broadcast_progress(
-                audiobook_id,
-                "tts",
-                pct,
-                f"Generating speech for chapter {ch_idx + 1}/{total_chapters}...",
-            )
-
-            await self._dag_chapter(ch_idx, "tts", "in_progress")
-
-            has_sfx = any(b.get("kind") == "sfx" for b in voice_blocks)
-            multi_voice_active = bool(voice_casting) and len(voice_blocks) > 1
-            if multi_voice_active or has_sfx:
-                # SFX blocks must preserve sequential order with voice
-                # blocks, so route through the multi-voice path even
-                # when only one speaker exists. The voice-casting map
-                # may be empty in that case — _generate_multi_voice
-                # falls back to ``default_voice_profile`` per block.
-                log.info(
-                    "audiobook.generate.multi_voice",
-                    audiobook_id=str(audiobook_id),
-                    chapter=ch_idx,
-                    speakers=[b.get("speaker", "SFX") for b in voice_blocks],
-                    sfx_count=sum(1 for b in voice_blocks if b.get("kind") == "sfx"),
-                )
-                chunks = await self._generate_multi_voice(
-                    blocks=voice_blocks,
-                    voice_casting=voice_casting or {},
-                    default_voice_profile=voice_profile,
-                    output_dir=abs_dir,
-                    chapter_index=ch_idx,
-                    speed=speed,
-                    pitch=pitch,
-                )
-            else:
-                plain_text = chapter_text
-                if voice_blocks and len(voice_blocks) == 1:
-                    plain_text = voice_blocks[0]["text"]
-
-                chunks = await self._generate_single_voice(
-                    text=plain_text,
-                    voice_profile=voice_profile,
-                    output_dir=abs_dir,
-                    chapter_index=ch_idx,
-                    speed=speed,
-                    pitch=pitch,
-                )
-
-            all_chunks.extend(chunks)
-            await self._dag_chapter(ch_idx, "tts", "done")
-            log.debug(
-                "audiobook.generate.chapter_done",
-                audiobook_id=str(audiobook_id),
-                chapter_index=ch_idx,
-                chunks=len(chunks),
-                tts_already_done=tts_already_done,
-            )
+        # F-CQ-01 step 5: per-chapter TTS loop extracted into
+        # ``_run_tts_phase`` so this orchestrator stays focused on
+        # phase sequencing.
+        all_chunks = await self._run_tts_phase(
+            chapters=chapters,
+            abs_dir=abs_dir,
+            audiobook_id=audiobook_id,
+            voice_profile=voice_profile,
+            voice_casting=voice_casting,
+            speed=speed,
+            pitch=pitch,
+        )
 
         # 3. Concatenate all chunks with context-aware silence gaps
         await self._check_cancelled(audiobook_id)
