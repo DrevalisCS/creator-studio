@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.35] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 3** — third incision into
+  ``AudiobookService.generate``. Pure resolution helpers extracted:
+
+  - ``_resolve_output_format(output_format, generate_video) -> str``:
+    bridges the legacy ``generate_video=True`` flag without
+    breaking older callers.
+  - ``_resolve_video_dims(video_orientation) -> (w, h)``: maps
+    ``"vertical"`` → 1080×1920 and falls back to landscape
+    1920×1080 for any other value (typoed orientation can no
+    longer silently produce a 0×0 video).
+
+  Both are static methods — testable without the full
+  ``AudiobookService`` constructor surface. ~5 lines + 2 branch
+  points lifted from ``generate``.
+
+### Added
+
+- 11 new direct tests for the two resolution helpers
+  (``test_audiobook_resolution_helpers.py``):
+
+  - ``_resolve_output_format`` parametrised across every
+    combination of ``output_format`` × ``generate_video``;
+    pinned that the legacy flag only promotes the default
+    ``audio_only`` (so an explicit ``audio_image`` is never
+    accidentally clobbered).
+  - ``_resolve_video_dims`` for ``"vertical"``, ``"landscape"``,
+    typoed values (``"vert"``, ``""``, case-mismatched), with a
+    parametric aspect-ratio guard pinning that vertical always
+    has ``height > width`` and landscape always has ``width > height``.
+
+  Total suite: 1253 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
 ## [0.29.34] - 2026-05-01
 
 ### Changed

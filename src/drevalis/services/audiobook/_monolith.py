@@ -1297,6 +1297,33 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    @staticmethod
+    def _resolve_output_format(output_format: str, generate_video: bool) -> str:
+        """Resolve the legacy ``generate_video`` flag.
+
+        Older callers passed ``generate_video=True`` separately from
+        ``output_format``. The newer contract is a single
+        ``output_format`` value with ``audio_video`` covering the
+        old "audio + video" case. This helper bridges the two without
+        breaking either form.
+        """
+        if generate_video and output_format == "audio_only":
+            return "audio_video"
+        return output_format
+
+    @staticmethod
+    def _resolve_video_dims(video_orientation: str) -> tuple[int, int]:
+        """Map ``video_orientation`` to ``(width, height)``.
+
+        ``"vertical"`` → 1080 × 1920 (Shorts/TikTok). Anything else
+        (including ``"landscape"`` and any unexpected value) →
+        1920 × 1080. The default-to-landscape fallback prevents a
+        typoed orientation from silently producing a 0×0 video.
+        """
+        if video_orientation == "vertical":
+            return 1080, 1920
+        return 1920, 1080
+
     async def _initialize_call_state(
         self,
         *,
@@ -1488,15 +1515,10 @@ class AudiobookService:
             music_volume_db=music_volume_db,
         )
 
-        # Handle legacy generate_video flag
-        if generate_video and output_format == "audio_only":
-            output_format = "audio_video"
-
-        # Determine video resolution from orientation.
-        if video_orientation == "vertical":
-            video_width, video_height = 1080, 1920
-        else:
-            video_width, video_height = 1920, 1080
+        # F-CQ-01 step 3: pure resolution helpers — output_format
+        # legacy compat + video dimensions from orientation.
+        output_format = self._resolve_output_format(output_format, generate_video)
+        video_width, video_height = self._resolve_video_dims(video_orientation)
 
         output_dir = Path(f"audiobooks/{audiobook_id}")
         abs_dir = self.storage.resolve_path(str(output_dir))
