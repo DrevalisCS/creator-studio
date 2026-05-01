@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.34] - 2026-05-01
+
+### Changed
+
+- **F-CQ-01 step 2** — second incision into
+  ``AudiobookService.generate``. Per-call instance-state wiring
+  (structlog ``contextvars`` binding, ComfyUI pool refresh,
+  ``audiobook_id`` stash, ``CancelChecker`` instantiation, DAG
+  hydration, persistence callbacks) extracted into a new private
+  ``_initialize_call_state`` helper. ~30 more lines and 2-3 branch
+  points lifted out of ``generate``; behaviour identical (verified
+  by the existing 1231-test suite).
+
+### Added
+
+- 11 new direct tests for ``_initialize_call_state``
+  (``test_audiobook_initialize_call_state.py``):
+
+  - **Contextvars binding**: ``audiobook_id`` (str) + ``title``
+    both bound for downstream log lines.
+  - **ComfyUI pool refresh**: skipped when no ``comfyui_service``
+    or no ``db_session`` plumbed in, called with the right
+    session when both present, **non-fatal** on exception
+    (a stale pool is better than failing audiobook generation at
+    the front door — pinned).
+  - **Cancellation wiring**: ``self._current_audiobook_id``
+    stashed for per-chunk gather'd coroutines,
+    ``CancelChecker`` instance built (singleton per generate
+    call so the 1-second debounce survives across helpers).
+  - **Job-state init**: ``None`` initial state yields ``{}``,
+    explicit prior state hydrated by reference, persistence
+    callbacks stored or default to ``None``.
+
+  Total suite: 1242 passing, 2 skipped (ffmpeg-only). mypy
+  ``--strict`` still clean.
+
 ## [0.29.33] - 2026-05-01
 
 ### Changed

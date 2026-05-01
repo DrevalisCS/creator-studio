@@ -1297,6 +1297,64 @@ class AudiobookService:
     # Main generation entry point
     # ══════════════════════════════════════════════════════════════════════
 
+    async def _initialize_call_state(
+        self,
+        *,
+        audiobook_id: UUID,
+        title: str,
+        initial_job_state: dict[str, Any] | None,
+        persist_job_state_cb: Any | None,
+        persist_render_plan_cb: Any | None,
+    ) -> None:
+        """Wire up per-call instance state at the top of ``generate``.
+
+        Side effects:
+        - Binds ``audiobook_id`` + ``title`` into the structlog
+          contextvars so every helper's log line carries them.
+        - Refreshes the ComfyUI server pool from the DB so retries
+          always see current servers.
+        - Stashes ``audiobook_id`` on the instance for cancellation
+          polling inside ``asyncio.gather``'d coroutines.
+        - Builds a single ``CancelChecker`` so the 1-second debounce
+          survives across helpers rather than resetting per-helper.
+        - Hydrates ``self._job_state`` from the worker's persisted
+          blob, plus the two persistence callbacks.
+
+        Pulled out of ``generate`` (F-CQ-01 step 2) so the orchestrator
+        stays focused on phase sequencing.
+        """
+        structlog.contextvars.bind_contextvars(
+            audiobook_id=str(audiobook_id),
+            title=title,
+        )
+
+        # Refresh ComfyUI pool from DB so retries always use current servers
+        if self.comfyui_service and self.db_session:
+            try:
+                await self.comfyui_service._pool.sync_from_db(self.db_session)
+            except Exception:
+                log.warning("audiobook.comfyui_pool_refresh_failed", exc_info=True)
+
+        # Stash audiobook_id on the instance so cancellation polling
+        # (Task 4) inside per-chunk gather'd coroutines can reach it
+        # without changing helper signatures.
+        self._current_audiobook_id = audiobook_id
+
+        # Task 10: debounced cancel poller. Built once per generate
+        # call so the 1-second debounce survives across all helpers
+        # rather than resetting per-helper.
+        self._cancel_checker = CancelChecker(self.redis, audiobook_id)
+
+        # Task 11: per-stage DAG. Hydrated from the worker's persisted
+        # blob (``audiobook.job_state``); we reshape to fit the actual
+        # parsed chapter count once parsing has run. The persistence
+        # callback is invoked after every state transition so a worker
+        # crash leaves the DAG at the last successful step.
+        self._job_state: dict[str, Any] = initial_job_state or {}
+        self._persist_job_state_cb = persist_job_state_cb
+        # Task 13: parallel callback for the render_plan_json column.
+        self._persist_render_plan_cb = persist_render_plan_cb
+
     def _apply_settings_and_mix(
         self,
         *,
@@ -1408,37 +1466,17 @@ class AudiobookService:
         # id without each helper having to take or rebind it. Cleared
         # in the matching finally so other tasks running on this loop
         # don't inherit the binding.
-        structlog.contextvars.bind_contextvars(
-            audiobook_id=str(audiobook_id),
+        # F-CQ-01 step 2: per-call instance state init (log binding,
+        # ComfyUI pool refresh, cancel checker, DAG state) extracted
+        # into ``_initialize_call_state`` so this orchestrator stays
+        # focused on phase sequencing.
+        await self._initialize_call_state(
+            audiobook_id=audiobook_id,
             title=title,
+            initial_job_state=initial_job_state,
+            persist_job_state_cb=persist_job_state_cb,
+            persist_render_plan_cb=persist_render_plan_cb,
         )
-
-        # Refresh ComfyUI pool from DB so retries always use current servers
-        if self.comfyui_service and self.db_session:
-            try:
-                await self.comfyui_service._pool.sync_from_db(self.db_session)
-            except Exception:
-                log.warning("audiobook.comfyui_pool_refresh_failed", exc_info=True)
-
-        # Stash audiobook_id on the instance so cancellation polling
-        # (Task 4) inside per-chunk gather'd coroutines can reach it
-        # without changing helper signatures.
-        self._current_audiobook_id = audiobook_id
-
-        # Task 10: debounced cancel poller. Built once per generate
-        # call so the 1-second debounce survives across all helpers
-        # rather than resetting per-helper.
-        self._cancel_checker = CancelChecker(self.redis, audiobook_id)
-
-        # Task 11: per-stage DAG. Hydrated from the worker's persisted
-        # blob (``audiobook.job_state``); we reshape to fit the actual
-        # parsed chapter count once parsing has run. The persistence
-        # callback is invoked after every state transition so a worker
-        # crash leaves the DAG at the last successful step.
-        self._job_state: dict[str, Any] = initial_job_state or {}
-        self._persist_job_state_cb = persist_job_state_cb
-        # Task 13: parallel callback for the render_plan_json column.
-        self._persist_render_plan_cb = persist_render_plan_cb
 
         # F-CQ-01 step 1: settings + track_mix unpacking extracted into
         # ``_apply_settings_and_mix`` so this orchestrator stays focused
