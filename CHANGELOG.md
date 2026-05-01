@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.54] - 2026-05-01
+
+### Added
+
+- **CharacterPackService + TokenAccumulator** — 16 new tests
+  (``test_character_pack_and_usage.py``):
+
+  - ``services/character_pack.py``: 30% → **96%**.
+    ``create`` (name strip + cap at 120 chars + blank
+    description normalised to ``None``), ``create`` rejects
+    whitespace-only name with ``ValidationError`` (no commit
+    on validation failure), ``delete`` is idempotent on missing
+    pack (matches the previous in-route 204 behaviour),
+    ``apply`` raises ``NotFoundError`` for missing pack OR
+    missing series, happy-path ``apply`` copies both
+    ``character_lock`` + ``style_lock`` onto the series
+    (overwrites whatever was there).
+  - ``core/usage.py``: 61% → **100%**. ``TokenAccumulator.add``
+    aggregates totals across providers + maintains the
+    per-provider breakdown; **negative token counts coerced to
+    0** (defensive against streaming-error edge cases that
+    could push the cost dashboard negative); string inputs
+    coerced via ``int()``. ``record_llm_usage`` is a silent
+    no-op when no accumulator is active (REPL / unit-test
+    safety); records to the active accumulator with default
+    provider ``unknown``; ``end_accumulator`` correctly unbinds
+    so subsequent records don't accidentally mutate the
+    detached accumulator.
+
+  Total suite: 1437 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.53] - 2026-05-01
 
 ### Added
