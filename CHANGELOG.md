@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.23] - 2026-05-01
+
+### Added
+
+- **Scheduled-post orphan-prune job** — 5 new tests for
+  ``workers/jobs/prune_scheduled_posts.py``
+  (``test_prune_scheduled_posts.py``). Module coverage: 0% → 100%.
+  Pins the contract that the daily prune cron uses the arq
+  session_factory's async-context interface, calls
+  ``ScheduledPostRepository.prune_orphaned`` exactly once, and
+  echoes the deleted count in the result.
+
+- **Fernet wrong-key-length branch** — 1 new test for
+  ``core/security.py`` (added to ``test_security.py``). Module
+  coverage: 95% → 100%. Pins the explicit ``ValueError("decoded
+  length")`` raised when the supplied key base64-decodes
+  successfully but isn't the 32 bytes Fernet requires (16-byte
+  and 64-byte keys both rejected with a clear message rather
+  than letting Fernet's vague exception propagate).
+
+  Total suite: 1067 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.22] - 2026-05-01
 
 ### Added

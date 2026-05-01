@@ -140,3 +140,18 @@ class TestKeyVersioning:
     def test_invalid_key_raises_value_error(self) -> None:
         with pytest.raises(ValueError, match="Invalid Fernet key"):
             encrypt_value("data", "not-a-valid-key")
+
+    def test_wrong_length_key_raises_value_error(self) -> None:
+        # Base64-decodes successfully but the decoded length is not 32 bytes,
+        # so Fernet would reject it later — we surface a clear ValueError now
+        # rather than letting it bubble up at encrypt time.
+        import base64
+
+        # 16 bytes ≠ 32 bytes; still valid base64.
+        too_short = base64.urlsafe_b64encode(b"\x00" * 16).decode()
+        with pytest.raises(ValueError, match="decoded length"):
+            encrypt_value("data", too_short)
+
+        too_long = base64.urlsafe_b64encode(b"\x00" * 64).decode()
+        with pytest.raises(ValueError, match="decoded length"):
+            encrypt_value("data", too_long)
