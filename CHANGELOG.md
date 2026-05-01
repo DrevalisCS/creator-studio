@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.29] - 2026-05-01
+
+### Added
+
+- **License-state repository** — 19 new tests for
+  ``repositories/license_state.py``
+  (``test_license_state_repo.py``). Module coverage: 21% → 100%.
+
+  This module owns the at-rest encryption boundary for the
+  user's literal license key. Misses ship as either licenses
+  that fail to decrypt after a deploy or plaintext keys leaking
+  into DB backups. Pinned:
+
+  - ``_decrypt_stored_jwt`` — None for empty rows; legacy
+    plaintext rows (``jwt_key_version IS NULL``) returned
+    unchanged so the next write upgrades them; encrypted rows
+    Fernet-decrypted with the current key; wrong-key decryption
+    raises a clear ``ValueError`` pointing the operator at
+    ``ENCRYPTION_KEY`` rotation.
+  - ``get_plaintext_jwt`` — None when row missing, legacy +
+    encrypted paths both round-trip.
+  - ``upsert`` — new-row path uses the singleton id=1, JWT
+    encrypted at rest (never plaintext on disk),
+    ``jwt_key_version`` populated, ``machine_id`` +
+    ``activated_at`` + ``updated_at`` set, row added to
+    session. Update-in-place path mutates the existing row
+    without calling ``.add()``, replaces ciphertext + machine_id,
+    **preserves the original ``activated_at``** (one-time
+    activation timestamp), refreshes ``updated_at``. Defensive:
+    rows missing ``activated_at`` get backfilled. End-to-end
+    encrypt → decrypt round-trip verified directly.
+  - ``clear`` — no-op when no row; otherwise zeros JWT +
+    key_version but **preserves** machine_id, activated_at,
+    and last_heartbeat_at as audit trail.
+  - ``record_heartbeat`` — no-op when no row; status + timestamp
+    written; supports the full status vocabulary
+    (``ok``, ``revoked:license_revoked``, ``network_error``);
+    overwrites previous values with monotonic timestamps.
+  - ``get`` — returns the singleton row or None.
+
+  Total suite: 1143 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.28] - 2026-05-01
 
 ### Added
