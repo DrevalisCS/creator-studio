@@ -7,6 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.19] - 2026-05-01
+
+### Added
+
+- **License JWT verifier** — 23 new tests for
+  ``core/license/verifier.py`` (``test_license_verifier.py``).
+  Module coverage: 19% → 73%. Forge real Ed25519 keypairs at test
+  time and synthesize signed JWTs to exercise:
+
+  - ``verify_jwt`` — valid token with ``aud`` decodes; legacy
+    token without ``aud`` accepted (F-S-11 hotfix invariant);
+    wrong audience rejected; wrong issuer rejected; wrong
+    signing key rejected; malformed token rejected; missing
+    required claim (``jti``, ``iss``, ``sub``, ``exp``, ``nbf``,
+    ``iat``) rejected; expired token rejected at decode time.
+  - ``_classify`` — ACTIVE inside paid window, GRACE between
+    period_end and exp, EXPIRED past exp, INVALID before nbf;
+    lifetime_pro skips the period_end check (always ACTIVE
+    once signature-verified) but still respects nbf.
+  - ``bump_state_version`` / ``get_remote_version`` — Redis
+    INCR + GET wrappers, both fail-safe to 0 on Redis errors,
+    bytes + string responses normalised to int.
+  - ``refresh_if_stale`` — no rebootstrap when local ≥ remote,
+    rebootstraps + advances local version when remote ahead,
+    swallows bootstrap errors (gate must keep serving even
+    when the refresh path is broken) and does NOT advance the
+    local version on failure (so we retry next request).
+
+- **License gate middleware** — 13 new tests for
+  ``core/license/gate.py`` (``test_license_gate.py``).
+  Module coverage: 25% → 87%. Tests use a real Starlette app +
+  ``TestClient`` so the ASGI dispatch is exercised end-to-end:
+
+  - Exempt paths always pass (``/health``, ``/api/v1/license/*``,
+    ``/docs``, ``/storage/*``) — even on UNACTIVATED / INVALID.
+  - Non-guarded paths (``/``) pass through.
+  - Guarded paths (``/api/...``) gated by status: ACTIVE +
+    GRACE pass; UNACTIVATED, EXPIRED, INVALID return 402 with
+    the machine-readable detail payload (``error``, ``state``,
+    ``error_message``) the frontend uses to route to the
+    activation wizard.
+  - Demo-mode bypass — ``settings.demo_mode=True`` skips the
+    gate entirely (the public demo install is licence-free
+    by design).
+  - Custom prefix configuration — exempt + guarded prefix
+    tuples can be overridden via constructor kwargs.
+
+  Total suite: 963 passing, 2 skipped (ffmpeg-only). Combined
+  ``core/license/`` group coverage: 25% → 51% (and 70%+ on every
+  module that has direct tests).
+
 ## [0.29.18] - 2026-05-01
 
 ### Added
