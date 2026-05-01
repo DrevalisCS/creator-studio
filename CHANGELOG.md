@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.18] - 2026-05-01
+
+### Added
+
+- **License feature gating coverage** — 31 new tests for
+  ``core/license/features.py`` (``test_license_features.py``).
+  Module coverage: 31% → 100%. Pins the contract that sits in front
+  of every paid endpoint:
+
+  - ``has_feature`` / ``_current_feature_set`` — unactivated yields
+    empty, JWT explicit features claim wins over tier table,
+    empty-list claim falls back to tier defaults, unknown tier
+    returns empty.
+  - ``require_feature`` — 402 ``license_required`` for
+    unactivated, 402 ``feature_not_in_tier`` payload includes the
+    feature + current tier, present features pass silently. Studio
+    multichannel/social/api gates verified. Lifetime_pro inherits
+    the Pro feature set. Server-issued features claim can grant
+    runpod even on a trial license.
+  - ``require_tier`` — 402 with ``tier_too_low`` payload, equal
+    rank passes, higher tier passes, ``solo`` ↔ ``creator`` rank
+    parity, ``lifetime_pro`` ↔ ``pro`` rank parity, unknown tier
+    treated as below all, unknown minimum treated as above all.
+  - ``fastapi_dep_require_feature`` / ``fastapi_dep_require_tier``
+    factories return callables that wrap the underlying check.
+  - Tier table consistency: every tier in every map, lifetime_pro
+    feature set ≡ pro, solo ≡ creator, studio ⊇ pro, machine caps
+    monotonic, paid tiers all have unlimited episode quota.
+
+- **Audiobook ID3 writer** — 22 new tests for
+  ``services/audiobook/id3.py`` (``test_audiobook_id3.py``).
+  Module coverage: 0% → ~100%. Each test writes into a synthesized
+  MPEG-1 Layer III file and re-reads via mutagen:
+
+  - ``_extension_to_mime`` — jpg / jpeg / png / webp recognition,
+    leading-dot tolerance, case-insensitivity, fallback for
+    unknown extensions.
+  - ``write_audiobook_id3`` — basic tag round-trip (TIT2/TPE1/TALB/
+    TCON/year), default artist "Drevalis Creator Studio",
+    default genre "Audiobook", album omitted on ``None``,
+    chapter writes (CHAP + CTOC frames, millisecond timecode
+    conversion, zero-length-chapter clamp to +1ms, default title
+    "Chapter N" on missing/empty title), chapter-list rewrite
+    replaces previous frames, cover image attached as APIC type=3,
+    cover replaced on rewrite, missing cover path silently
+    skipped, ID3v2.3 dialect pinned.
+
+  Total suite: 927 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.17] - 2026-05-01
 
 ### Added
