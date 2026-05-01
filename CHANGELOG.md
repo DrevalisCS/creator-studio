@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.46] - 2026-05-01
+
+### Added
+
+- **A/B test winner cron** — 13 new tests for
+  ``workers/jobs/ab_test_winner.py``
+  (``test_ab_test_winner_job.py``). Module coverage: 0% → 91%.
+
+  This daily 04:31 UTC cron settles every pending ABTest pair by
+  fetching fresh YouTube view counts and recording the winner.
+  Critical contracts pinned:
+
+  - **OAuth not configured** → safe early-skip with all-zero
+    result dict (no false-failure metric noise).
+  - **Missing uploads** — neither episode uploaded → skipped;
+    only one episode uploaded → skipped; upload row exists but
+    ``youtube_video_id`` is empty → also skipped.
+  - **Maturity gate (7-day threshold)** — pairs whose later
+    upload is younger than 7 days stay pending (view counts
+    haven't stabilised); the 7-day-with-margin boundary
+    advances to the stats fetch as expected.
+  - **Channel resolution** — missing channel row OR channel
+    without an ``access_token_encrypted`` is counted as errored
+    (logged with the test_id) without aborting the batch.
+  - **Stats fetch + winner determination** — A wins when
+    ``views_a > views_b``; B wins on the reverse; **tie sets
+    ``comparison_at`` but leaves ``winner_episode_id`` NULL** —
+    the job MUST not loop forever on a tied pair, and this is
+    the safety pin that prevents that regression.
+  - **Per-test errors don't abort the batch** — first test
+    raises, second settles cleanly; both are counted in the
+    final tally.
+  - **No pending tests** — empty result list returns the same
+    all-zero dict as the OAuth-skip path.
+
+  Total suite: 1365 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.45] - 2026-05-01
 
 ### Changed
