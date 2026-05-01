@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.57] - 2026-05-01
+
+### Added
+
+- **FastAPI app factory** — 8 new tests for ``main.create_app``
+  (``test_main_create_app.py``). The build path (middleware stack,
+  routers, static mounts) is now fully pinned. Lifespan startup
+  (DB + Redis init) is integration territory and was left for a
+  future harness.
+
+  Critical contracts pinned:
+
+  - **Middleware stack** includes every required layer:
+    ``RequestLoggingMiddleware`` (observability),
+    ``SecurityHeadersMiddleware`` (defense-in-depth),
+    ``OptionalAPIKeyMiddleware`` (auth),
+    ``LicenseGateMiddleware`` (paywall),
+    ``DemoGuardMiddleware`` (demo install protection),
+    ``CORSMiddleware``. Silently dropping one would ship the
+    install with a security hole — pin so a refactor can't.
+  - **API + WS routers mounted**: at least one ``/api/v1`` route
+    and one ``/ws`` route present.
+  - **Static dirs created under storage_base**: ``episodes/``,
+    ``voice_previews/``, ``audiobooks/`` directories all
+    created on first build (fresh installs).
+  - **Static mounts present**: ``/storage/episodes``,
+    ``/storage/voice_previews``, ``/storage/audiobooks``.
+  - **CORS dev origins**: ports 3000 (Vite default), 5173 (Vite
+    alternate), 8000 (uvicorn) all present — pin so local
+    frontend dev against the backend never silently breaks.
+  - **CORS destructive methods**: DELETE, PUT, PATCH, OPTIONS
+    all permitted (admin operations + preflight).
+
+  Total suite: 1461 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.56] - 2026-05-01
 
 ### Added
