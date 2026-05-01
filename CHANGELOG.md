@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.31] - 2026-05-01
+
+### Added
+
+- **Remaining mid-coverage repositories** — 35 new tests covering
+  every published query in four repos (``test_remaining_repos.py``).
+  All four taken to **100%**:
+
+  - ``repositories/scheduled_post.py``: 34% → 100%. Pinned
+    ``get_pending`` (status + cutoff filter, ascending order),
+    ``get_by_content`` (content_type + content_id),
+    ``get_upcoming`` (default limit 20), ``get_calendar``
+    (window filter), and the orphan-prune flow that issues
+    two SELECTs + (only when needed) a DELETE — including the
+    no-op-without-DELETE path and per-content-type variants.
+  - ``repositories/social.py``: 40% → 100%. Pinned
+    ``SocialPlatformRepository.get_active_by_platform``,
+    ``get_all_active`` (orders by platform then created_at DESC),
+    ``deactivate_platform`` walks active rows and flushes;
+    ``SocialUploadRepository.get_by_content``,
+    ``get_by_platform``, ``get_recent``, and the aggregate
+    ``get_platform_stats`` Row → dict mapping.
+  - ``repositories/youtube.py``: 40% → 100%. Channel + Upload +
+    AudiobookUpload + Playlist sub-repos: ``get_active``,
+    ``get_by_channel_id``, ``get_all_channels``,
+    ``deactivate_all``, ``get_by_episode``, ``get_recent``,
+    ``get_by_audiobook``, ``get_by_channel``,
+    ``get_by_youtube_playlist_id``.
+  - ``repositories/media_asset.py``: 33% → 100%. Pinned
+    ``get_by_episode`` (chronological), ``get_by_episode_and_type``,
+    ``get_total_size_bytes`` (NULL-safe coalesce, returns 0 on
+    empty), ``get_by_episode_and_scene``, and the three bulk-
+    delete helpers — including the **defensive invariant** that
+    ``delete_by_episode_and_types([])`` returns 0 WITHOUT
+    issuing a DELETE (the bare ``WHERE episode_id = ?`` would
+    wipe every asset for the episode).
+
+  Total suite: 1210 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.30] - 2026-05-01
 
 ### Added
