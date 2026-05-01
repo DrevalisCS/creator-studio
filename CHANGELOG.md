@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.55] - 2026-05-01
+
+### Added
+
+- **SEO generation job** — 5 new tests for
+  ``workers/jobs/seo.py`` (``test_seo_job.py``). Module
+  coverage: 48% → **100%**. Pinned every branch:
+
+  - **Episode missing or no script** → returns error dict
+    (publish flow handles the error gracefully).
+  - **Happy path** → LLM JSON parsed and stored under
+    ``episode.metadata_["seo"]``; result echoes the SEO data;
+    DB committed.
+  - **JSON parse failure (CRITICAL)** → conservative fallback
+    using episode title + narration excerpt rather than
+    propagating the exception. The publish flow MUST NOT fail
+    on a single bad LLM response — pin this so a future
+    refactor can't accidentally re-raise.
+  - **Provider selection**: when ``LLMConfigRepository.get_all``
+    returns at least one config, use ``LLMService.get_provider``;
+    otherwise fall back to ``OpenAICompatibleProvider`` against
+    the LM Studio URL from settings.
+
+  Total suite: 1442 passing, 2 skipped (ffmpeg-only).
+
 ## [0.29.54] - 2026-05-01
 
 ### Added
