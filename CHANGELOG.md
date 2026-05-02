@@ -7,6 +7,70 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.79] - 2026-05-02
+
+### Added
+
+- **api/routes/episodes (SEO + edit + inpaint half) + audiobooks
+  monolith finish** — 59 new tests pushing coverage on both:
+
+  - **`api/routes/episodes/_monolith.py`** 56% → **86%** (new
+    `test_episodes_route_part3.py`, 33 tests). Pinned the
+    SEO + edit-flow contracts:
+    - **`_grade_for` thresholds**: ≥90→A, ≥75→B, ≥55→C, else D
+      (parametrised across 8 boundary points).
+    - **`get_seo_score`** is purely heuristic (no LLM); tests cover
+      title-length severity transitions (error/warn/ok), tag
+      count error-when-zero, hashtag count over-tagging warn, and
+      summary text pluralisation.
+    - **`export_raw_assets`** assembles a real ZIP with per-kind
+      directories (`scene/scene_01.png`, `video/video.mp4`) and a
+      `README.txt`; 404 when no media_assets at all.
+    - **`edit_video` first-edit invariant**: backs up the source
+      to `final_original.mp4` BEFORE applying effects, but on
+      subsequent edits the backup is preserved (not overwritten
+      with the already-edited current video). Pinned both branches.
+    - **`edit_preview`** prefers `final_original.mp4` as the
+      source when present (so previews reflect new edits applied
+      to the original, not stacked on top of prior edits).
+    - **`edit_reset` → 409** when no original backup exists
+      (Conflict — episode has a video but it was never edited).
+      Pinned with explicit assertion that the reset path also
+      drops `preview.mp4` so the editor's last preview vanishes.
+    - **`inpaint_scene`**: malformed base64 → 400, episode missing
+      → 404; success persists the mask to
+      `episodes/{id}/scenes/scene_NN.mask.png` and writes the
+      Redis hint with 1h TTL.
+    - **`check_script_continuity`** degrades to `issues=[]` when
+      no LLM config is registered (Solo-mode operators without
+      LLM still load the editor).
+
+  - **`api/routes/audiobooks/_monolith.py`** 73% → **100%** (new
+    `test_audiobooks_route_part2.py`, 26 tests). The complex
+    composition handlers now fully pinned:
+    - **`generate_audiobook_script_sync`** parses the LLM output
+      for title, chapter headers (`## `), and `[Tag]` characters
+      (with `[SFX: ...]` filtered out by case-insensitive prefix);
+      LLM failure → **502 Bad Gateway**.
+    - **`music_preview`**: 404 when audiobook missing; **503**
+      when MusicService returns a path that doesn't exist on
+      disk (curated-library + AceStep both unavailable). Redis
+      `aclose()` runs in finally even on 503.
+    - **`list_clips`** falls back to `overrides: {}` when
+      `track_mix` is None (fresh audiobook never had its mix
+      configured) — no KeyError.
+    - **YouTube upload** semantic mapping pinned: NotFoundError
+      → 404, **ValidationError → 404** (means "no video to
+      upload" — UI shows "generate first" not "validation error"),
+      `NoChannelSelectedError` → 400 with structured
+      `no_channel_selected` detail and `youtube_channel_id` hint;
+      upstream failure → 502 with the upload row marked failed.
+      Token-refresh updates persisted onto the channel + db
+      flushed.
+
+  Suite total: **2357 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.78] - 2026-05-02
 
 ### Added
