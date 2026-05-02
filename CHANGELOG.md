@@ -7,6 +7,51 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.83] - 2026-05-02
+
+### Added
+
+- **workers/__main__ + workers/settings** — 19 new tests bringing
+  the worker entrypoints to ~95% (new
+  `test_workers_main_and_settings.py`).
+
+  Pinned the deployment-critical wiring that lives outside the
+  individual job functions:
+
+  - **`_redis_host_port`**: parses `REDIS_URL` env var with
+    sensible Docker defaults; bare `redis://` still produces
+    `("redis", 6379)`.
+  - **`_wait_for_redis` preflight**:
+    - First-attempt success path returns cleanly.
+    - Writer cleanup failure (`wait_closed` raises) is swallowed —
+      the connection was established, that's all we needed.
+    - DNS failure (`gaierror`) → retry with backoff.
+    - Connect timeout (`OSError` / `TimeoutError`) classified
+      distinctly in the failure message so a real misconfig is
+      obvious.
+    - Persistent failure → `sys.exit(1)` with a multi-line
+      operator-friendly message including
+      `docker compose ps redis` / `docker compose logs redis`
+      hints. Pinned because this is the FIRST thing a customer
+      sees when their compose stack is broken.
+  - **`_redis_settings_from_config`** parses the URL into arq
+    `RedisSettings` with conn_timeout=5 + 5 retries × 2s delay
+    (~35s total tolerance). Invalid db path (e.g. `/notanint`)
+    falls back to db=0 instead of crashing settings build.
+  - **`WorkerSettings` class invariants pinned**:
+    - All 23 documented job functions registered.
+    - `max_jobs == 8`, `max_tries == 3`, `keep_result == 3600`.
+    - 7 cron entries (publish-posts every 5min, social publish
+      every 5min, heartbeat every minute, license heartbeat
+      daily, A/B winner daily, nightly backup, prune scheduled
+      posts).
+    - Lifecycle hooks (`startup`, `shutdown`, `on_job_start`)
+      wired correctly.
+    - `job_timeout` reads from `longform_job_timeout` settings.
+
+  Suite total: **2469 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.82] - 2026-05-02
 
 ### Added
