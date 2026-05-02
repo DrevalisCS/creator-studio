@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.63] - 2026-05-02
+
+### Added
+
+- **api/routes/character_packs + ab_tests** — 21 new tests bringing
+  two thin router modules to 100%.
+
+  - **`api/routes/character_packs.py`** 71% → **100%** (new
+    `test_character_packs_route.py`, 7 tests): pinned the layering
+    contract — `_service` factory wires session through, `list/
+    create/delete/apply` delegate to `CharacterPackService`,
+    `ValidationError` on create maps to 400, `NotFoundError` on
+    apply maps to 404.
+  - **`api/routes/ab_tests.py`** 71% → **100%** (new
+    `test_ab_tests_route.py`, 14 tests): pinned `_serialise` ISO
+    formatting + None-safe `created_at`/`comparison_at` paths;
+    detail endpoint composes per-episode stats and **falls back
+    to `_missing_stats` placeholder** when an episode row was
+    deleted out from under the pair (FK is by-id, not cascading);
+    `ValidationError` → 400 + `NotFoundError` → 404 on create
+    and detail-fetch.
+
+  Suite total: **1536 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.62] - 2026-05-02
 
 ### Added
