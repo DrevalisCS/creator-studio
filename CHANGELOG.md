@@ -7,6 +7,69 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.90] - 2026-05-02
+
+### Added
+
+- **workers/jobs/audiobook script generation** — 19 new tests
+  bringing the audiobook worker from 15% → **43%** (new
+  `test_audiobook_script_text.py` + `test_audiobook_script_async.py`).
+
+  Pinned the LLM-driven script generation surface that drives both
+  the `/audiobooks/generate-script` route (Phase A→B chunked
+  outline) AND the `/audiobooks/create-ai` flow:
+
+  - **`_generate_audiobook_script_text`** — chunking strategy:
+    - **Single LLM call** for `target_words <= 4500` (~30 min of
+      narration); content stripped before return.
+    - **Two-phase chunked** for longer audiobooks: outline JSON
+      first, then per-chapter generation with continuity context.
+    - **Chapter count derived** from `max(3, target_minutes / 8)`
+      so 80-min audiobook → 10 chapters, but 16-min still floors
+      at 3.
+    - **Continuity**: each chapter's last `\n\n`-separated paragraph
+      is fed into the next chapter's prompt as
+      "Previous chapter ended with…" so the LLM doesn't restart
+      mid-narration.
+    - **Markdown-fenced outline JSON unwrapped** (the LLM often
+      emits ```json … ``` wrappers); stripped before parse.
+    - **Malformed outline → fallback single call** so a JSON
+      decode error never produces zero output.
+    - **Empty `chapters` array → fallback single call** (defensive
+      against LLMs that return `{"title": "X", "chapters": []}`).
+    - **Cancellation hook**: between LLM phases AND inside the
+      per-chapter loop, `redis.get(script_job:{id}:status)` is
+      polled. Status flipped to "cancelled" → returns None
+      immediately. The outer wrapper turns that into
+      `{"status": "cancelled"}`.
+    - **No-redis path**: when `redis_client is None`, the
+      cancellation check is skipped without AttributeError.
+
+  - **`generate_script_async`** wrapper:
+    - **Early cancellation**: status="cancelled" before LLM
+      construction → returns cancelled WITHOUT touching the LLM
+      provider. Pinned with `AssertionError` side-effect on the
+      LLM repo lookup.
+    - **Provider resolution**: first DB `LLMConfig` wins; with no
+      configs → falls back to LM Studio default URL/model.
+      Encrypted API key decrypted before passing to the provider.
+    - **Mid-LLM cancellation** propagates: helper returns None →
+      wrapper returns `{"status": "cancelled"}` and **does NOT
+      write the result key** (so the wizard's UI doesn't display
+      a partial transcript).
+    - **Happy path persistence**: `script_job:{id}:result` (JSON)
+      and `script_job:{id}:status` = "done" both written with
+      1h TTL.
+    - **SFX tags filtered** from the parsed character list
+      (case-insensitive `sfx` prefix) so the auto-voice-assigner
+      doesn't waste a profile on each sound-effect description.
+    - **Exception handling**: any error → `script_job:{id}:error`
+      persisted with **500-char cap**, status="failed", returns
+      structured failure dict.
+
+  Suite total: **2581 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.89] - 2026-05-02
 
 ### Added
