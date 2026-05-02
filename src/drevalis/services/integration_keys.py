@@ -40,7 +40,6 @@ async def resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> t
     configured" matches the rest of the integration-resolution
     contract and the Settings UI re-save flow naturally repairs it.
     """
-    from drevalis.core.security import decrypt_value
     from drevalis.repositories.api_key_store import ApiKeyStoreRepository
 
     client_id = settings.youtube_client_id
@@ -52,7 +51,7 @@ async def resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> t
             row = await repo.get_by_key_name("youtube_client_id")
             if row and row.encrypted_value:
                 try:
-                    client_id = decrypt_value(row.encrypted_value, settings.encryption_key)
+                    client_id = settings.decrypt(row.encrypted_value)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(
                         "youtube_client_id_decrypt_failed",
@@ -63,7 +62,7 @@ async def resolve_youtube_credentials(settings: Settings, db: AsyncSession) -> t
             row = await repo.get_by_key_name("youtube_client_secret")
             if row and row.encrypted_value:
                 try:
-                    client_secret = decrypt_value(row.encrypted_value, settings.encryption_key)
+                    client_secret = settings.decrypt(row.encrypted_value)
                 except Exception as exc:  # noqa: BLE001
                     logger.warning(
                         "youtube_client_secret_decrypt_failed",

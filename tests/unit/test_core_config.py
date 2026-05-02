@@ -260,3 +260,67 @@ class TestVersionedEncryptionKeys:
         )
         assert plaintext == "secret-payload"
         assert version == 1
+
+
+# ── Settings.decrypt convenience ───────────────────────────────────────
+
+
+class TestSettingsDecrypt:
+    def test_decrypts_ciphertext_against_current_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: the steady-state install path — ENCRYPTION_KEY is the
+        # only key set, ciphertext was encrypted with it, decrypt()
+        # round-trips the plaintext.
+        from drevalis.core.security import encrypt_value
+
+        _wipe_versioned_keys(monkeypatch)
+        key = _key_from(0xAA)
+        monkeypatch.setenv("ENCRYPTION_KEY", key)
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        ciphertext, _ = encrypt_value("hello", key)
+        assert s.decrypt(ciphertext) == "hello"
+
+    def test_decrypts_against_historical_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: ciphertext encrypted with the OLD key still decrypts
+        # after rotation, because Settings.decrypt walks the full
+        # versioned key map. This is the whole point of the rotation
+        # flow — without this, every row encrypted before the rotation
+        # would 500.
+        from drevalis.core.security import encrypt_value
+
+        _wipe_versioned_keys(monkeypatch)
+        k1 = _key_from(0x11)
+        k2 = _key_from(0x22)
+        ciphertext, _ = encrypt_value("legacy", k1)
+
+        monkeypatch.setenv("ENCRYPTION_KEY", k2)
+        monkeypatch.setenv("ENCRYPTION_KEY_V1", k1)
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert s.decrypt(ciphertext) == "legacy"
+
+    def test_raises_when_no_key_decrypts(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: ciphertext encrypted with a key that's no longer in the
+        # versioned map raises InvalidToken — callers can surface this
+        # as a clear "key rotation gone wrong" error instead of silent
+        # empty-string return.
+        from cryptography.fernet import InvalidToken
+
+        from drevalis.core.security import encrypt_value
+
+        _wipe_versioned_keys(monkeypatch)
+        old_key = _key_from(0x99)
+        ciphertext, _ = encrypt_value("orphan", old_key)
+
+        # Set up an unrelated current key — old_key is NOT in the map.
+        monkeypatch.setenv("ENCRYPTION_KEY", _key_from(0x33))
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        with pytest.raises(InvalidToken):
+            s.decrypt(ciphertext)

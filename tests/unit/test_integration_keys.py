@@ -103,10 +103,13 @@ def _settings_with(
     """Build a duck-typed settings object the helper accepts."""
     from types import SimpleNamespace
 
+    from drevalis.core.security import decrypt_value as _decrypt
+
     return SimpleNamespace(
         encryption_key=encryption_key,
         youtube_client_id=yt_id,
         youtube_client_secret=yt_secret,
+        decrypt=lambda ct: _decrypt(ct, encryption_key),
     )
 
 

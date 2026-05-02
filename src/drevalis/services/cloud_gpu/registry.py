@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from drevalis.core.security import decrypt_value
 from drevalis.services.cloud_gpu.base import (
     CloudGPUConfigError,
     CloudGPUProvider,
@@ -85,7 +84,7 @@ async def _resolve_api_key(
         row = await repo.get_by_key_name(name)
         if row and row.encrypted_value:
             try:
-                return decrypt_value(row.encrypted_value, settings.encryption_key)
+                return settings.decrypt(row.encrypted_value)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "cloud_gpu.decrypt_failed",

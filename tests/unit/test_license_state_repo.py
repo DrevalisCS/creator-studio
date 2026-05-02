@@ -90,7 +90,12 @@ class TestDecryptStoredJwt:
         row = _row(jwt=ciphertext, jwt_key_version=version)
 
         with patch("drevalis.repositories.license_state.Settings") as settings_cls:
+            from drevalis.core.security import decrypt_value as _decrypt
+
             settings_cls.return_value.encryption_key = fernet_key
+            settings_cls.return_value.decrypt.side_effect = (
+                lambda ct: _decrypt(ct, fernet_key)
+            )
             assert _decrypt_stored_jwt(row) == "real.jwt.token"
 
     def test_undecryptable_raises_value_error(self, fernet_key: str) -> None:
@@ -103,7 +108,10 @@ class TestDecryptStoredJwt:
         row = _row(jwt=ciphertext, jwt_key_version=1)
 
         with patch("drevalis.repositories.license_state.Settings") as settings_cls:
+            from cryptography.fernet import InvalidToken
+
             settings_cls.return_value.encryption_key = wrong_key
+            settings_cls.return_value.decrypt.side_effect = InvalidToken()
             with pytest.raises(ValueError, match="ENCRYPTION_KEY"):
                 _decrypt_stored_jwt(row)
 
@@ -129,7 +137,12 @@ class TestGetPlaintextJwt:
         session = _session_with(_row(jwt=ciphertext, jwt_key_version=ver))
         repo = LicenseStateRepository(session)
         with patch("drevalis.repositories.license_state.Settings") as settings_cls:
+            from drevalis.core.security import decrypt_value as _decrypt
+
             settings_cls.return_value.encryption_key = fernet_key
+            settings_cls.return_value.decrypt.side_effect = (
+                lambda ct: _decrypt(ct, fernet_key)
+            )
             assert await repo.get_plaintext_jwt() == "a.b.c"
 
 

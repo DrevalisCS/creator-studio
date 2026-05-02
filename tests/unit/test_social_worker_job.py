@@ -215,10 +215,8 @@ class TestLockedBody:
         session.get = AsyncMock(return_value=plat)
 
         long_msg = "X" * 800
+        ctx["settings"].decrypt = MagicMock(return_value="decrypted-token")
         with patch(
-            "drevalis.workers.jobs.social.decrypt_value",
-            return_value="decrypted-token",
-        ), patch(
             "drevalis.workers.jobs.social._tiktok_upload",
             AsyncMock(side_effect=RuntimeError(long_msg)),
         ):

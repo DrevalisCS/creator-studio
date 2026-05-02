@@ -165,7 +165,6 @@ async def startup(ctx: dict[str, Any]) -> None:
     comfyui_elevenlabs_key: str | None = None
     comfyui_extra_servers: list[tuple[str, str | None]] = []
     try:
-        from drevalis.core.security import decrypt_value
         from drevalis.repositories.comfyui import ComfyUIServerRepository
 
         async with session_factory() as _ses:
@@ -176,14 +175,14 @@ async def startup(ctx: dict[str, Any]) -> None:
                 comfyui_elevenlabs_url = _active_servers[0].url
                 _enc_key = _active_servers[0].api_key_encrypted
                 if _enc_key:
-                    comfyui_elevenlabs_key = decrypt_value(_enc_key, settings.encryption_key)
+                    comfyui_elevenlabs_key = settings.decrypt(_enc_key)
                 else:
                     comfyui_elevenlabs_key = None
                 # Additional servers for TTS load balancing
                 for _srv in _active_servers[1:]:
                     _srv_key = None
                     if _srv.api_key_encrypted:
-                        _srv_key = decrypt_value(_srv.api_key_encrypted, settings.encryption_key)
+                        _srv_key = settings.decrypt(_srv.api_key_encrypted)
                     comfyui_extra_servers.append((_srv.url, _srv_key))
     except Exception:
         logger.debug("comfyui_elevenlabs_db_lookup_failed", exc_info=True)

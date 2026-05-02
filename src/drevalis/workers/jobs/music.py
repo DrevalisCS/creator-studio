@@ -33,7 +33,6 @@ async def generate_episode_music(
         Desired track length in seconds (1-120).
     """
     from drevalis.core.config import Settings
-    from drevalis.core.security import decrypt_value
     from drevalis.repositories.comfyui import ComfyUIServerRepository
     from drevalis.repositories.episode import EpisodeRepository
     from drevalis.services.comfyui import ComfyUIClient
@@ -70,7 +69,7 @@ async def generate_episode_music(
     comfyui_api_key: str | None = None
     if server.api_key_encrypted:
         try:
-            comfyui_api_key = decrypt_value(server.api_key_encrypted, settings.encryption_key)
+            comfyui_api_key = settings.decrypt(server.api_key_encrypted)
         except Exception:
             logger.warning("music_generate_job.api_key_decrypt_failed", server_id=str(server.id))
 

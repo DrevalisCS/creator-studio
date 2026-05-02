@@ -253,3 +253,19 @@ class Settings(BaseSettings):
         :meth:`get_encryption_keys`.
         """
         return self._current_encryption_key_version
+
+    def decrypt(self, ciphertext: str) -> str:
+        """Decrypt *ciphertext* against the full versioned key map.
+
+        Tries each known key from highest to lowest version. Use this
+        in callsites where ``settings`` is in scope so a rotation can
+        decrypt rows written under either the current *or* a historical
+        key. Raises ``cryptography.fernet.InvalidToken`` if no key
+        works (i.e. tampered ciphertext or genuinely lost key).
+        """
+        from drevalis.core.security import decrypt_value_multi
+
+        plaintext, _version = decrypt_value_multi(
+            ciphertext, self.get_encryption_keys()
+        )
+        return plaintext

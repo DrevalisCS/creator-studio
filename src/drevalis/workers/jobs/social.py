@@ -25,7 +25,6 @@ import httpx
 import structlog
 from sqlalchemy import select
 
-from drevalis.core.security import decrypt_value
 from drevalis.models.media_asset import MediaAsset
 from drevalis.models.social_platform import SocialPlatform, SocialUpload
 
@@ -121,10 +120,7 @@ async def _publish_pending_social_uploads_locked(ctx: dict[str, Any]) -> dict[st
                 continue
 
             try:
-                token = decrypt_value(
-                    platform.access_token_encrypted or "",
-                    settings.encryption_key,
-                )
+                token = settings.decrypt(platform.access_token_encrypted or "")
                 if platform.platform == "tiktok":
                     publish_id = await _tiktok_upload(
                         token=token,

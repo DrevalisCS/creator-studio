@@ -16,7 +16,7 @@ from cryptography.fernet import InvalidToken
 from sqlalchemy import select
 
 from drevalis.core.config import Settings
-from drevalis.core.security import decrypt_value, encrypt_value
+from drevalis.core.security import encrypt_value
 from drevalis.models.license_state import LicenseStateRow
 
 if TYPE_CHECKING:
@@ -38,7 +38,7 @@ def _decrypt_stored_jwt(row: LicenseStateRow) -> str | None:
         return row.jwt
     settings = Settings()
     try:
-        return decrypt_value(row.jwt, settings.encryption_key)
+        return settings.decrypt(row.jwt)
     except InvalidToken as exc:
         raise ValueError(
             "license_state.jwt cannot be decrypted with the current "

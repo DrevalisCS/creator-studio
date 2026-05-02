@@ -7,6 +7,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.97] - 2026-05-02
+
+### Added
+
+- **`Settings.decrypt(ciphertext)` convenience** — wraps
+  `decrypt_value_multi` against the full versioned key map so
+  callsites where `settings` is in scope can pick up rotation support
+  with a one-line swap. 3 new tests pin the steady-state path,
+  historical-key fallback, and the `InvalidToken` raise when no key
+  works.
+
+### Changed
+
+- **Migrated direct decrypt callsites to multi-version**: the
+  following modules now read encrypted values via `settings.decrypt()`
+  instead of `decrypt_value(ct, settings.encryption_key)`, so a row
+  encrypted under an older `ENCRYPTION_KEY_V<N>` still decrypts after
+  rotation:
+
+  - `repositories/license_state.py` — license JWT.
+  - `workers/lifecycle.py` — ComfyUI primary + extra TTS server keys.
+  - `workers/jobs/audiobook.py` — DB-configured LLM API key (both
+    audiobook generation paths).
+  - `workers/jobs/social.py` — TikTok / IG / X access token.
+  - `workers/jobs/music.py` — ComfyUI server API key.
+  - `services/cloud_gpu/registry.py` — provider API keys from the
+    api-key store.
+  - `services/integration_keys.py` — YouTube client_id / client_secret
+    fallback from the api-key store.
+
+  Service classes that hold `self._encryption_key: str`
+  (`comfyui_admin`, `llm/_monolith`, `runpod_orchestrator`,
+  `voice_profile`, `social`, `youtube`) are **unchanged** in this
+  release — they will be migrated in a follow-up that widens
+  constructors to accept the versioned dict.
+
+  Test updates: 3 license_state, 1 social_worker, and 1
+  integration_keys test had to update their mocks/fixtures to also
+  stub `settings.decrypt(...)`.
+
 ## [0.29.96] - 2026-05-02
 
 ### Added

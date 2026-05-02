@@ -716,7 +716,6 @@ async def generate_script_async(
         provider = None
         session_factory = ctx["session_factory"]
         async with session_factory() as session:
-            from drevalis.core.security import decrypt_value
             from drevalis.repositories.llm_config import LLMConfigRepository
 
             llm_repo = LLMConfigRepository(session)
@@ -725,7 +724,7 @@ async def generate_script_async(
                 cfg = configs[0]
                 api_key = "not-needed"
                 if cfg.api_key_encrypted:
-                    api_key = decrypt_value(cfg.api_key_encrypted, settings.encryption_key)
+                    api_key = settings.decrypt(cfg.api_key_encrypted)
                 provider = OpenAICompatibleProvider(
                     base_url=cfg.base_url,
                     model=cfg.model_name,
@@ -855,7 +854,6 @@ async def generate_ai_audiobook(
             # Try DB-configured LLM first, fall back to LM Studio
             provider = None
             async with session_factory() as session:
-                from drevalis.core.security import decrypt_value
                 from drevalis.repositories.llm_config import LLMConfigRepository
 
                 llm_repo = LLMConfigRepository(session)
@@ -864,7 +862,7 @@ async def generate_ai_audiobook(
                     cfg = configs[0]
                     api_key = "not-needed"
                     if cfg.api_key_encrypted:
-                        api_key = decrypt_value(cfg.api_key_encrypted, settings.encryption_key)
+                        api_key = settings.decrypt(cfg.api_key_encrypted)
                     provider = OpenAICompatibleProvider(
                         base_url=cfg.base_url,
                         model=cfg.model_name,
