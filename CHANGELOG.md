@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.76] - 2026-05-02
+
+### Added
+
+- **api/websocket + api/routes/episodes (CRUD half)** — 82 new tests
+  raising two more critical surfaces.
+
+  - **`api/websocket.py`** 11% → **86%** (new `test_websocket.py`,
+    31 tests). Real-time progress streaming. Pinned:
+    - **`_validate_ws_token` v0.20.13 fix**: a CRLF-mangled blank
+      `API_AUTH_TOKEN=\r` (Windows installer footgun) is treated
+      as auth-disabled, NOT auth-on. Without the `.strip()` every
+      browser WebSocket would close with 4001 → HTTP 403 on a
+      fresh Windows install.
+    - `ConnectionManager`: per-episode buckets, broadcast prunes
+      stale connections (raise on `send_text`), drops empty
+      buckets so they don't leak.
+    - `_listen_redis_pubsub` terminal-message detection: both
+      `pipeline_complete` and `step=done @ 100` break the loop;
+      bytes data decoded to UTF-8; non-terminal JSON and non-JSON
+      both keep the loop alive.
+    - `websocket_progress`: 4001 (Unauthorized) reject BEFORE
+      handshake on bad token; 1008 (Policy Violation) reject on
+      malformed UUID; ping → pong round-trip; listener task
+      cancelled in finally.
+    - `websocket_all_progress`: pmessage forwarded, subscribe-type
+      messages filtered.
+
+  - **`api/routes/episodes/_monolith.py`** 18% → **29%** (new
+    `test_episodes_route.py`, 51 tests). Pinned the entire
+    service-exception → HTTP-status mapping for CRUD + generation
+    control + script edits:
+    - `EpisodeNotFoundError` → 404 across every endpoint.
+    - **`EpisodeInvalidStatusError` → 409 with the current status
+      in the detail** so the UI can render "this episode is
+      'exported' — only 'draft' or 'failed' can regen".
+    - `ConcurrencyCapReachedError` → **429 Too Many Requests**.
+    - `NoFailedJobError` → **409** (Conflict — distinct from 404).
+    - `ScriptValidationError` → 422.
+    - **Quota check fires before service** on `/generate` —
+      ensures Pro/Studio paywall blocks even episodes the user
+      owns. Pinned with `quota.assert_awaited_once()`.
+    - Reorder endpoint rejects missing/non-list `order` payload
+      with 422 before reaching the service.
+    - Split endpoint coerces `char_offset` to int and passes
+      `None` when omitted.
+
+    The remaining 71% (regenerate / reassemble / edit / export
+    endpoints, 1500+ LOC) deliberately left for a follow-up — each
+    is a complex multi-mock orchestration warranting its own pass.
+
+  Suite total: **2125 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.75] - 2026-05-02
 
 ### Added
