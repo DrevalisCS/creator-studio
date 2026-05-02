@@ -95,3 +95,168 @@ class TestGetSessionSecret:
         monkeypatch.setenv("SESSION_SECRET", "dedicated-cookie-hmac")
         s = Settings(_env_file=None)  # type: ignore[call-arg]
         assert s.get_session_secret() == "dedicated-cookie-hmac"
+
+
+# ── Multi-version ENCRYPTION_KEY env loading ──────────────────────────
+
+
+def _key_from(seed: int) -> str:
+    return base64.urlsafe_b64encode(bytes([seed]) * 32).decode()
+
+
+def _wipe_versioned_keys(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Strip any ``ENCRYPTION_KEY_V<N>`` envs that the host shell may
+    have set, so each test starts from a known-empty slate."""
+    import os
+    import re
+
+    pat = re.compile(r"^ENCRYPTION_KEY_V\d+$", re.IGNORECASE)
+    for name in list(os.environ):
+        if pat.match(name):
+            monkeypatch.delenv(name, raising=False)
+
+
+class TestVersionedEncryptionKeys:
+    def test_default_when_no_versions_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: a vanilla install with only ENCRYPTION_KEY set yields
+        # a single-entry map keyed at version 1, and the current
+        # version is 1. This is the steady-state for every install
+        # that's never rotated.
+        _wipe_versioned_keys(monkeypatch)
+        key = _valid_fernet_key()
+        monkeypatch.setenv("ENCRYPTION_KEY", key)
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert s.get_encryption_keys() == {1: key}
+        assert s.get_current_encryption_key_version() == 1
+
+    def test_rotation_with_v1_historical(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: when an operator deploys with ENCRYPTION_KEY=K2 and
+        # ENCRYPTION_KEY_V1=K1, the map is {1: K1, 2: K2} and new
+        # writes get key_version=2.
+        _wipe_versioned_keys(monkeypatch)
+        k1 = _key_from(0x11)
+        k2 = _key_from(0x22)
+        monkeypatch.setenv("ENCRYPTION_KEY", k2)
+        monkeypatch.setenv("ENCRYPTION_KEY_V1", k1)
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert s.get_encryption_keys() == {1: k1, 2: k2}
+        assert s.get_current_encryption_key_version() == 2
+
+    def test_three_generations(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Pin: V1 + V2 historical, current key at V3.
+        _wipe_versioned_keys(monkeypatch)
+        k1 = _key_from(0x11)
+        k2 = _key_from(0x22)
+        k3 = _key_from(0x33)
+        monkeypatch.setenv("ENCRYPTION_KEY", k3)
+        monkeypatch.setenv("ENCRYPTION_KEY_V1", k1)
+        monkeypatch.setenv("ENCRYPTION_KEY_V2", k2)
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert s.get_encryption_keys() == {1: k1, 2: k2, 3: k3}
+        assert s.get_current_encryption_key_version() == 3
+
+    def test_sparse_versions(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Pin: an operator that drops a middle version still gets a
+        # consistent map. ENCRYPTION_KEY occupies max(versions) + 1.
+        _wipe_versioned_keys(monkeypatch)
+        k1 = _key_from(0x11)
+        k3 = _key_from(0x33)
+        kc = _key_from(0xAA)
+        monkeypatch.setenv("ENCRYPTION_KEY", kc)
+        monkeypatch.setenv("ENCRYPTION_KEY_V1", k1)
+        monkeypatch.setenv("ENCRYPTION_KEY_V3", k3)
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert s.get_encryption_keys() == {1: k1, 3: k3, 4: kc}
+        assert s.get_current_encryption_key_version() == 4
+
+    def test_current_key_matching_existing_version_does_not_duplicate(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: if ENCRYPTION_KEY equals one of the V_N values, no new
+        # slot is created — we treat the install as "still on V_N".
+        # This prevents accidental version inflation when an operator
+        # declares the same key under both names.
+        _wipe_versioned_keys(monkeypatch)
+        k1 = _key_from(0x11)
+        monkeypatch.setenv("ENCRYPTION_KEY", k1)
+        monkeypatch.setenv("ENCRYPTION_KEY_V1", k1)
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert s.get_encryption_keys() == {1: k1}
+        assert s.get_current_encryption_key_version() == 1
+
+    def test_invalid_versioned_key_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: a malformed ENCRYPTION_KEY_V_N (wrong length) fails
+        # startup the same way ENCRYPTION_KEY would — we do not want a
+        # silent fallback that drops historical decrypts.
+        _wipe_versioned_keys(monkeypatch)
+        monkeypatch.setenv("ENCRYPTION_KEY", _valid_fernet_key())
+        # Valid base64 but only 16 decoded bytes — not a Fernet key.
+        monkeypatch.setenv(
+            "ENCRYPTION_KEY_V1",
+            base64.urlsafe_b64encode(b"\x00" * 16).decode(),
+        )
+        with pytest.raises(ValidationError, match="ENCRYPTION_KEY_V1"):
+            Settings(_env_file=None)  # type: ignore[call-arg]
+
+    def test_returned_dict_is_a_copy(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: get_encryption_keys returns a copy so callers can't
+        # mutate the cached state on the Settings instance.
+        _wipe_versioned_keys(monkeypatch)
+        monkeypatch.setenv("ENCRYPTION_KEY", _valid_fernet_key())
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        out = s.get_encryption_keys()
+        out[99] = "tampered"
+        assert 99 not in s.get_encryption_keys()
+
+    def test_empty_versioned_env_var_ignored(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: an empty ENCRYPTION_KEY_V_N (e.g. set but blank) is
+        # treated as "not set" rather than failing the validator.
+        # docker-compose .env files sometimes leave keys blank to
+        # document them — that shouldn't break startup.
+        _wipe_versioned_keys(monkeypatch)
+        monkeypatch.setenv("ENCRYPTION_KEY", _valid_fernet_key())
+        monkeypatch.setenv("ENCRYPTION_KEY_V1", "")
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        assert s.get_encryption_keys() == {1: s.encryption_key}
+
+    def test_decrypt_value_multi_compatibility(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: the dict returned by get_encryption_keys is the exact
+        # shape ``decrypt_value_multi`` expects. Encrypt a value with
+        # an old key, rotate to a new current key, and confirm the
+        # helper still recovers the plaintext + reports the right
+        # version.
+        from drevalis.core.security import decrypt_value_multi, encrypt_value
+
+        _wipe_versioned_keys(monkeypatch)
+        k1 = _key_from(0x11)
+        k2 = _key_from(0x22)
+        ciphertext, _v = encrypt_value("secret-payload", k1, version=1)
+
+        monkeypatch.setenv("ENCRYPTION_KEY", k2)
+        monkeypatch.setenv("ENCRYPTION_KEY_V1", k1)
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        plaintext, version = decrypt_value_multi(
+            ciphertext, s.get_encryption_keys()
+        )
+        assert plaintext == "secret-payload"
+        assert version == 1

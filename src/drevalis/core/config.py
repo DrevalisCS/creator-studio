@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import os
+import re
 from pathlib import Path
 
-from pydantic import model_validator
+from pydantic import PrivateAttr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ENCRYPTION_KEY_VERSION_PATTERN = re.compile(r"^ENCRYPTION_KEY_V(\d+)$", re.IGNORECASE)
 
 
 class Settings(BaseSettings):
@@ -44,6 +48,12 @@ class Settings(BaseSettings):
 
     # ── Encryption (Fernet) ───────────────────────────────────────────────
     encryption_key: str  # Required — no default
+
+    # Versioned-key map populated from ``ENCRYPTION_KEY_V<N>`` env vars
+    # (see ``_load_versioned_encryption_keys``). Read via
+    # ``get_encryption_keys()`` / ``get_current_encryption_key_version()``.
+    _encryption_keys: dict[int, str] = PrivateAttr(default_factory=dict)
+    _current_encryption_key_version: int = PrivateAttr(default=1)
 
     # ── LM Studio (local LLM) ────────────────────────────────────────────
     lm_studio_base_url: str = "http://localhost:1234/v1"
@@ -171,3 +181,75 @@ class Settings(BaseSettings):
                 "Generate a proper Fernet key."
             )
         return self
+
+    @model_validator(mode="after")
+    def _load_versioned_encryption_keys(self) -> Settings:
+        """Populate the versioned key map from ``ENCRYPTION_KEY_V<N>`` env vars.
+
+        Key rotation flow:
+
+        1. Old install runs with ``ENCRYPTION_KEY=K1``. New ciphertext is
+           tagged ``key_version=1``.
+        2. Operator deploys with ``ENCRYPTION_KEY=K2`` *and*
+           ``ENCRYPTION_KEY_V1=K1``. ``get_encryption_keys()`` returns
+           ``{1: K1, 2: K2}``; ``get_current_encryption_key_version()``
+           returns ``2``. New writes use K2 with key_version=2; existing
+           rows still decrypt via ``decrypt_value_multi``.
+        3. After re-encrypting all rows with K2 the operator drops the
+           ``ENCRYPTION_KEY_V1`` env var and the historical key falls
+           out of the map.
+
+        Each historical key is validated the same way as the main one;
+        a malformed ``ENCRYPTION_KEY_V<N>`` fails fast at startup.
+        """
+        import base64
+
+        versioned: dict[int, str] = {}
+        for env_name, env_value in os.environ.items():
+            match = _ENCRYPTION_KEY_VERSION_PATTERN.match(env_name)
+            if not match or not env_value:
+                continue
+            version = int(match.group(1))
+            try:
+                decoded = base64.urlsafe_b64decode(env_value.encode())
+            except Exception:
+                raise ValueError(
+                    f"{env_name} is not a valid Fernet key "
+                    "(base64 decode failed)."
+                ) from None
+            if len(decoded) != 32:
+                raise ValueError(
+                    f"{env_name} decoded length is {len(decoded)}, expected 32."
+                )
+            versioned[version] = env_value
+
+        # If ENCRYPTION_KEY matches one of the V_N values, the current
+        # key *is* that historical version (operator hasn't rotated yet,
+        # they just declared the same key under both names). Otherwise
+        # the current key occupies the next-highest slot.
+        matching_versions = [
+            v for v, k in versioned.items() if k == self.encryption_key
+        ]
+        if matching_versions:
+            current_version = max(matching_versions)
+        else:
+            current_version = (max(versioned) + 1) if versioned else 1
+            versioned[current_version] = self.encryption_key
+
+        self._encryption_keys = versioned
+        self._current_encryption_key_version = current_version
+        return self
+
+    def get_encryption_keys(self) -> dict[int, str]:
+        """Return ``{version: key}`` for every Fernet key currently
+        loaded from the environment, including the active
+        ``ENCRYPTION_KEY``. Suitable to hand to ``decrypt_value_multi``.
+        """
+        return dict(self._encryption_keys)
+
+    def get_current_encryption_key_version(self) -> int:
+        """Return the version number that **new** ciphertext should be
+        tagged with. Equal to the highest version in
+        :meth:`get_encryption_keys`.
+        """
+        return self._current_encryption_key_version

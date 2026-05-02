@@ -7,6 +7,56 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.96] - 2026-05-02
+
+### Added
+
+- **Multi-version `ENCRYPTION_KEY` env loading** — `Settings` now
+  auto-loads `ENCRYPTION_KEY_V<N>` env vars (`ENCRYPTION_KEY_V1`,
+  `ENCRYPTION_KEY_V2`, …) and exposes them via two new methods:
+
+  - `Settings.get_encryption_keys() -> dict[int, str]` — the full
+    `{version: key}` map, suitable to hand directly to
+    `decrypt_value_multi(ciphertext, ...)`.
+  - `Settings.get_current_encryption_key_version() -> int` — the
+    version that new ciphertext should be tagged with.
+
+  Rotation flow:
+
+  1. Steady-state install: only `ENCRYPTION_KEY=K1` set →
+     `{1: K1}`, current version 1.
+  2. Deploy a new key: set `ENCRYPTION_KEY=K2` and
+     `ENCRYPTION_KEY_V1=K1` → `{1: K1, 2: K2}`, current version 2.
+     New writes tag `key_version=2`; legacy rows still decrypt
+     against K1 via `decrypt_value_multi`.
+  3. After background re-encryption: drop `ENCRYPTION_KEY_V1` →
+     `{2: K2}`, current version 2.
+
+  Edge cases:
+
+  - **Sparse versions**: `V1` + `V3` (no `V2`) → current key gets
+    slot 4 (`max(versions) + 1`).
+  - **Same key under both names**: if `ENCRYPTION_KEY` matches an
+    existing `V_N`, no new slot is created — operator hasn't
+    actually rotated.
+  - **Empty env value**: `ENCRYPTION_KEY_V1=""` is ignored (common
+    in docker-compose `.env` files that pre-declare blank slots).
+  - **Malformed historical key**: a non-base64 or wrong-length
+    `ENCRYPTION_KEY_V_N` fails startup the same way `ENCRYPTION_KEY`
+    would. We never silently drop a historical key — that would
+    break decrypts on a subset of rows in the running install.
+
+  9 new tests in `test_core_config.py` covering: vanilla install,
+  rotation with V1, three-generation, sparse versions, current-key-
+  matches-existing-version, malformed V_N rejected, returned dict
+  is a copy, empty env-var ignored, and a round-trip
+  `decrypt_value_multi` compatibility test against the dict
+  produced by `Settings`.
+
+  Per-caller adoption is incremental — most existing callers still
+  pass `settings.encryption_key` for new writes; this release adds
+  the Settings-layer plumbing so they *can* migrate.
+
 ## [0.29.95] - 2026-05-02
 
 ### Added
