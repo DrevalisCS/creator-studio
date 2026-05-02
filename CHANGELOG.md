@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.77] - 2026-05-02
+
+### Added
+
+- **api/routes/audiobooks + youtube monoliths** — 74 new tests
+  bringing two more router modules from low single-digit / teens
+  coverage to 73% / 33%.
+
+  - **`api/routes/audiobooks/_monolith.py`** 32% → **73%** (new
+    `test_audiobooks_route.py`, 48 tests). Pinned the entire
+    surface that drives the Audiobook studio:
+    - **AI script generation flow**: enqueue → poll → cancel; 404
+      on missing job; result parsing on `done`; error string
+      surfaced on `failed`.
+    - **`POST /create-ai`**: `ValidationError` → 400 (LLM not
+      configured), `NotFoundError` → 404 (voice profile missing).
+    - **`POST /upload-cover`**: rejects non-image content_type →
+      422, oversize → 413, **invalid image bytes → 422**
+      (Pillow `verify()` catches HTML/JS polyglots smuggled with
+      `.png` extension); writes a unique-name file under
+      `audiobooks/covers/`. Unknown extension falls back to
+      `.png` (never empty).
+    - **`POST /{id}/cancel`** is idempotent: returns the current
+      status when the audiobook isn't generating, NOT a 409 (UI
+      can call cancel any time without checking state first).
+    - Regenerate-chapter / regenerate-image: `None` payload coerces
+      to `None` text/prompt-override (not silently dropped).
+
+  - **`api/routes/youtube/_monolith.py`** 14% → **33%** (new
+    `test_youtube_route.py`, 26 tests). Pinned the auth + channel
+    CRUD surface:
+    - **`build_youtube_service`** translates
+      `YouTubeNotConfiguredError` two different ways:
+      - With `has_id_row` OR `has_secret_row` → 503
+        `youtube_key_decrypt_failed` carrying both flags so the
+        UI can render "your backup was restored on a different
+        ENCRYPTION_KEY". Pinned the partial-rows path too.
+      - Neither row → 503 plain string with the
+        `YOUTUBE_CLIENT_ID` setup hint.
+    - **OAuth callback CSRF guard**: missing state → 400, expired
+      state (Redis miss) → 400 (NOT 404 — this is a CSRF guard);
+      Redis lookup failure → 503; channel cap reached → **402
+      Payment Required** with tier+limit detail for the upgrade
+      flow.
+    - **`GET /auth-url`**: Redis state-persist failure is
+      logged-and-swallowed; user still gets the URL. The callback
+      will fail their state check downstream, which is correct
+      security posture.
+    - `connection_status` falls back to the first channel as
+      `primary` when no channel is marked active (UI never gets
+      a None primary while channels exist).
+    - `disconnect` ambiguous channels → 400 with channel list;
+      missing → 404.
+
+  Suite total: **2199 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.76] - 2026-05-02
 
 ### Added
