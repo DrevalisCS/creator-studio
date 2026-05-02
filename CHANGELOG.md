@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.74] - 2026-05-02
+
+### Added
+
+- **api/routes/music + series** — 49 new tests bringing two more
+  router modules to ~100%.
+
+  - **`api/routes/music.py`** 28% → **100%** (new
+    `test_music_route.py`, 22 tests). Custom-music upload + sidecar
+    metadata management. Pinned:
+    - `_safe_filename`: strips path components (`../../etc/track.mp3`
+      → `track.mp3`), rejects empty / dotfile names with 400,
+      truncates to 160.
+    - Upload: missing filename → 400, bad extension → 415 with
+      `received` field for diagnosis, **oversize → 413 with the
+      partial file deleted** (no orphan disk garbage), no extension
+      → 415 with `received: "(none)"`.
+    - PUT sidecar semantics: explicit `None` field **clears the
+      override** (revert to series default); empty meta deletes the
+      sidecar file entirely (no stale `{}` files).
+    - List endpoint skips non-allowed extensions, non-files, and
+      handles non-dict-root sidecars without crashing.
+
+  - **`api/routes/series.py`** 41% → **99%** (new
+    `test_series_route.py`, 27 tests). Pinned:
+    - **Async generate seeds Redis BEFORE returning** so the GET
+      poll endpoint never sees a "job not found" race window
+      between enqueue and the worker's first write.
+    - `redis.aclose()` is awaited in **finally** — even if
+      `arq.enqueue_job` raises mid-flight (pinned with explicit
+      `ConnectionError`).
+    - `update_series` `SeriesFieldLockedError` → **409** with a
+      structured detail carrying `locked_fields` and
+      `non_draft_episode_count` so the UI renders "Duplicate the
+      series; X episode(s) past draft" precisely.
+    - LLM-upstream failures (`ValidationError`) on `/generate-sync`
+      and `/{id}/add-episodes` map to **502 Bad Gateway** — WE
+      didn't fail, our upstream did.
+    - Job-status endpoint accepts both bytes AND str redis values
+      (some clients auto-decode).
+
+  Suite total: **1959 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.73] - 2026-05-02
 
 ### Added
