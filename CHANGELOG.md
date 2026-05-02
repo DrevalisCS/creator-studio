@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.68] - 2026-05-02
+
+### Added
+
+- **api/routes/social** — 20 new tests bringing the social router
+  to 100% (40% → **100%**, new `test_social_route.py`).
+
+  TikTok OAuth callback is the trickiest endpoint — it juggles three
+  failure modes that look the same on the wire but need different UX:
+
+  - **OAuth `?error=` query parameter present** (user clicked
+    "Cancel" on TikTok's consent screen): 302-redirect to
+    `/settings?section=social&tiktok_error=<code>` and **never
+    invoke the token-exchange RPC**. Pinned with
+    `tiktok_complete_oauth.assert_not_awaited()`.
+  - **`TikTokInvalidStateError`** (CSRF mismatch / replayed state):
+    302-redirect to settings with `tiktok_error=invalid_state` —
+    **NOT a 400**. Reason: the user is mid-browser-flow and a JSON
+    400 would dead-end them. Pinned to prevent a future
+    "consistent error handling" pass from raising HTTPException.
+  - **`TikTokOAuthError(error="invalid_grant")`**: the upstream
+    code surfaces in the 400 detail so `/jobs` log can identify
+    expired-code vs scope-mismatch.
+
+  Plus `ValidationError` → 400 / `NotFoundError` → 404 across
+  platform CRUD + uploads.
+
+  Suite total: **1645 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.67] - 2026-05-02
 
 ### Added
