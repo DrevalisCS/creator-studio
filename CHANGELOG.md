@@ -7,6 +7,67 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.84] - 2026-05-02
+
+### Added
+
+- **edit_render + video_ingest helper coverage** — 37 new tests
+  pinning the pure-helper layer of the two video-edit/ingest worker
+  jobs.
+
+  - **`workers/jobs/edit_render.py`** 17% → **42%** (new
+    `test_edit_render_helpers.py`, 23 tests). Pinned the FFmpeg
+    filtergraph composition helpers:
+    - **`_escape_drawtext`** escapes the four FFmpeg-meaningful
+      characters (`\\`, `:`, `'`, `%`) so user-provided overlay
+      text can't inject filtergraph syntax.
+    - **`_color_to_ffmpeg`**: `#RRGGBB` → `0xRRGGBB` (full 7-char
+      hex only — `#FFF` not auto-expanded), named colors and
+      `rgba(...)` / `name@alpha` strings pass through untouched,
+      None/empty → default fallback.
+    - **`_build_overlay_filters`** for text / shape / image:
+      - Text overlay defaults: fontsize=56, fontcolor=white, box=0.
+      - Shape with `kind="shape"` and missing `shape` field
+        defaults to `rect` (NOT silently dropped).
+      - Image overlay emits **two fragments** (`[N:v]format=rgba`
+        + `overlay=`) and registers an extra input. Index
+        increments across multiple images.
+      - Missing `asset_path` or non-existent file → image overlay
+        skipped without crashing.
+      - Unknown `kind` (e.g. `"lottie"`) → skipped (forward-
+        compat with future timeline shapes).
+      - Default `end_s` is `start_s + 1` so a missing field
+        doesn't produce a degenerate `between(t, X, X)` enable
+        expression.
+    - **`_collect_audio_envelopes`** returns first usable audio
+      track's envelope (≥ 2 keyframes); single-keyframe entries
+      ignored; int values coerced to float.
+
+  - **`workers/jobs/video_ingest.py`** 31% → **59%** (new
+    `test_video_ingest_helpers.py`, 14 tests). Pinned the LLM
+    output sanitisation that decides which clips survive into the
+    UI's clip-suggestion picker:
+    - **`_naive_candidates`** window/hop math: 45 s windows
+      stepping every 60 s, capped at 5 clips, [] for non-positive
+      duration.
+    - **`_llm_pick` defensive layering** when the LLM returns
+      garbage:
+      - Provider raises → naive fallback.
+      - Non-JSON output → naive fallback.
+      - Clips < 10 s or > 120 s → filtered out.
+      - Clips missing `start_s`/`end_s` → skipped (no crash).
+      - Clip count capped at `max_count` even when LLM returned
+        more.
+      - **Title capped at 120 chars / reason at 240** to fit DB
+        columns.
+      - Missing `score` field → 0.0 (so UI sort-by-score doesn't
+        crash on None).
+      - All clips filtered → naive fallback (always returns
+        something rather than empty).
+
+  Suite total: **2506 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.83] - 2026-05-02
 
 ### Added
