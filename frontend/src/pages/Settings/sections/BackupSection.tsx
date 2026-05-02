@@ -106,6 +106,24 @@ interface StorageProbe {
     error: string | null;
   }>;
   hints: string[];
+  // The route caches its diagnostic in Redis for 5 min; ``cached``
+  // tells us whether this response came from cache, and ``cached_at``
+  // is the ISO timestamp of when the underlying compute ran. Both are
+  // optional for backwards compatibility with pre-v0.29.95 backends.
+  cached?: boolean;
+  cached_at?: string;
+}
+
+function formatRelativeAge(iso?: string): string | null {
+  if (!iso) return null;
+  const cachedAt = Date.parse(iso);
+  if (Number.isNaN(cachedAt)) return null;
+  const seconds = Math.max(0, Math.floor((Date.now() - cachedAt) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ago`;
 }
 
 function formatBytes(bytes: number): string {
@@ -213,11 +231,14 @@ export function BackupSection() {
     window.open(`/api/v1/backup/${encodeURIComponent(filename)}`, '_blank');
   };
 
-  const onProbe = async () => {
+  const onProbe = async (force = false) => {
     setProbing(true);
     setProbeReport(null);
     try {
-      const res = await fetch('/api/v1/backup/storage-probe');
+      const url = force
+        ? '/api/v1/backup/storage-probe?force=true'
+        : '/api/v1/backup/storage-probe';
+      const res = await fetch(url);
       if (!res.ok) throw new ApiError(res.status, res.statusText, await res.text());
       const data: StorageProbe = await res.json();
       setProbeReport(data);
@@ -672,7 +693,7 @@ export function BackupSection() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Button onClick={onProbe} disabled={probing} variant="ghost">
+            <Button onClick={() => onProbe(false)} disabled={probing} variant="ghost">
               {probing ? 'Probing...' : 'Diagnose serving'}
             </Button>
             <Button onClick={onRepair} disabled={repairing} variant="primary">
@@ -682,6 +703,26 @@ export function BackupSection() {
         </div>
         {probeReport && (
           <div className="mt-4 space-y-3 rounded bg-bg-elevated p-3 text-xs">
+            {probeReport.cached && (
+              <div className="flex items-center justify-between rounded bg-bg-base/50 px-2 py-1 text-[11px] text-txt-secondary">
+                <span>
+                  Cached
+                  {(() => {
+                    const age = formatRelativeAge(probeReport.cached_at);
+                    return age ? ` ${age}` : '';
+                  })()}
+                  {' · 5 min TTL'}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => onProbe(true)}
+                  disabled={probing}
+                  className="text-accent hover:underline disabled:opacity-50"
+                >
+                  {probing ? 'Refreshing...' : 'Refresh now'}
+                </button>
+              </div>
+            )}
             <div className="font-mono text-txt-primary space-y-0.5">
               <div>
                 inside container: {probeReport.storage_base_path}

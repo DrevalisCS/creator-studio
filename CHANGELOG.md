@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-05-02
+
+### Added
+
+- **Storage-probe cache UX in BackupSection** — the frontend Backup
+  page now consumes the cache metadata exposed by v0.29.95:
+
+  - When the probe response is cache-served (``cached: true``), a
+    small badge appears at the top of the report showing
+    ``Cached N min ago · 5 min TTL`` along with a **Refresh now**
+    link that bypasses the cache (``?force=true``).
+  - When ``cached: false`` (i.e. the response is fresh), the badge
+    is hidden — fresh runs need no clarification.
+  - The ``StorageProbe`` interface gained optional ``cached`` and
+    ``cached_at`` fields. Optional rather than required so the UI
+    stays compatible with pre-v0.29.95 backends running the same
+    frontend bundle (during a staged rollout).
+
+  Without this UX the operator can't tell whether the report
+  reflects current state or a 5-min-old snapshot — important after
+  fixing a mount / permissions issue and wanting to confirm the fix.
+
+  No new tests: the change is purely presentational + a passthrough
+  query parameter; the type extension is forward-compatible.
+
 ## [0.29.99] - 2026-05-02
 
 ### Fixed
