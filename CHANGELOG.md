@@ -7,6 +7,50 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.87] - 2026-05-02
+
+### Added
+
+- **workers/jobs/edit_render FFmpeg subprocess paths** — 11 new
+  tests bringing edit-session render coverage from 42% → **71%**
+  (new `test_edit_render_subprocess.py`).
+
+  Pinned the FFmpeg subprocess composition that the helper-only
+  suite couldn't reach:
+
+  - **`_apply_overlays`**:
+    - Drawtext-only invocation: single ffmpeg pass with `-vf`,
+      `-c:a copy` (audio passthrough), drawtext fragment in the
+      filter argument.
+    - Drawtext failure (non-zero exit) → `RuntimeError("overlay
+      drawtext failed")` with the stderr tail captured.
+    - Image-only invocation: drawtext stage SKIPPED entirely;
+      single ffmpeg pass using `-filter_complex` for the image
+      overlay.
+    - Mixed drawtext + image → exactly **two ffmpeg passes** in
+      order (drawtext first, image second).
+    - Image overlays with missing `asset_path` or non-existent
+      file → silently skipped without spawning ffmpeg.
+    - Image overlay failure → `RuntimeError("overlay image
+      failed")`.
+
+  - **`_apply_audio_envelopes`**:
+    - Empty envelopes → early return without spawning ffmpeg
+      (zero-cost path for clips with no automation).
+    - Piecewise expression has the correct `if(...)` count — head +
+      N segments + tail. Pinned with explicit nesting count
+      assertion.
+    - **Degenerate segments** (`t1 <= t0`) silently skipped —
+      doesn't crash on overlapping/duplicate keyframes.
+    - **Unsorted keyframes are sorted by time first** — head
+      condition fires for `t < first_sorted_point` and tail for
+      `t >= last_sorted_point`, regardless of input order.
+    - FFmpeg non-zero exit → `RuntimeError("envelope render
+      failed")`.
+
+  Suite total: **2531 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.86] - 2026-05-02
 
 ### Added
