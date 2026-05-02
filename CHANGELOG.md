@@ -7,6 +7,85 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.82] - 2026-05-02
+
+### Added
+
+- **Heavy worker orchestrator safety branches** — 36 new tests
+  pinning the early-exit / failure-handling paths on the three
+  largest worker jobs.
+
+  - **`workers/jobs/episode.py`** 0% → **82%** (new
+    `test_episode_job.py`, 14 tests). Pinned the
+    `generate_episode` orchestration's pre-flight gates plus the
+    four reassemble/regenerate/retry handlers:
+    - **Demo mode short-circuit** redirects to
+      `generate_episode_demo` without invoking the real
+      PipelineOrchestrator (so demo installs use no GPU).
+    - **License gate** (4th-line validation): unusable license →
+      `RuntimeError("license_not_usable:expired")` raised before
+      DB session is opened. Defends against bypassing the
+      on_job_start hook + middleware + lifespan bootstrap
+      simultaneously.
+    - **Priority deferral**: shorts_first mode + longform episode
+      + busy preferred queue → `arq.enqueue_job(..._defer_by=60)`
+      and returns `status="deferred"` instead of running.
+    - **Redis hiccup tolerance**: when `redis.get` raises during
+      priority lookup, the route falls through to normal
+      generation (Redis outage doesn't block the pipeline).
+    - **`generate_episode` re-raises on orchestrator failure** so
+      arq honours max_tries + backoff. Pinned with explicit
+      `pytest.raises` because returning `{"status": "failed"}`
+      would make arq consider the job complete and skip retries.
+    - **`reassemble_episode` / `regenerate_voice` re-raise** but
+      **`regenerate_scene` / `retry_episode_step` swallow and
+      return `{"status": "failed"}`** — operator-driven manual
+      retries shouldn't get stuck in an arq retry loop. Both
+      semantics pinned.
+    - **Reassemble step reset is selective**: only `done` jobs
+      get reset to `queued`; jobs in other states are left alone.
+    - **Visual prompt override** in `regenerate_scene` is
+      persisted to the script JSONB before regeneration runs;
+      other scenes' prompts are preserved.
+
+  - **`workers/jobs/audiobook.py`** 0% → **15%** (new
+    `test_audiobook_worker_job.py`, 6 tests). The orchestration
+    is too deep for full unit coverage (drives TTS + ComfyUI +
+    music + ffmpeg over 700+ LOC), but the safety branches that
+    decide whether to proceed at all are pinned:
+    - Missing audiobook → returns `failed` dict (NOT raise — UI
+      can retry on a stale ID without arq looping).
+    - Missing voice profile (or null `voice_profile_id`) →
+      audiobook updated to `failed` with error_message before
+      returning.
+    - **Preflight error joining + 2000-char cap**: many errors
+      → joined with `; `, prefixed with code, capped so the DB
+      column doesn't overflow.
+
+  - **`workers/jobs/social.py`** 0% → **34%** (new
+    `test_social_worker_job.py`, 16 tests). Pinned the cron-
+    locked publish-pending flow + caption helpers:
+    - **Cron lock guard**: when the lock is held by another
+      worker, returns all-zero counters without touching the DB
+      (no double-fire on the same SocialUpload row).
+    - **Inactive platform** → upload row marked failed.
+    - **Unknown platform** (e.g. "snapchat") → counted as
+      `skipped_other_platforms` and **left in pending state** so a
+      future deploy adding the platform picks it up cleanly.
+    - **Missing video asset / file-not-on-disk** → row marked
+      failed with the specific reason.
+    - **Uploader failure with 500-char cap** on the persisted
+      error_message.
+    - `_compose_caption` (TikTok 150-char single-line) and
+      `_compose_caption_multiline` (Instagram/X with blank-line
+      separators) length + part-skipping behaviour.
+    - `_relative_storage_url` falls back to the last 3 path
+      components when no `storage` segment is present (defensive
+      against custom mount layouts).
+
+  Suite total: **2450 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.81] - 2026-05-02
 
 ### Added
