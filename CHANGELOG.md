@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.70] - 2026-05-02
+
+### Added
+
+- **api/routes/api_keys + llm** — 29 new tests bringing two more
+  router modules to 100%.
+
+  - **`api/routes/api_keys.py`** 35% → **100%** (new
+    `test_api_keys_route.py`, 13 tests): pinned the **DB > env >
+    none** source priority on the `/integrations` dashboard, the
+    YouTube-specific regression that requires BOTH
+    `youtube_client_id` AND `youtube_client_secret` in the api_key
+    store (the pre-v0.28.1 single-`youtube`-row lookup is
+    explicitly anti-pinned), and the YouTube env-partial fallback
+    (one of the two env vars set is treated as not configured).
+    `delete` 404 detail string includes the key name so the UI
+    can render "No API key stored for 'runpod'" rather than a
+    generic 404.
+  - **`api/routes/llm.py`** 38% → **100%** (new
+    `test_llm_route.py`, 16 tests): pinned the critical security
+    invariant on `POST /{id}/test` — `svc.expunge(config)` MUST
+    be awaited before any decryption happens so a stray autoflush
+    can't write plaintext keys back to the DB. Confirmed with
+    `expunge.assert_awaited_once_with(config)`. Also pinned the
+    runtime-failure path returning `success=False` instead of
+    raising 500 (UI shows a banner; `LM Studio down` shouldn't
+    page anyone).
+
+  Suite total: **1707 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.69] - 2026-05-02
 
 ### Added
