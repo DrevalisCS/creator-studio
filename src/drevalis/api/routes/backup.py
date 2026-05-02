@@ -42,6 +42,7 @@ from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — required
 # import annotations`` turns annotations into strings, so the
 # previous TYPE_CHECKING-only import made FastAPI fall back to
 # treating ``db`` as a query param, producing 422 on every request.
+from drevalis.core.cache_keys import STORAGE_PROBE_CACHE_KEY
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_redis, get_settings
 from drevalis.services.backup import BackupService
@@ -54,8 +55,10 @@ router = APIRouter(prefix="/api/v1/backup", tags=["backup"])
 # Storage probe is expensive (samples media_assets across 5 asset types
 # + reads first byte of each file). Caching for 5 min keeps the Backup
 # tab snappy after the first hit; the operator can hit refresh with
-# ``?force=true`` to recompute.
-_STORAGE_PROBE_CACHE_KEY = "storage_probe:report"
+# ``?force=true`` to recompute. The cache key lives in
+# ``core/cache_keys`` so the worker that runs a restore can bust it
+# from the other side without an api → workers import.
+_STORAGE_PROBE_CACHE_KEY = STORAGE_PROBE_CACHE_KEY
 _STORAGE_PROBE_CACHE_TTL_S = 300
 
 

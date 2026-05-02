@@ -121,10 +121,11 @@ class TestScheduledBackup:
 
 
 class _RecordingRedis:
-    """Minimal stand-in for the arq Redis pool that records SETs."""
+    """Minimal stand-in for the arq Redis pool that records SETs + DELs."""
 
     def __init__(self) -> None:
         self.writes: list[tuple[str, dict[str, Any], int | None]] = []
+        self.deletes: list[str] = []
 
     async def set(self, key: str, value: str, *, ex: int | None = None) -> None:
         try:
@@ -132,6 +133,10 @@ class _RecordingRedis:
         except json.JSONDecodeError:
             payload = {"raw": value}
         self.writes.append((key, payload, ex))
+
+    async def delete(self, *keys: str) -> int:
+        self.deletes.extend(keys)
+        return len(keys)
 
 
 class TestRestoreBackupAsync:
@@ -391,3 +396,97 @@ class TestRestoreBackupAsync:
         assert kwargs["allow_key_mismatch"] is True
         assert kwargs["restore_db"] is False
         assert kwargs["restore_media"] is True
+
+    async def test_storage_probe_cache_busted_on_success(
+        self, tmp_path: Path
+    ) -> None:
+        # Pin: a successful restore busts the storage_probe cache so the
+        # next Backup-tab load reflects live post-restore state instead
+        # of the pre-restore snapshot the route may have cached up to
+        # 5 minutes earlier.
+        from drevalis.core.cache_keys import STORAGE_PROBE_CACHE_KEY
+
+        archive = tmp_path / "snap.tar.gz"
+        archive.write_bytes(b"\x00" * 100)
+        redis = _RecordingRedis()
+        svc = MagicMock()
+        svc.restore_backup = AsyncMock(
+            return_value={"rows_inserted": {}, "storage_paths_restored": []}
+        )
+        session = AsyncMock()
+
+        with (
+            patch("drevalis.core.config.Settings", return_value=_make_settings()),
+            patch(
+                "drevalis.services.updates._resolve_current_version",
+                return_value="0.29.99",
+            ),
+            patch("drevalis.services.backup.BackupService", return_value=svc),
+        ):
+            await restore_backup_async(
+                self._ctx(redis, session), "job-1", str(archive)
+            )
+
+        assert STORAGE_PROBE_CACHE_KEY in redis.deletes
+
+    async def test_storage_probe_cache_busted_on_failure(
+        self, tmp_path: Path
+    ) -> None:
+        # Pin: a failed restore can leave storage in a partial state —
+        # the operator needs fresh signal on the Backup tab even more
+        # than after a clean restore. So the cache bust runs in the
+        # ``finally`` block, not just the success path.
+        from drevalis.core.cache_keys import STORAGE_PROBE_CACHE_KEY
+
+        archive = tmp_path / "snap.tar.gz"
+        archive.write_bytes(b"\x00" * 100)
+        redis = _RecordingRedis()
+        svc = MagicMock()
+        svc.restore_backup = AsyncMock(side_effect=RuntimeError("boom"))
+        session = AsyncMock()
+
+        with (
+            patch("drevalis.core.config.Settings", return_value=_make_settings()),
+            patch(
+                "drevalis.services.updates._resolve_current_version",
+                return_value="0.29.99",
+            ),
+            patch("drevalis.services.backup.BackupService", return_value=svc),
+        ):
+            await restore_backup_async(
+                self._ctx(redis, session), "job-1", str(archive)
+            )
+
+        assert STORAGE_PROBE_CACHE_KEY in redis.deletes
+
+    async def test_cache_bust_failure_swallowed(self, tmp_path: Path) -> None:
+        # Pin: a Redis hiccup on the cache-bust path doesn't 500 the
+        # job — the cache will expire on its own within 5 min anyway.
+        archive = tmp_path / "snap.tar.gz"
+        archive.write_bytes(b"\x00" * 100)
+
+        class _FailingDeleteRedis(_RecordingRedis):
+            async def delete(self, *keys: str) -> int:
+                raise ConnectionError("redis down")
+
+        redis = _FailingDeleteRedis()
+        svc = MagicMock()
+        svc.restore_backup = AsyncMock(
+            return_value={"rows_inserted": {}, "storage_paths_restored": []}
+        )
+        session = AsyncMock()
+
+        with (
+            patch("drevalis.core.config.Settings", return_value=_make_settings()),
+            patch(
+                "drevalis.services.updates._resolve_current_version",
+                return_value="0.29.99",
+            ),
+            patch("drevalis.services.backup.BackupService", return_value=svc),
+        ):
+            # Must not raise.
+            result = await restore_backup_async(
+                self._ctx(redis, session), "job-1", str(archive)
+            )
+
+        assert result["status"] == "done"

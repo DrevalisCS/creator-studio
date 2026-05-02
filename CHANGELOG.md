@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.98] - 2026-05-02
+
+### Added
+
+- **storage_probe cache invalidation on restore** —
+  ``restore_backup_async`` now busts the ``storage_probe:report`` Redis
+  key in its ``finally`` block, so the next Backup-tab load reflects
+  live post-restore state rather than the pre-restore snapshot the
+  route may have cached up to 5 minutes earlier.
+
+  Runs on **both** success and failure paths: a partially-applied
+  restore can leave the storage tree in a state the operator needs
+  fresh signal on more urgently than after a clean restore. A Redis
+  hiccup on the bust path is logged at DEBUG and swallowed — the
+  cache expires on its own within 5 minutes anyway.
+
+  3 new tests cover the success-path bust, failure-path bust, and
+  Redis-error tolerance.
+
+### Changed
+
+- **New module ``drevalis.core.cache_keys``** — single source of truth
+  for cross-component Redis cache keys. ``STORAGE_PROBE_CACHE_KEY``
+  is now defined here so the route that writes the cache and the
+  worker that busts it reference the same constant; the route
+  re-exports it as ``_STORAGE_PROBE_CACHE_KEY`` for backwards
+  compatibility with the existing tests.
+
 ## [0.29.97] - 2026-05-02
 
 ### Added

@@ -200,5 +200,18 @@ async def restore_backup_async(
                 archive.unlink(missing_ok=True)
             except OSError:
                 logger.debug("restore_archive_cleanup_failed", path=str(archive))
+        # Bust the storage_probe cache so the next Backup-tab load shows
+        # live post-restore state rather than the pre-restore snapshot
+        # the route may have cached up to 5 minutes earlier. We do this
+        # whether the restore succeeded or failed — a partially-applied
+        # restore can leave the storage tree in a state the operator
+        # needs fresh signal on. Best-effort: a Redis hiccup here just
+        # means the cache expires naturally.
+        from drevalis.core.cache_keys import STORAGE_PROBE_CACHE_KEY
+
+        try:
+            await redis.delete(STORAGE_PROBE_CACHE_KEY)
+        except Exception:
+            logger.debug("storage_probe_cache_bust_failed", exc_info=True)
         # ``redis`` is the worker's shared arq pool (ctx["redis"]) — do
         # NOT close it here; arq owns the lifecycle.
