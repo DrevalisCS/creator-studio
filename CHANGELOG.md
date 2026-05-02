@@ -7,6 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.78] - 2026-05-02
+
+### Added
+
+- **api/routes/episodes (regenerate/exports half) + youtube
+  (upload/playlists half)** — 99 new tests deepening the two
+  largest router monoliths.
+
+  - **`api/routes/episodes/_monolith.py`** 29% → **56%** (new
+    `test_episodes_route_part2.py`, 60 tests). Pinned the
+    regeneration + export surface that drives the EpisodeDetail
+    page:
+    - **`regenerate_voice` override precedence** (query-param >
+      JSON body > stored episode override) explicitly tested with
+      both wins-vs-loses cases. Drift here would silently make
+      voice-rerolls ignore the per-rerun override.
+    - `regenerate_scene` / `reassemble` / `regenerate_captions`:
+      EpisodeNoScript → 404, ConcurrencyCapReached → 429,
+      SceneNotFound → 404 (with the scene number echoed).
+    - **Music endpoint guards** validate `mood` (required string)
+      and `duration` (numeric in `[1, _ACESTEP_MAX_DURATION_SECONDS]`)
+      at the route layer before reaching the service.
+    - `select_episode_music`: missing `music_path` key → 400,
+      explicit None clears (no file-existence check), missing
+      file on disk → 404.
+    - **`_sanitize_filename`** strips bad chars and truncates to
+      100; `_build_description` handles missing / malformed
+      script JSONB without crashing (falls back to episode
+      title).
+    - Export endpoints: missing-asset → 404, file-not-on-disk →
+      404. `export_bundle` assembles a real ZIP with
+      ZIP_STORED so the event loop doesn't block on
+      DEFLATE for 100MB+ videos.
+    - **`upload_thumbnail`** rejects non-image content_type →
+      415, oversize → 413, undecodable image bytes → 400;
+      success path **re-encodes RGBA/LA/P → RGB → JPEG** so
+      YouTube's 2MB JPEG thumbnail cap is satisfied regardless
+      of upload format.
+
+  - **`api/routes/youtube/_monolith.py`** 33% → **66%** (new
+    `test_youtube_route_part2.py`, 39 tests). Pinned:
+    - **`TokenRefreshError` → 401** with structured
+      `youtube_token_expired` detail and reconnect hint across
+      `delete_video` / `create_playlist` / `add_video_to_playlist`
+      / `delete_playlist`. UI uses this to route to the
+      Reconnect button rather than a generic auth-expired toast.
+    - **Upstream YouTube API failures → 502 Bad Gateway** across
+      every playlist op so a transient YouTube outage doesn't
+      look like our 500.
+    - `get_video_analytics`: empty `video_ids` → 422; >50 → 422;
+      whitespace-only / empty tokens stripped before reaching
+      service (pinned with `["abc", "def"]` from
+      `"abc,, def "`); upstream failure surfaces a structured
+      **`youtube_analytics_failed`** 502 with both reconnect AND
+      quota hints (UI picks based on upstream `reason`).
+    - **Demo mode short-circuit on `upload_episode`**: NEITHER
+      the YouTube service NOR the admin orchestrator is invoked
+      — pinned with explicit `AssertionError` side effects so a
+      future refactor can't silently let demo mode hit the real
+      API. Returns deterministic `demo_<uuid_prefix>` video_id.
+    - **Demo `get_video_analytics` cap** at 50 IDs honoured
+      even on the synthetic path.
+
+  Suite total: **2298 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.77] - 2026-05-02
 
 ### Added
