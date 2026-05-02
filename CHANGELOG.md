@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.85] - 2026-05-02
+
+### Added
+
+- **workers/jobs/runpod registration paths** — 8 new tests bringing
+  the RunPod auto-deploy worker from 28% → **98%** (new
+  `test_runpod_deploy_job_part2.py`).
+
+  Pinned the post-RUNNING comfyui + vllm registration paths that
+  the existing safety-branch suite didn't cover:
+
+  - **Unknown `pod_type` → failed status** with the message
+    referencing the bad value (so operator can spot a typo without
+    grepping the worker logs).
+  - **ComfyUI registration**:
+    - Idempotent: existing server with same proxy URL → `repo.create`
+      NOT awaited (skip + log only).
+    - `/system_stats` 200 → status="ready" + `connected=True` +
+      "registered and connected" message.
+    - `/system_stats` non-200 → status STILL "ready" but with
+      "connection test pending" message (the DB row IS created;
+      operator can verify later).
+    - **httpx exception during connection test swallowed** — DNS
+      hiccup mid-test doesn't bring down the registration. Pinned
+      with explicit `httpx.ConnectError` side-effect.
+  - **vLLM registration**:
+    - Idempotent on `base_url` match.
+    - `/v1/models` 200 with model id → detected `model_name`
+      persisted via `llm_repo.update(...)` and surfaced in the
+      Redis status payload (so the UI can show the loaded model).
+    - `/v1/models` 503 (model still loading) → status still ready
+      with "model still loading" hint.
+
+  Suite total: **2514 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.84] - 2026-05-02
 
 ### Added
