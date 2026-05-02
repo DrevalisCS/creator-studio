@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.91] - 2026-05-02
+
+### Added
+
+- **workers/jobs/audiobook generate_ai_audiobook orchestration** —
+  8 new tests bringing audiobook worker coverage from 43% → **66%**
+  (new `test_generate_ai_audiobook.py`).
+
+  Pinned the end-to-end LLM-script + TTS + music + assembly job
+  that drives `POST /audiobooks/create-ai`. This is the deepest
+  worker orchestration in the codebase — three sequential
+  session-scoped phases:
+
+  - **Resume-from-failure invariant**: when the audiobook already
+    has > 100 chars of text (a previous attempt completed LLM but
+    failed during TTS), the worker **skips the LLM step entirely**
+    and goes straight to TTS+assembly. Pinned with explicit
+    `AssertionError` side-effect on the `OpenAICompatibleProvider`
+    constructor — proves the resume path doesn't re-invoke the
+    LLM and waste tokens.
+  - **Script-generation failure**: any exception from
+    `_generate_audiobook_script_text` → audiobook marked failed
+    with `Script generation failed: {error}` capped at 500 chars.
+  - **Audiobook-disappears-mid-flow**: between Step 1 (check_text)
+    and Step 3 (TTS), if the operator deletes the audiobook the
+    worker returns failed without crashing.
+  - **Voice profile missing on Step 3** → marked failed with
+    "No voice profile configured" before invoking
+    `AudiobookService.generate`.
+  - **`asyncio.CancelledError` mid-generation** → status="failed"
+    with **"Cancelled by user"** error_message + best-effort
+    cancel-flag delete (`cancel:audiobook:{id}` Redis key).
+    Pinned with explicit assertion on the deleted key name.
+  - **Cancel-flag delete failure swallowed**: when the cleanup
+    Redis call raises (Redis down), the cancellation path STILL
+    returns `{"status": "cancelled"}` cleanly.
+  - **Generic exception during generation** → "Audio generation
+    failed: …" capped at 500 chars.
+  - **Happy-path persistence**: every key in
+    `AudiobookService.generate`'s result dict (audio_rel_path /
+    video_rel_path / mp3_rel_path / duration_seconds /
+    file_size_bytes / chapters) flows through to the final
+    `ab_repo.update(...)` so the row is fully populated when the
+    UI sees status="done". `_clear_cancel_flag` invoked after
+    success.
+
+  Suite total: **2589 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.90] - 2026-05-02
 
 ### Added
