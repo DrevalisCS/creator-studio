@@ -7,6 +7,61 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.93] - 2026-05-02
+
+### Added
+
+- **workers/jobs/audiobook regenerate handlers** — 11 new tests
+  bringing audiobook worker coverage from 74% → **94%** (new
+  `test_regenerate_audiobook_chapter.py`).
+
+  Pinned the two surgical regen paths:
+
+  - **`regenerate_audiobook_chapter`**:
+    - **In-place text replacement** preserves the original style
+      EXACTLY: when chapter 0 is replaced, chapter 2's `## ` header
+      AND surrounding whitespace land in the new text untouched.
+      Pinned because the prior implementation parsed and re-joined
+      with `"\n\n"` which silently flattened user whitespace and
+      converted `---`-separated audiobooks to `##`-headered ones
+      on first edit.
+    - **Body-not-found fallback** rebuilds the text using `## `
+      headers when the parsed chapter body can't be located in
+      the original (rare — user added trailing whitespace inside
+      a chapter and the parser stripped it). The alternative is
+      silently losing the user's edit.
+    - **Per-chapter chunk-cache invalidation** runs BEFORE
+      `service.generate(...)` so only the edited chapter gets
+      re-TTSed; every other chapter's WAV chunks get spliced back
+      in from disk. Pinned with explicit
+      `invalidate_chapter_chunks.assert_awaited_once_with(id, 0)`.
+    - Voice profile missing → marked failed with
+      "Voice profile not found".
+    - Generic exception → status=failed + error_message capped
+      at 2000 chars.
+
+  - **`regenerate_audiobook_chapter_image`**:
+    - Out-of-range chapter index (negative or beyond list len) →
+      structured failed dict (NOT IndexError).
+    - **No ComfyUI service in ctx** → marked failed with
+      operator-friendly "ComfyUI not configured" hint.
+    - `_generate_chapter_images` returns `[None]` (workflow
+      produced no output) → marked failed.
+    - **Old image best-effort delete**: file on disk unlinked
+      before regenerating; **delete failure swallowed** (Windows
+      file lock / permission denied → route still proceeds and
+      ComfyUI overwrites).
+    - **`prompt_override` propagation**: the override replaces
+      `chapter["visual_prompt"]` before passing the chapter dict
+      to `_generate_chapter_images`. Pinned by inspecting the
+      kwargs of the service call.
+    - Happy path persists the new `image_path` into the
+      chapters JSONB (mutating only the target chapter, leaving
+      others alone).
+
+  Suite total: **2606 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.92] - 2026-05-02
 
 ### Added
