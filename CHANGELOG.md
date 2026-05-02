@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.73] - 2026-05-02
+
+### Added
+
+- **api/routes/updates + cloud_gpu + assets** — 86 new tests bringing
+  three more router modules to ~100%.
+
+  - **`api/routes/updates.py`** 40% → **100%** (new
+    `test_updates_route.py`, 17 tests). Self-update surface — pinned:
+    - `/changelog` defensive layering: cached → no GitHub hit;
+      `force=True` bypasses cache; **403 with stale cache** serves
+      cache + warning error string (not empty list);
+      **403 with NO cache** returns the helpful "try again in 10
+      minutes" string; non-200 / network / unexpected exceptions
+      all surface as `error=...` instead of 500. Redis hiccups on
+      both the inbound cache lookup AND the 403-fallback lookup
+      are swallowed.
+    - `/progress` reads the sidecar status file; missing file or
+      unreadable JSON both fall back to `idle` defaults rather
+      than 500.
+    - `/apply` 500s with structured `could_not_queue_update` detail
+      when the updater's flag-file write fails.
+
+  - **`api/routes/cloud_gpu.py`** 24% → **99%** (new
+    `test_cloud_gpu_route.py`, 37 tests). Pinned:
+    - `_handle_provider_exc`: `CloudGPUConfigError` → 503,
+      `CloudGPUProviderError` → upstream status when in [400, 600)
+      else **clamped to 502 Bad Gateway** (FastAPI rejects raw 0).
+    - `provider.close()` is awaited in **every** endpoint's finally
+      block — including the `hasattr(provider, "close")` branch
+      for providers that don't expose it (no crash).
+    - `list_all_pods` aggregator: skips unconfigured providers,
+      logs-and-swallows per-provider failures so one broken
+      provider doesn't take the whole list down.
+    - **Non-cloud-gpu exceptions bubble up unchanged** — pinned
+      with explicit `pytest.raises(ValueError)` so a future
+      "consistency" pass doesn't silently turn them into 500s.
+
+  - **`api/routes/assets.py`** 34% → **99%** (new
+    `test_assets_route.py`, 32 tests). Multipart upload + library
+    CRUD. Pinned:
+    - `_safe_filename` strips path components (`../../etc/passwd`
+      → `passwd`), replaces bad chars, truncates to 120, falls
+      back to `"asset"` when nothing usable remains.
+    - `_kind_from_mime` maps known prefixes; unknown / None → `other`
+      (lands under `assets/other/` dir, NOT `assets/others/`).
+    - `_probe_media` returns `(None, None, None)` when ffprobe is
+      missing, returns non-zero, emits invalid JSON, or has a
+      non-numeric duration ("N/A" from streams-only files).
+    - **Dedup-by-SHA-256 short-circuits the file write** — pinned
+      with assertion that `tmp_path/assets/` does not exist after
+      a deduped upload.
+    - PATCH `tags` list: stripped + empty-dropped + capped at 20.
+
+  Suite total: **1910 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.72] - 2026-05-02
 
 ### Added
