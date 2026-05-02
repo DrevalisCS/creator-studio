@@ -7,6 +7,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.86] - 2026-05-02
+
+### Added
+
+- **workers/jobs/music generation flow** — 6 new tests bringing the
+  AceStep music worker from 27% → **97%** (new
+  `test_music_job_part2.py`).
+
+  Pinned the post-queue polling + audio-output handling that the
+  existing safety-branch suite didn't cover:
+
+  - **Happy path**: prompt queued → history polled (with one
+    intermediate `None` to exercise the wait loop) → audio
+    downloaded → bytes written to
+    `episodes/{id}/music/{mood}_{seed}.mp3` → `client.close()` runs
+    in finally.
+  - **`ffmpeg.get_duration` failure swallowed** → returned duration
+    is 0.0 instead of raising (the file IS on disk, the duration
+    is just cosmetic).
+  - **`decrypt_value` failure on api_key swallowed** → worker still
+    attempts the request without a key (some ComfyUI deploys are
+    auth-less).
+  - **Workflow error from ComfyUI** (`status_str=="error"`) →
+    structured error string surfacing both `node_type` and
+    `exception_message`. `client.close()` still runs.
+  - **Missing audio output** (workflow done but `outputs` has no
+    audio entry) → "produced no audio output" error string.
+  - **Polling timeout** (history never resolves) → "timed out"
+    error string after the 600s budget exhausts.
+  - `client.close()` is awaited in the `finally` block on **every**
+    path — pinned with `assert_awaited_once()` on each error path.
+
+  Suite total: **2520 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.85] - 2026-05-02
 
 ### Added
