@@ -271,6 +271,52 @@ Write naturally with emotion and tension. Every line tagged."""
     return script_text
 
 
+async def _build_audiobook_llm_provider(
+    ctx: dict[str, Any],
+    settings: Any,
+) -> Any:
+    """Return an ``OpenAICompatibleProvider`` for audiobook LLM calls.
+
+    Resolution order:
+    1. First ``LLMConfig`` row from the DB (base_url, model_name, api_key).
+    2. LM Studio defaults from application settings.
+
+    Parameters
+    ----------
+    ctx:
+        arq worker context dict (must contain ``session_factory``).
+    settings:
+        A ``drevalis.core.config.Settings`` instance used for decryption
+        and LM Studio fallback values.
+    """
+    from drevalis.repositories.llm_config import LLMConfigRepository
+    from drevalis.services.llm import OpenAICompatibleProvider
+
+    provider = None
+    session_factory = ctx["session_factory"]
+    async with session_factory() as session:
+        llm_repo = LLMConfigRepository(session)
+        configs = await llm_repo.get_all()
+        if configs:
+            cfg = configs[0]
+            api_key = "not-needed"
+            if cfg.api_key_encrypted:
+                api_key = settings.decrypt(cfg.api_key_encrypted)
+            provider = OpenAICompatibleProvider(
+                base_url=cfg.base_url,
+                model=cfg.model_name,
+                api_key=api_key,
+            )
+
+    if provider is None:
+        provider = OpenAICompatibleProvider(
+            base_url=settings.lm_studio_base_url,
+            model=settings.lm_studio_default_model,
+        )
+
+    return provider
+
+
 async def generate_audiobook(
     ctx: dict[str, Any], audiobook_id: str, generate_video: bool = False
 ) -> dict[str, Any]:
@@ -708,34 +754,9 @@ async def generate_script_async(
             log.info("job_already_cancelled")
             return {"status": "cancelled"}
 
-        from drevalis.services.llm import OpenAICompatibleProvider
-
         settings = Settings()
 
-        # Try DB-configured LLM first, fall back to LM Studio
-        provider = None
-        session_factory = ctx["session_factory"]
-        async with session_factory() as session:
-            from drevalis.repositories.llm_config import LLMConfigRepository
-
-            llm_repo = LLMConfigRepository(session)
-            configs = await llm_repo.get_all()
-            if configs:
-                cfg = configs[0]
-                api_key = "not-needed"
-                if cfg.api_key_encrypted:
-                    api_key = settings.decrypt(cfg.api_key_encrypted)
-                provider = OpenAICompatibleProvider(
-                    base_url=cfg.base_url,
-                    model=cfg.model_name,
-                    api_key=api_key,
-                )
-
-        if provider is None:
-            provider = OpenAICompatibleProvider(
-                base_url=settings.lm_studio_base_url,
-                model=settings.lm_studio_default_model,
-            )
+        provider = await _build_audiobook_llm_provider(ctx, settings)
 
         target_words = payload["target_minutes"] * 150
         characters = payload.get(
@@ -849,31 +870,7 @@ async def generate_ai_audiobook(
 
     if not has_existing_text:
         try:
-            from drevalis.services.llm import OpenAICompatibleProvider
-
-            # Try DB-configured LLM first, fall back to LM Studio
-            provider = None
-            async with session_factory() as session:
-                from drevalis.repositories.llm_config import LLMConfigRepository
-
-                llm_repo = LLMConfigRepository(session)
-                configs = await llm_repo.get_all()
-                if configs:
-                    cfg = configs[0]
-                    api_key = "not-needed"
-                    if cfg.api_key_encrypted:
-                        api_key = settings.decrypt(cfg.api_key_encrypted)
-                    provider = OpenAICompatibleProvider(
-                        base_url=cfg.base_url,
-                        model=cfg.model_name,
-                        api_key=api_key,
-                    )
-
-            if provider is None:
-                provider = OpenAICompatibleProvider(
-                    base_url=settings.lm_studio_base_url,
-                    model=settings.lm_studio_default_model,
-                )
+            provider = await _build_audiobook_llm_provider(ctx, settings)
 
             characters = payload.get(
                 "characters",

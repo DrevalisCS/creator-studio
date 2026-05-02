@@ -526,26 +526,71 @@ class TestRepairMedia:
     async def test_success_returns_report(self, tmp_path: Path) -> None:
         report = MagicMock()
         report.to_dict = MagicMock(return_value={"updated": 5, "still_missing": 0})
+        redis = AsyncMock()
+        redis.delete = AsyncMock()
         with patch(
             "drevalis.api.routes.backup.repair_media_links",
             AsyncMock(return_value=report),
         ):
             out = await repair_media(
-                db=AsyncMock(), settings=_settings(tmp_path)
+                db=AsyncMock(), settings=_settings(tmp_path), redis=redis
             )
         assert out == {"updated": 5, "still_missing": 0}
 
     async def test_failure_maps_to_500(self, tmp_path: Path) -> None:
+        redis = AsyncMock()
+        redis.delete = AsyncMock()
         with patch(
             "drevalis.api.routes.backup.repair_media_links",
             AsyncMock(side_effect=RuntimeError("boom")),
         ):
             with pytest.raises(HTTPException) as exc:
                 await repair_media(
-                    db=AsyncMock(), settings=_settings(tmp_path)
+                    db=AsyncMock(), settings=_settings(tmp_path), redis=redis
                 )
         assert exc.value.status_code == 500
         assert "boom" in exc.value.detail
+        # Cache bust must NOT run on the failure path — storage state is
+        # unchanged, and the existing cache is still accurate.
+        redis.delete.assert_not_awaited()
+
+    async def test_success_busts_storage_probe_cache(self, tmp_path: Path) -> None:
+        # Pin: a successful repair rewrites media_assets.file_path rows that
+        # the probe samples; the cache must be invalidated immediately so
+        # the Backup tab reflects post-repair state rather than a stale
+        # pre-repair snapshot cached for up to 5 minutes.
+        from drevalis.core.cache_keys import STORAGE_PROBE_CACHE_KEY
+
+        report = MagicMock()
+        report.to_dict = MagicMock(return_value={"relinked": 3})
+        redis = AsyncMock()
+        redis.delete = AsyncMock()
+        with patch(
+            "drevalis.api.routes.backup.repair_media_links",
+            AsyncMock(return_value=report),
+        ):
+            await repair_media(
+                db=AsyncMock(), settings=_settings(tmp_path), redis=redis
+            )
+        redis.delete.assert_awaited_once_with(STORAGE_PROBE_CACHE_KEY)
+
+    async def test_redis_failure_on_bust_does_not_500(self, tmp_path: Path) -> None:
+        # Pin: a Redis error during the best-effort cache bust must not
+        # propagate to the caller. The repair itself succeeded; the operator
+        # gets the correct report and the cache expires naturally at TTL.
+        report = MagicMock()
+        report.to_dict = MagicMock(return_value={"relinked": 1})
+        redis = AsyncMock()
+        redis.delete = AsyncMock(side_effect=ConnectionError("redis down"))
+        with patch(
+            "drevalis.api.routes.backup.repair_media_links",
+            AsyncMock(return_value=report),
+        ):
+            # Must not raise — Redis failure on bust path is swallowed.
+            out = await repair_media(
+                db=AsyncMock(), settings=_settings(tmp_path), redis=redis
+            )
+        assert out == {"relinked": 1}
 
 
 # ── run_scheduled_backup (cron hook) ──────────────────────────────

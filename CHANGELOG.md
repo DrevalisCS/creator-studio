@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-05-02
+
+### Added
+
+- **storage_probe cache invalidation on media repair** —
+  ``POST /api/v1/backup/repair-media`` now busts
+  ``storage_probe:report`` after a successful repair, mirroring the
+  v0.29.98 behaviour for restore. The Backup tab reflects post-repair
+  file-path state immediately rather than after the 5-min TTL.
+
+  Bust runs only on the success path: ``repair_media_links`` is
+  non-destructive, so when it raises the storage state is unchanged
+  and the existing cache is still accurate. Redis hiccups on the bust
+  path are logged at DEBUG and swallowed.
+
+  2 new tests in ``test_backup_route.py`` pin the success-path bust
+  and the Redis-error tolerance; 2 existing tests updated to thread
+  the new ``redis`` dependency through the route signature.
+
+### Changed
+
+- **Dedupe audiobook LLM provider builder** — extracted the duplicated
+  "first-DB-config-or-LM-Studio" provider-construction block out of
+  ``generate_script_async`` and ``generate_ai_audiobook`` into one
+  helper, ``_build_audiobook_llm_provider(ctx, settings)``. The two
+  blocks were byte-identical (28 + 25 lines) and have drifted before
+  in the worker; one helper makes the next decryption / provider
+  change a one-line edit.
+
+  No behaviour change. No tests needed updating — both call paths
+  still use the same patch targets via lazy imports inside the helper.
+
+  Net diff: -51 / +48 in ``workers/jobs/audiobook.py``.
+
 ## [0.30.0] - 2026-05-02
 
 ### Added

@@ -851,9 +851,10 @@ def _storage_probe_hints(report: dict[str, Any]) -> list[str]:
 async def repair_media(
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    redis: Annotated[Redis, Depends(get_redis)],
 ) -> dict[str, object]:
-    # No request body is accepted or required — both deps are dependency-
-    # injected. Switched to Annotated+Depends for both so FastAPI never
+    # No request body is accepted or required — all deps are dependency-
+    # injected. Switched to Annotated+Depends for all so FastAPI never
     # tries to treat one as a query/body parameter (that was producing
     # a spurious 422 when the frontend fired POST with no body).
     try:
@@ -864,6 +865,16 @@ async def repair_media(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"media repair failed: {exc}",
         ) from exc
+    # Bust the storage_probe cache so the Backup tab immediately reflects
+    # the post-repair file_path state rather than the pre-repair snapshot
+    # cached for up to 5 minutes. Only on the success path — if
+    # repair_media_links raised, the storage state is unchanged and the
+    # existing cache is still accurate. Best-effort: a Redis hiccup here
+    # just means the cache expires naturally at its TTL.
+    try:
+        await redis.delete(_STORAGE_PROBE_CACHE_KEY)
+    except Exception:  # noqa: BLE001
+        logger.debug("storage_probe_cache_bust_failed", exc_info=True)
     return report.to_dict()
 
 
