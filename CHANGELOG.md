@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.62] - 2026-05-02
+
+### Added
+
+- **core/config + license/activation + onboarding route** — 15 new
+  tests across three modules.
+
+  - **`core/config.py`** 92% → **100%** (new `test_core_config.py`,
+    6 tests): `encryption_key` is a required field; the
+    `validate_encryption_key` model validator rejects non-base64
+    keys and wrong-length-after-decode keys at startup (fail-fast
+    on a misconfigured install); `get_session_secret` falls back
+    to the Fernet key when the dedicated `session_secret` is unset
+    (legacy-install compat).
+  - **`core/license/activation.py`** 95% → **100%** (3 new tests in
+    `test_license_activation.py`): `heartbeat_with_server` emits
+    the optional `version` field on the wire when provided;
+    `heartbeat_with_server` and `deactivate_machine_with_server`
+    fall back gracefully when the server returns 4xx with a
+    non-JSON body (e.g. HTML 502 from a fronting proxy) — JSON
+    decode failure must surface as a structured `ActivationError`,
+    never a crash.
+  - **`api/routes/onboarding.py`** 67% → **100%** (new
+    `test_onboarding_route.py`, 6 tests): `should_show` honours
+    the dismiss flag even when critical resources (ComfyUI / LLM /
+    voice) are still empty, and stays open whenever any of the
+    three critical resources is still missing; `/dismiss` and
+    `/reset` write/clear the Redis flag.
+
+  Suite total: **1515 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.61] - 2026-05-02
 
 ### Added

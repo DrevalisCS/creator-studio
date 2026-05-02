@@ -230,6 +230,38 @@ class TestHeartbeat:
         # Default fallback when no ``error`` key found.
         assert exc.value.error == "heartbeat_failed"
 
+    async def test_includes_version_when_provided(self) -> None:
+        # Server distinguishes installs running different app versions via
+        # the optional ``version`` field. Pin that the parameter actually
+        # makes it onto the wire.
+        captured: dict[str, Any] = {}
+
+        def _h(request: httpx.Request) -> httpx.Response:
+            captured.update(json.loads(request.content))
+            return httpx.Response(200, json={"license_jwt": "tok"})
+
+        with _mock_transport_factory(_h):
+            await heartbeat_with_server(
+                "https://lic.test",
+                license_key="k",
+                machine_id="m",
+                version="0.29.61",
+            )
+        assert captured["version"] == "0.29.61"
+
+    async def test_4xx_with_non_json_body_falls_back(self) -> None:
+        # Server returned 500 with HTML or empty body. The ``resp.json()``
+        # call inside the error path raises — must be swallowed so callers
+        # still get a structured ActivationError instead of a JSON decode
+        # crash bubbling up.
+        with _mock_transport_factory(_error_handler(502, "<html>bad gateway</html>")):
+            with pytest.raises(ActivationError) as exc:
+                await heartbeat_with_server(
+                    "https://lic.test", license_key="k", machine_id="m"
+                )
+        assert exc.value.status_code == 502
+        assert exc.value.error == "heartbeat_failed"
+
 
 # ── deactivate_with_server (best-effort, swallows errors) ────────────
 
@@ -320,6 +352,17 @@ class TestDeactivateMachine:
                 await deactivate_machine_with_server(
                     "https://lic.test", license_key="k", machine_id="m1"
                 )
+
+    async def test_4xx_with_non_json_body_falls_back(self) -> None:
+        # Same pattern as heartbeat: non-JSON 4xx response must surface as
+        # a structured ActivationError, never a JSON decode crash.
+        with _mock_transport_factory(_error_handler(503, "service unavailable")):
+            with pytest.raises(ActivationError) as exc:
+                await deactivate_machine_with_server(
+                    "https://lic.test", license_key="k", machine_id="m1"
+                )
+        assert exc.value.status_code == 503
+        assert exc.value.error  # falls back to reason phrase or default
 
 
 # ── ActivationError dataclass-ish ────────────────────────────────────
