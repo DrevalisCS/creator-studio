@@ -7,6 +7,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.81] - 2026-05-02
+
+### Added
+
+- **api/routes/episodes monolith finish + backup storage_probe** —
+  36 new tests pushing both modules close to full coverage.
+
+  - **`api/routes/episodes/_monolith.py`** 86% → **95%** (new
+    `test_episodes_route_part4.py`, 17 tests). Pinned the cross-
+    platform fan-out + LLM A/B variants:
+
+    - **`publish_all` validation gates**: episode missing → 404,
+      wrong status (only review/exported/editing allowed) → 409
+      with current status echoed, no finished video → 409.
+    - **YouTube path**: missing `series.youtube_channel_id` →
+      skipped with hint pointing at Settings; with channel →
+      `YouTubeUpload` row created (SEO-derived title/description,
+      payload override precedence preserved).
+    - **TikTok path**: missing/inactive `SocialPlatform` → skipped
+      with hint; row present → `SocialUpload` created with
+      hashtags joined as a space-separated string.
+    - **Instagram NEVER fulfilled**: schema permits it (so the API
+      accepts the request), but the route always skips with
+      "uploads aren't shipped yet" — pinned because silently
+      enqueuing rows nothing will process is the worst possible
+      UX.
+    - **Single commit** at the end of `publish_all` regardless of
+      how many platforms succeeded — no partial-commit window if
+      one platform raises mid-loop.
+    - **`seo_variants` graceful degradation**: no LLM configured
+      → deterministic template variants (Solo-mode users still
+      get suggestions); LLM emits non-JSON → empty lists (UI
+      shows "no variants" instead of an error toast); long LLM
+      output truncated to 100/400/500 char caps for titles /
+      thumbnail prompts / descriptions (defensive against
+      runaway responses).
+
+  - **`api/routes/backup.py`** 58% → **94%** (new
+    `test_backup_storage_probe.py`, 19 tests). Pinned the
+    `storage_probe` diagnostic surface + the entire
+    `_storage_probe_hints` catalogue:
+
+    - Each hint trigger explicitly tested: missing storage_base,
+      `API_AUTH_TOKEN` configured, symlinked storage / episodes
+      dir, exists-but-unreadable samples (chown hint with the
+      process_uid), symlinked samples, **VM-internal host paths**
+      (`/project/`, `/run/desktop/`, `/var/lib/docker/`,
+      `/mnt/host_mnt/`) → multi-line Windows walkthrough,
+      real-host paths → simple "media must live under" hint,
+      empty-container "started from wrong directory" hint, and
+      the suspiciously-low-byte-count hint.
+    - **Backups-only filter**: top-level dirs named `backups` are
+      excluded from the empty-container detection — fresh
+      installs with auto-backups don't trigger false-positive
+      "wrong directory" warnings.
+    - **DevTools fall-through hint**: when no problem is
+      detected, the route still emits one hint pointing the user
+      at browser DevTools so silent passes have something to act
+      on.
+    - **Sample byte-read invariant**: the route MUST `f.read(1)`
+      to detect permission errors that `os.access()` misses
+      (UID-mismatched bind mounts where stat works but read
+      doesn't). Pinned with a real file write + readable=True
+      assertion.
+    - **`child_count_capped`** flag set when a directory has >
+      1000 entries so the UI can render "1000+".
+
+  Suite total: **2414 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.80] - 2026-05-02
 
 ### Added
