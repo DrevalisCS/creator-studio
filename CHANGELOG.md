@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.67] - 2026-05-02
+
+### Added
+
+- **api/routes/license** — 35 new tests bringing the license router
+  to 100% (48% → **100%**, new `test_license_route.py`).
+
+  License is the surface where the activation wizard lives — every
+  exception type maps to a different status code so the frontend
+  can route to the right "what's wrong with your license" UI.
+  Pinned the full mapping:
+
+  - `LicenseConfigError` → **400** on most endpoints (config is
+    visible to the user) but **503** on `/portal` (server-side
+    misconfig from the customer's POV).
+  - `NoActiveLicenseError` → 400 elsewhere but **402 Payment
+    Required** on `/portal` — the real semantic for "you need to
+    pay before you can manage billing".
+  - `LicenseVerificationError` → 400 `invalid_license` on activate.
+  - `LicenseNotActiveError` → 400 `license_not_active` carrying the
+    JWT classification value (`grace`/`expired`/`invalid`) so the
+    wizard can route to the matching screen.
+  - `ActivationError` → propagate upstream status + detail
+    verbatim (so the wizard can show "seat cap reached" / "license
+    revoked" / etc).
+  - `ActivationNetworkError` → 503 `license_server_unreachable`.
+  - `LicensePortalUpstreamError` with **string detail** is coerced
+    to `{"raw": <text>}` so the frontend can rely on a dict shape.
+
+  Suite total: **1625 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.66] - 2026-05-02
 
 ### Added
