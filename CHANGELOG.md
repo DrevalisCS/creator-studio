@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.92] - 2026-05-02
+
+### Added
+
+- **workers/jobs/audiobook generate_audiobook orchestration** —
+  6 new tests bringing audiobook worker coverage from 66% → **74%**
+  (new `test_generate_audiobook_orchestration.py`).
+
+  Pinned the standalone "audiobook from existing text" job
+  (`POST /audiobooks/{id}/regenerate` and the route's create
+  enqueue path):
+
+  - **Happy path**: `AudiobookService.generate(...)` result keys
+    (audio_rel_path / video_rel_path / mp3_rel_path /
+    duration_seconds / file_size_bytes / chapters) flow through
+    to the final `ab_repo.update(status=done, ...)`;
+    `_clear_cancel_flag` invoked.
+  - **`settings_json` validation**: invalid JSON falls back to
+    `audiobook_settings=None` (narrative defaults) without
+    crashing — pinned with explicit `model_validate` raising
+    ValueError.
+  - **`asyncio.CancelledError` mid-generation**: returns
+    `{"status": "cancelled"}` to the route (so the route can
+    distinguish cancel from failure) BUT marks the DB row
+    `status=failed` with `error_message="Cancelled by user"`
+    (the audiobook status enum has no "cancelled" value, so
+    failed + explicit message is the convention).
+  - **Generic exception path**: `error_message` capped at 2000
+    chars (audiobook column is wider than the script-job 500
+    cap).
+  - **DAG persist callback**: writes `job_state` via a NEW
+    transient session (so retry skips done stages without
+    locking the long-running generation session). Pinned by
+    inspecting both the `update(job_state=...)` payload AND that
+    a separate session was used.
+  - **DAG persist failure swallowed**: when the callback's DB
+    write raises, the service keeps running — we lose the
+    resume hint, but that's better than crashing the whole job.
+
+  Suite total: **2595 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.91] - 2026-05-02
 
 ### Added
