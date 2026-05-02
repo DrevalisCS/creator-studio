@@ -7,6 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.80] - 2026-05-02
+
+### Added
+
+- **api/routes/youtube monolith finish** — 21 new tests pushing the
+  YouTube router from 66% → **99%** (new
+  `test_youtube_route_part3.py`).
+
+  Pinned the trickiest YouTube surfaces:
+
+  - **`upload_episode` happy path SEO precedence**:
+    - **Title**: `payload.title or seo.title or episode.title` (the
+      schema's `min_length=1` constraint means user-supplied title
+      always wins; SEO fallback only fires when payload title is
+      itself empty/falsy — pinned both branches).
+    - **Description**: `payload.description or seo.description`,
+      with **SEO hashtags merged** as `#tag` strings — and the
+      "skip merge if hashtags already in description" branch
+      explicitly tested with a description that already contains
+      `#foo #bar`.
+    - **Script fallback**: when SEO + payload description are both
+      empty, fall back to `episode.script.title + .description +
+      .hashtags` joined with blank lines; tags derived from
+      script hashtags with `#` prefix stripped.
+  - **Upload failure recording**: when `yt.upload_video` raises,
+    the route MUST mark the upload row failed
+    (`record_upload_failure`), raise 502, and **NOT** call
+    `auto_add_to_series_playlist` (no video to add). Pinned with
+    `record_upload_success.assert_not_awaited()` and
+    `auto_add_to_series_playlist.assert_not_awaited()`.
+
+  - **`get_channel_analytics`**:
+    - Demo mode returns deterministic synthetic data — `daily`
+      breakdown matches the requested window, `totals.views`
+      equals the sum of daily views.
+    - **`AnalyticsNotAuthorized` → 403** with structured
+      `analytics_scope_missing` detail (NOT 502); UI uses this to
+      route to scope-reconnect rather than retry.
+    - Token refresh failure → 401, upstream → 502.
+
+  - **`get_channel_scopes`**:
+    - **TokenRefreshError is logged-and-swallowed** — the route
+      then falls through to the no-access-token path returning
+      the introspection-failed payload. Pinned because the
+      original v0.20.x bailed early, masking what the user
+      actually wanted to know.
+    - Decrypt failure → introspection-failed payload (not 500).
+    - Success path flags `has_analytics_scope` /
+      `has_upload_scope` from the actual scope list, and emits
+      a "Reconnect required" hint ONLY when the token works but
+      analytics scope is missing (not when introspection itself
+      failed).
+    - Empty scope list (Google rejected the token) → flag
+      introspection_failed=True with `hint=None`.
+
+  Suite total: **2378 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.79] - 2026-05-02
 
 ### Added
