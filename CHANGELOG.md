@@ -7,6 +7,65 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.89] - 2026-05-02
+
+### Added
+
+- **workers/jobs/social per-platform uploaders** — 19 new tests
+  bringing the social worker from 34% → **83%** (new
+  `test_social_uploaders.py`).
+
+  Patched `httpx.AsyncClient` with `MockTransport` so the multi-step
+  HTTP flows are pinned without hitting the real Tikok / Meta / X
+  APIs:
+
+  - **`_tiktok_upload`**:
+    - Init malformed (missing `publish_id` or `upload_url`) →
+      RuntimeError with response preview.
+    - Init OK + PUT to `upload_url` returns 5xx → RuntimeError
+      with status code + body preview.
+    - Happy path: PUT carries the right `Content-Length` AND
+      `Content-Range: bytes 0-{size-1}/{size}` headers (TikTok's
+      hard requirement for single-chunk uploads).
+
+  - **`_tiktok_wait_for_publish`**:
+    - `PUBLISH_COMPLETE` → returns `publicaly_available_post_id`.
+    - `FAILED_*` status → RuntimeError with `fail_reason`.
+    - Never resolves → `TimeoutError` after `_MAX_POLLS`
+      iterations.
+
+  - **`_instagram_reels_upload`**:
+    - Missing `ig_user_id` → RuntimeError pointing at
+      `platform_account_id` re-authorize step.
+    - Missing `public_video_url_override` → RuntimeError with the
+      `metadata_json.public_video_base_url` hint.
+    - Container `ERROR`/`EXPIRED` status → RuntimeError.
+    - **Permalink fetch failure tolerated**: upload still succeeds
+      with `permalink=""` (the media_id is already published; an
+      empty permalink is a UI inconvenience, not a fatal error).
+
+  - **`_facebook_video_upload`**:
+    - Missing `page_id` → RuntimeError.
+    - START response without `upload_session_id`/`video_id` →
+      RuntimeError.
+    - Resumable single-chunk transfer happy path → returns
+      `(video_id, permalink)` with the deterministic
+      `https://www.facebook.com/{page_id}/videos/{video_id}` URL.
+    - FINISH `success=False` → RuntimeError.
+
+  - **`_x_video_upload`**:
+    - INIT response missing `media_id_string` → RuntimeError.
+    - Single-chunk APPEND + immediate FINALIZE happy path →
+      returns `(tweet_id, https://x.com/i/web/status/{tweet_id})`.
+    - **FINALIZE returns `in_progress`** → poll STATUS until
+      `succeeded` → post tweet.
+    - STATUS poll returns `failed` → RuntimeError BEFORE creating
+      the tweet (so a failed transcode doesn't produce a broken
+      tweet).
+
+  Suite total: **2562 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.88] - 2026-05-02
 
 ### Added
