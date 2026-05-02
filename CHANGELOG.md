@@ -7,6 +7,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.94] - 2026-05-02
+
+### Added
+
+- **workers/jobs/edit_render full orchestration** — 6 new tests
+  bringing edit-session render coverage from 71% → **95%** (new
+  `test_edit_render_orchestration.py`).
+
+  Pinned the `render_from_edit` body that drives the trim → concat
+  → write pipeline:
+
+  - **Full happy path**: each video-track clip trimmed via
+    `FFmpegService.trim_video`, concat into one video, MediaAsset
+    row created with `asset_type="video"`, edit_session's
+    `last_rendered_at` updated.
+  - **Skip clips with missing `asset_path`** (no key in clip dict)
+    without crashing.
+  - **Skip clips whose source file doesn't exist on disk** (post-
+    restore drift between asset row and storage). All clips
+    skipped → `empty_output` status.
+  - **Zero-duration clip handling**: when `out_s <= in_s`
+    (image / placeholder), the source is included as-is (no trim
+    invocation). Concat still runs.
+  - **Proxy mode** (`proxy=True`):
+    - Writes `proxy.mp4` (480p, faster preset) instead of
+      `final_edit.mp4`.
+    - Asset row registered with **`asset_type="video_proxy"`**
+      so the UI can choose which to display.
+    - **Does NOT bump `last_rendered_at`** — the editor's "last
+      full render" indicator stays accurate.
+  - **Proxy ffmpeg failure**: non-zero return → `RuntimeError`
+    with `"proxy downscale failed"` and stderr tail. Worker arq
+    retry kicks in.
+
+  Suite total: **2612 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.93] - 2026-05-02
 
 ### Added
