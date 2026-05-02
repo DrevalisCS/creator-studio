@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.66] - 2026-05-02
+
+### Added
+
+- **api/routes/schedule** — 15 new tests bringing the schedule
+  router to 100% (48% → **100%**, new `test_schedule_route.py`).
+
+  Covers create / list / calendar / update / delete / auto-schedule
+  / diagnostics / retry-failed. Pinned the layered status mapping
+  that matters when the schedule worker is the only thing between
+  a creator and a missed YouTube slot:
+
+  - **`update` and `delete`**: `NotFoundError` → 404,
+    `ValidationError` → **409 Conflict** (post is already in a
+    publishing state; non-edit, non-delete by design).
+  - **`auto_schedule_series`**: `NotFoundError` → 404,
+    `ValidationError` → **422** (channel has no upload_days etc).
+  - **`get_calendar`**: groups posts by date and **sorts
+    ascending** so the UI calendar grid renders in chronological
+    order without re-sorting.
+  - **`retry_failed`** returns both `requeued` and `skipped` so
+    the UI can report "you asked for N retries, M were already
+    scheduled, K were too old".
+
+  Suite total: **1590 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.65] - 2026-05-02
 
 ### Added
