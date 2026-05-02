@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.65] - 2026-05-02
+
+### Added
+
+- **api/routes/editor** — 18 new tests bringing the editor router
+  to 100% (52% → **100%**, new `test_editor_route.py`).
+
+  Pinned the contracts that matter on this surface:
+
+  - `NotFoundError` → 404 across get-or-create / save / render /
+    captions get+put / preview.
+  - The **migration-missing** branch on `GET /editor`: when
+    SQLAlchemy raises with `relation "video_edit_sessions" does
+    not exist`, the router converts it to a structured 500 with
+    an alembic hint instead of a generic stack trace. Pinned so a
+    future generic-exception cleanup can't drop the breadcrumb.
+  - Other unexpected errors fall back to a generic
+    `session_lookup_failed` 500 carrying the exception type +
+    message head — useful for diagnosing migration drift in prod.
+  - Waveform endpoint: `ValidationError` → 400 (bad track),
+    `NotFoundError` → 404 (no audio asset), `WaveformRenderError`
+    → 500 (ffmpeg crash). FileResponse on success.
+
+  Suite total: **1575 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.64] - 2026-05-02
 
 ### Added
