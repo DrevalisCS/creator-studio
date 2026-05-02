@@ -18,6 +18,7 @@ import pytest
 from fastapi import HTTPException
 
 from drevalis.core import database as _db
+from drevalis.core import deps as _deps
 from drevalis.core.deps import is_demo_mode, require_not_demo
 
 
@@ -158,6 +159,64 @@ class TestGetDbSession:
 
         session.commit.assert_not_awaited()
         session.rollback.assert_awaited_once()
+
+
+# ── core/deps.py: get_db / get_redis async-generator delegators ─────
+
+
+class TestGetSettings:
+    def test_returns_settings_singleton(self) -> None:
+        # ``get_settings`` is the FastAPI dep that hands every request
+        # the cached app config. Pin it returns *the same* Settings on
+        # repeat calls — accidental cache loss would re-read .env on
+        # every request and crater latency.
+        from drevalis.core.config import Settings as _Settings
+        from drevalis.core.deps import get_settings
+
+        s1 = get_settings()
+        s2 = get_settings()
+        assert isinstance(s1, _Settings)
+        assert s1 is s2
+
+
+class TestGetDbDelegator:
+    async def test_yields_session_from_get_db_session(self) -> None:
+        # ``deps.get_db`` is a thin async-generator wrapper around
+        # ``database.get_db_session``. Pin the delegation so a future
+        # rewrite (e.g. caching the session) doesn't silently swallow
+        # commit/rollback semantics from the underlying factory.
+        session = MagicMock(name="session")
+
+        async def _fake_get_db_session() -> Any:
+            yield session
+
+        with patch(
+            "drevalis.core.deps.get_db_session",
+            side_effect=lambda: _fake_get_db_session(),
+        ):
+            gen = _deps.get_db()
+            yielded = await gen.__anext__()
+            assert yielded is session
+            with pytest.raises(StopAsyncIteration):
+                await gen.__anext__()
+
+
+class TestGetRedisDelegator:
+    async def test_yields_client_from_core_redis(self) -> None:
+        client = MagicMock(name="redis_client")
+
+        async def _fake_get_redis() -> Any:
+            yield client
+
+        with patch(
+            "drevalis.core.deps._get_redis",
+            side_effect=lambda: _fake_get_redis(),
+        ):
+            gen = _deps.get_redis()
+            yielded = await gen.__anext__()
+            assert yielded is client
+            with pytest.raises(StopAsyncIteration):
+                await gen.__anext__()
 
 
 # ── core/deps.py: demo-mode helpers ─────────────────────────────────

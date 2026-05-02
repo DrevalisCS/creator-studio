@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.61] - 2026-05-02
+
+### Added
+
+- **core/deps + llm_config** — 15 new tests closing the remaining
+  small-gap modules (`test_database_and_deps.py` extended by 3,
+  new `test_llm_config_schemas_and_repo.py` with 11 tests).
+
+  - **`core/deps.py`**: 69% → **100%**. Pinned
+    `get_settings()` lru_cache singleton (same instance on repeat
+    calls) and the `get_db` / `get_redis` async-generator
+    delegators so a future rewrite can't silently swallow the
+    underlying commit/rollback semantics.
+  - **`schemas/llm_config.py`**: 88% → **100%**. Pinned
+    `LLMConfigCreate.validate_base_url` accepts localhost (LM Studio
+    default) and HTTPS public URLs, rejects bad schemes;
+    `LLMConfigUpdate.validate_base_url` short-circuits when `None`
+    (both implicit-omit and explicit-`None` paths); `LLMTestRequest`
+    default prompt + empty-prompt rejection.
+  - **`repositories/llm_config.py`**: 86% → **100%**. Pinned
+    `__init__` wires `BaseRepository[LLMConfig]` to the right
+    model class.
+
+  Suite total: **1500 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.60] - 2026-05-01
 
 ### Added
