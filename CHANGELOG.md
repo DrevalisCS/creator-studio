@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.64] - 2026-05-02
+
+### Added
+
+- **api/routes/prompt_templates + video_ingest** — 21 new tests
+  bringing two more router modules to 100%.
+
+  - **`api/routes/prompt_templates.py`** 49% → **100%** (new
+    `test_prompt_templates_route.py`, 11 tests): pinned the layering
+    contract for `list/create/get/update/delete` —
+    `NotFoundError` → 404, `ValidationError` on update → 422,
+    `_service` factory wires session through, `model_dump(
+    exclude_unset=True)` semantics on update so unprovided fields
+    don't reach the service as `None`.
+  - **`api/routes/video_ingest.py`** 62% → **100%** (new
+    `test_video_ingest_route.py`, 10 tests): pinned the upload
+    flow's content-type guard (non-video / no-content-type both
+    → 400 without crashing on `None.startswith`); `get_job` falls
+    back to `[]` when the service returns `candidate_clips=None`
+    (queued state); pick endpoint surfaces `ValidationError` as
+    400.
+
+  Suite total: **1557 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.63] - 2026-05-02
 
 ### Added
