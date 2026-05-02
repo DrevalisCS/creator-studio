@@ -7,6 +7,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.88] - 2026-05-02
+
+### Added
+
+- **workers/jobs/video_ingest analyze + commit orchestration** —
+  12 new tests bringing the video-ingest worker from 59% → **99%**
+  (new `test_video_ingest_orchestration.py`).
+
+  The helpers were already pinned in v0.29.84; this release closes
+  the orchestration body of both job functions:
+
+  - **`analyze_video_ingest`**:
+    - Job not found → `{"status": "not_found"}` (NOT raise — the
+      operator may have deleted the job between enqueue and pickup).
+    - Asset missing / wrong kind / file not on disk → `_fail`
+      invoked with the specific reason and structured failure
+      payload returned.
+    - ffmpeg audio extraction returncode != 0 OR output file
+      missing → `_fail` invoked.
+    - **Happy path with no LLM**: progress updates flow through
+      stages (`extracting_audio` → `audio_extracted` →
+      `transcribing` → `analyzing` → `picking_clips` → `done`),
+      transcript persisted, and naive duration-window candidates
+      populate `candidate_clips`.
+    - **Happy path with LLM**: `_llm_pick` invoked with the
+      transcript and asset duration; resulting candidates persist.
+
+  - **`commit_video_ingest_clip`**:
+    - Job not in `done` status → `ValueError("not ready")`.
+    - `clip_index` out of range (negative or > len) →
+      `ValueError("out of range")`.
+    - Source asset disappeared between analyze and commit →
+      `ValueError("asset disappeared")`.
+    - **Happy path**: creates a draft Episode with a single-scene
+      script windowed to the chosen clip's `[clip_start_s,
+      clip_end_s]` range; `duration_seconds` derived from end -
+      start; updates the ingest job with `selected_clip_index` +
+      `resulting_episode_id` so the UI can deep-link from
+      "Ingested clips" back to the new episode.
+
+  Suite total: **2543 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.87] - 2026-05-02
 
 ### Added
