@@ -19,7 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.exceptions import NotFoundError, ValidationError
 from drevalis.core.security import decrypt_value, encrypt_value
-from drevalis.core.validators import validate_safe_url_or_localhost
+from drevalis.core.validators import UnsafeURLError, validate_safe_url_or_localhost
 from drevalis.models.comfyui import ComfyUIServer, ComfyUIWorkflow
 from drevalis.repositories.comfyui import (
     ComfyUIServerRepository,
@@ -54,7 +54,7 @@ class ComfyUIServerService:
     ) -> ComfyUIServer:
         try:
             validate_safe_url_or_localhost(url)
-        except ValueError as exc:
+        except UnsafeURLError as exc:
             raise ValidationError(f"Invalid server URL: {exc}") from exc
 
         api_key_encrypted: str | None = None

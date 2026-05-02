@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.99] - 2026-05-02
+
+### Fixed
+
+- **`UnsafeURLError` catch narrowing** in
+  `services/comfyui_admin.py::ComfyUIServerService.create`. The catch
+  was previously `except ValueError`, which is the gotcha CLAUDE.md
+  warns against — it would silently re-label any unrelated
+  `ValueError` raised after the URL validation step (e.g. an
+  encryption bug, a Pydantic model construction error) as "Invalid
+  server URL". Now narrowed to `except UnsafeURLError`. Behavior
+  unchanged for the SSRF case (`UnsafeURLError` still IS-A
+  `ValueError`); unrelated bugs now propagate as 500s with their
+  real traceback instead of getting swallowed as 422s.
+
+  Audit covered every callsite that calls one of `validate_safe_url`,
+  `validate_safe_url_or_localhost`, or `_check_ip*`. Outside the two
+  Pydantic schema validators (which let `UnsafeURLError` propagate
+  to Pydantic's own `ValidationError`, fine), `comfyui_admin.create`
+  was the only over-broad catch.
+
+  4 new tests in `test_comfyui_admin.py` pin: blocked-scheme URL
+  surfaces as `ValidationError`; unrelated `ValueError` from the
+  encryption path propagates untouched; localhost happy path; and
+  the load-bearing `UnsafeURLError ⊂ ValueError` subclass
+  relationship.
+
 ## [0.29.98] - 2026-05-02
 
 ### Added
