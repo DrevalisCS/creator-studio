@@ -7,6 +7,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.75] - 2026-05-02
+
+### Added
+
+- **api/routes/settings + backup** — 84 new tests bringing two more
+  router modules to ~96% / 58%.
+
+  - **`api/routes/settings.py`** 9% → **96%** (new
+    `test_settings_route.py`, 50 tests). Pinned the entire system-
+    health surface:
+    - `_human_size` formats bytes through PB.
+    - `storage_usage`: skips noisy dirs (models / temp / cache /
+      hidden), sums per-subdir, **wall-clock budget bails the walk
+      early** (partial-result invariant), unreadable-file
+      `os.path.getsize` errors are skipped not crashed.
+    - `_check_worker`: Redis failure → DEGRADED (root-cause
+      collapse — operator sees Redis-down once, not twice);
+      missing heartbeat → unreachable; malformed timestamp →
+      degraded; recent → ok; >120s old → unreachable. Naive
+      ISO timestamps without tzinfo handled without subtract crash.
+    - `_check_comfyui_servers`: per-server fan-out with
+      ok/degraded/unreachable per server; falls back to the default
+      URL when no DB servers are configured; even **DB-lookup
+      failure** still produces a default-URL health entry.
+    - `system_health` overall: all-ok → ok, any-unreachable →
+      unhealthy, otherwise degraded.
+    - `/proc/self/mountinfo` parsing handles missing files
+      (Windows) without crashing.
+
+  - **`api/routes/backup.py`** 11% → **58%** (new
+    `test_backup_route.py`, 34 tests). Pinned the
+    security-critical and v0.29.11-hotfix paths:
+    - `_safe_backup_path` rejects slash/backslash/dot-prefix
+      filenames (CVE-class path-traversal guard).
+    - **`_seed_restore_status`** writes `queued` to Redis BEFORE
+      the worker picks up — the v0.29.11 fix for the
+      "missing key on first poll" bug. Pinned with explicit
+      `ex=3600` TTL (matches worker) + `aclose` in finally.
+    - `restore_backup` rejects missing/wrong `X-Confirm-Restore`
+      header → 400 (the typed-confirm dialog isn't enough; the
+      backend MUST gate destruction).
+    - `restore_backup` sets `delete_archive_when_done=True` on
+      uploaded archives; `restore_from_existing` sets it to
+      **False** (operator placed the archive via `docker cp` and
+      wants to keep it).
+    - `get_restore_status` returns `unknown` on Redis miss
+      (terminal state — frontend clears localStorage).
+    - `run_scheduled_backup` no-ops when `BACKUP_AUTO_ENABLED=false`.
+    - The huge `storage_probe` + `_storage_probe_hints` (200+
+      LOC of diagnostic UI text) deliberately left for an
+      integration test rather than mocking every `media_assets`
+      DB row + every host-mount string-match heuristic.
+
+  Suite total: **2043 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.74] - 2026-05-02
 
 ### Added
