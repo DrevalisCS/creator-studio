@@ -16,7 +16,9 @@ every call so a bug in the UI can't wipe the DB.
 
 from __future__ import annotations
 
+import json
 import shutil
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -27,10 +29,12 @@ from fastapi import (
     File,
     Header,
     HTTPException,
+    Query,
     UploadFile,
     status,
 )
 from fastapi.responses import FileResponse
+from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — required
 
 # for FastAPI to resolve ``Annotated[AsyncSession, Depends(get_db)]``
@@ -39,13 +43,20 @@ from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — required
 # previous TYPE_CHECKING-only import made FastAPI fall back to
 # treating ``db`` as a query param, producing 422 on every request.
 from drevalis.core.config import Settings
-from drevalis.core.deps import get_db, get_settings
+from drevalis.core.deps import get_db, get_redis, get_settings
 from drevalis.services.backup import BackupService
 from drevalis.services.media_repair import repair_media_links
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/v1/backup", tags=["backup"])
+
+# Storage probe is expensive (samples media_assets across 5 asset types
+# + reads first byte of each file). Caching for 5 min keeps the Backup
+# tab snappy after the first hit; the operator can hit refresh with
+# ``?force=true`` to recompute.
+_STORAGE_PROBE_CACHE_KEY = "storage_probe:report"
+_STORAGE_PROBE_CACHE_TTL_S = 300
 
 
 def _service(settings: Settings) -> BackupService:
@@ -502,6 +513,11 @@ def _detect_host_source(path: Path) -> str | None:
 async def storage_probe(
     db: Annotated[AsyncSession, Depends(get_db)],
     settings: Annotated[Settings, Depends(get_settings)],
+    redis: Annotated[Redis, Depends(get_redis)],
+    force: Annotated[
+        bool,
+        Query(description="Bypass the 5-minute cache and recompute now."),
+    ] = False,
 ) -> dict[str, object]:
     """Return a focused diagnostic for each of: does the app see the
     right ``storage_base_path``? are the files readable by the Python
@@ -511,7 +527,54 @@ async def storage_probe(
 
     The frontend's Backup section renders the output as a checklist
     so the user can tell at a glance which layer is broken.
+
+    Result is cached in Redis for 5 minutes so repeat loads of the
+    Backup tab are instant — the probe walks media_assets and reads
+    the first byte of each sample file, which is multi-second on
+    installs with millions of assets. Pass ``?force=true`` to
+    recompute on demand.
     """
+    # Try the cache first unless the operator asked for a fresh
+    # compute. Redis hiccups fall through to a live recompute.
+    if not force:
+        try:
+            cached = await redis.get(_STORAGE_PROBE_CACHE_KEY)
+        except Exception:
+            cached = None
+        if cached:
+            try:
+                payload: dict[str, Any] = json.loads(
+                    cached if isinstance(cached, str) else cached.decode()
+                )
+                payload["cached"] = True
+                return payload
+            except (json.JSONDecodeError, ValueError):
+                # Malformed cache — drop it and recompute below.
+                pass
+
+    report = await _compute_storage_probe_report(db, settings)
+    report["cached"] = False
+    report["cached_at"] = datetime.now(tz=UTC).isoformat()
+
+    # Best-effort cache write. A Redis hiccup here just means the
+    # next request will recompute — better than 500ing the response.
+    try:
+        await redis.setex(
+            _STORAGE_PROBE_CACHE_KEY,
+            _STORAGE_PROBE_CACHE_TTL_S,
+            json.dumps(report),
+        )
+    except Exception:
+        logger.debug("storage_probe.cache_write_failed", exc_info=True)
+    return report
+
+
+async def _compute_storage_probe_report(
+    db: AsyncSession, settings: Settings
+) -> dict[str, Any]:
+    """Walk the storage tree + sample media_assets to build the probe
+    report. Pulled out of the route handler so the route can cache
+    the result without duplicating the diagnostic logic."""
     import os
 
     from sqlalchemy import func, select

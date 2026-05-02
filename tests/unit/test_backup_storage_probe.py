@@ -30,7 +30,12 @@ from uuid import uuid4
 
 import pytest
 
-from drevalis.api.routes.backup import _storage_probe_hints, storage_probe
+from drevalis.api.routes.backup import (
+    _STORAGE_PROBE_CACHE_KEY,
+    _STORAGE_PROBE_CACHE_TTL_S,
+    _storage_probe_hints,
+    storage_probe,
+)
 
 
 def _settings(tmp_path: Path, *, api_auth: str | None = None) -> Any:
@@ -38,6 +43,14 @@ def _settings(tmp_path: Path, *, api_auth: str | None = None) -> Any:
     s.storage_base_path = tmp_path
     s.api_auth_token = api_auth
     return s
+
+
+def _redis_miss() -> Any:
+    """Redis stub that returns None on get and accepts setex calls."""
+    r = MagicMock()
+    r.get = AsyncMock(return_value=None)
+    r.setex = AsyncMock(return_value=True)
+    return r
 
 
 # ── _storage_probe_hints ───────────────────────────────────────────
@@ -273,7 +286,7 @@ class TestStorageProbeRoute:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=result)
 
-        out = await storage_probe(db=db, settings=s)
+        out = await storage_probe(db=db, settings=s, redis=_redis_miss())
         assert out["storage_base_exists"] is False
         assert out["samples"] == []
         # Hints flagged the missing path.
@@ -295,7 +308,9 @@ class TestStorageProbeRoute:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=result)
 
-        out = await storage_probe(db=db, settings=_settings(tmp_path))
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=_redis_miss()
+        )
 
         assert out["storage_base_exists"] is True
         assert out["episodes_dir_exists"] is True
@@ -328,7 +343,9 @@ class TestStorageProbeRoute:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=result)
 
-        out = await storage_probe(db=db, settings=_settings(tmp_path))
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=_redis_miss()
+        )
         ep = next(e for e in out["top_level_entries"] if e["name"] == "episodes")
         assert ep["child_count"] == 1000
         assert ep["child_count_capped"] is True
@@ -366,7 +383,9 @@ class TestStorageProbeRoute:
         db = AsyncMock()
         db.execute = AsyncMock(side_effect=results)
 
-        out = await storage_probe(db=db, settings=_settings(tmp_path))
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=_redis_miss()
+        )
 
         assert len(out["samples"]) == 1
         sample = out["samples"][0]
@@ -399,7 +418,9 @@ class TestStorageProbeRoute:
         db = AsyncMock()
         db.execute = AsyncMock(side_effect=results)
 
-        out = await storage_probe(db=db, settings=_settings(tmp_path))
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=_redis_miss()
+        )
         sample = out["samples"][0]
         assert sample["exists"] is False
         assert sample["readable"] is False
@@ -426,7 +447,162 @@ class TestStorageProbeRoute:
         db.execute = AsyncMock(return_value=result)
 
         with patch.object(Path, "iterdir", _fake_iterdir):
-            out = await storage_probe(db=db, settings=_settings(tmp_path))
+            out = await storage_probe(
+                db=db, settings=_settings(tmp_path), redis=_redis_miss()
+            )
 
         # The error landed in top_level_entries.
         assert any("error" in e for e in out["top_level_entries"])
+
+
+# ── Cache layer ────────────────────────────────────────────────────
+
+
+class TestStorageProbeCache:
+    async def test_fresh_compute_marks_cached_false_and_writes_cache(
+        self, tmp_path: Path
+    ) -> None:
+        # Pin: on a cache miss, the route computes the report, marks
+        # ``cached: false``, attaches a ``cached_at`` timestamp, and
+        # writes the result back to Redis with the documented TTL.
+        result = MagicMock()
+        scalars = MagicMock()
+        scalars.all = MagicMock(return_value=[])
+        result.scalars = MagicMock(return_value=scalars)
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=result)
+
+        redis = _redis_miss()
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=redis
+        )
+
+        assert out["cached"] is False
+        assert "cached_at" in out
+        # setex called with the correct key + TTL.
+        redis.setex.assert_awaited_once()
+        args = redis.setex.await_args.args
+        assert args[0] == _STORAGE_PROBE_CACHE_KEY
+        assert args[1] == _STORAGE_PROBE_CACHE_TTL_S
+        # JSON payload is parseable and round-trips.
+        import json as _json
+
+        cached_payload = _json.loads(args[2])
+        assert cached_payload["storage_base_path"] == out["storage_base_path"]
+
+    async def test_cache_hit_short_circuits_db(self, tmp_path: Path) -> None:
+        # Pin: when Redis has a cached payload, the route returns it
+        # immediately with ``cached: true`` and never touches the DB.
+        import json as _json
+
+        cached_payload = {
+            "storage_base_path": str(tmp_path),
+            "samples": [],
+            "hints": ["cached hint"],
+        }
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value=_json.dumps(cached_payload))
+        redis.setex = AsyncMock()
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=AssertionError("DB hit on cache hit"))
+
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=redis
+        )
+
+        assert out["cached"] is True
+        assert out["hints"] == ["cached hint"]
+        redis.setex.assert_not_called()
+        db.execute.assert_not_called()
+
+    async def test_force_bypasses_cache(self, tmp_path: Path) -> None:
+        # Pin: ``?force=true`` skips the cache read entirely and always
+        # recomputes — even when a cached payload exists. The new
+        # report still gets written back to Redis.
+        import json as _json
+
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value=_json.dumps({"stale": True}))
+        redis.setex = AsyncMock()
+
+        result = MagicMock()
+        scalars = MagicMock()
+        scalars.all = MagicMock(return_value=[])
+        result.scalars = MagicMock(return_value=scalars)
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=result)
+
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=redis, force=True
+        )
+
+        assert out["cached"] is False
+        # get was not consulted.
+        redis.get.assert_not_called()
+        # Fresh value persisted.
+        redis.setex.assert_awaited_once()
+
+    async def test_malformed_cache_falls_through_to_recompute(
+        self, tmp_path: Path
+    ) -> None:
+        # Pin: a corrupt JSON blob in Redis must not crash the route —
+        # the route falls through to a live recompute.
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value="not-valid-json{{{")
+        redis.setex = AsyncMock()
+
+        result = MagicMock()
+        scalars = MagicMock()
+        scalars.all = MagicMock(return_value=[])
+        result.scalars = MagicMock(return_value=scalars)
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=result)
+
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=redis
+        )
+
+        assert out["cached"] is False
+        assert "storage_base_path" in out
+
+    async def test_redis_get_failure_tolerated(self, tmp_path: Path) -> None:
+        # Pin: a Redis hiccup on the read path must not 500 — the route
+        # falls through to a live compute.
+        redis = MagicMock()
+        redis.get = AsyncMock(side_effect=ConnectionError("redis down"))
+        redis.setex = AsyncMock()
+
+        result = MagicMock()
+        scalars = MagicMock()
+        scalars.all = MagicMock(return_value=[])
+        result.scalars = MagicMock(return_value=scalars)
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=result)
+
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=redis
+        )
+
+        assert out["cached"] is False
+
+    async def test_redis_setex_failure_tolerated(self, tmp_path: Path) -> None:
+        # Pin: a Redis hiccup on the write path is logged at DEBUG and
+        # the route still returns the freshly computed report rather
+        # than 500ing.
+        redis = MagicMock()
+        redis.get = AsyncMock(return_value=None)
+        redis.setex = AsyncMock(side_effect=ConnectionError("redis down"))
+
+        result = MagicMock()
+        scalars = MagicMock()
+        scalars.all = MagicMock(return_value=[])
+        result.scalars = MagicMock(return_value=scalars)
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=result)
+
+        out = await storage_probe(
+            db=db, settings=_settings(tmp_path), redis=redis
+        )
+
+        assert out["cached"] is False
+        assert "storage_base_path" in out

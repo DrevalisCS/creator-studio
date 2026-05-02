@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.95] - 2026-05-02
+
+### Added
+
+- **storage_probe Redis cache** — the `/api/v1/backup/storage-probe`
+  endpoint now caches its diagnostic report in Redis for **5 minutes**
+  per call. The probe walks `media_assets` across 5 asset types and
+  reads the first byte of each sampled file, which is multi-second on
+  installs with millions of assets — the cache makes repeat loads of
+  the Backup tab in the frontend instant.
+
+  Behaviour:
+
+  - **First hit**: full computation, response includes
+    `cached: false` and `cached_at: <ISO timestamp>`. The payload is
+    persisted to Redis at key `storage_probe:report` with a 300s TTL.
+  - **Subsequent hits within 5 min**: short-circuits the DB walk and
+    file I/O entirely; returns the cached payload with `cached: true`.
+  - **`?force=true`**: skips the cache read and always recomputes,
+    then refreshes the cache with the new value. Use when the operator
+    has just fixed a mount/permission problem and wants live signal.
+  - **Robust to Redis hiccups**: a connection error on the read path
+    falls through to a live compute; a connection error on the write
+    path is logged at DEBUG and the freshly computed report is
+    returned without 500ing.
+  - **Robust to corrupt cache**: a malformed JSON blob in Redis is
+    silently dropped and the route recomputes.
+
+  Diagnostic logic extracted into `_compute_storage_probe_report(db,
+  settings)` so the route handler can stay thin.
+
+  6 new tests covering the cache-hit / cache-miss / force-bypass /
+  malformed-cache / Redis-read-failure / Redis-write-failure paths;
+  the existing 19 route + hint tests updated to inject a Redis
+  fixture.
+
 ## [0.29.94] - 2026-05-02
 
 ### Added
