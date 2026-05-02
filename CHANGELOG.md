@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.72] - 2026-05-02
+
+### Added
+
+- **api/routes/runpod + jobs** — 53 new tests bringing two more
+  router modules to 100%.
+
+  - **`api/routes/runpod.py`** 31% → **100%** (new
+    `test_runpod_route.py`, 32 tests). Pinned the central
+    `_handle_runpod_error` mapping table that decides what UI the
+    user sees:
+
+    - 401 / 403 → 401 `"RunPod API key is invalid"` (auth-prompt)
+    - 404 → 404 with the upstream `detail` passed through
+    - 429 → 429 (rate-limit toast)
+    - everything else → **502 Bad Gateway** (upstream is unreachable
+      from our POV; never a 500)
+
+    Also pinned: missing API key on a feature-gated route → **503**
+    (NOT 401 — UI shows "RunPod is not configured" instead of a
+    session-expiry prompt); duplicate-create within 60s → 409 with
+    structured `{"error": "duplicate_create"}` detail.
+
+  - **`api/routes/jobs/_monolith.py`** 46% → **100%** (new
+    `test_jobs_route.py`, 21 tests). Pinned the layered job-control
+    surface the Activity Monitor depends on:
+
+    - `cancel_job`: NotFoundError → 404, InvalidStatusError → **409
+      with the current status in the detail** so the UI can say
+      "this job is already completed" instead of generic conflict.
+    - `set_priority`: InvalidStatusError → 422 (unknown mode).
+    - `list_all_jobs`: joins episode + series and surfaces titles +
+      names, with the orphan-job (no episode) and no-series branches
+      both pinned.
+    - Batch operations (`cleanup` / `cancel-all` / `retry-all-failed`
+      / `pause-all` / `restart_worker`) return human-readable
+      summary strings the toast layer renders verbatim — drift here
+      shows up as a regression in user-facing messaging.
+
+  Suite total: **1824 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.71] - 2026-05-02
 
 ### Added
