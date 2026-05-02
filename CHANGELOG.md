@@ -7,6 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.71] - 2026-05-02
+
+### Added
+
+- **api/routes/auth + comfyui** — 64 new tests bringing two more
+  router modules to 100%.
+
+  - **`api/routes/auth.py`** 35% → **100%** (new `test_auth_route.py`,
+    32 tests). Auth is the multi-user gate — every branch that
+    decides "who can do what" is now pinned:
+
+    - `_current_user`: missing / unparseable token / missing-uid /
+      invalid-UUID / missing-user / inactive-user → all yield None
+      (anonymous). The **inactive-user-with-correct-password** path
+      explicitly stays 401 so auth can't leak the existence of
+      disabled accounts.
+    - `require_user` → 401 unauthenticated, `require_owner` → 403
+      non-owner.
+    - **F-S-09 invariant**: failed login attempts MUST be recorded
+      via `record_login_failure(...)` so the per-(IP,email) rate
+      limiter has a signal next time. Pinned with
+      `record.assert_awaited_once()`.
+    - **Last-owner-demotion guard**: an owner editing their own
+      row to demote themselves when they are the only active owner
+      → 409 `cannot_remove_last_owner`. Without this an install
+      becomes unrecoverable. Demotion is allowed when another
+      active owner exists.
+    - **Self-delete refused** with 409 `cannot_delete_self`.
+    - **Missing-user delete returns 204** (not 404) — pinned to
+      avoid leaking user existence to a logged-in non-target user.
+
+  - **`api/routes/comfyui.py`** 35% → **100%** (new
+    `test_comfyui_route.py`, 32 tests):
+
+    - `_server_to_response` derives `has_api_key` from the
+      encrypted blob — plaintext key never appears in the response.
+    - **Connection-test exception swallowed**: when
+      `client.test_connection()` raises (DNS down, server crashed),
+      the route MUST update `last_test_status` to
+      `error: <exception>` rather than re-raise. Otherwise the
+      status column never reflects "this server is broken right
+      now". Pinned with `record_test_status` call asserting the
+      `error:` prefix.
+    - **Bundled-template installer**: 404 on unknown slug, 500
+      with a `template file missing on disk` hint when the
+      bundled JSON is absent (drift between code and image), and
+      the success path copies the JSON to a timestamped target
+      under `comfyui_workflows/drevalis/` and persists the row
+      with the relative path.
+
+  Suite total: **1771 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.70] - 2026-05-02
 
 ### Added
