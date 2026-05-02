@@ -103,6 +103,7 @@ async def _publish_scheduled_posts_locked(
                         client_secret=yt_client_secret,
                         redirect_uri=settings.youtube_redirect_uri,
                         encryption_key=settings.encryption_key,
+                        encryption_keys=settings.get_encryption_keys(),
                     )
 
                     # Resolve YouTube channel: per-post override first, then

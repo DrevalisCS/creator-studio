@@ -1011,10 +1011,8 @@ async def get_channel_scopes(
             "hint": "No access token stored — channel must be reconnected.",
         }
 
-    from drevalis.core.security import decrypt_value
-
     try:
-        access_token = decrypt_value(channel.access_token_encrypted, settings.encryption_key)
+        access_token = settings.decrypt(channel.access_token_encrypted)
     except Exception as exc:
         logger.warning("youtube.scope_introspect.decrypt_failed", error=str(exc)[:120])
         return {

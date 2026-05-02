@@ -24,7 +24,7 @@ import httpx
 import structlog
 
 from drevalis.core.exceptions import NotFoundError, ValidationError
-from drevalis.core.security import decrypt_value, encrypt_value
+from drevalis.core.security import encrypt_value
 from drevalis.repositories.api_key_store import ApiKeyStoreRepository
 from drevalis.repositories.social import (
     SocialPlatformRepository,
@@ -99,13 +99,13 @@ class SocialService:
 
         key_row = await self._key_store.get_by_key_name("tiktok_client_key")
         if key_row:
-            client_key = decrypt_value(key_row.encrypted_value, self._settings.encryption_key)
+            client_key = self._settings.decrypt(key_row.encrypted_value)
         secret_row = await self._key_store.get_by_key_name("tiktok_client_secret")
         if secret_row:
-            client_secret = decrypt_value(secret_row.encrypted_value, self._settings.encryption_key)
+            client_secret = self._settings.decrypt(secret_row.encrypted_value)
         uri_row = await self._key_store.get_by_key_name("tiktok_redirect_uri")
         if uri_row:
-            redirect_uri = decrypt_value(uri_row.encrypted_value, self._settings.encryption_key)
+            redirect_uri = self._settings.decrypt(uri_row.encrypted_value)
 
         if not client_key or not client_secret:
             raise TikTokNotConfiguredError(

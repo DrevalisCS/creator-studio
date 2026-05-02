@@ -155,11 +155,17 @@ class SeriesService:
             llm_config = await self._llm_configs.get_by_id(llm_config_id)
             if not llm_config:
                 raise NotFoundError("LLMConfig", llm_config_id)
-            return LLMService(encryption_key=self._encryption_key).get_provider(llm_config)
+            return LLMService(
+                encryption_key=self._encryption_key,
+                encryption_keys=self._settings.get_encryption_keys(),
+            ).get_provider(llm_config)
 
         configs = await self._llm_configs.get_all(limit=1)
         if configs:
-            return LLMService(encryption_key=self._encryption_key).get_provider(configs[0])
+            return LLMService(
+                encryption_key=self._encryption_key,
+                encryption_keys=self._settings.get_encryption_keys(),
+            ).get_provider(configs[0])
         return OpenAICompatibleProvider(
             base_url=self._settings.lm_studio_base_url,
             model=self._settings.lm_studio_default_model,

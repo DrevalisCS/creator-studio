@@ -271,7 +271,10 @@ async def _check_worker(redis: Redis) -> ServiceHealth:
 
 
 async def _check_comfyui_servers(
-    db: AsyncSession, default_url: str, encryption_key: str
+    db: AsyncSession,
+    default_url: str,
+    encryption_key: str,
+    encryption_keys: dict[int, str] | None = None,
 ) -> list[ServiceHealth]:
     """Check each active ComfyUI server's connectivity.
 
@@ -286,7 +289,7 @@ async def _check_comfyui_servers(
 
     # Try to fetch active servers from DB
     try:
-        svc = ComfyUIServerService(db, encryption_key)
+        svc = ComfyUIServerService(db, encryption_key, encryption_keys=encryption_keys)
         active_servers = [s for s in await svc.list_all() if s.is_active]
     except Exception:
         active_servers = []
@@ -470,7 +473,12 @@ async def system_health(
     redis_task = asyncio.create_task(_check_redis(redis))
     worker_task = asyncio.create_task(_check_worker(redis))
     comfyui_task = asyncio.create_task(
-        _check_comfyui_servers(db, settings.comfyui_default_url, settings.encryption_key)
+        _check_comfyui_servers(
+            db,
+            settings.comfyui_default_url,
+            settings.encryption_key,
+            encryption_keys=settings.get_encryption_keys(),
+        )
     )
     ffmpeg_task = asyncio.create_task(_check_ffmpeg(settings.ffmpeg_path))
     piper_task = asyncio.create_task(_check_piper_tts(settings.piper_models_path))

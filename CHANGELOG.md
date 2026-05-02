@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.2] - 2026-05-02
+
+### Added
+
+- **Service-class encryption-key migration** — every service that
+  decrypts at-rest ciphertext now accepts an optional
+  ``encryption_keys: dict[int, str]`` constructor kwarg in addition
+  to the existing ``encryption_key: str``. When provided (e.g.
+  ``settings.get_encryption_keys()``), the service uses
+  ``decrypt_value_multi`` so rows encrypted under a historical
+  ``ENCRYPTION_KEY_V<N>`` decrypt cleanly after rotation.
+
+  Services migrated:
+
+  - ``services/comfyui_admin.ComfyUIServerService``
+  - ``services/runpod_orchestrator.RunPodOrchestrator``
+  - ``services/llm/_monolith.LLMService``
+  - ``services/voice_profile.VoiceProfileService``
+  - ``services/youtube.YouTubeService``
+  - ``services/social.SocialService`` already held a ``Settings``
+    reference, so its three TikTok-credentials decrypt sites were
+    flipped to ``self._settings.decrypt(ct)`` without a constructor
+    change.
+
+  Routes / workers / sibling services (~15 callsites in
+  ``api/routes/comfyui``, ``api/routes/runpod``,
+  ``api/routes/voice_profiles``, ``api/routes/llm``,
+  ``api/routes/episodes/_monolith``, ``api/routes/settings``,
+  ``api/routes/youtube/_monolith``, ``services/series``,
+  ``services/youtube_admin``, ``workers/lifecycle``,
+  ``workers/jobs/series``, ``workers/jobs/seo``,
+  ``workers/jobs/ab_test_winner``, ``workers/jobs/scheduled``)
+  now pass ``encryption_keys=settings.get_encryption_keys()`` at the
+  factory site.
+
+  ENCRYPTION sites are unchanged — new ciphertext is still tagged
+  with version 1 and uses the current ``ENCRYPTION_KEY``. Bumping
+  the write-version is only needed once an operator actually
+  rotates and is a separate follow-up.
+
+  Backwards compatible: when ``encryption_keys`` is omitted the
+  service synthesises ``{1: encryption_key}`` and falls back to the
+  single-key ``decrypt_value`` path, so all existing tests that
+  patch ``decrypt_value`` at the service module level keep working
+  unchanged. Only one test had to be updated:
+  ``test_youtube_route_part3.py::test_decrypt_failure_returns_introspection_failed``
+  now stubs ``settings.decrypt`` directly because the route flipped
+  to ``settings.decrypt(ct)``.
+
+  2 new tests in ``test_comfyui_admin.py`` pin the rotation invariant
+  end-to-end: encrypt with K1, construct service with
+  ``encryption_keys={1: K1, 2: K2}``, confirm
+  ``decrypt_api_key`` recovers the plaintext via the V1 entry.
+
 ## [0.30.1] - 2026-05-02
 
 ### Added

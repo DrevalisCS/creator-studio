@@ -55,7 +55,10 @@ async def generate_seo_async(ctx: dict[str, Any], episode_id: str) -> dict[str, 
     # Resolve LLM
     configs = await LLMConfigRepository(db).get_all(limit=1)
     if configs:
-        llm_service = LLMService(encryption_key=settings.encryption_key)
+        llm_service = LLMService(
+            encryption_key=settings.encryption_key,
+            encryption_keys=settings.get_encryption_keys(),
+        )
         provider = llm_service.get_provider(configs[0])
     else:
         provider = OpenAICompatibleProvider(

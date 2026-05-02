@@ -18,7 +18,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.exceptions import NotFoundError, ValidationError
-from drevalis.core.security import decrypt_value
+from drevalis.core.security import decrypt_value, decrypt_value_multi
 from drevalis.repositories.api_key_store import ApiKeyStoreRepository
 from drevalis.repositories.asset import AssetRepository
 from drevalis.repositories.comfyui import ComfyUIServerRepository
@@ -58,13 +58,21 @@ class VoiceProfileService:
         storage_base_path: Path,
         piper_models_path: Path,
         kokoro_models_path: Path,
+        encryption_keys: dict[int, str] | None = None,
     ) -> None:
         self._db = db
         self._encryption_key = encryption_key
+        self._encryption_keys: dict[int, str] = encryption_keys or {1: encryption_key}
         self._storage = Path(storage_base_path)
         self._piper_models = Path(piper_models_path)
         self._kokoro_models = Path(kokoro_models_path)
         self._repo = VoiceProfileRepository(db)
+
+    def _decrypt(self, ciphertext: str) -> str:
+        if len(self._encryption_keys) > 1:
+            plaintext, _ = decrypt_value_multi(ciphertext, self._encryption_keys)
+            return plaintext
+        return decrypt_value(ciphertext, self._encryption_key)
 
     # ── CRUD ─────────────────────────────────────────────────────────────
 
@@ -191,7 +199,7 @@ class VoiceProfileService:
         comfyui_api_key: str | None = None
         if server.api_key_encrypted:
             try:
-                comfyui_api_key = decrypt_value(server.api_key_encrypted, self._encryption_key)
+                comfyui_api_key = self._decrypt(server.api_key_encrypted)
             except Exception:
                 logger.warning(
                     "voice_preview.comfyui_key_decrypt_failed",
@@ -348,7 +356,7 @@ class VoiceProfileService:
                 ),
             )
 
-        el_api_key = decrypt_value(api_key_row.encrypted_value, self._encryption_key)
+        el_api_key = self._decrypt(api_key_row.encrypted_value)
 
         from drevalis.services.tts import ElevenLabsTTSProvider
 

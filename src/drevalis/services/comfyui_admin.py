@@ -18,7 +18,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.exceptions import NotFoundError, ValidationError
-from drevalis.core.security import decrypt_value, encrypt_value
+from drevalis.core.security import decrypt_value, decrypt_value_multi, encrypt_value
 from drevalis.core.validators import UnsafeURLError, validate_safe_url_or_localhost
 from drevalis.models.comfyui import ComfyUIServer, ComfyUIWorkflow
 from drevalis.repositories.comfyui import (
@@ -29,10 +29,31 @@ from drevalis.schemas.comfyui import WorkflowInputMapping
 
 
 class ComfyUIServerService:
-    def __init__(self, db: AsyncSession, encryption_key: str) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        encryption_key: str,
+        *,
+        encryption_keys: dict[int, str] | None = None,
+    ) -> None:
         self._db = db
-        self._encryption_key = encryption_key
+        self._encryption_key = encryption_key  # used for new ENCRYPT writes
+        # Versioned key map for DECRYPT: when caller passes the full
+        # ``settings.get_encryption_keys()`` dict, rows encrypted under a
+        # historical ``ENCRYPTION_KEY_V<N>`` still decrypt after rotation.
+        # When ``encryption_keys`` is None we synthesise a single-version
+        # map so the helper code below has one shape to handle.
+        self._encryption_keys: dict[int, str] = encryption_keys or {1: encryption_key}
         self._repo = ComfyUIServerRepository(db)
+
+    def _decrypt(self, ciphertext: str) -> str:
+        """Decrypt against the versioned key map. Falls back to the
+        single-key path when only one key is loaded so existing tests
+        that patch ``decrypt_value`` directly keep working."""
+        if len(self._encryption_keys) > 1:
+            plaintext, _ = decrypt_value_multi(ciphertext, self._encryption_keys)
+            return plaintext
+        return decrypt_value(ciphertext, self._encryption_key)
 
     async def list_all(self) -> list[ComfyUIServer]:
         return await self._repo.get_all()
@@ -106,7 +127,7 @@ class ComfyUIServerService:
         if not server.api_key_encrypted:
             return None
         try:
-            return decrypt_value(server.api_key_encrypted, self._encryption_key)
+            return self._decrypt(server.api_key_encrypted)
         except Exception:
             return None
 

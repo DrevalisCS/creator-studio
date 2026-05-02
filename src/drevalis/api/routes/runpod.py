@@ -43,7 +43,11 @@ def _orchestrator(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> RunPodOrchestrator:
-    return RunPodOrchestrator(db, encryption_key=settings.encryption_key)
+    return RunPodOrchestrator(
+        db,
+        encryption_key=settings.encryption_key,
+        encryption_keys=settings.get_encryption_keys(),
+    )
 
 
 async def _resolve_api_key(

@@ -66,6 +66,56 @@ class TestCreateUrlValidationNarrowing:
         assert issubclass(UnsafeURLError, ValueError)
 
 
+class TestVersionedDecryption:
+    """Pin that the service decrypts rows encrypted under a historical
+    ``ENCRYPTION_KEY_V<N>`` after rotation. This is the core invariant
+    of the v0.30.2 multi-version migration — without it, every API key
+    encrypted before a key rotation 500s on read."""
+
+    async def test_decrypt_walks_versioned_map(self) -> None:
+        # Encrypt with K1 (the old key). Construct the service with
+        # the ROTATED state: ENCRYPTION_KEY=K2, V1=K1. The decrypt path
+        # must still recover the plaintext via the V1 entry.
+        from drevalis.core.security import encrypt_value
+
+        k1 = "1fM7zBUPBl0kuue-unkm_NRBb-xkTUTm35rzJommYWg="
+        k2 = "lfQ9ZeQI2jlgEpUYn4nwLJZ_Tvo3i_Pmb_t3w0prHSU="
+        ciphertext, _ = encrypt_value("real-api-key", k1)
+
+        db = MagicMock()
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+        svc = ComfyUIServerService(
+            db,
+            encryption_key=k2,
+            encryption_keys={1: k1, 2: k2},
+        )
+
+        server = MagicMock()
+        server.api_key_encrypted = ciphertext
+        result = await svc.decrypt_api_key(server)
+        assert result == "real-api-key"
+
+    async def test_single_key_path_unchanged(self) -> None:
+        # Pin: when ``encryption_keys`` is omitted, the service falls
+        # back to the legacy single-key path so existing tests that
+        # patch ``decrypt_value`` directly keep working.
+        from drevalis.core.security import encrypt_value
+
+        key = "1fM7zBUPBl0kuue-unkm_NRBb-xkTUTm35rzJommYWg="
+        ciphertext, _ = encrypt_value("legacy", key)
+
+        db = MagicMock()
+        db.commit = AsyncMock()
+        db.refresh = AsyncMock()
+        svc = ComfyUIServerService(db, encryption_key=key)
+
+        server = MagicMock()
+        server.api_key_encrypted = ciphertext
+        result = await svc.decrypt_api_key(server)
+        assert result == "legacy"
+
+
 class TestCreateHappyPath:
     async def test_localhost_passes_validation(self) -> None:
         # Pin: localhost is permitted (Drevalis is local-first); the

@@ -192,7 +192,10 @@ async def test_llm_config(
 
         # Pass the encryption key to LLMService so it can decrypt API keys
         # internally without mutating the ORM object (M5 fix).
-        runtime = LLMService(encryption_key=settings.encryption_key)
+        runtime = LLMService(
+            encryption_key=settings.encryption_key,
+            encryption_keys=settings.get_encryption_keys(),
+        )
 
         # Expunge the config from the session so that no accidental
         # autoflush can persist decrypted values to the database.

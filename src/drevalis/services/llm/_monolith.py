@@ -21,7 +21,7 @@ from uuid import UUID
 
 import structlog
 
-from drevalis.core.security import decrypt_value
+from drevalis.core.security import decrypt_value, decrypt_value_multi
 from drevalis.schemas.script import EpisodeScript
 
 if TYPE_CHECKING:
@@ -401,9 +401,35 @@ class LLMService:
     Providers are lazily instantiated and cached by :class:`LLMConfig` id.
     """
 
-    def __init__(self, encryption_key: str = "") -> None:
+    def __init__(
+        self,
+        encryption_key: str = "",
+        *,
+        encryption_keys: dict[int, str] | None = None,
+    ) -> None:
         self._encryption_key = encryption_key
+        # Versioned key map for rotation-aware decryption. When the
+        # caller passes the full ``settings.get_encryption_keys()`` dict,
+        # rows encrypted under a historical ``ENCRYPTION_KEY_V<N>``
+        # still decrypt after rotation. When omitted we synthesise a
+        # single-version map (or empty dict if no key) so the helper
+        # below has one shape to handle.
+        if encryption_keys is not None:
+            self._encryption_keys = encryption_keys
+        elif encryption_key:
+            self._encryption_keys = {1: encryption_key}
+        else:
+            self._encryption_keys = {}
         self._providers: dict[UUID, LLMProvider] = {}
+
+    def _decrypt(self, ciphertext: str) -> str:
+        """Decrypt against the versioned key map. Falls back to the
+        single-key path when only one key is loaded so existing tests
+        that patch ``decrypt_value`` directly keep working."""
+        if len(self._encryption_keys) > 1:
+            plaintext, _ = decrypt_value_multi(ciphertext, self._encryption_keys)
+            return plaintext
+        return decrypt_value(ciphertext, self._encryption_key)
 
     # ── provider resolution ────────────────────────────────────────────
 
@@ -424,7 +450,7 @@ class LLMService:
         api_key: str = "not-needed"
         if config.api_key_encrypted and self._encryption_key:
             try:
-                api_key = decrypt_value(config.api_key_encrypted, self._encryption_key)
+                api_key = self._decrypt(config.api_key_encrypted)
             except Exception:
                 logger.warning(
                     "llm_api_key_decrypt_failed",

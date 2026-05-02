@@ -38,7 +38,11 @@ def _server_service(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> ComfyUIServerService:
-    return ComfyUIServerService(db, settings.encryption_key)
+    return ComfyUIServerService(
+        db,
+        settings.encryption_key,
+        encryption_keys=settings.get_encryption_keys(),
+    )
 
 
 def _workflow_service(db: AsyncSession = Depends(get_db)) -> ComfyUIWorkflowService:

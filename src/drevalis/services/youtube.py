@@ -14,7 +14,7 @@ from typing import Any
 
 import structlog
 
-from drevalis.core.security import decrypt_value, encrypt_value
+from drevalis.core.security import decrypt_value, decrypt_value_multi, encrypt_value
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -48,13 +48,23 @@ class YouTubeService:
         client_secret: str,
         redirect_uri: str,
         encryption_key: str,
+        *,
+        encryption_keys: dict[int, str] | None = None,
     ) -> None:
         self.client_id = client_id
         self.client_secret = client_secret
         self.redirect_uri = redirect_uri
         self.encryption_key = encryption_key
+        # Versioned key map for rotation-aware OAuth-token decryption.
+        self._encryption_keys: dict[int, str] = encryption_keys or {1: encryption_key}
         # Store PKCE code_verifiers keyed by OAuth state parameter
         self._pending_states: dict[str, str | None] = {}
+
+    def _decrypt(self, ciphertext: str) -> str:
+        if len(self._encryption_keys) > 1:
+            plaintext, _ = decrypt_value_multi(ciphertext, self._encryption_keys)
+            return plaintext
+        return decrypt_value(ciphertext, self.encryption_key)
 
     # ── OAuth ────────────────────────────────────────────────────────────
 
@@ -168,10 +178,10 @@ class YouTubeService:
         """Decrypt tokens and construct a ``google.oauth2.credentials.Credentials``."""
         from google.oauth2.credentials import Credentials
 
-        access_token = decrypt_value(access_token_encrypted, self.encryption_key)
+        access_token = self._decrypt(access_token_encrypted)
         refresh_token = None
         if refresh_token_encrypted:
-            refresh_token = decrypt_value(refresh_token_encrypted, self.encryption_key)
+            refresh_token = self._decrypt(refresh_token_encrypted)
 
         # Google's Credentials uses naive datetimes internally (utcnow),
         # so strip timezone info to avoid comparison errors.

@@ -113,6 +113,7 @@ async def build_youtube_service(settings: Settings, db: AsyncSession) -> YouTube
         client_secret=client_secret,
         redirect_uri=settings.youtube_redirect_uri,
         encryption_key=settings.encryption_key,
+        encryption_keys=settings.get_encryption_keys(),
     )
 
 
@@ -344,7 +345,8 @@ class YouTubeAdminService:
             configs = await LLMConfigRepository(self._db).get_all(limit=1)
             if configs:
                 provider: Any = LLMService(
-                    encryption_key=self._settings.encryption_key
+                    encryption_key=self._settings.encryption_key,
+                    encryption_keys=self._settings.get_encryption_keys(),
                 ).get_provider(configs[0])
             else:
                 provider = OpenAICompatibleProvider(

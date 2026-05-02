@@ -84,7 +84,10 @@ async def startup(ctx: dict[str, Any]) -> None:
     ctx["storage"] = storage
 
     # ── LLM service ───────────────────────────────────────────────────
-    llm_service = LLMService(encryption_key=settings.encryption_key)
+    llm_service = LLMService(
+        encryption_key=settings.encryption_key,
+        encryption_keys=settings.get_encryption_keys(),
+    )
     ctx["llm_service"] = llm_service
 
     # ── ComfyUI pool & service ────────────────────────────────────────

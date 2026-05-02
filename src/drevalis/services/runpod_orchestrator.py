@@ -26,7 +26,7 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.exceptions import NotFoundError, ValidationError
-from drevalis.core.security import decrypt_value, encrypt_value
+from drevalis.core.security import decrypt_value, decrypt_value_multi, encrypt_value
 from drevalis.repositories.api_key_store import ApiKeyStoreRepository
 from drevalis.repositories.comfyui import ComfyUIServerRepository
 from drevalis.repositories.llm_config import LLMConfigRepository
@@ -52,12 +52,25 @@ class DuplicatePodCreateError(Exception):
 
 
 class RunPodOrchestrator:
-    def __init__(self, db: AsyncSession, *, encryption_key: str) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        *,
+        encryption_key: str,
+        encryption_keys: dict[int, str] | None = None,
+    ) -> None:
         self._db = db
         self._encryption_key = encryption_key
+        self._encryption_keys: dict[int, str] = encryption_keys or {1: encryption_key}
         self._key_store = ApiKeyStoreRepository(db)
         self._comfyui = ComfyUIServerRepository(db)
         self._llm = LLMConfigRepository(db)
+
+    def _decrypt(self, ciphertext: str) -> str:
+        if len(self._encryption_keys) > 1:
+            plaintext, _ = decrypt_value_multi(ciphertext, self._encryption_keys)
+            return plaintext
+        return decrypt_value(ciphertext, self._encryption_key)
 
     # ── API key resolution ───────────────────────────────────────────────
 
@@ -66,7 +79,7 @@ class RunPodOrchestrator:
         entry = await self._key_store.get_by_key_name(_RUNPOD_KEY_NAME)
         if entry is not None:
             try:
-                return decrypt_value(entry.encrypted_value, self._encryption_key)
+                return self._decrypt(entry.encrypted_value)
             except Exception:
                 pass
         if env_fallback:
@@ -138,9 +151,7 @@ class RunPodOrchestrator:
             try:
                 hf_row = await self._key_store.get_by_key_name(_HF_KEY_NAME)
                 if hf_row:
-                    pod_env["HF_TOKEN"] = decrypt_value(
-                        hf_row.encrypted_value, self._encryption_key
-                    )
+                    pod_env["HF_TOKEN"] = self._decrypt(hf_row.encrypted_value)
             except Exception:
                 pass
 

@@ -612,17 +612,19 @@ class TestChannelScopes:
         admin.resolve_channel = AsyncMock(return_value=ch)
         admin.refresh_and_persist_tokens = AsyncMock()
 
+        # Route calls ``settings.decrypt(ct)`` (multi-version aware).
+        # Configure it to raise so the introspection-failed branch fires.
+        s = _settings()
+        s.decrypt = MagicMock(side_effect=ValueError("decrypt failed"))
+
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
-        ), patch(
-            "drevalis.core.security.decrypt_value",
-            side_effect=ValueError("decrypt failed"),
         ):
             out = await get_channel_scopes(
                 channel_id=ch.id,
                 db=AsyncMock(),
-                settings=_settings(),
+                settings=s,
                 admin=admin,
             )
         assert out["token_introspection_failed"] is True

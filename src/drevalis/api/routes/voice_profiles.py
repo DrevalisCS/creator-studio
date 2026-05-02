@@ -41,6 +41,7 @@ def _service(
         storage_base_path=settings.storage_base_path,
         piper_models_path=settings.piper_models_path,
         kokoro_models_path=settings.kokoro_models_path,
+        encryption_keys=settings.get_encryption_keys(),
     )
 
 
