@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.29.69] - 2026-05-02
+
+### Added
+
+- **api/routes/voice_profiles + video_templates** — 33 new tests
+  bringing two more router modules to 100%.
+
+  - **`api/routes/voice_profiles.py`** 45% → **100%** (new
+    `test_voice_profiles_route.py`, 18 tests): pinned the
+    `POST /{id}/test` endpoint's **default-text fallback** when
+    the request body is omitted (the UI's "play sample" button
+    posts an empty body — a future "require body" cleanup would
+    silently break it); CRUD layered status mapping
+    (NotFoundError → 404, ValidationError → 422 on update);
+    `/clone` ValidationError → 400; `/generate-previews`
+    ValidationError → 400.
+  - **`api/routes/video_templates.py`** 42% → **100%** (new
+    `test_video_templates_route.py`, 15 tests): pinned the apply
+    endpoint's `applied_fields` count surfacing in the toast
+    message; the `/from-series` endpoint's **"Template: " prefix
+    strip** in the human-readable message (and the defensive
+    no-prefix branch that omits the "from series" clause cleanly
+    rather than splicing an empty quote).
+
+  Suite total: **1678 passing**, 2 skipped (ffmpeg-only).
+  mypy --strict clean.
+
 ## [0.29.68] - 2026-05-02
 
 ### Added
