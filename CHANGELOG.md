@@ -7,6 +7,54 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.5] - 2026-05-03
+
+### Added
+
+- **Scheduled posts now publish to TikTok / Instagram / Facebook /
+  X**, not just YouTube. Previously the
+  ``publish_scheduled_posts`` cron marked every non-YouTube post as
+  ``failed`` with "not yet implemented" — making the Calendar
+  feature effectively YouTube-only.
+
+  When a scheduled post for tiktok/instagram/facebook/x comes due,
+  the cron now hands off to the existing battle-tested
+  ``publish_pending_social_uploads`` pipeline by creating a
+  ``SocialUpload`` row pointing at the same episode. The
+  ``ScheduledPost`` flips to ``published`` (the scheduling step is
+  done), and the actual upload status lives on the new
+  ``SocialUpload`` row, visible in the Social tab. The scheduled
+  post's ``remote_id`` carries ``social_upload:<uuid>`` so an
+  operator can correlate the two rows.
+
+  Failure modes covered:
+
+  - **No active SocialPlatform connection** for the requested
+    platform → fail fast with a clear "Reconnect via Settings →
+    Social" message rather than creating an orphan SocialUpload that
+    bounces in the social cron.
+  - **No video asset** for the episode → fail on the
+    ``ScheduledPost`` row with the same message the YouTube branch
+    uses.
+  - **content_type != "episode"** → reject (audiobook scheduling on
+    social platforms is not supported).
+  - **Genuinely unknown platform** (e.g. typo, future platform not
+    yet supported) → mark failed with "Unknown platform" + the
+    supported list.
+
+  Latency: up to a 5-minute additional delay between
+  ``scheduled_at`` and the actual platform upload because the social
+  cron runs every 5 minutes. This is documented as the trade-off
+  for not duplicating the per-platform uploaders into
+  ``scheduled.py``.
+
+  3 tests in ``test_scheduled_publish_job.py``: 1 updated (was
+  pinning the old "not yet implemented" failure path; now pins the
+  unknown-platform branch), 2 new (success-path SocialUpload-row
+  creation + remote_id stash; missing-active-platform fast-fail).
+
+- **``pyproject.toml`` version bumped to ``0.30.5``**.
+
 ## [0.30.4] - 2026-05-03
 
 ### Added

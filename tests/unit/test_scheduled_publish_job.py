@@ -141,14 +141,18 @@ class TestEmptyPending:
 
 
 class TestNonYouTubePlatform:
-    async def test_unimplemented_platform_marked_failed(self) -> None:
+    async def test_unknown_platform_marked_failed(self) -> None:
+        # Pin: a platform string that isn't in the supported set
+        # (youtube / tiktok / instagram / facebook / x) fails fast with
+        # a clear "Unknown platform" message rather than silently
+        # dropping or attempting an undefined upload.
         from contextlib import asynccontextmanager
 
         @asynccontextmanager
         async def _winning_lock(ctx: Any, name: str, *, ttl_s: int) -> Any:
             yield True
 
-        post = _make_post(platform="instagram")
+        post = _make_post(platform="myspace")  # Genuinely unknown.
         repo = MagicMock()
         repo.get_pending = AsyncMock(return_value=[post])
         repo.update = AsyncMock()
@@ -170,12 +174,144 @@ class TestNonYouTubePlatform:
             )
         assert result["failed"] == 1
         assert result["published"] == 0
-        # Update called with status=failed and a clear message.
         update_calls = repo.update.call_args_list
         last_kwargs = update_calls[-1].kwargs
         assert last_kwargs["status"] == "failed"
-        assert "instagram" in last_kwargs["error_message"]
-        assert "not yet implemented" in last_kwargs["error_message"]
+        assert "myspace" in last_kwargs["error_message"]
+        assert "Unknown platform" in last_kwargs["error_message"]
+
+    async def test_social_platform_creates_social_upload_row(self) -> None:
+        # Pin: a scheduled instagram post that comes due hands off to
+        # the social-uploads pipeline by creating a SocialUpload row;
+        # the ScheduledPost flips to ``published`` with the new row's
+        # id stashed in ``remote_id`` for correlation.
+        from contextlib import asynccontextmanager
+        from types import SimpleNamespace
+        from unittest.mock import call
+
+        @asynccontextmanager
+        async def _winning_lock(ctx: Any, name: str, *, ttl_s: int) -> Any:
+            yield True
+
+        post = _make_post(platform="instagram")
+        repo = MagicMock()
+        repo.get_pending = AsyncMock(return_value=[post])
+        repo.update = AsyncMock()
+
+        # Active social platform connection exists.
+        platform_row = SimpleNamespace(
+            id=uuid4(), platform="instagram", is_active=True
+        )
+
+        # Build a session that:
+        #   - Returns the scheduled post for get_pending
+        #   - Returns the active social platform when queried
+        session = _make_session(pending=[post])
+        # The social-platform query is the second SELECT. _make_session
+        # cycles through pending; we override execute to dispatch.
+        original_execute = session.execute
+
+        async def _execute(stmt: Any) -> Any:
+            stmt_str = str(stmt)
+            if "social_platforms" in stmt_str:
+                r = MagicMock()
+                r.scalar_one_or_none = MagicMock(return_value=platform_row)
+                return r
+            return await original_execute(stmt)
+
+        session.execute = _execute  # type: ignore[assignment]
+
+        # Video asset present.
+        asset_repo_mock = MagicMock()
+        asset_repo_mock.get_by_episode_and_type = AsyncMock(
+            return_value=[SimpleNamespace(file_path="episodes/x/output/final.mp4")]
+        )
+
+        with (
+            patch("drevalis.workers.cron_lock.cron_lock", side_effect=_winning_lock),
+            patch("drevalis.core.config.Settings", return_value=_make_settings()),
+            patch(
+                "drevalis.repositories.scheduled_post.ScheduledPostRepository",
+                return_value=repo,
+            ),
+            patch(
+                "drevalis.repositories.media_asset.MediaAssetRepository",
+                return_value=asset_repo_mock,
+            ),
+        ):
+            result = await publish_scheduled_posts(
+                {
+                    "session_factory": _make_session_factory(session),
+                    "redis": AsyncMock(),
+                }
+            )
+
+        assert result["published"] == 1
+        assert result["failed"] == 0
+        # Repo.update called with status=published + remote_id storing
+        # the SocialUpload id.
+        update_kwargs = repo.update.call_args_list[-1].kwargs
+        assert update_kwargs["status"] == "published"
+        assert update_kwargs["remote_id"].startswith("social_upload:")
+        # session.add was called with a SocialUpload row.
+        from drevalis.models.social_platform import SocialUpload as _SU
+
+        added = [c.args[0] for c in session.add.call_args_list]
+        assert any(isinstance(a, _SU) for a in added)
+        social_row = next(a for a in added if isinstance(a, _SU))
+        assert social_row.platform_id == platform_row.id
+        assert social_row.episode_id == post.content_id
+        assert social_row.upload_status == "pending"
+        # Stop the unused-import warning.
+        _ = call
+
+    async def test_social_platform_no_active_connection_fails(self) -> None:
+        # Pin: a scheduled tiktok post with no active SocialPlatform
+        # row fails fast with an actionable message rather than
+        # creating an orphan SocialUpload row that would just bounce
+        # in the social cron.
+        from contextlib import asynccontextmanager
+
+        @asynccontextmanager
+        async def _winning_lock(ctx: Any, name: str, *, ttl_s: int) -> Any:
+            yield True
+
+        post = _make_post(platform="tiktok")
+        repo = MagicMock()
+        repo.get_pending = AsyncMock(return_value=[post])
+        repo.update = AsyncMock()
+
+        session = _make_session(pending=[post])
+        original_execute = session.execute
+
+        async def _execute(stmt: Any) -> Any:
+            stmt_str = str(stmt)
+            if "social_platforms" in stmt_str:
+                r = MagicMock()
+                r.scalar_one_or_none = MagicMock(return_value=None)
+                return r
+            return await original_execute(stmt)
+
+        session.execute = _execute  # type: ignore[assignment]
+
+        with (
+            patch("drevalis.workers.cron_lock.cron_lock", side_effect=_winning_lock),
+            patch("drevalis.core.config.Settings", return_value=_make_settings()),
+            patch(
+                "drevalis.repositories.scheduled_post.ScheduledPostRepository",
+                return_value=repo,
+            ),
+        ):
+            result = await publish_scheduled_posts(
+                {
+                    "session_factory": _make_session_factory(session),
+                    "redis": AsyncMock(),
+                }
+            )
+        assert result["failed"] == 1
+        last_kwargs = repo.update.call_args_list[-1].kwargs
+        assert last_kwargs["status"] == "failed"
+        assert "No active tiktok connection" in last_kwargs["error_message"]
 
 
 # ── YouTube failure paths ───────────────────────────────────────────

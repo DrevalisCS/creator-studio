@@ -259,12 +259,126 @@ async def _publish_scheduled_posts_locked(
                             )
                         except Exception:
                             log.debug("progress_broadcast_failed", exc_info=True)
+                elif post.platform in ("tiktok", "instagram", "facebook", "x"):
+                    # ── Hand off to the social-uploads pipeline ──────────
+                    # We don't duplicate the per-platform uploaders here.
+                    # Instead, create a ``SocialUpload`` row pointing at
+                    # the same episode + platform; the existing
+                    # ``publish_pending_social_uploads`` cron picks it up
+                    # on its next 5-min tick and runs the real upload.
+                    # The scheduled-post status flips to ``published``
+                    # because the *scheduling* step is done — the actual
+                    # upload's status lives on the SocialUpload row, which
+                    # the operator can monitor in the Social tab.
+                    from sqlalchemy import select as _select
+
+                    from drevalis.models.social_platform import (
+                        SocialPlatform,
+                        SocialUpload,
+                    )
+
+                    # Resolve the active platform connection. A scheduled
+                    # post for a platform with no connection (or the
+                    # operator disconnected after scheduling) fails fast
+                    # rather than silently dropping.
+                    plat_q = await session.execute(
+                        _select(SocialPlatform)
+                        .where(SocialPlatform.platform == post.platform)
+                        .where(SocialPlatform.is_active.is_(True))
+                        .limit(1)
+                    )
+                    platform_row = plat_q.scalar_one_or_none()
+                    if platform_row is None:
+                        raise RuntimeError(
+                            f"No active {post.platform} connection. "
+                            f"Reconnect via Settings → Social → {post.platform.title()}."
+                        )
+
+                    if post.content_type != "episode":
+                        raise RuntimeError(
+                            f"Only episode content is supported for {post.platform} "
+                            f"scheduled posts (got '{post.content_type}')."
+                        )
+
+                    # Sanity-check the video asset exists; the social
+                    # cron will check again before uploading, but
+                    # surfacing a missing-video failure here gives the
+                    # operator the failure on the ScheduledPost row
+                    # instead of a delayed SocialUpload-row failure.
+                    asset_repo = MediaAssetRepository(session)
+                    video_assets = await asset_repo.get_by_episode_and_type(
+                        post.content_id, "video"
+                    )
+                    if not video_assets:
+                        raise RuntimeError(
+                            f"No video asset for episode {post.content_id}"
+                        )
+
+                    upload_row = SocialUpload(
+                        platform_id=platform_row.id,
+                        episode_id=post.content_id,
+                        content_type="episode",
+                        title=post.title[:280],
+                        description=post.description or "",
+                        hashtags=getattr(post, "tags", None) or "",
+                        upload_status="pending",
+                    )
+                    session.add(upload_row)
+                    await session.flush()
+
+                    await repo.update(
+                        post.id,
+                        status="published",
+                        published_at=datetime.now(UTC),
+                        # Stash the SocialUpload id so the UI / operator
+                        # can correlate this scheduled-post row with the
+                        # actual upload attempt living on the social tab.
+                        remote_id=f"social_upload:{upload_row.id}",
+                    )
+                    await session.commit()
+                    published += 1
+                    log.info(
+                        "post_published_social",
+                        post_id=str(post.id),
+                        platform=post.platform,
+                        social_upload_id=str(upload_row.id),
+                    )
+
+                    if ctx.get("redis") is not None:
+                        import json as _json
+
+                        try:
+                            await ctx["redis"].publish(
+                                f"progress:{post.content_id}",
+                                _json.dumps(
+                                    {
+                                        "episode_id": str(post.content_id),
+                                        "step": "publish",
+                                        "status": "queued",
+                                        "progress_pct": 50,
+                                        "message": (
+                                            f"Queued {post.platform} upload — "
+                                            "the social cron will publish on "
+                                            "its next 5-min tick."
+                                        ),
+                                        "detail": {
+                                            "platform": post.platform,
+                                            "social_upload_id": str(upload_row.id),
+                                        },
+                                    }
+                                ),
+                            )
+                        except Exception:
+                            log.debug("progress_broadcast_failed", exc_info=True)
                 else:
-                    # Other platforms: mark as failed with clear message
+                    # Truly unknown platform — mark failed.
                     await repo.update(
                         post.id,
                         status="failed",
-                        error_message=f"Platform '{post.platform}' upload not yet implemented",
+                        error_message=(
+                            f"Unknown platform '{post.platform}'. "
+                            "Supported: youtube, tiktok, instagram, facebook, x."
+                        ),
                     )
                     await session.commit()
                     failed += 1
