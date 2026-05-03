@@ -71,6 +71,40 @@ class TestApiKeyStoreService:
         # Commits after the upsert.
         db.commit.assert_awaited_once()
 
+    async def test_upsert_with_rotated_keyring_tags_current_version(
+        self, fernet_key: str
+    ) -> None:
+        # Pin: when the service is constructed with a multi-version
+        # keyring (operator has rotated), new writes get tagged with
+        # the highest version, not the legacy ``1``. This is what lets
+        # a background re-encryption sweep filter rows by
+        # ``key_version < current_version`` to find stale rows.
+        from cryptography.fernet import Fernet
+
+        new_key = Fernet.generate_key().decode()
+        repo = MagicMock()
+        repo.upsert = AsyncMock()
+        db = AsyncMock()
+        db.commit = AsyncMock()
+
+        with patch(
+            "drevalis.services.api_key_store.ApiKeyStoreRepository",
+            return_value=repo,
+        ):
+            svc = ApiKeyStoreService(
+                db,
+                new_key,  # the current ENCRYPTION_KEY post-rotation
+                encryption_keys={1: fernet_key, 2: new_key},
+            )
+            await svc.upsert(key_name="elevenlabs", api_key="secret")
+
+        kwargs = repo.upsert.call_args.kwargs
+        assert kwargs["key_version"] == 2
+        # Round-trip with the *current* key still works.
+        from drevalis.core.security import decrypt_value
+
+        assert decrypt_value(kwargs["encrypted_value"], new_key) == "secret"
+
     async def test_delete_when_present_commits(self, fernet_key: str) -> None:
         repo = MagicMock()
         repo.delete_by_key_name = AsyncMock(return_value=True)

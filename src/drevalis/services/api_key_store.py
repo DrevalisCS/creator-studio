@@ -18,10 +18,27 @@ from drevalis.repositories.api_key_store import ApiKeyStoreRepository
 
 
 class ApiKeyStoreService:
-    def __init__(self, db: AsyncSession, encryption_key: str) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        encryption_key: str,
+        *,
+        encryption_keys: dict[int, str] | None = None,
+    ) -> None:
         self._db = db
         self._encryption_key = encryption_key
+        # Versioned key map so writes carry the correct ``key_version``
+        # tag after a rotation. This service is encrypt-only (callers
+        # decrypt elsewhere).
+        self._encryption_keys: dict[int, str] = encryption_keys or {1: encryption_key}
         self._repo = ApiKeyStoreRepository(db)
+
+    def _encrypt(self, plaintext: str) -> tuple[str, int]:
+        return encrypt_value(
+            plaintext,
+            self._encryption_key,
+            version=max(self._encryption_keys),
+        )
 
     async def list(self) -> list[Any]:
         """Return every stored entry. Encrypted values are not decrypted."""
@@ -29,7 +46,7 @@ class ApiKeyStoreService:
 
     async def upsert(self, *, key_name: str, api_key: str) -> None:
         """Encrypt + persist (or replace) one entry."""
-        encrypted, key_version = encrypt_value(api_key, self._encryption_key)
+        encrypted, key_version = self._encrypt(api_key)
         await self._repo.upsert(
             key_name=key_name,
             encrypted_value=encrypted,

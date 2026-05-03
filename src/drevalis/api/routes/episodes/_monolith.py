@@ -2526,7 +2526,13 @@ async def seo_variants(
     except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found") from exc
 
-    configs = (await LLMConfigService(db, settings.encryption_key).list_all())[:1]
+    configs = (
+        await LLMConfigService(
+            db,
+            settings.encryption_key,
+            encryption_keys=settings.get_encryption_keys(),
+        ).list_all()
+    )[:1]
     if not configs:
         # No LLM configured — degrade gracefully with template variants
         # derived from the existing title.
@@ -2700,7 +2706,13 @@ async def check_script_continuity(
     except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "episode or script missing") from exc
 
-    configs = (await LLMConfigService(db, settings.encryption_key).list_all())[:1]
+    configs = (
+        await LLMConfigService(
+            db,
+            settings.encryption_key,
+            encryption_keys=settings.get_encryption_keys(),
+        ).list_all()
+    )[:1]
     if not configs:
         return ContinuityResponse(issues=[])
 

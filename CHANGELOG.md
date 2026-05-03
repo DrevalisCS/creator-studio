@@ -7,6 +7,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.4] - 2026-05-03
+
+### Added
+
+- **``LLMConfigService`` and ``ApiKeyStoreService`` now accept
+  ``encryption_keys: dict[int, str]``** — closes the rotation gap
+  flagged by v0.30.3's CHANGELOG. Both services are encrypt-only;
+  decryption already worked through ``decrypt_value_multi`` walking
+  every loaded key, but writes were always tagged ``key_version=1``.
+
+  Now writes carry the *current* key version
+  (``max(self._encryption_keys)``), so a post-rotation
+  re-encryption sweep can filter rows by ``key_version <
+  current_version`` and find every stale row written through these
+  services. The two factories at ``api/routes/llm.py`` and
+  ``api/routes/api_keys.py``, plus 2 inline-construction sites in
+  ``api/routes/episodes/_monolith.py``, now pass
+  ``encryption_keys=settings.get_encryption_keys()``.
+
+  1 new test in ``test_api_key_store_and_series_repo.py`` pins the
+  rotated-state behaviour: when the service is constructed with
+  ``encryption_keys={1: K1, 2: K2}``, an upsert tags the row with
+  ``key_version=2``, and the row round-trips through decrypt with
+  the current key.
+
+  This completes the rotation story for every encrypt site that
+  goes through a service. Free-function callsites (license-state
+  upsert, runpod-pod registration) were already migrated to
+  ``settings.encrypt()`` in v0.30.3.
+
+- **``pyproject.toml`` version bumped to ``0.30.4``** to match the
+  release tag (manual, per release; ``setuptools_scm`` auto-derive
+  is still a follow-up).
+
 ## [0.30.3] - 2026-05-03
 
 ### Added

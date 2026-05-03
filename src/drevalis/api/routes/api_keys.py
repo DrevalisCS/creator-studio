@@ -39,7 +39,11 @@ def _service(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> ApiKeyStoreService:
-    return ApiKeyStoreService(db, settings.encryption_key)
+    return ApiKeyStoreService(
+        db,
+        settings.encryption_key,
+        encryption_keys=settings.get_encryption_keys(),
+    )
 
 
 # ── API key CRUD ──────────────────────────────────────────────────────────

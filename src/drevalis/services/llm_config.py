@@ -23,10 +23,29 @@ from drevalis.repositories.llm_config import LLMConfigRepository
 
 
 class LLMConfigService:
-    def __init__(self, db: AsyncSession, encryption_key: str) -> None:
+    def __init__(
+        self,
+        db: AsyncSession,
+        encryption_key: str,
+        *,
+        encryption_keys: dict[int, str] | None = None,
+    ) -> None:
         self._db = db
         self._encryption_key = encryption_key
+        # Versioned key map so writes carry the correct ``key_version``
+        # tag after a rotation. Decryption happens elsewhere
+        # (``LLMService``); this service is encrypt-only.
+        self._encryption_keys: dict[int, str] = encryption_keys or {1: encryption_key}
         self._repo = LLMConfigRepository(db)
+
+    def _encrypt(self, plaintext: str) -> tuple[str, int]:
+        """Encrypt + tag with the current key version so post-rotation
+        re-encryption sweeps can filter rows by stale-version."""
+        return encrypt_value(
+            plaintext,
+            self._encryption_key,
+            version=max(self._encryption_keys),
+        )
 
     async def list_all(self) -> list[LLMConfig]:
         return await self._repo.get_all()
@@ -50,7 +69,7 @@ class LLMConfigService:
         api_key_encrypted: str | None = None
         api_key_version = 1
         if api_key:
-            api_key_encrypted, api_key_version = encrypt_value(api_key, self._encryption_key)
+            api_key_encrypted, api_key_version = self._encrypt(api_key)
 
         config = await self._repo.create(
             name=name,
@@ -74,7 +93,7 @@ class LLMConfigService:
         if "api_key" in patch:
             raw_key = patch.pop("api_key")
             if raw_key is not None:
-                encrypted, version = encrypt_value(raw_key, self._encryption_key)
+                encrypted, version = self._encrypt(raw_key)
                 patch["api_key_encrypted"] = encrypted
                 patch["api_key_version"] = version
             else:

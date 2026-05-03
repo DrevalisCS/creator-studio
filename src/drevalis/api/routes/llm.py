@@ -33,7 +33,11 @@ def _service(
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
 ) -> LLMConfigService:
-    return LLMConfigService(db, settings.encryption_key)
+    return LLMConfigService(
+        db,
+        settings.encryption_key,
+        encryption_keys=settings.get_encryption_keys(),
+    )
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────
