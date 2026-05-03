@@ -16,7 +16,6 @@ from cryptography.fernet import InvalidToken
 from sqlalchemy import select
 
 from drevalis.core.config import Settings
-from drevalis.core.security import encrypt_value
 from drevalis.models.license_state import LicenseStateRow
 
 if TYPE_CHECKING:
@@ -70,7 +69,7 @@ class LicenseStateRepository:
     ) -> LicenseStateRow:
         """Write or replace the singleton license row (JWT encrypted at rest)."""
         settings = Settings()
-        ciphertext, key_version = encrypt_value(jwt, settings.encryption_key)
+        ciphertext, key_version = settings.encrypt(jwt)
 
         row = await self.get()
         now = datetime.now(tz=UTC)

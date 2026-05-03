@@ -269,3 +269,20 @@ class Settings(BaseSettings):
             ciphertext, self.get_encryption_keys()
         )
         return plaintext
+
+    def encrypt(self, plaintext: str) -> tuple[str, int]:
+        """Encrypt *plaintext* with the current Fernet key.
+
+        Returns ``(ciphertext, version)`` where ``version`` is the
+        current key version per :meth:`get_current_encryption_key_version`.
+        Storing the version alongside the ciphertext lets background
+        re-encryption sweeps filter rows by stale-version, and lets
+        ``decrypt_value_multi`` log the version it used.
+        """
+        from drevalis.core.security import encrypt_value
+
+        return encrypt_value(
+            plaintext,
+            self.encryption_key,
+            version=self.get_current_encryption_key_version(),
+        )

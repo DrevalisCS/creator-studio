@@ -324,3 +324,39 @@ class TestSettingsDecrypt:
 
         with pytest.raises(InvalidToken):
             s.decrypt(ciphertext)
+
+
+# ── Settings.encrypt convenience ───────────────────────────────────────
+
+
+class TestSettingsEncrypt:
+    def test_encrypts_with_current_version(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: Settings.encrypt tags ciphertext with the current key
+        # version so background re-encryption sweeps can filter rows
+        # by ``key_version < current_version``.
+        _wipe_versioned_keys(monkeypatch)
+        k1 = _key_from(0x11)
+        k2 = _key_from(0x22)
+        monkeypatch.setenv("ENCRYPTION_KEY", k2)
+        monkeypatch.setenv("ENCRYPTION_KEY_V1", k1)
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        ciphertext, version = s.encrypt("payload")
+        assert version == 2  # K2 is the current key in the rotated state.
+        # And it round-trips through decrypt.
+        assert s.decrypt(ciphertext) == "payload"
+
+    def test_steady_state_version_is_one(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin: a vanilla install with only ENCRYPTION_KEY set tags new
+        # ciphertext with version 1 — matches the legacy behaviour of
+        # ``encrypt_value`` so existing rows aren't disrupted.
+        _wipe_versioned_keys(monkeypatch)
+        monkeypatch.setenv("ENCRYPTION_KEY", _valid_fernet_key())
+        s = Settings(_env_file=None)  # type: ignore[call-arg]
+
+        _, version = s.encrypt("hello")
+        assert version == 1

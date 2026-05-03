@@ -24,7 +24,6 @@ import httpx
 import structlog
 
 from drevalis.core.exceptions import NotFoundError, ValidationError
-from drevalis.core.security import encrypt_value
 from drevalis.repositories.api_key_store import ApiKeyStoreRepository
 from drevalis.repositories.social import (
     SocialPlatformRepository,
@@ -222,10 +221,10 @@ class SocialService:
         except Exception:
             logger.warning("tiktok_user_info_fetch_failed", exc_info=True)
 
-        enc_access, key_version = encrypt_value(access_token, self._settings.encryption_key)
+        enc_access, key_version = self._settings.encrypt(access_token)
         enc_refresh: str | None = None
         if refresh_token:
-            enc_refresh, _ = encrypt_value(refresh_token, self._settings.encryption_key)
+            enc_refresh, _ = self._settings.encrypt(refresh_token)
 
         await self._platforms.deactivate_platform("tiktok")
         await self._platforms.create(
@@ -278,12 +277,10 @@ class SocialService:
 
         await self._platforms.deactivate_platform(body.platform)
 
-        access_encrypted, key_version = encrypt_value(
-            body.access_token, self._settings.encryption_key
-        )
+        access_encrypted, key_version = self._settings.encrypt(body.access_token)
         refresh_encrypted: str | None = None
         if body.refresh_token:
-            refresh_encrypted, _ = encrypt_value(body.refresh_token, self._settings.encryption_key)
+            refresh_encrypted, _ = self._settings.encrypt(body.refresh_token)
 
         platform = await self._platforms.create(
             platform=body.platform,

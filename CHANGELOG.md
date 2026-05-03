@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.3] - 2026-05-03
+
+### Added
+
+- **``Settings.encrypt(plaintext)`` convenience** — companion to
+  ``Settings.decrypt`` shipped in v0.29.97. Returns
+  ``(ciphertext, version)`` where ``version`` is
+  ``Settings.get_current_encryption_key_version()``. New ciphertext
+  written through this helper is tagged with the *current* key
+  version rather than always ``1``, so a background re-encryption
+  sweep can filter rows by ``key_version < current_version`` after
+  rotation.
+
+  2 new tests: rotated state writes version 2; steady-state install
+  writes version 1.
+
+- **``_encrypt`` helpers on migrated services** —
+  ``ComfyUIServerService``, ``RunPodOrchestrator``, and
+  ``YouTubeService`` gained an ``_encrypt(plaintext)`` mirror of
+  their ``_decrypt`` helper. Uses ``max(self._encryption_keys)`` as
+  the version (the rotation invariant: current key is always at the
+  highest version slot in the map). Internal — no public-API change.
+
+### Changed
+
+- **Migrated encrypt callsites with ``settings`` in scope** to use
+  ``settings.encrypt()`` so new writes carry the right version tag:
+
+  - ``repositories/license_state.py::LicenseStateRepository.upsert``
+  - ``workers/jobs/runpod.py`` (RunPod-pod → ComfyUI-server
+    registration)
+  - ``services/social.py`` (TikTok and generic-platform OAuth-token
+    persistence — 4 sites)
+
+  Service-internal sites (``ComfyUIServerService``,
+  ``RunPodOrchestrator``, ``YouTubeService``) flipped to use the new
+  ``self._encrypt`` helper.
+
+  Tests: 4 ``test_license_state_repo.py`` upsert tests now also stub
+  ``settings.encrypt`` (2-line pattern: import ``encrypt_value`` +
+  set ``side_effect=lambda p: encrypt_value(p, fernet_key)``).
+
+  ``services/api_key_store.py`` and ``services/llm_config.py`` are
+  intentionally untouched in this release — they don't currently
+  receive ``encryption_keys`` in their constructors. Bumping their
+  version-tag would require widening the constructor; deferred until
+  there's a concrete operator-rotation flow that needs it.
+  Decryption still works for rows they wrote because
+  ``decrypt_value_multi`` walks every key regardless of stored
+  version.
+
+- **``pyproject.toml`` version pinned to ``0.30.3``** (was
+  ``0.1.0`` since project inception). Now reflects the actual
+  release tag rather than lying. Not auto-managed — needs manual
+  bump per release. Auto-derive from git tags via
+  ``setuptools_scm`` is a separate follow-up.
+
 ## [0.30.2] - 2026-05-02
 
 ### Added

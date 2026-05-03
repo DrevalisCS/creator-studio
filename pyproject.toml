@@ -1,6 +1,6 @@
 [project]
 name = "drevalis"
-version = "0.1.0"
+version = "0.30.3"
 description = "AI-powered YouTube Shorts creation studio"
 requires-python = ">=3.11"
 dependencies = [

@@ -72,6 +72,13 @@ class RunPodOrchestrator:
             return plaintext
         return decrypt_value(ciphertext, self._encryption_key)
 
+    def _encrypt(self, plaintext: str) -> tuple[str, int]:
+        return encrypt_value(
+            plaintext,
+            self._encryption_key,
+            version=max(self._encryption_keys),
+        )
+
     # ── API key resolution ───────────────────────────────────────────────
 
     async def resolve_api_key(self, env_fallback: str | None) -> str:
@@ -212,7 +219,7 @@ class RunPodOrchestrator:
         existing_servers = await self._comfyui.get_all()
         existing = next((s for s in existing_servers if s.url == comfyui_url), None)
 
-        encrypted_key, key_version = encrypt_value(api_key, self._encryption_key)
+        encrypted_key, key_version = self._encrypt(api_key)
 
         if existing is None:
             server = await self._comfyui.create(

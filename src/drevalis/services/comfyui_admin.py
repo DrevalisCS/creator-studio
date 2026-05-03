@@ -55,6 +55,16 @@ class ComfyUIServerService:
             return plaintext
         return decrypt_value(ciphertext, self._encryption_key)
 
+    def _encrypt(self, plaintext: str) -> tuple[str, int]:
+        """Encrypt with the current key + tag with its version so a
+        background re-encryption sweep can later filter rows with
+        ``key_version < current_version``."""
+        return encrypt_value(
+            plaintext,
+            self._encryption_key,
+            version=max(self._encryption_keys),
+        )
+
     async def list_all(self) -> list[ComfyUIServer]:
         return await self._repo.get_all()
 
@@ -81,7 +91,7 @@ class ComfyUIServerService:
         api_key_encrypted: str | None = None
         api_key_version = 1
         if api_key:
-            api_key_encrypted, api_key_version = encrypt_value(api_key, self._encryption_key)
+            api_key_encrypted, api_key_version = self._encrypt(api_key)
 
         server = await self._repo.create(
             name=name,
@@ -102,7 +112,7 @@ class ComfyUIServerService:
         if "api_key" in patch:
             raw_key = patch.pop("api_key")
             if raw_key is not None:
-                encrypted, version = encrypt_value(raw_key, self._encryption_key)
+                encrypted, version = self._encrypt(raw_key)
                 patch["api_key_encrypted"] = encrypted
                 patch["api_key_version"] = version
             else:

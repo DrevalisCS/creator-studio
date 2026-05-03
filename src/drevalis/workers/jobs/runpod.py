@@ -122,7 +122,6 @@ async def auto_deploy_runpod_pod(
     if pod_type == "comfyui":
         async with session_factory() as session:
             from drevalis.core.config import Settings
-            from drevalis.core.security import encrypt_value
             from drevalis.repositories.comfyui import ComfyUIServerRepository
 
             repo = ComfyUIServerRepository(session)
@@ -134,7 +133,7 @@ async def auto_deploy_runpod_pod(
 
             if existing_server is None:
                 settings = Settings()
-                encrypted_key, key_version = encrypt_value(api_key, settings.encryption_key)
+                encrypted_key, key_version = settings.encrypt(api_key)
                 await repo.create(
                     name=server_name,
                     url=proxy_url,

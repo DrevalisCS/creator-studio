@@ -155,7 +155,12 @@ class TestUpsert:
         repo = LicenseStateRepository(session)
 
         with patch("drevalis.repositories.license_state.Settings") as settings_cls:
+            from drevalis.core.security import encrypt_value as _enc
+
             settings_cls.return_value.encryption_key = fernet_key
+            settings_cls.return_value.encrypt.side_effect = (
+                lambda p: _enc(p, fernet_key)
+            )
             row = await repo.upsert(jwt="new.jwt", machine_id="machine-x")
 
         # Singleton id pinned.
@@ -183,7 +188,12 @@ class TestUpsert:
         repo = LicenseStateRepository(session)
 
         with patch("drevalis.repositories.license_state.Settings") as settings_cls:
+            from drevalis.core.security import encrypt_value as _enc
+
             settings_cls.return_value.encryption_key = fernet_key
+            settings_cls.return_value.encrypt.side_effect = (
+                lambda p: _enc(p, fernet_key)
+            )
             row = await repo.upsert(jwt="new.jwt", machine_id="new-m")
 
         # Same row mutated in place — no .add() call.
@@ -204,7 +214,12 @@ class TestUpsert:
         session = _session_with(existing)
         repo = LicenseStateRepository(session)
         with patch("drevalis.repositories.license_state.Settings") as settings_cls:
+            from drevalis.core.security import encrypt_value as _enc
+
             settings_cls.return_value.encryption_key = fernet_key
+            settings_cls.return_value.encrypt.side_effect = (
+                lambda p: _enc(p, fernet_key)
+            )
             row = await repo.upsert(jwt="new", machine_id="m")
         assert row.activated_at is not None
 
@@ -216,7 +231,12 @@ class TestUpsert:
         session = _session_with(None)
         repo = LicenseStateRepository(session)
         with patch("drevalis.repositories.license_state.Settings") as settings_cls:
+            from drevalis.core.security import encrypt_value as _enc
+
             settings_cls.return_value.encryption_key = fernet_key
+            settings_cls.return_value.encrypt.side_effect = (
+                lambda p: _enc(p, fernet_key)
+            )
             row = await repo.upsert(jwt="round.trip.token", machine_id="m")
         # Decrypt ciphertext directly — round-trip succeeds.
         assert decrypt_value(row.jwt, fernet_key) == "round.trip.token"

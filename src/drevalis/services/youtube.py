@@ -66,6 +66,13 @@ class YouTubeService:
             return plaintext
         return decrypt_value(ciphertext, self.encryption_key)
 
+    def _encrypt(self, plaintext: str) -> tuple[str, int]:
+        return encrypt_value(
+            plaintext,
+            self.encryption_key,
+            version=max(self._encryption_keys),
+        )
+
     # ── OAuth ────────────────────────────────────────────────────────────
 
     def _client_config(self) -> dict[str, Any]:
@@ -137,10 +144,10 @@ class YouTubeService:
             )
 
             # Encrypt tokens.
-            access_enc, key_ver = encrypt_value(credentials.token or "", self.encryption_key)
+            access_enc, key_ver = self._encrypt(credentials.token or "")
             refresh_enc = ""
             if credentials.refresh_token:
-                refresh_enc, _ = encrypt_value(credentials.refresh_token, self.encryption_key)
+                refresh_enc, _ = self._encrypt(credentials.refresh_token)
 
             # Fetch channel info.
             youtube = build("youtube", "v3", credentials=credentials)
@@ -358,14 +365,14 @@ class YouTubeService:
             request = google.auth.transport.requests.Request()
             credentials.refresh(request)
 
-            new_access_enc, key_ver = encrypt_value(credentials.token, self.encryption_key)
+            new_access_enc, key_ver = self._encrypt(credentials.token)
             result: dict[str, Any] = {
                 "access_token_encrypted": new_access_enc,
                 "token_key_version": key_ver,
                 "token_expiry": credentials.expiry,
             }
             if credentials.refresh_token:
-                new_refresh_enc, _ = encrypt_value(credentials.refresh_token, self.encryption_key)
+                new_refresh_enc, _ = self._encrypt(credentials.refresh_token)
                 result["refresh_token_encrypted"] = new_refresh_enc
             return result
 
