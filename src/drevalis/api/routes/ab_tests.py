@@ -29,11 +29,18 @@ from sqlalchemy.ext.asyncio import AsyncSession  # runtime import — FastAPI De
 
 from drevalis.core.deps import get_db
 from drevalis.core.exceptions import NotFoundError, ValidationError
+from drevalis.core.license.features import fastapi_dep_require_feature
 from drevalis.services.ab_test import ABTestService
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/ab-tests", tags=["ab-tests"])
+# A/B title testing piggy-backs on the SEO pre-flight feature flag —
+# both ship together at Creator+ per the marketing pricing matrix.
+router = APIRouter(
+    prefix="/api/v1/ab-tests",
+    tags=["ab-tests"],
+    dependencies=[Depends(fastapi_dep_require_feature("seo_preflight"))],
+)
 
 
 def _service(db: AsyncSession = Depends(get_db)) -> ABTestService:

@@ -22,11 +22,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.deps import get_db
 from drevalis.core.exceptions import NotFoundError, ValidationError
+from drevalis.core.license.features import fastapi_dep_require_feature
 from drevalis.services.character_pack import CharacterPackService
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/character-packs", tags=["character-packs"])
+# Character + style locks is a Pro+ feature per the marketing pricing matrix.
+router = APIRouter(
+    prefix="/api/v1/character-packs",
+    tags=["character-packs"],
+    dependencies=[Depends(fastapi_dep_require_feature("character_packs"))],
+)
 
 
 def _service(db: AsyncSession = Depends(get_db)) -> CharacterPackService:

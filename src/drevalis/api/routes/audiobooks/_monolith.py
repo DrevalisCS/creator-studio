@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
 from drevalis.core.exceptions import NotFoundError, ValidationError
+from drevalis.core.license.features import fastapi_dep_require_feature
 from drevalis.schemas.audiobook import (
     AudiobookCreate,
     AudiobookListResponse,
@@ -35,7 +36,15 @@ from drevalis.services.audiobook_admin import (
 
 log = structlog.get_logger(__name__)
 
-router = APIRouter(prefix="/api/v1/audiobooks", tags=["audiobooks"])
+# Audiobook studio is a Pro+ feature per the marketing pricing matrix.
+# The router-wide gate covers CRUD, generation, regeneration, and AI
+# script generation. Read-only listing is also gated — Creator tier
+# never sees an audiobooks tab in the UI.
+router = APIRouter(
+    prefix="/api/v1/audiobooks",
+    tags=["audiobooks"],
+    dependencies=[Depends(fastapi_dep_require_feature("audiobooks"))],
+)
 
 
 def _service(

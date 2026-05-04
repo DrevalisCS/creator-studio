@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
@@ -39,9 +39,6 @@ from drevalis.schemas.schedule import (
     UploadDiagnostic,
 )
 from drevalis.services.auto_schedule import plan_auto_schedule
-
-if TYPE_CHECKING:
-    pass
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 

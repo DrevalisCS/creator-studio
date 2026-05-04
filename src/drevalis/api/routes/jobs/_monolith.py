@@ -61,7 +61,11 @@ async def get_queue_status(
     settings: Settings = Depends(get_settings),
 ) -> dict[str, Any]:
     """Return the current queue status and generation statistics."""
-    return await svc.queue_status(settings.max_concurrent_generations)
+    from drevalis.core.concurrency import effective_max_concurrent_generations
+
+    return await svc.queue_status(
+        effective_max_concurrent_generations(settings.max_concurrent_generations)
+    )
 
 
 @router.get(

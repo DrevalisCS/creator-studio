@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Lock } from 'lucide-react';
+import { auth, formatError } from '@/lib/api';
 
 /**
  * Team-mode login screen.
@@ -28,19 +29,10 @@ export default function LoginPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const res = await fetch('/api/v1/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email: trimmedEmail, password }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.detail || 'Invalid email or password');
-      }
+      await auth.login(trimmedEmail, password);
       window.location.href = '/';
-    } catch (err: any) {
-      setError(err?.message || 'Login failed');
+    } catch (err) {
+      setError(formatError(err) || 'Invalid email or password');
     } finally {
       setSubmitting(false);
     }

@@ -67,7 +67,7 @@ export interface SeriesUpdate {
   music_enabled?: boolean | null;
   video_comfyui_workflow_id?: string | null;
   youtube_channel_id?: string | null;
-  content_format?: 'shorts' | 'longform' | 'music_video' | 'animation' | null;
+  content_format?: 'shorts' | 'longform' | 'music_video' | null;
   target_duration_minutes?: number | null;
   chapter_enabled?: boolean | null;
   scenes_per_chapter?: number | null;
@@ -100,7 +100,7 @@ export interface Series {
   music_enabled: boolean;
   video_comfyui_workflow_id: string | null;
   youtube_channel_id: string | null;
-  content_format: 'shorts' | 'longform' | 'music_video' | 'animation';
+  content_format: 'shorts' | 'longform' | 'music_video';
   target_duration_minutes: number | null;
   chapter_enabled: boolean;
   scenes_per_chapter: number;
@@ -675,17 +675,3 @@ export interface BorderConfig {
   style: 'solid' | 'rounded' | 'glow';
 }
 
-export interface VideoEditPayload {
-  trim_start?: number | null;
-  trim_end?: number | null;
-  border?: BorderConfig | null;
-  color_filter?: 'warm' | 'cool' | 'bw' | 'vintage' | 'vivid' | 'dramatic' | 'sepia' | null;
-  speed?: number;
-}
-
-export interface VideoEditResult {
-  episode_id: string;
-  message: string;
-  video_path?: string | null;
-  duration_seconds?: number | null;
-}

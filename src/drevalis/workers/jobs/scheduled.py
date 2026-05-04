@@ -18,8 +18,10 @@ logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 async def publish_scheduled_posts(ctx: dict[str, Any]) -> dict[str, Any]:
     """Periodic job: check for scheduled posts that are due and publish them.
 
-    Runs every 5 minutes via arq cron. For YouTube posts, performs the actual
-    upload using the channel's OAuth tokens. Other platforms are TODO.
+    Runs every 5 minutes via arq cron. YouTube posts are uploaded inline using
+    the channel's OAuth tokens; non-YouTube platforms (TikTok / Instagram /
+    Facebook / X) are handed off as ``SocialUpload`` rows for the social cron
+    to publish on its next tick.
 
     Guarded by :func:`cron_lock` — in a multi-worker deployment, only one
     instance actually runs each 5-minute tick. Without this, two workers
@@ -141,6 +143,37 @@ async def _publish_scheduled_posts_locked(
                         for k, v in updated.items():
                             setattr(channel, k, v)
                         await session.flush()
+
+                    # Skip if this episode is already published on this
+                    # channel. The cron can fire late (5 min granularity)
+                    # and overlap with a manual upload, or a previous tick
+                    # may have succeeded server-side after a transient
+                    # local error — re-uploading would duplicate the
+                    # video on YouTube.
+                    upload_repo_pre = YouTubeUploadRepository(session)
+                    existing = await upload_repo_pre.get_existing_done(
+                        post.content_id, channel.id
+                    )
+                    if existing is not None and post.content_type == "episode":
+                        log.info(
+                            "scheduled_post_skip_duplicate",
+                            episode_id=str(post.content_id),
+                            channel_id=str(channel.id),
+                            existing_upload_id=str(existing.id),
+                            existing_video_id=existing.youtube_video_id,
+                        )
+                        await repo.update(
+                            post.id,
+                            status="published",
+                            published_at=datetime.now(UTC),
+                            remote_id=existing.youtube_video_id,
+                            remote_url=existing.youtube_url,
+                            error_message=(
+                                "Episode was already published on this channel — "
+                                "scheduled post reconciled to existing upload."
+                            ),
+                        )
+                        continue
 
                     # Find video file
                     asset_repo = MediaAssetRepository(session)

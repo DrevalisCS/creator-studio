@@ -16,24 +16,62 @@ from drevalis.core.license.state import get_state
 # ``creator`` is the post-rebrand name for ``solo``; both are kept in the
 # maps below so legacy JWTs (issued before the rename) keep working.
 # ``lifetime_pro`` inherits the Pro feature set.
-_PRO_FEATURES = frozenset({"basic_generation", "runpod", "audiobooks"})
+#
+# Feature names are derived directly from the marketing pricing matrix
+# (drevalis.com/pricing). When the matrix changes, both this file and the
+# marketing HTML must be updated together.
+_CREATOR_FEATURES = frozenset(
+    {
+        "basic_generation",
+        "scheduled_publish",
+        "seo_preflight",
+    }
+)
+
+_PRO_FEATURES = _CREATOR_FEATURES | frozenset(
+    {
+        "runpod",
+        "audiobooks",
+        "elevenlabs",          # ElevenLabs TTS + voice cloning
+        "character_packs",     # Character + style locks
+        "continuity_check",
+        "social_tiktok",       # TikTok direct upload
+        "multichannel",        # YouTube cap raised from 1 to 3
+        "cross_platform_bulk", # Bulk publish across connected platforms
+    }
+)
+
+# Studio inherits Pro and adds the extended-social bundle, team mode, and
+# REST API access. ``social_platforms`` is kept as a legacy alias so JWTs
+# minted before the split keep granting Studio its full social bundle.
+_STUDIO_FEATURES = _PRO_FEATURES | frozenset(
+    {
+        "social_extended",     # Instagram Reels + Facebook + X
+        "social_platforms",    # legacy alias — granted at Studio for back-compat
+        "team_mode",
+        "api_access",
+    }
+)
 
 TIER_FEATURES: dict[str, frozenset[str]] = {
     "trial": frozenset({"basic_generation"}),
-    "solo": frozenset({"basic_generation"}),
-    "creator": frozenset({"basic_generation"}),
+    "solo": _CREATOR_FEATURES,
+    "creator": _CREATOR_FEATURES,
     "pro": _PRO_FEATURES,
     "lifetime_pro": _PRO_FEATURES,
-    "studio": frozenset(
-        {
-            "basic_generation",
-            "runpod",
-            "audiobooks",
-            "multichannel",
-            "social_platforms",
-            "api_access",
-        }
-    ),
+    "studio": _STUDIO_FEATURES,
+}
+
+# Per-tier parallel-generation cap. Mirrored on the marketing pricing
+# matrix; enforced by ``services.generation_slots.tier_slot_cap`` rather
+# than by routes directly.
+TIER_PARALLEL_CAP: dict[str, int] = {
+    "trial": 1,
+    "solo": 2,
+    "creator": 2,
+    "pro": 6,
+    "lifetime_pro": 6,
+    "studio": 8,
 }
 
 # Machine seat cap per tier (enforced server-side at activation; this is the
@@ -71,6 +109,25 @@ TIER_CHANNEL_CAP: dict[str, int] = {
     "lifetime_pro": 3,
     "studio": 1_000,
 }
+
+
+def current_tier() -> str | None:
+    state = get_state()
+    if not state.is_usable or state.claims is None:
+        return None
+    return state.claims.tier
+
+
+def current_parallel_cap(global_default: int) -> int:
+    """Return the active license's parallel-generation cap.
+
+    Falls back to ``global_default`` (typically ``settings.max_concurrent_generations``)
+    when no tier is active so headless / dev environments keep working.
+    """
+    tier = current_tier()
+    if tier is None:
+        return global_default
+    return TIER_PARALLEL_CAP.get(tier, global_default)
 
 
 def _current_feature_set() -> frozenset[str]:

@@ -1,26 +1,26 @@
 [
   {
-    "handle": "@g3neric",
-    "description": "Hacking history, true crime",
+    "handle": "@WorldsStrangestFood",
+    "description": "World's Strangest Foods",
     "subs": "TBD",
     "episodes": "TBD",
-    "url": "https://youtube.com/@g3neric",
-    "thumb": "/assets/images/channels/g3neric.webp"
+    "url": "https://www.youtube.com/@WorldsStrangestFood",
+    "thumb": "/assets/images/channels/worlds-strangest-food.webp"
   },
   {
-    "handle": "@TBD-channel-2",
-    "description": "TBD",
+    "handle": "@HackTraceHacking",
+    "description": "Hacking & Cybercrime History",
     "subs": "TBD",
     "episodes": "TBD",
-    "url": "#",
-    "thumb": "/assets/images/channels/tbd-2.webp"
+    "url": "https://www.youtube.com/@HackTraceHacking",
+    "thumb": "/assets/images/channels/hacktrace-hacking.webp"
   },
   {
-    "handle": "@TBD-channel-3",
-    "description": "TBD",
+    "handle": "@Odd-and-True",
+    "description": "Odd & True",
     "subs": "TBD",
     "episodes": "TBD",
-    "url": "#",
-    "thumb": "/assets/images/channels/tbd-3.webp"
+    "url": "https://www.youtube.com/@Odd-and-True",
+    "thumb": "/assets/images/channels/odd-and-true.webp"
   }
 ]

@@ -292,6 +292,11 @@ class PipelineOrchestrator:
                 await self._mark_step_done(job)
                 await self._broadcast_progress(step, 100, "done", f"{step.value} complete")
 
+                # Run quality gates (best-effort, never raises). Failed
+                # gates surface as warnings on the progress channel; the
+                # operator decides whether to retry the step.
+                await self._run_quality_gates(step, episode)
+
                 # Record successful step metric
                 step_duration = time.perf_counter() - step_start
                 await metrics.record_step(
@@ -392,6 +397,53 @@ class PipelineOrchestrator:
         self.log.info("pipeline_complete")
         clear_pipeline_context()
 
+    # ── Quality gates ─────────────────────────────────────────────────────
+
+    async def _run_quality_gates(self, step: PipelineStep, episode: Episode) -> None:
+        """Run post-step QA. Best-effort — exceptions are swallowed."""
+        try:
+            from drevalis.repositories.media_asset import MediaAssetRepository
+            from drevalis.services import quality_gates as qg
+
+            asset_repo = MediaAssetRepository(self.db)
+
+            if step == PipelineStep.VOICE:
+                voice_assets = await asset_repo.get_by_episode_and_type(episode.id, "voice")
+                for asset in voice_assets:
+                    full = self.storage.resolve_path(asset.file_path)
+                    report = await qg.check_voice_track(full)
+                    if not report.passed:
+                        await self._broadcast_progress(
+                            step,
+                            100,
+                            "warning",
+                            f"Voice quality: {'; '.join(report.issues)}",
+                        )
+
+            elif step == PipelineStep.SCENES:
+                scene_assets = await asset_repo.get_by_episode_and_type(episode.id, "scene_image")
+                # Sample a handful of scenes — gating every scene image on every
+                # generation is slow on long-form. Always check the first and
+                # last; sample three from the middle when there are many.
+                if scene_assets:
+                    sample_idx = {0, len(scene_assets) - 1}
+                    if len(scene_assets) > 5:
+                        mid = len(scene_assets) // 2
+                        sample_idx |= {mid - 1, mid, mid + 1}
+                    for idx in sorted(sample_idx):
+                        asset = scene_assets[idx]
+                        full = self.storage.resolve_path(asset.file_path)
+                        report = await qg.check_scene_image(full)
+                        if not report.passed:
+                            await self._broadcast_progress(
+                                step,
+                                100,
+                                "warning",
+                                f"Scene {idx + 1} quality: {'; '.join(report.issues)}",
+                            )
+        except Exception as exc:  # noqa: BLE001
+            self.log.debug("quality_gate_failed", step=step.value, error=str(exc)[:200])
+
     # ── Step dispatcher ───────────────────────────────────────────────────
 
     async def _execute_step(
@@ -442,13 +494,11 @@ class PipelineOrchestrator:
         # Use series content_format as the source of truth — episodes inherit it
         content_format = getattr(series, "content_format", "shorts") or "shorts"
 
-        # music_video / animation are a superset of the longform path:
-        # same chunked script, chapter metadata, and assembly. The
-        # format-specific behaviour happens later (lyric-aware audio
-        # for music_video, animation style-directors for animation).
-        # Until those modules are fully wired we fall back to the
-        # long-form path so users see valid output instead of an error.
-        effective_longform = content_format in ("longform", "music_video", "animation")
+        # music_video is a superset of the longform path: same chunked
+        # script, chapter metadata, and assembly. Format-specific
+        # behaviour (lyric-aware audio) layers on top of the longform
+        # output further down.
+        effective_longform = content_format in ("longform", "music_video")
 
         await self._broadcast_progress(
             PipelineStep.SCRIPT, 10, "running", "Generating episode script..."
@@ -504,10 +554,10 @@ class PipelineOrchestrator:
             await self._broadcast_progress(PipelineStep.SCRIPT, 80, "running", "Saving script...")
 
             # Preserve the episode's actual ``content_format`` —
-            # music_video / animation also take the long-form path,
-            # but overwriting them with "longform" would misclassify
-            # the episode for every downstream query (priority sort,
-            # workflow selection, UI badge).
+            # music_video also takes the long-form path, but overwriting
+            # it with "longform" would misclassify the episode for every
+            # downstream query (priority sort, workflow selection, UI
+            # badge).
             await self.episode_repo.update(
                 self.episode_id,
                 script=result["script"],

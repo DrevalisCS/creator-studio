@@ -48,8 +48,6 @@ import type {
   YouTubeUploadRequest,
   YouTubePlaylist,
   YouTubeVideoStats,
-  VideoEditPayload,
-  VideoEditResult,
 } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -226,9 +224,6 @@ export const series = {
       error: string | null;
     }>(`/api/v1/series/generate-job/${jobId}`),
 
-  cancelGenerateJob: (jobId: string) =>
-    post<{ message: string }>(`/api/v1/series/generate-job/${jobId}/cancel`, {}),
-
   addEpisodesAi: (seriesId: string, count: number = 5) =>
     post<{ message: string; episode_ids: string[]; episodes: Array<{ title: string; topic: string }> }>(
       `/api/v1/series/${seriesId}/add-episodes`,
@@ -336,12 +331,6 @@ export const episodes = {
       `/api/v1/episodes/${episodeId}/scenes/${sceneNumber}`,
     ),
 
-  reorderScenes: (episodeId: string, order: number[]) =>
-    post<{ message: string; order: number[] }>(
-      `/api/v1/episodes/${episodeId}/scenes/reorder`,
-      { order },
-    ),
-
   // ── Regeneration endpoints ──────────────────────────────────────────
 
   regenerateScene: (
@@ -425,17 +414,6 @@ export const episodes = {
       {},
     ),
 
-  // ── Video editing ──────────────────────────────────────────────────
-
-  editVideo: (episodeId: string, edits: VideoEditPayload) =>
-    post<VideoEditResult>(`/api/v1/episodes/${episodeId}/edit`, edits),
-
-  editPreview: (episodeId: string, edits: VideoEditPayload) =>
-    post<VideoEditResult>(`/api/v1/episodes/${episodeId}/edit/preview`, edits),
-
-  editReset: (episodeId: string) =>
-    post<VideoEditResult>(`/api/v1/episodes/${episodeId}/edit/reset`),
-
   // ── Music ──────────────────────────────────────────────────────────
 
   musicList: (episodeId: string) =>
@@ -453,11 +431,6 @@ export const episodes = {
     post<{ message: string }>(
       `/api/v1/episodes/${episodeId}/music/select`,
       { music_path: musicPath },
-    ),
-
-  musicMoods: (episodeId: string) =>
-    get<{ moods: Array<{ value: string; label: string; description: string }> }>(
-      `/api/v1/episodes/${episodeId}/music/moods`,
     ),
 
   generateSeo: (episodeId: string) =>
@@ -938,17 +911,6 @@ export const runpod = {
       comfyui_port: port ?? 8188,
     }),
 
-  registerLlm: (podId: string, port?: number, model?: string) =>
-    post<any>(`/api/v1/runpod/pods/${podId}/register-llm`, {
-      port: port ?? 8000,
-      model: model ?? 'auto',
-    }),
-
-  templates: (category?: string) => {
-    const qs = category ? `?category=${category}` : '';
-    return get<any[]>(`/api/v1/runpod/templates${qs}`);
-  },
-
   deployStatus: (podId: string) =>
     get<{ pod_id: string; status: string; message: string; registered?: boolean; service_url?: string; model_name?: string; pod_type?: string }>(
       `/api/v1/runpod/pods/${podId}/deploy-status`,
@@ -1051,7 +1013,45 @@ export const youtube = {
   upload: (episodeId: string, data: YouTubeUploadRequest) =>
     post<YouTubeUpload>(`/api/v1/youtube/upload/${episodeId}`, data),
 
-  getUploads: () => get<YouTubeUpload[]>('/api/v1/youtube/uploads'),
+  getUploads: (limit = 1000) =>
+    get<YouTubeUpload[]>(`/api/v1/youtube/uploads?limit=${limit}`),
+
+  // Surface duplicate ``done`` uploads grouped by (episode_id, channel_id).
+  // The earliest row is treated as canonical; ``duplicates`` lists the
+  // superseded rows. Use before calling ``dedupeUploads`` so the
+  // operator can preview what's about to change.
+  listDuplicateUploads: () =>
+    get<{
+      count: number;
+      groups: Array<{
+        episode_id: string;
+        channel_id: string;
+        keep: { upload_id: string; video_id: string | null };
+        duplicates: Array<{
+          upload_id: string;
+          video_id: string | null;
+          created_at: string | null;
+        }>;
+      }>;
+    }>('/api/v1/youtube/uploads/duplicates'),
+
+  // Idempotent — keeps the earliest done row, marks the rest failed,
+  // and (when delete_on_youtube=true) deletes the duplicate videos via
+  // the YouTube Data API. Returns counts + per-group summary.
+  dedupeUploads: (deleteOnYoutube = true) =>
+    post<{
+      groups: number;
+      rows_marked_failed: number;
+      videos_deleted: number;
+      delete_errors: string[];
+      summary: Array<{
+        episode_id: string;
+        channel_id: string;
+        kept_upload_id: string;
+        kept_video_id: string | null;
+        removed: Array<{ upload_id: string; video_id: string | null }>;
+      }>;
+    }>(`/api/v1/youtube/uploads/dedupe?delete_on_youtube=${deleteOnYoutube}`),
 
   // Playlists — when ``channelId`` is omitted AND the install has
   // multiple connected channels, the backend returns 400 with the
@@ -1095,20 +1095,6 @@ export const youtube = {
     );
   },
 
-  // Inspect what OAuth scopes a channel's stored token actually carries.
-  // Use when the analytics page reports "scope missing" to confirm
-  // whether the token genuinely lacks the scope or the API is 403'ing
-  // for some other reason (brand-account, quota, no data, etc.).
-  getChannelScopes: (channelId: string) =>
-    get<{
-      channel_id: string;
-      scopes: string[];
-      has_analytics_scope: boolean;
-      has_upload_scope: boolean;
-      expected_scopes: string[];
-      token_introspection_failed: boolean;
-      hint: string | null;
-    }>(`/api/v1/youtube/channels/${channelId}/scopes`),
 };
 
 export interface YouTubeChannelAnalytics {
@@ -1184,12 +1170,6 @@ export const schedule = {
       dry_run?: boolean;
     },
   ) => post<any>(`/api/v1/schedule/series/${seriesId}/auto-schedule`, body),
-  // Diagnostics: why are uploads failing?
-  diagnostics: (withinHours = 72) =>
-    get<any>(`/api/v1/schedule/diagnostics?within_hours=${withinHours}`),
-  // Manual retry of failed posts.
-  retryFailed: (body: { within_hours?: number; post_ids?: string[] | null }) =>
-    post<any>('/api/v1/schedule/retry-failed', body),
 };
 
 // ---------------------------------------------------------------------------

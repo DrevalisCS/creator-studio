@@ -72,6 +72,50 @@ class YouTubeUploadRepository(BaseRepository[YouTubeUpload]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
+    async def get_existing_done(
+        self, episode_id: UUID, channel_id: UUID
+    ) -> YouTubeUpload | None:
+        """Return the earliest ``done`` upload for an (episode, channel) pair.
+
+        Used as a duplicate-upload guard. If a ``done`` row already exists,
+        callers should refuse to enqueue another upload.
+        """
+        stmt = (
+            select(YouTubeUpload)
+            .where(
+                YouTubeUpload.episode_id == episode_id,
+                YouTubeUpload.channel_id == channel_id,
+                YouTubeUpload.upload_status == "done",
+            )
+            .order_by(YouTubeUpload.created_at.asc())
+            .limit(1)
+        )
+        result = await self.session.execute(stmt)
+        return result.scalar_one_or_none()
+
+    async def find_duplicates(self) -> list[list[YouTubeUpload]]:
+        """Group ``done`` uploads by (episode_id, channel_id) and return
+        every group with more than one row, newest first inside each group.
+
+        The earliest row in each group is treated as the canonical upload;
+        the rest are duplicates that should be removed.
+        """
+        stmt = (
+            select(YouTubeUpload)
+            .where(YouTubeUpload.upload_status == "done")
+            .order_by(
+                YouTubeUpload.episode_id,
+                YouTubeUpload.channel_id,
+                YouTubeUpload.created_at.asc(),
+            )
+        )
+        result = await self.session.execute(stmt)
+        groups: dict[tuple[UUID, UUID], list[YouTubeUpload]] = {}
+        for row in result.scalars().all():
+            key = (row.episode_id, row.channel_id)
+            groups.setdefault(key, []).append(row)
+        return [g for g in groups.values() if len(g) > 1]
+
 
 class YouTubeAudiobookUploadRepository(BaseRepository[YouTubeAudiobookUpload]):
     """Repository for :class:`YouTubeAudiobookUpload` entities."""

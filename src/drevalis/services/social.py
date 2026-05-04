@@ -254,6 +254,9 @@ class SocialService:
     async def list_platforms(self) -> list[SocialPlatform]:
         return list(await self._platforms.get_all())
 
+    async def get_platform(self, platform_id: UUID) -> SocialPlatform | None:
+        return await self._platforms.get_by_id(platform_id)
+
     async def connect_platform(self, body: PlatformConnect) -> SocialPlatform:
         # Guard against the "connector silently doesn't work" surprises:
         if body.platform == "facebook" and not (body.account_id or "").strip():

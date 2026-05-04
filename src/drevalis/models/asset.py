@@ -11,7 +11,7 @@ twice collapses into one row (the API returns the existing row).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import BIGINT, FLOAT, INT, JSON, TEXT, CheckConstraint, ForeignKey, Index
@@ -20,9 +20,6 @@ from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
-
-if TYPE_CHECKING:
-    pass
 
 
 class Asset(UUIDPrimaryKeyMixin, TimestampMixin, Base):

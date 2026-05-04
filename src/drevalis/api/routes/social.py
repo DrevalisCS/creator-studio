@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
 from drevalis.core.exceptions import NotFoundError, ValidationError
-from drevalis.core.license.features import fastapi_dep_require_feature
+from drevalis.core.license.features import require_feature
 from drevalis.schemas.social import (
     OverallStats,
     PlatformConnect,
@@ -37,11 +37,17 @@ from drevalis.services.social import (
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
-router = APIRouter(
-    prefix="/api/v1/social",
-    tags=["social"],
-    dependencies=[Depends(fastapi_dep_require_feature("social_platforms"))],
-)
+router = APIRouter(prefix="/api/v1/social", tags=["social"])
+
+# Per-platform feature gates. TikTok is on Pro+; Instagram/Facebook/X
+# require Studio. ``service.connect_platform`` and ``service.create_upload``
+# enforce these per request based on the resolved platform name.
+PLATFORM_FEATURE: dict[str, str] = {
+    "tiktok": "social_tiktok",
+    "instagram": "social_extended",
+    "facebook": "social_extended",
+    "x": "social_extended",
+}
 
 
 def _service(
@@ -68,6 +74,7 @@ def _service(
 async def tiktok_auth_url(
     svc: SocialService = Depends(_service),
 ) -> TikTokAuthURLResponse:
+    require_feature(PLATFORM_FEATURE["tiktok"])
     try:
         url, state = await svc.tiktok_auth_url()
     except TikTokNotConfiguredError as exc:
@@ -168,6 +175,7 @@ async def connect_platform(
     svc: SocialService = Depends(_service),
 ) -> PlatformResponse:
     """Connect a new social platform account."""
+    require_feature(PLATFORM_FEATURE[body.platform])
     try:
         platform = await svc.connect_platform(body)
     except ValidationError as exc:
@@ -202,6 +210,12 @@ async def create_upload(
     svc: SocialService = Depends(_service),
 ) -> SocialUploadResponse:
     """Create a new social media upload record. Worker handles upload async."""
+    platform = await svc.get_platform(body.platform_id)
+    if platform is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Platform account not found.")
+    feature = PLATFORM_FEATURE.get(platform.platform)
+    if feature:
+        require_feature(feature)
     try:
         upload = await svc.create_upload(body)
     except NotFoundError as exc:

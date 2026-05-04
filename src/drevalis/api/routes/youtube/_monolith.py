@@ -42,6 +42,7 @@ from drevalis.services.youtube import (
 )
 from drevalis.services.youtube_admin import (
     ChannelCapExceededError,
+    DuplicateUploadError,
     MultipleChannelsAmbiguousError,
     NoChannelConnectedError,
     TokenRefreshError,
@@ -461,13 +462,28 @@ async def upload_episode(
             },
         ) from exc
 
-    upload = await admin.create_upload_row(
-        episode_id=episode_id,
-        channel_id=channel.id,
-        title=upload_title,
-        description=upload_description,
-        privacy_status=payload.privacy_status,
-    )
+    try:
+        upload = await admin.create_upload_row(
+            episode_id=episode_id,
+            channel_id=channel.id,
+            title=upload_title,
+            description=upload_description,
+            privacy_status=payload.privacy_status,
+        )
+    except DuplicateUploadError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "error": "duplicate_upload",
+                "hint": (
+                    "This episode is already published on this channel. "
+                    "Delete the existing upload first, or use a different "
+                    "channel."
+                ),
+                "existing_upload_id": str(exc.existing_upload_id),
+                "existing_video_id": exc.existing_video_id,
+            },
+        ) from exc
 
     try:
         upload_result = await yt_service.upload_video(
@@ -526,11 +542,63 @@ async def upload_episode(
     summary="List past YouTube uploads",
 )
 async def list_uploads(
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=1000, ge=1, le=5000),
     admin: YouTubeAdminService = Depends(_service),
 ) -> list[YouTubeUploadListResponse]:
     uploads = await admin.list_uploads(limit)
     return [YouTubeUploadListResponse.model_validate(u) for u in uploads]
+
+
+# ── Duplicate-upload sweep ──────────────────────────────────────────────
+
+
+@router.get(
+    "/uploads/duplicates",
+    status_code=status.HTTP_200_OK,
+    summary="Preview duplicate YouTube uploads grouped by (episode, channel)",
+    description=(
+        "Lists every (episode_id, channel_id) pair that has more than one "
+        "``done`` upload row. The earliest row is treated as canonical; "
+        "the rest are surfaced as ``duplicates`` so the operator can "
+        "review before calling ``POST /uploads/dedupe``."
+    ),
+)
+async def list_duplicate_uploads(
+    admin: YouTubeAdminService = Depends(_service),
+) -> dict[str, Any]:
+    groups = await admin.find_duplicate_uploads()
+    return {"count": len(groups), "groups": groups}
+
+
+@router.post(
+    "/uploads/dedupe",
+    status_code=status.HTTP_200_OK,
+    summary="Remove duplicate YouTube uploads (keeps earliest, deletes the rest)",
+    description=(
+        "For every duplicated (episode, channel) pair: keeps the earliest "
+        "``done`` upload row, marks the rest as ``failed`` with an audit "
+        "note, and (when ``delete_on_youtube=true``) deletes the duplicate "
+        "videos from YouTube via the Data API. Idempotent — running it "
+        "again on a clean install is a no-op."
+    ),
+)
+async def dedupe_uploads(
+    delete_on_youtube: bool = Query(
+        default=True,
+        description=(
+            "When true, the YouTube videos for the duplicate rows are "
+            "deleted via the Data API. When false, only the database rows "
+            "are marked failed; the videos stay on YouTube."
+        ),
+    ),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+    admin: YouTubeAdminService = Depends(_service),
+) -> dict[str, Any]:
+    yt_service = await build_youtube_service(settings, db)
+    return await admin.dedupe_uploads(
+        yt_service=yt_service, delete_on_youtube=delete_on_youtube
+    )
 
 
 # ── Playlist management ──────────────────────────────────────────────────

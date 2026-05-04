@@ -168,7 +168,7 @@ async def usage_summary(
               ...
           ],
           "instrumentation_notes": [
-              "LLM token counts are not yet persisted per-run — coming in v0.4.",
+              "LLM token counts are persisted per generation_job (tokens_prompt + tokens_completion).",
               "RunPod minutes appear on the RunPod dashboard directly.",
           ]
         }

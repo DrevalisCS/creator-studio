@@ -260,7 +260,7 @@ function SeriesDetail() {
 
   // Edit state — longform
   const [editContentFormat, setEditContentFormat] = useState<
-    'shorts' | 'longform' | 'music_video' | 'animation'
+    'shorts' | 'longform' | 'music_video'
   >('shorts');
   const [editTargetMinutes, setEditTargetMinutes] = useState(30);
   const [editScenesPerChapter, setEditScenesPerChapter] = useState(8);
@@ -927,13 +927,6 @@ function SeriesDetail() {
                     aspect: '9:16',
                     icon: Music2,
                   },
-                  {
-                    id: 'animation',
-                    label: 'Animation',
-                    sub: '16:9',
-                    aspect: '16:9',
-                    icon: Shapes,
-                  },
                 ] as const
               ).map((fmt) => {
                 const active = editContentFormat === fmt.id;
@@ -968,13 +961,6 @@ function SeriesDetail() {
                 Music videos use an AI lyric + song generator (ACE Step /
                 lyric-aware) for the backing track, then beat-match scene cuts
                 to the song.
-              </p>
-            )}
-            {editContentFormat === 'animation' && (
-              <p className="mt-2 text-[11px] text-txt-tertiary">
-                Animation routes scenes through the animation-tagged ComfyUI
-                workflow (e.g. AnimateDiff / anime-style Wan) with voice +
-                music composited in.
               </p>
             )}
           </div>

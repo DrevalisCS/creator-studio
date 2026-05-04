@@ -82,6 +82,28 @@ class NoChannelConnectedError(Exception):
     """Raised when an op requires a channel and none are connected."""
 
 
+class DuplicateUploadError(Exception):
+    """Raised when a YouTube upload would re-publish an episode already on
+    that channel. The earliest ``done`` row is treated as canonical."""
+
+    def __init__(
+        self,
+        *,
+        episode_id: UUID,
+        channel_id: UUID,
+        existing_upload_id: UUID,
+        existing_video_id: str | None,
+    ) -> None:
+        self.episode_id = episode_id
+        self.channel_id = channel_id
+        self.existing_upload_id = existing_upload_id
+        self.existing_video_id = existing_video_id
+        super().__init__(
+            f"Episode {episode_id} is already published on channel {channel_id} "
+            f"as {existing_video_id or '<unknown video>'}."
+        )
+
+
 class TokenRefreshError(Exception):
     """Raised when token refresh failed — the route maps this to 401 with hint."""
 
@@ -391,6 +413,18 @@ class YouTubeAdminService:
         description: str,
         privacy_status: str,
     ) -> YouTubeUpload:
+        # Duplicate guard: refuse to start a new upload if this episode is
+        # already on this channel. Without this, a manual retry, a stuck
+        # tab, or an overlap with the scheduled-post cron can publish the
+        # same video twice.
+        existing = await self._uploads.get_existing_done(episode_id, channel_id)
+        if existing is not None:
+            raise DuplicateUploadError(
+                episode_id=episode_id,
+                channel_id=channel_id,
+                existing_upload_id=existing.id,
+                existing_video_id=existing.youtube_video_id,
+            )
         upload = await self._uploads.create(
             episode_id=episode_id,
             channel_id=channel_id,
@@ -491,6 +525,138 @@ class YouTubeAdminService:
 
     async def list_uploads(self, limit: int) -> list[YouTubeUpload]:
         return list(await self._uploads.get_recent(limit=limit))
+
+    # ── Duplicate sweep ──────────────────────────────────────────────────
+
+    async def find_duplicate_uploads(self) -> list[dict[str, Any]]:
+        """Return one summary per duplicated (episode, channel) group.
+
+        Each entry has ``episode_id``, ``channel_id``, ``keep`` (the
+        canonical upload id + video id), and ``duplicates`` (the
+        superseded upload ids + video ids that should be removed).
+        """
+        groups = await self._uploads.find_duplicates()
+        out: list[dict[str, Any]] = []
+        for group in groups:
+            keep, *dupes = group  # earliest row is canonical
+            out.append(
+                {
+                    "episode_id": str(keep.episode_id),
+                    "channel_id": str(keep.channel_id),
+                    "keep": {
+                        "upload_id": str(keep.id),
+                        "video_id": keep.youtube_video_id,
+                    },
+                    "duplicates": [
+                        {
+                            "upload_id": str(d.id),
+                            "video_id": d.youtube_video_id,
+                            "created_at": d.created_at.isoformat()
+                            if d.created_at
+                            else None,
+                        }
+                        for d in dupes
+                    ],
+                }
+            )
+        return out
+
+    async def dedupe_uploads(
+        self,
+        *,
+        yt_service: YouTubeService,
+        delete_on_youtube: bool = True,
+    ) -> dict[str, Any]:
+        """Remove duplicate ``done`` uploads for every (episode, channel) pair.
+
+        Strategy: keep the earliest ``done`` row, mark the rest as
+        ``failed`` with an explanatory ``error_message``, and (optionally)
+        delete the duplicate video on YouTube via the Data API.
+
+        Returns counts and a per-group summary so the caller can show the
+        operator what was actually changed.
+        """
+        from drevalis.repositories.youtube import YouTubeChannelRepository
+
+        channel_repo = YouTubeChannelRepository(self._db)
+        channel_cache: dict[UUID, YouTubeChannel | None] = {}
+
+        async def _channel(cid: UUID) -> YouTubeChannel | None:
+            if cid not in channel_cache:
+                channel_cache[cid] = await channel_repo.get_by_id(cid)
+            return channel_cache[cid]
+
+        groups = await self._uploads.find_duplicates()
+        summary: list[dict[str, Any]] = []
+        rows_marked = 0
+        videos_deleted = 0
+        delete_errors: list[str] = []
+
+        for group in groups:
+            keep, *dupes = group
+            channel = await _channel(keep.channel_id)
+            removed: list[dict[str, Any]] = []
+
+            for dupe in dupes:
+                # 1) Delete from YouTube if we still have a valid token +
+                #    a concrete video id. Failures are logged and surfaced
+                #    but don't stop the row-level cleanup.
+                if delete_on_youtube and channel and dupe.youtube_video_id:
+                    try:
+                        await self.refresh_and_persist_tokens(
+                            channel, yt_service, commit=False
+                        )
+                    except Exception:  # noqa: BLE001
+                        # refresh failure isn't fatal — try the delete
+                        # with whatever token we already have.
+                        pass
+                    try:
+                        await yt_service.delete_video(
+                            access_token_encrypted=channel.access_token_encrypted or "",
+                            refresh_token_encrypted=channel.refresh_token_encrypted,
+                            token_expiry=channel.token_expiry,
+                            video_id=dupe.youtube_video_id,
+                        )
+                        videos_deleted += 1
+                    except Exception as exc:  # noqa: BLE001
+                        delete_errors.append(
+                            f"video={dupe.youtube_video_id}: {str(exc)[:160]}"
+                        )
+
+                # 2) Mark the row failed with a clear note. Keeping the
+                #    row (rather than deleting it) preserves the audit
+                #    trail so an operator can see what happened.
+                dupe.upload_status = "failed"
+                dupe.error_message = (
+                    f"duplicate — superseded by upload {keep.id} "
+                    f"(video {keep.youtube_video_id or '?'})"
+                )[:1000]
+                rows_marked += 1
+                removed.append(
+                    {
+                        "upload_id": str(dupe.id),
+                        "video_id": dupe.youtube_video_id,
+                    }
+                )
+
+            summary.append(
+                {
+                    "episode_id": str(keep.episode_id),
+                    "channel_id": str(keep.channel_id),
+                    "kept_upload_id": str(keep.id),
+                    "kept_video_id": keep.youtube_video_id,
+                    "removed": removed,
+                }
+            )
+
+        await self._db.commit()
+        return {
+            "groups": len(groups),
+            "rows_marked_failed": rows_marked,
+            "videos_deleted": videos_deleted,
+            "delete_errors": delete_errors,
+            "summary": summary,
+        }
 
     # ── Playlist CRUD ────────────────────────────────────────────────────
 

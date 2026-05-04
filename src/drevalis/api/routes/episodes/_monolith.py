@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from drevalis.core.concurrency import effective_max_concurrent_generations
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_redis, get_settings
 from drevalis.core.redis import get_arq_pool
@@ -166,7 +167,7 @@ async def bulk_generate(
     is reached, remaining episodes are skipped rather than raising an error.
     """
     queued_ids, skipped_ids = await svc.bulk_generate(
-        payload.episode_ids, settings.max_concurrent_generations
+        payload.episode_ids, effective_max_concurrent_generations(settings.max_concurrent_generations)
     )
     return BulkGenerateResponse(
         queued=len(queued_ids),
@@ -281,7 +282,7 @@ async def generate_episode(
     requested_steps: list[str] | None = list(payload.steps) if payload and payload.steps else None
     try:
         job_ids = await svc.generate(
-            episode_id, requested_steps, settings.max_concurrent_generations
+            episode_id, requested_steps, effective_max_concurrent_generations(settings.max_concurrent_generations)
         )
     except EpisodeNotFoundError as exc:
         raise HTTPException(
@@ -322,7 +323,7 @@ async def retry_episode(
 ) -> RetryResponse:
     """Find the first failed generation job and re-enqueue it."""
     try:
-        job_id, step = await svc.retry_first_failed(episode_id, settings.max_concurrent_generations)
+        job_id, step = await svc.retry_first_failed(episode_id, effective_max_concurrent_generations(settings.max_concurrent_generations))
     except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -360,7 +361,7 @@ async def retry_episode_step(
 ) -> RetryResponse:
     """Re-enqueue a specific pipeline step for the episode."""
     try:
-        job_id = await svc.retry_step(episode_id, step, settings.max_concurrent_generations)
+        job_id = await svc.retry_step(episode_id, step, effective_max_concurrent_generations(settings.max_concurrent_generations))
     except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -636,7 +637,7 @@ async def regenerate_scene(
             episode_id,
             scene_number,
             visual_prompt_override,
-            settings.max_concurrent_generations,
+            effective_max_concurrent_generations(settings.max_concurrent_generations),
         )
     except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
@@ -729,7 +730,7 @@ async def regenerate_voice(
             voice_profile_id=resolved_vp_id,
             speed=speed,
             pitch=pitch,
-            base_max=settings.max_concurrent_generations,
+            base_max=effective_max_concurrent_generations(settings.max_concurrent_generations),
         )
     except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
@@ -761,7 +762,7 @@ async def reassemble(
 ) -> dict[str, Any]:
     """Enqueue a job to re-run captions, assembly, and thumbnail extraction."""
     try:
-        job_ids = await svc.reassemble(episode_id, settings.max_concurrent_generations)
+        job_ids = await svc.reassemble(episode_id, effective_max_concurrent_generations(settings.max_concurrent_generations))
     except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -804,7 +805,7 @@ async def regenerate_captions(
     """Store a new caption style override and enqueue reassembly."""
     try:
         job_ids = await svc.regenerate_captions(
-            episode_id, caption_style, settings.max_concurrent_generations
+            episode_id, caption_style, effective_max_concurrent_generations(settings.max_concurrent_generations)
         )
     except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
@@ -1171,7 +1172,7 @@ async def set_music(
             music_mood=payload.music_mood,
             music_volume_db=payload.music_volume_db,
             reassemble=payload.reassemble,
-            base_max=settings.max_concurrent_generations,
+            base_max=effective_max_concurrent_generations(settings.max_concurrent_generations),
         )
     except EpisodeNotFoundError as exc:
         raise HTTPException(
@@ -2235,7 +2236,7 @@ async def generate_seo(
 class PublishAllRequest(BaseModel):
     """Fan-out publish to every selected platform."""
 
-    platforms: list[Literal["youtube", "tiktok", "instagram"]] = Field(
+    platforms: list[Literal["youtube", "tiktok", "instagram", "facebook", "x"]] = Field(
         ...,
         min_length=1,
         description="Platforms to publish to. Only platforms the episode's series + connected "
@@ -2261,7 +2262,7 @@ class PublishAllResponse(BaseModel):
 @router.post(
     "/{episode_id}/publish-all",
     response_model=PublishAllResponse,
-    summary="Publish the finished episode to YouTube, TikTok, and Instagram in one shot",
+    summary="Publish the finished episode to YouTube + connected social platforms in one shot",
     tags=["publishing"],
 )
 async def publish_all(
@@ -2330,46 +2331,50 @@ async def publish_all(
                 }
             )
         else:
-            upload = YouTubeUpload(
-                episode_id=episode.id,
-                channel_id=yt_channel_id,
-                title=effective_title,
-                description=effective_description,
-                privacy_status=body.privacy,
-                upload_status="pending",
-            )
-            db.add(upload)
-            await db.flush()
-            accepted.append(
-                {
-                    "platform": "youtube",
-                    "upload_id": str(upload.id),
-                    "channel_id": str(yt_channel_id),
-                }
-            )
+            # Duplicate guard — refuse to enqueue a second YouTube upload
+            # for an episode that's already published on this channel.
+            from drevalis.repositories.youtube import YouTubeUploadRepository
 
-    # ── TikTok / Instagram ──────────────────────────────────────────────
-    # Shipping reality: only TikTok has an upload worker today. Instagram
-    # and X are still OAuth-less stubs. We gate each platform by its
-    # real capability so a Studio-tier bulk publish doesn't quietly
-    # enqueue a row that nothing ever processes.
-    _UPLOAD_SUPPORTED: set[str] = {"tiktok"}
+            existing = await YouTubeUploadRepository(db).get_existing_done(
+                episode.id, yt_channel_id
+            )
+            if existing is not None:
+                skipped.append(
+                    {
+                        "platform": "youtube",
+                        "reason": (
+                            "Already published on this channel. "
+                            f"Existing upload {existing.id} → "
+                            f"{existing.youtube_url or existing.youtube_video_id}."
+                        ),
+                    }
+                )
+            else:
+                upload = YouTubeUpload(
+                    episode_id=episode.id,
+                    channel_id=yt_channel_id,
+                    title=effective_title,
+                    description=effective_description,
+                    privacy_status=body.privacy,
+                    upload_status="pending",
+                )
+                db.add(upload)
+                await db.flush()
+                accepted.append(
+                    {
+                        "platform": "youtube",
+                        "upload_id": str(upload.id),
+                        "channel_id": str(yt_channel_id),
+                    }
+                )
 
-    for plat_name in ("tiktok", "instagram"):
+    # ── TikTok / Instagram / Facebook / X ───────────────────────────────
+    # All four uploaders ship in workers/jobs/social.py; the route fans
+    # out to whichever platforms the caller requested and have an active
+    # connected account. The social cron picks the SocialUpload rows up
+    # on its next tick.
+    for plat_name in ("tiktok", "instagram", "facebook", "x"):
         if plat_name not in body.platforms:
-            continue
-
-        if plat_name not in _UPLOAD_SUPPORTED:
-            skipped.append(
-                {
-                    "platform": plat_name,
-                    "reason": (
-                        f"{plat_name.capitalize()} uploads aren't shipped yet — the OAuth "
-                        "flow + Direct Post integration are on the roadmap. Export the MP4 "
-                        "and upload manually in the meantime."
-                    ),
-                }
-            )
             continue
 
         from sqlalchemy import select as _select
@@ -2382,11 +2387,12 @@ async def publish_all(
         )
         plat = row.scalar_one_or_none()
         if not plat:
+            tier_hint = "Pro tier" if plat_name == "tiktok" else "Studio tier"
             skipped.append(
                 {
                     "platform": plat_name,
                     "reason": f"No active {plat_name} account connected. Connect one in "
-                    "Settings → Social Platforms (Studio tier).",
+                    f"Settings → Social Platforms ({tier_hint}).",
                 }
             )
             continue

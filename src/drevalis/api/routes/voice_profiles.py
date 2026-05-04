@@ -85,12 +85,43 @@ async def list_voice_profiles(
     ),
 )
 async def generate_voice_previews(
+    force: bool = Query(
+        default=False,
+        description="If true, regenerate previews even when a WAV already exists "
+        "on disk. Use to refresh stale samples (e.g. after the app rename).",
+    ),
     svc: VoiceProfileService = Depends(_service),
 ) -> dict[str, int | str]:
     try:
-        return await svc.generate_all_previews()
+        return await svc.generate_all_previews(force=force)
     except ValidationError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.detail) from exc
+
+
+# ── Regenerate one profile's preview (all providers) ────────────────────
+
+
+@router.post(
+    "/{profile_id}/regenerate-preview",
+    response_model=VoiceProfileResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Force-regenerate the preview WAV for a single voice profile",
+    description=(
+        "Deletes the existing preview file (if any) and synthesises a fresh "
+        "one using the current preview text. Works for edge / piper / kokoro "
+        "profiles via the auto-preview path; ElevenLabs profiles should use "
+        "``/generate-previews?force=true``."
+    ),
+)
+async def regenerate_voice_preview(
+    profile_id: UUID,
+    svc: VoiceProfileService = Depends(_service),
+) -> VoiceProfileResponse:
+    try:
+        profile = await svc.regenerate_preview(profile_id)
+        return VoiceProfileResponse.model_validate(profile)
+    except NotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
 
 
 # ── Create voice profile ─────────────────────────────────────────────────

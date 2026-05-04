@@ -176,9 +176,22 @@ class VoiceProfileService:
         except Exception as exc:
             logger.warning("voice_preview_generation_failed", error=str(exc))
 
+    # ── Force-regenerate a single profile's preview (all providers) ─────
+
+    async def regenerate_preview(self, profile_id: UUID) -> VoiceProfile:
+        profile = await self.get(profile_id)
+        preview_path = self._storage / "voice_previews" / f"{profile.id}.wav"
+        if preview_path.exists():
+            preview_path.unlink()
+        profile.sample_audio_path = None
+        await self._db.commit()
+        await self._auto_generate_preview(profile)
+        await self._db.refresh(profile)
+        return profile
+
     # ── Bulk preview generation for ComfyUI ElevenLabs profiles ─────────
 
-    async def generate_all_previews(self) -> dict[str, Any]:
+    async def generate_all_previews(self, *, force: bool = False) -> dict[str, Any]:
         from drevalis.services.tts import ComfyUIElevenLabsTTSProvider
 
         profiles = await self._repo.get_by_provider("comfyui_elevenlabs")
@@ -219,7 +232,7 @@ class VoiceProfileService:
         failed = 0
 
         for profile in profiles:
-            if profile.sample_audio_path:
+            if profile.sample_audio_path and not force:
                 full_path = self._storage / profile.sample_audio_path
                 if full_path.exists():
                     skipped += 1

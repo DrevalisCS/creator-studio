@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useToast } from '@/components/ui/Toast';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -1107,40 +1107,65 @@ function AnalyticsTab({ uploads, loading, channelMap, channelId }: AnalyticsTabP
 
   const [channelAnalytics, setChannelAnalytics] = useState<YouTubeChannelAnalytics | null>(null);
   const [channelAnalyticsErr, setChannelAnalyticsErr] = useState<null | { kind: 'scope' | 'other'; msg: string }>(null);
-  const [windowDays, setWindowDays] = useState<28 | 90>(28);
+  const [windowDays, setWindowDays] = useState<7 | 28 | 90 | 365>(28);
 
-  const completedUploads = uploads.filter(
-    (u) => u.upload_status === 'done' && u.youtube_video_id,
+  const completedUploads = useMemo(
+    () =>
+      uploads.filter((u) => u.upload_status === 'done' && u.youtube_video_id),
+    [uploads],
   );
 
   const fetchStats = useCallback(async () => {
-    if (completedUploads.length === 0) return;
+    if (completedUploads.length === 0) {
+      setStats([]);
+      return;
+    }
     setStatsLoading(true);
     setStatsError(null);
-    void channelId; // re-run when the selected channel changes
     try {
-      const videoIds = completedUploads
-        .map((u) => u.youtube_video_id!)
-        .filter(Boolean);
-      let data: YouTubeVideoStats[];
-      try {
-        data = await youtubeApi.getVideoStats(videoIds, channelId);
-      } catch (err: any) {
-        const detail = err?.detailRaw || err?.detail;
-        const connected =
-          detail?.connected_channels || detail?.detail?.connected_channels;
-        if (
-          Array.isArray(connected) &&
-          connected.length > 0 &&
-          typeof connected[0]?.id === 'string'
-        ) {
-          data = await youtubeApi.getVideoStats(videoIds, connected[0].id);
-        } else {
-          throw err;
-        }
+      // Group video IDs by their owning channel — every channel's
+      // OAuth token is only valid for its own videos. A request that
+      // mixes channels 500s on the first cross-channel ID. Then chunk
+      // each channel's IDs at 50 (YouTube's videos.list batch limit)
+      // so we don't silently drop everything past the first 50.
+      const byChannel = new Map<string, string[]>();
+      for (const u of completedUploads) {
+        const chId = (u as any).channel_id || channelId;
+        if (!chId || !u.youtube_video_id) continue;
+        if (!byChannel.has(chId)) byChannel.set(chId, []);
+        byChannel.get(chId)!.push(u.youtube_video_id);
       }
-      // Sort by views descending
-      setStats([...data].sort((a, b) => b.views - a.views));
+      if (byChannel.size === 0) {
+        setStats([]);
+        return;
+      }
+
+      const requests = [...byChannel.entries()].flatMap(([chId, ids]) => {
+        const chunks: string[][] = [];
+        for (let i = 0; i < ids.length; i += 50) chunks.push(ids.slice(i, i + 50));
+        return chunks.map((chunk) => youtubeApi.getVideoStats(chunk, chId));
+      });
+      const results = await Promise.allSettled(requests);
+
+      const merged: YouTubeVideoStats[] = [];
+      const errors: string[] = [];
+      for (const r of results) {
+        if (r.status === 'fulfilled') merged.push(...r.value);
+        else errors.push(String(r.reason).slice(0, 160));
+      }
+      // Dedupe by video_id in case the same video shows up in two
+      // overlapping batches (unlikely but cheap to guard).
+      const deduped = Array.from(new Map(merged.map((s) => [s.video_id, s])).values());
+      // Sort by views descending so the leaderboard is meaningful at a glance.
+      setStats(deduped.sort((a, b) => b.views - a.views));
+
+      if (errors.length && merged.length === 0) {
+        setStatsError(errors[0] ?? 'Failed to load analytics.');
+      } else if (errors.length) {
+        setStatsError(
+          `${errors.length} channel${errors.length > 1 ? 's' : ''} failed — others loaded.`,
+        );
+      }
     } catch (err) {
       setStatsError(
         err instanceof Error ? err.message : 'Failed to load analytics.',
@@ -1148,7 +1173,7 @@ function AnalyticsTab({ uploads, loading, channelMap, channelId }: AnalyticsTabP
     } finally {
       setStatsLoading(false);
     }
-  }, [completedUploads.length, channelId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [completedUploads, channelId]);
 
   const fetchChannelAnalytics = useCallback(async () => {
     setChannelAnalyticsErr(null);
@@ -1276,17 +1301,17 @@ function AnalyticsTab({ uploads, loading, channelMap, channelId }: AnalyticsTabP
             )}
           </div>
           <div className="flex gap-1">
-            {[28, 90].map((d) => (
+            {[7, 28, 90, 365].map((d) => (
               <button
                 key={d}
-                onClick={() => setWindowDays(d as 28 | 90)}
+                onClick={() => setWindowDays(d as 7 | 28 | 90 | 365)}
                 className={`text-xs px-2.5 py-1 rounded border ${
                   windowDays === d
                     ? 'border-accent/40 text-accent bg-accent/10'
                     : 'border-border text-txt-secondary hover:text-txt-primary'
                 }`}
               >
-                {d}d
+                {d === 365 ? '1y' : `${d}d`}
               </button>
             ))}
           </div>

@@ -47,6 +47,20 @@ export default function ShotList() {
   const scenes = (episode?.script as any)?.scenes ?? [];
   const totalDuration = scenes.reduce((acc: number, s: any) => acc + (s.duration_seconds || 0), 0);
 
+  // Resolve the tile aspect ratio from the episode's series. The series
+  // ``aspect_ratio`` is the source of truth; fall back to content_format
+  // when an older series record predates the column.
+  const seriesAspect = (episode as any)?.series?.aspect_ratio as string | undefined;
+  const cf = (episode as any)?.content_format as string | undefined;
+  const tileAspect =
+    seriesAspect && /^\d+:\d+$/.test(seriesAspect)
+      ? seriesAspect.replace(':', ' / ')
+      : cf === 'longform'
+        ? '16 / 9'
+        : cf === 'music_video'
+          ? '9 / 16'
+          : '9 / 16';
+
   if (loading || !episodeId) {
     return (
       <div className="flex justify-center py-20">
@@ -86,7 +100,7 @@ export default function ShotList() {
           const asset = sceneAssetsByNum.get(s.scene_number);
           return (
             <Card key={s.scene_number} className="overflow-hidden">
-              <div className="aspect-[9/16] bg-bg-elevated relative">
+              <div className="bg-bg-elevated relative" style={{ aspectRatio: tileAspect }}>
                 {asset ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
