@@ -17,7 +17,6 @@ import {
   Smartphone,
   Monitor,
   Music2,
-  Shapes,
 } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
