@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Install — Drevalis Creator Studio</title>
-  <meta name="description" content="Install Drevalis Creator Studio with one command. Self-hosted Docker Compose stack for Linux, macOS, and Windows." />
+  <meta name="description" content="Install Drevalis Creator Studio with one command. Runs on your own computer — Linux, macOS, or Windows. No cloud account needed." />
 
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -39,9 +39,9 @@
   <section class="section-compact relative overflow-hidden">
     <div class="bg-glow" style="background: var(--accent); top: -80px; right: 10%; width: 400px; height: 400px; opacity: 0.2;"></div>
     <div class="container-xl text-center relative z-10 reveal">
-      <span class="eyebrow mb-5">Self-hosted install</span>
+      <span class="eyebrow mb-5">Install on your computer</span>
       <h1 class="display-hero mt-5 mb-5">Install in <span class="accent-gradient">one command</span>.</h1>
-      <p class="lead max-w-2xl mx-auto">Docker Compose stack. One script pulls the official images, generates secrets, runs migrations, and starts every service.</p>
+      <p class="lead max-w-2xl mx-auto">Paste a single line into your terminal. The installer downloads everything, sets it up, and starts it for you. About 5 minutes start to finish.</p>
     </div>
   </section>
 
@@ -56,7 +56,7 @@
             <span class="pill pill-green">Linux · macOS</span>
           </div>
           <h3 class="mb-2">One line to install</h3>
-          <p class="text-sm text-[var(--txt-secondary)] mb-4">Requires Docker Engine 24+ with the Compose plugin (already included in Docker Desktop on macOS).</p>
+          <p class="text-sm text-[var(--txt-secondary)] mb-4">You need Docker Desktop installed first (free download). On macOS it comes with everything included.</p>
           <pre class="text-sm"><code>curl -fsSL https://drevalis.com/install.sh | bash</code></pre>
           <p class="small-muted mt-3">Prefer to read before piping? View <a href="/install.sh">install.sh</a>.</p>
         </div>
@@ -94,7 +94,7 @@
         <ol class="space-y-3 text-[var(--txt-secondary)]">
           <li class="flex gap-4"><span class="w-7 h-7 rounded-md bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center text-sm font-semibold flex-shrink-0">1</span><span>Creates <code class="inline">/srv/drevalis</code> (Linux) or <code class="inline">C:\drevalis</code> (Windows).</span></li>
           <li class="flex gap-4"><span class="w-7 h-7 rounded-md bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center text-sm font-semibold flex-shrink-0">2</span><span>Writes <code class="inline">docker-compose.yml</code> pulling the official images from <code class="inline">ghcr.io/drevaliscs/*</code>.</span></li>
-          <li class="flex gap-4"><span class="w-7 h-7 rounded-md bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center text-sm font-semibold flex-shrink-0">3</span><span>Generates a Fernet encryption key and writes <code class="inline">.env</code> (you own this key — it never leaves your machine).</span></li>
+          <li class="flex gap-4"><span class="w-7 h-7 rounded-md bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center text-sm font-semibold flex-shrink-0">3</span><span>Creates a unique encryption key just for your install (it stays on your computer — we never see it).</span></li>
           <li class="flex gap-4"><span class="w-7 h-7 rounded-md bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center text-sm font-semibold flex-shrink-0">4</span><span>Pulls all images (~3 GB — coffee break).</span></li>
           <li class="flex gap-4"><span class="w-7 h-7 rounded-md bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center text-sm font-semibold flex-shrink-0">5</span><span>Runs database migrations.</span></li>
           <li class="flex gap-4"><span class="w-7 h-7 rounded-md bg-[var(--accent)]/10 text-[var(--accent)] flex items-center justify-center text-sm font-semibold flex-shrink-0">6</span><span>Starts the stack and prints the URL to open.</span></li>
@@ -265,7 +265,7 @@ volumes:
           <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
           Drevalis
         </a>
-        <p class="text-sm text-[var(--txt-secondary)] max-w-sm mt-3">Self-hosted AI video &amp; audiobook creation. Made in Switzerland.</p>
+        <p class="text-sm text-[var(--txt-secondary)] max-w-sm mt-3">An app for making AI videos and audiobooks on your own computer. Made in Switzerland.</p>
         <p class="small-muted mt-3">© 2026 Drevalis · Creator Studio is a trademark of Drevalis.</p>
       </div>
       <div><div class="site-footer-heading">Product</div><ul class="site-footer-list"><li><a href="/#features">Features</a></li><li><a href="/#workflow">How it works</a></li><li><a href="/#hardware">Hardware</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/download">Download</a></li></ul></div>

@@ -38,12 +38,12 @@
       <h1>Privacy Policy</h1>
       <p class="intro">Last updated: 2026-04-21 · Governed by the Swiss Federal Act on Data Protection (FADP / revDSG, in force since 1 September 2023). For data subjects in the EU/EEA this policy is also read in conjunction with the GDPR; where the two differ, both are honoured.</p>
 
-      <h2>The short version</h2>
+      <h2>The short version, in plain English</h2>
       <ul>
-        <li><strong>Your content stays on your machine.</strong> Scripts, voices, videos, models, OAuth tokens for YouTube / TikTok / Instagram — all on your disk. We have no access.</li>
-        <li>We hold the minimum data needed to sell and license the Software: your email, payment metadata (held by Stripe), license state, and the list of machines that have activated.</li>
-        <li>We do not sell, rent, or share personal data for marketing. We use four subprocessors: Stripe (billing), Resend (transactional email), an EU cloud-hosting provider, and — only if you accept our consent banner — Google Analytics for website statistics.</li>
-        <li>You may contact the FDPIC (EDÖB) or your national data-protection authority at any time.</li>
+        <li><strong>Your stuff stays on your computer.</strong> Scripts, voices, videos, AI models, and the logins you saved for YouTube, TikTok, and Instagram — all on your disk. We can't see any of it.</li>
+        <li>We only hold the bare minimum to sell you the app: your email, the payment info Stripe needs, your license, and a list of computers you've activated on.</li>
+        <li>We never sell or rent your data, and never share it for marketing. We use four other companies to run the business: Stripe (handles payments), Resend (sends emails like your receipts), an EU hosting provider (runs the license server), and Google Analytics (only if you click "Accept" on the cookie banner — to help us see which pages people use).</li>
+        <li>You can complain to the Swiss data-protection authority (FDPIC / EDÖB) or your country's equivalent any time.</li>
       </ul>
 
       <h2>1. Data controller</h2>
@@ -75,13 +75,13 @@
 
       <h2>3. What we do NOT collect</h2>
       <ul>
-        <li>The content of your scripts, voices, videos, or audiobooks;</li>
-        <li>The YouTube / TikTok / Instagram OAuth tokens you paste into the Software — these stay on your disk, encrypted with a per-install Fernet key;</li>
-        <li>Third-party API keys you configure (ElevenLabs, OpenAI, Anthropic, RunPod) — same story, local and encrypted;</li>
-        <li>Your prompts, topics, model selections;</li>
-        <li>Any telemetry about how you use individual features.</li>
+        <li>The contents of your scripts, voices, videos, or audiobooks;</li>
+        <li>The YouTube, TikTok, or Instagram logins you connect inside the app — those stay on your disk, encrypted with a key that's unique to your install;</li>
+        <li>Other AI account keys you set up (ElevenLabs, OpenAI, Anthropic, RunPod) — same story, kept on your machine and encrypted;</li>
+        <li>Your prompts, the topics you write about, or which AI model you picked;</li>
+        <li>Anything about how you use the app's features.</li>
       </ul>
-      <p>The Software does not phone home with usage data. The only traffic from your install to our infrastructure is the 24-hour license heartbeat.</p>
+      <p>The app doesn't send anything home about how you use it. The only thing that ever leaves your install is a once-a-day check that your subscription is still active.</p>
 
       <h2>4. Subprocessors</h2>
       <table>
@@ -116,7 +116,7 @@
 
       <h2>6. Security</h2>
       <p>Our license server runs on a hardened EU cloud instance with automatic security updates, host-based firewalling, and key-only administrative access. License JWTs are signed with Ed25519; activation heartbeats use HTTPS (TLS 1.2+). Customer data in our database is limited to what section 2 describes.</p>
-      <p>Inside your install, OAuth tokens and third-party API keys are encrypted at rest with a Fernet key unique to your install (stored in <code>.env</code>; never sent to us).</p>
+      <p>Inside the app, your platform logins and AI account keys are encrypted on your disk with a key that's unique to your install (kept in your <code>.env</code> file and never sent to us).</p>
 
       <h2>7. Cross-border data transfer</h2>
       <p>We host our license server in Germany, an EU/EEA country with an adequate level of protection recognised by Switzerland. Stripe and Resend process data in the United States under the Swiss–U.S. DPF and EU–U.S. DPF; where those frameworks do not cover a specific transfer, Standard Contractual Clauses plus supplementary technical measures are in place.</p>
@@ -139,7 +139,7 @@
           <span class="site-brand-mark"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M4 3 L13 8 L4 13 Z" fill="currentColor"/></svg></span>
           Drevalis
         </a>
-        <p class="text-sm text-[var(--txt-secondary)] max-w-sm mt-3">Self-hosted AI video &amp; audiobook creation. Made in Switzerland.</p>
+        <p class="text-sm text-[var(--txt-secondary)] max-w-sm mt-3">An app for making AI videos and audiobooks on your own computer. Made in Switzerland.</p>
         <p class="small-muted mt-3">© 2026 Drevalis · Creator Studio is a trademark of Drevalis.</p>
       </div>
       <div><div class="site-footer-heading">Product</div><ul class="site-footer-list"><li><a href="/#features">Features</a></li><li><a href="/pricing">Pricing</a></li><li><a href="/download">Download</a></li></ul></div>
