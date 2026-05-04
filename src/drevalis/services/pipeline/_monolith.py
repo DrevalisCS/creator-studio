@@ -79,6 +79,35 @@ PIPELINE_ORDER: list[PipelineStep] = [
 ]
 
 
+class _DefaultPromptDict(dict[str, str]):
+    """``str.format_map``-friendly dict that returns ``""`` for missing keys.
+
+    Lets the visual-refiner template substitute any subset of
+    ``{scene_prompt} {style} {character} {prompt}`` without raising on
+    placeholders the caller didn't pass. Falsy result is intentional —
+    we'd rather leak an empty string than crash the whole script.
+    """
+
+    def __missing__(self, key: str) -> str:
+        return ""
+
+
+_VISUAL_REFINER_FALLBACK_SYSTEM = """You rewrite a single image generation prompt to be specific, voiced, and free of cargo-cult tokens.
+
+REQUIRED — every output prompt contains:
+1. CAMERA FRAMING — exactly one of: close-up, medium, wide, overhead, low-angle, over-the-shoulder, eye-level, three-quarter
+2. LIGHTING — named: golden hour, overcast soft, harsh midday, candlelit, neon, sodium streetlight, blue hour, fluorescent flicker, single-bulb practical
+3. CONCRETE SUBJECT NOUN — name the literal thing being shown ("a brass sextant on stained linen" not "a scene of seafaring")
+4. ATMOSPHERE OR DETAIL — one specific texture, weather, or material (rain on tarmac, dust motes, salt rust, wet cobblestone)
+
+BANNED TOKENS — remove these from the input if present, never add them:
+masterpiece, 8k, 4k, ultra detailed, ultra realistic, ultrarealistic, hyper realistic, hyperrealistic, high quality, best quality, professional, trending on artstation, award winning. Use "cinematic" only when followed by a specific lens or technique (anamorphic, shallow DOF, Dutch angle, lens flare).
+
+STYLE — match the style parameter provided. If "noir" → contrast, hard shadows, rain. If "kodachrome 70s" → warm cast, slight grain, period-correct subjects. If empty, omit a style descriptor entirely.
+
+OUTPUT — only the rewritten prompt, one line, no quotes, no commentary, no preamble."""
+
+
 # ---------------------------------------------------------------------------
 # Orchestrator
 # ---------------------------------------------------------------------------
@@ -407,7 +436,40 @@ class PipelineOrchestrator:
 
             asset_repo = MediaAssetRepository(self.db)
 
-            if step == PipelineStep.VOICE:
+            if step == PipelineStep.SCRIPT:
+                # Reload the persisted script — _step_script committed
+                # the new value; the in-memory ``episode`` from the
+                # outer ``run()`` is the pre-write version (script={}).
+                # _load_episode also eager-loads series so the gate has
+                # a tone_profile without an extra round-trip.
+                fresh = await self._load_episode()
+                if not fresh.script:
+                    return
+                tone_profile: dict[str, Any] | None = None
+                if fresh.series is not None:
+                    tone_profile = getattr(fresh.series, "tone_profile", None)
+                try:
+                    script_obj = EpisodeScript.model_validate(fresh.script)
+                except Exception:  # noqa: BLE001
+                    return
+                report = await qg.check_script_content(script_obj, tone_profile)
+                if not report.passed:
+                    summary = "; ".join(report.issues[:6])
+                    if len(report.issues) > 6:
+                        summary += f"; …and {len(report.issues) - 6} more"
+                    self.log.info(
+                        "script_quality_warnings",
+                        issues=report.issues,
+                        metrics=report.metrics,
+                    )
+                    await self._broadcast_progress(
+                        step,
+                        100,
+                        "warning",
+                        f"Script quality: {summary}",
+                    )
+
+            elif step == PipelineStep.VOICE:
                 voice_assets = await asset_repo.get_by_episode_and_type(episode.id, "voice")
                 for asset in voice_assets:
                     full = self.storage.resolve_path(asset.file_path)
@@ -524,6 +586,8 @@ class PipelineOrchestrator:
                 provider=pool,
                 visual_consistency_prompt=getattr(series, "visual_consistency_prompt", "") or "",
                 character_description=character_description,
+                tone_profile=getattr(series, "tone_profile", None),
+                language_code=getattr(series, "default_language", None) or "en-US",
             )
 
             target_minutes = getattr(series, "target_duration_minutes", None) or 30
@@ -584,6 +648,9 @@ class PipelineOrchestrator:
                 character_description=character_description,
                 target_duration=target_duration,
                 language_code=getattr(series, "default_language", None),
+                tone_profile=getattr(series, "tone_profile", None),
+                visual_style=series.visual_style or "",
+                negative_prompt=series.negative_prompt or "",
             )
 
             # Best-effort visual prompt refinement via template (shorts path).
@@ -650,25 +717,40 @@ class PipelineOrchestrator:
 
         # Resolve system prompt: fall back to a sensible default when the
         # template's system_prompt is blank.
-        refine_system: str = getattr(template, "system_prompt", "") or (
-            "You are a visual prompt engineer. Refine the given image generation "
-            "prompt to be more specific, detailed, and visually striking. "
-            "Output ONLY the refined prompt text — no quotes, no commentary."
+        refine_system: str = (
+            getattr(template, "system_prompt", "") or _VISUAL_REFINER_FALLBACK_SYSTEM
         )
 
         user_template: str = getattr(template, "user_prompt_template", "") or (
-            "Refine this prompt: {prompt}"
+            "Original prompt:\n{scene_prompt}\n\nStyle target: {style}\n\n"
+            "Character appearance (only relevant if a person is shown): {character}\n\n"
+            "Rewrite the prompt."
         )
 
         async def _refine_one(scene_data: dict[str, Any]) -> tuple[dict[str, Any], str | None]:
             raw_vp: str = scene_data.get("visual_prompt", "")
             if not raw_vp:
                 return scene_data, None
-            refine_user = user_template.replace("{prompt}", raw_vp)
-            if visual_style:
-                refine_user += f"\nVisual style: {visual_style}"
-            if character_description:
-                refine_user += f"\nCharacter: {character_description}"
+            substitutions: dict[str, str] = {
+                "scene_prompt": raw_vp,
+                "style": visual_style or "",
+                "character": character_description or "",
+                # Legacy alias — old templates that pre-date the
+                # ``{scene_prompt}`` rename still substitute correctly.
+                "prompt": raw_vp,
+            }
+            try:
+                refine_user = user_template.format_map(_DefaultPromptDict(substitutions))
+            except (KeyError, ValueError, IndexError):
+                # Template has unrecognised placeholders or malformed
+                # format spec. Fall back to the legacy ``{prompt}``
+                # behaviour so an out-of-band template doesn't break
+                # the whole script.
+                refine_user = user_template.replace("{prompt}", raw_vp)
+                if visual_style:
+                    refine_user += f"\nVisual style: {visual_style}"
+                if character_description:
+                    refine_user += f"\nCharacter: {character_description}"
             try:
                 result = await provider.generate(
                     refine_system,
