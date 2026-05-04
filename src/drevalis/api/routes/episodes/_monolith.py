@@ -2730,3 +2730,69 @@ async def check_script_continuity(
     return ContinuityResponse(
         issues=[ContinuityIssueResponse.model_validate(i.to_dict()) for i in issues]
     )
+
+
+# ── Script content quality report (Phase 2.9) ──────────────────────────
+
+
+class QualityReportResponse(BaseModel):
+    """Result of running ``check_script_content`` against a stored script."""
+
+    gate: str
+    passed: bool
+    issues: list[str]
+    metrics: dict[str, Any]
+
+
+@router.post(
+    "/{episode_id}/quality-report",
+    response_model=QualityReportResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Run the script-content quality gate against this episode's stored script",
+)
+async def episode_quality_report(
+    episode_id: UUID,
+    db: AsyncSession = Depends(get_db),
+    svc: EpisodeService = Depends(_episode_service),
+) -> QualityReportResponse:
+    """Re-runs :func:`check_script_content` against the persisted script
+    so already-generated episodes can be graded without regeneration.
+
+    The series' ``tone_profile`` (when set) parameterises the gate the
+    same way it would during the generation step.
+    """
+    from sqlalchemy import select
+    from sqlalchemy.orm import selectinload
+
+    from drevalis.models.episode import Episode as EpisodeModel
+    from drevalis.services.quality_gates import check_script_content
+
+    try:
+        _episode, script = await svc.get_with_script_or_raise(episode_id)
+    except EpisodeNotFoundError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "episode_not_found") from exc
+    except EpisodeNoScriptError as exc:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "episode has no script yet — generate first",
+        ) from exc
+
+    # Load the series in a single round-trip for tone_profile.
+    stmt = (
+        select(EpisodeModel)
+        .where(EpisodeModel.id == episode_id)
+        .options(selectinload(EpisodeModel.series))
+    )
+    res = await db.execute(stmt)
+    eager = res.scalar_one_or_none()
+    tone_profile: dict[str, Any] | None = None
+    if eager is not None and eager.series is not None:
+        tone_profile = getattr(eager.series, "tone_profile", None)
+
+    report = await check_script_content(script, tone_profile)
+    return QualityReportResponse(
+        gate=report.gate,
+        passed=report.passed,
+        issues=list(report.issues),
+        metrics=dict(report.metrics),
+    )
