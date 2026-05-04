@@ -1,6 +1,13 @@
 [project]
 name = "drevalis"
-version = "0.30.5"
+# Version is auto-derived from the latest git tag by ``hatch-vcs`` at
+# build time. The wheel ships a static ``src/drevalis/_version.py``
+# written by the build hook so ``importlib.metadata.version("drevalis")``
+# (used by ``services.updates._resolve_current_version``) returns the
+# right value at runtime even when the install isn't a git checkout.
+# Docker builds pass ``APP_VERSION`` as an env var which still wins —
+# see the chain in ``services/updates.py``.
+dynamic = ["version"]
 description = "AI-powered YouTube Shorts creation studio"
 requires-python = ">=3.11"
 dependencies = [
@@ -63,8 +70,23 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling", "hatch-vcs"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# Read the version from the latest reachable git tag (e.g. ``v0.30.6``
+# strips to ``0.30.6``). Builds outside a git checkout (e.g. an
+# unpacked sdist) can't tag-derive — they fall through to the static
+# ``_version.py`` written by the build hook below.
+source = "vcs"
+
+[tool.hatch.build.hooks.vcs]
+# Bake the resolved version into a static module shipped with the
+# wheel. ``importlib.metadata.version`` reads PKG-INFO directly, so
+# this file is mostly belt-and-braces — but it lets dev imports
+# (`from drevalis._version import __version__`) work without going
+# through metadata.
+version-file = "src/drevalis/_version.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/drevalis"]

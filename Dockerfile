@@ -22,6 +22,17 @@ COPY src/ ./src/
 COPY migrations/ ./migrations/
 COPY alembic.ini ./
 
+# hatch-vcs derives the version from git tags at build time. Docker
+# builds run on a non-git copy of the source, so without a fallback
+# hatch-vcs (via setuptools_scm) errors with "unable to detect
+# version". The release workflow already passes ``--build-arg
+# APP_VERSION=0.30.6``; we forward that into the env var
+# ``SETUPTOOLS_SCM_PRETEND_VERSION`` so hatch-vcs uses it instead of
+# probing git. Local ``docker build .`` without the build-arg
+# defaults to ``0.0.0-dev`` which the UI treats as "unreleased build".
+ARG APP_VERSION=0.0.0-dev
+ENV SETUPTOOLS_SCM_PRETEND_VERSION=${APP_VERSION}
+
 # Install the project itself (no-deps since deps already installed)
 RUN uv pip install --python /build/.venv/bin/python --no-cache --no-deps .
 

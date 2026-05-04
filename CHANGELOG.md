@@ -7,6 +7,48 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.30.6] - 2026-05-04
+
+### Changed
+
+- **``pyproject.toml`` version is now auto-derived from git tags via
+  ``hatch-vcs``** — no more manual bumps per release. The static
+  ``version = "0.30.5"`` line is replaced with ``dynamic = ["version"]``;
+  ``[tool.hatch.version]`` reads ``source = "vcs"``; the build hook
+  writes a static ``src/drevalis/_version.py`` into the wheel so
+  ``importlib.metadata.version("drevalis")`` (used by
+  ``services.updates._resolve_current_version``) returns the right
+  version at runtime in any install.
+
+  Local build verification:
+
+  - On a clean checkout at the v0.30.5 tag → wheel name
+    ``drevalis-0.30.5-py3-none-any.whl``.
+  - One commit past the tag → wheel name
+    ``drevalis-0.30.6.dev0+g<sha>.d<date>-py3-none-any.whl`` (PEP 440
+    dev-version, makes "I'm running an unreleased build" obvious).
+
+  Docker integration: ``hatch-vcs`` (via ``setuptools_scm`` under the
+  hood) honours the ``SETUPTOOLS_SCM_PRETEND_VERSION`` env var when
+  no git history is available. The Dockerfile now sets it from the
+  existing ``APP_VERSION`` build-arg before the ``uv pip install .``
+  step, so a release-pipeline ``docker build --build-arg
+  APP_VERSION=0.30.6 .`` bakes ``0.30.6`` into the wheel metadata
+  too. The runtime ``APP_VERSION`` env-var path in
+  ``_resolve_current_version`` still wins, so this change is
+  transparent to operators.
+
+  ``src/drevalis/_version.py`` is added to ``.gitignore`` so the
+  build-generated file doesn't get checked in and conflict with
+  every release tag.
+
+### Added
+
+- **``hatch-vcs`` and ``hatchling`` to ``[build-system].requires``** —
+  needed by any tool that builds the wheel (``pip install .``,
+  ``uv pip install .``, ``python -m build``, Docker). Existing
+  ``hatchling`` entry retained.
+
 ## [0.30.5] - 2026-05-03
 
 ### Added

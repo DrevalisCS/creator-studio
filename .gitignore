@@ -70,3 +70,7 @@ Desktop.ini
 
 # Avoid stray '-' files from typo'd shell redirects
 /-
+
+# hatch-vcs auto-generates this at build time from the latest git tag.
+# Checked-in copies would conflict with every new release tag.
+src/drevalis/_version.py
