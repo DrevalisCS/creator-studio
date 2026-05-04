@@ -7,6 +7,7 @@ from drevalis.services.llm._monolith import (  # noqa: F401
     LLMResult,
     LLMService,
     OpenAICompatibleProvider,
+    _render_tone_profile,
     extract_json,
 )
 
@@ -17,5 +18,6 @@ __all__ = [
     "LLMResult",
     "LLMService",
     "OpenAICompatibleProvider",
+    "_render_tone_profile",
     "extract_json",
 ]

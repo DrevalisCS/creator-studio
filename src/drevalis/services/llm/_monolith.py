@@ -368,6 +368,59 @@ class LLMPool:
 # ── Helpers ────────────────────────────────────────────────────────────────
 
 
+def _render_tone_profile(profile: dict[str, Any] | None) -> str:
+    """Render a ``tone_profile`` JSON dict into a plain-text block for the script prompt.
+
+    Empty / missing profile yields an explicit "neutral default" line so the
+    LLM doesn't see a ragged hole in the prompt.
+    """
+    if not profile or not isinstance(profile, dict):
+        return "(no tone profile set — use neutral, specific, voiced narration)"
+
+    lines: list[str] = []
+    persona = (profile.get("persona") or "").strip()
+    if persona:
+        lines.append(f"Persona: {persona}")
+
+    forbidden = profile.get("forbidden_words") or []
+    if isinstance(forbidden, list) and forbidden:
+        words = ", ".join(str(w).strip() for w in forbidden if str(w).strip())
+        if words:
+            lines.append(f"Forbidden words (in addition to global ban list): {words}")
+
+    moves = profile.get("required_moves") or []
+    if isinstance(moves, list) and moves:
+        lines.append("Required moves:")
+        for move in moves:
+            text = str(move).strip()
+            if text:
+                lines.append(f"- {text}")
+
+    reading_level = profile.get("reading_level")
+    if isinstance(reading_level, int) and reading_level > 0:
+        lines.append(f"Reading level: {reading_level}")
+
+    max_words = profile.get("max_sentence_words")
+    if isinstance(max_words, int) and max_words > 0:
+        lines.append(f"Max sentence words: {max_words}")
+
+    style_sample = profile.get("style_sample")
+    if isinstance(style_sample, str) and style_sample.strip():
+        lines.append("Style sample to mimic:")
+        lines.append(f'"{style_sample.strip()}"')
+
+    signature_phrases = profile.get("signature_phrases") or []
+    if isinstance(signature_phrases, list) and signature_phrases:
+        joined = ", ".join(f'"{str(p).strip()}"' for p in signature_phrases if str(p).strip())
+        if joined:
+            lines.append(f"Signature phrases (use sparingly): {joined}")
+
+    if not lines:
+        return "(no tone profile set — use neutral, specific, voiced narration)"
+
+    return "\n".join(lines)
+
+
 def extract_json(text: str) -> str:
     """Try to extract a JSON object or array from *text*.
 
@@ -546,11 +599,16 @@ class LLMService:
         character_description: str,
         target_duration: int,
         language_code: str | None = None,
+        *,
+        tone_profile: dict[str, Any] | None = None,
+        visual_style: str = "",
+        negative_prompt: str = "",
     ) -> EpisodeScript:
         """Generate a full episode script as a validated :class:`EpisodeScript`.
 
         The *prompt_template* ``user_prompt_template`` is rendered with
-        ``{topic}``, ``{character}``, and ``{duration}`` placeholders.
+        ``{topic}``, ``{character}``, ``{duration}``, ``{tone_profile_block}``,
+        ``{visual_style}``, and ``{negative_prompt}`` placeholders.
         """
         provider = self.get_provider(config)
 
@@ -569,8 +627,14 @@ class LLMService:
                 if "{character}" not in line
             )
 
-        user_prompt = rendered_template.replace("{topic}", topic).replace(
-            "{duration}", str(target_duration)
+        tone_block = _render_tone_profile(tone_profile)
+        user_prompt = (
+            rendered_template.replace("{topic}", topic)
+            .replace("{duration}", str(target_duration))
+            .replace("{tone_profile_block}", tone_block)
+            .replace("{visual_style}", visual_style or "")
+            .replace("{negative_prompt}", negative_prompt or "")
+            .replace("{language}", language_code or "en-US")
         )
 
         # When no character is defined (e.g. space, nature, science topics),
