@@ -264,6 +264,16 @@ function SeriesDetail() {
   const [editTargetMinutes, setEditTargetMinutes] = useState(30);
   const [editScenesPerChapter, setEditScenesPerChapter] = useState(8);
   const [editVisualConsistency, setEditVisualConsistency] = useState('');
+  // Tone profile (Phase 2.1): drives the script step's voice + banned vocab.
+  const [editTonePersona, setEditTonePersona] = useState('');
+  const [editToneForbidden, setEditToneForbidden] = useState('');
+  const [editToneRequiredMoves, setEditToneRequiredMoves] = useState('');
+  const [editToneReadingLevel, setEditToneReadingLevel] = useState<number>(8);
+  const [editToneMaxSentence, setEditToneMaxSentence] = useState<number>(18);
+  const [editToneStyleSample, setEditToneStyleSample] = useState('');
+  const [editToneSignaturePhrases, setEditToneSignaturePhrases] = useState('');
+  const [editToneAllowListicle, setEditToneAllowListicle] = useState(false);
+  const [editToneCtaBoilerplate, setEditToneCtaBoilerplate] = useState(false);
   const [editAspectRatio, setEditAspectRatio] = useState('9:16');
   // Phase E locks — comma-separated UUIDs + strength/lora.
   const [editCharacterAssetIds, setEditCharacterAssetIds] = useState('');
@@ -338,6 +348,18 @@ function SeriesDetail() {
       setEditScenesPerChapter(s.scenes_per_chapter ?? 8);
       setEditVisualConsistency(s.visual_consistency_prompt ?? '');
       setEditAspectRatio(s.aspect_ratio ?? '9:16');
+      const tp = (s as any).tone_profile ?? {};
+      setEditTonePersona(tp.persona ?? '');
+      setEditToneForbidden(Array.isArray(tp.forbidden_words) ? tp.forbidden_words.join(', ') : '');
+      setEditToneRequiredMoves(Array.isArray(tp.required_moves) ? tp.required_moves.join('\n') : '');
+      setEditToneReadingLevel(typeof tp.reading_level === 'number' ? tp.reading_level : 8);
+      setEditToneMaxSentence(typeof tp.max_sentence_words === 'number' ? tp.max_sentence_words : 18);
+      setEditToneStyleSample(tp.style_sample ?? '');
+      setEditToneSignaturePhrases(
+        Array.isArray(tp.signature_phrases) ? tp.signature_phrases.join(', ') : '',
+      );
+      setEditToneAllowListicle(Boolean(tp.allow_listicle));
+      setEditToneCtaBoilerplate(Boolean(tp.cta_boilerplate));
       const cLock = (s as any).character_lock || null;
       const sLock = (s as any).style_lock || null;
       setEditCharacterAssetIds((cLock?.asset_ids ?? []).join(', '));
@@ -405,6 +427,26 @@ function SeriesDetail() {
         editContentFormat === 'longform' ? editScenesPerChapter : undefined,
       visual_consistency_prompt: editVisualConsistency || undefined,
       aspect_ratio: editAspectRatio,
+      tone_profile: {
+        persona: editTonePersona.trim(),
+        forbidden_words: editToneForbidden
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        required_moves: editToneRequiredMoves
+          .split('\n')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        reading_level: Number.isFinite(editToneReadingLevel) ? editToneReadingLevel : 8,
+        max_sentence_words: Number.isFinite(editToneMaxSentence) ? editToneMaxSentence : 18,
+        style_sample: editToneStyleSample.trim() || null,
+        signature_phrases: editToneSignaturePhrases
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean),
+        allow_listicle: editToneAllowListicle,
+        cta_boilerplate: editToneCtaBoilerplate,
+      },
       character_lock: editCharacterAssetIds.trim()
         ? {
             asset_ids: editCharacterAssetIds
@@ -445,6 +487,15 @@ function SeriesDetail() {
       editScenesPerChapter,
       editVisualConsistency,
       editAspectRatio,
+      editTonePersona,
+      editToneForbidden,
+      editToneRequiredMoves,
+      editToneReadingLevel,
+      editToneMaxSentence,
+      editToneStyleSample,
+      editToneSignaturePhrases,
+      editToneAllowListicle,
+      editToneCtaBoilerplate,
       editCharacterAssetIds,
       editCharacterStrength,
       editCharacterLora,
@@ -1037,6 +1088,113 @@ function SeriesDetail() {
                   placeholder="Style prompt appended to every scene for visual consistency (e.g., 'cinematic 4K, warm color grading, anime style')"
                   className="w-full min-h-[60px] px-3 py-2 text-sm bg-bg-elevated border border-border rounded-lg text-txt-primary placeholder:text-txt-tertiary resize-y"
                 />
+              </div>
+
+              {/* Tone profile (Phase 2.1) — drives script voice + banned vocab. */}
+              <div className="border-t border-white/[0.04] pt-4 space-y-3">
+                <div>
+                  <div className="text-xs font-semibold text-txt-primary mb-1">
+                    Tone profile
+                  </div>
+                  <p className="text-[11px] text-txt-muted mb-2">
+                    Steers the script step's voice, banned vocabulary, and
+                    sentence-length cap. Leave fields blank for the neutral
+                    default.
+                  </p>
+                </div>
+                <label className="text-[11px] text-txt-secondary block">
+                  Persona
+                  <input
+                    type="text"
+                    value={editTonePersona}
+                    onChange={(e) => setEditTonePersona(e.target.value)}
+                    placeholder='e.g. "wry historian", "deadpan explainer"'
+                    className="w-full px-2 py-1 mt-1 text-xs bg-bg-elevated border border-border rounded text-txt-primary placeholder:text-txt-tertiary"
+                  />
+                </label>
+                <label className="text-[11px] text-txt-secondary block">
+                  Forbidden words (comma-separated)
+                  <textarea
+                    value={editToneForbidden}
+                    onChange={(e) => setEditToneForbidden(e.target.value)}
+                    placeholder="e.g. literally, basically, vibes"
+                    className="w-full min-h-[44px] px-2 py-1 mt-1 text-xs bg-bg-elevated border border-border rounded text-txt-primary placeholder:text-txt-tertiary resize-y"
+                  />
+                </label>
+                <label className="text-[11px] text-txt-secondary block">
+                  Required moves (one per line)
+                  <textarea
+                    value={editToneRequiredMoves}
+                    onChange={(e) => setEditToneRequiredMoves(e.target.value)}
+                    placeholder={'always cite a primary source\nalways end on a contrarian observation'}
+                    className="w-full min-h-[60px] px-2 py-1 mt-1 text-xs bg-bg-elevated border border-border rounded text-txt-primary placeholder:text-txt-tertiary resize-y"
+                  />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <label className="text-[11px] text-txt-secondary">
+                    Reading level (1-18)
+                    <input
+                      type="number"
+                      min={1}
+                      max={18}
+                      value={editToneReadingLevel}
+                      onChange={(e) =>
+                        setEditToneReadingLevel(parseInt(e.target.value, 10) || 8)
+                      }
+                      className="w-full px-2 py-1 mt-1 text-xs bg-bg-elevated border border-border rounded text-txt-primary"
+                    />
+                  </label>
+                  <label className="text-[11px] text-txt-secondary">
+                    Max sentence words
+                    <input
+                      type="number"
+                      min={6}
+                      max={40}
+                      value={editToneMaxSentence}
+                      onChange={(e) =>
+                        setEditToneMaxSentence(parseInt(e.target.value, 10) || 18)
+                      }
+                      className="w-full px-2 py-1 mt-1 text-xs bg-bg-elevated border border-border rounded text-txt-primary"
+                    />
+                  </label>
+                </div>
+                <label className="text-[11px] text-txt-secondary block">
+                  Style sample (~200 words to mimic)
+                  <textarea
+                    value={editToneStyleSample}
+                    onChange={(e) => setEditToneStyleSample(e.target.value)}
+                    placeholder="Paste a paragraph in the voice you want the LLM to imitate."
+                    className="w-full min-h-[80px] px-2 py-1 mt-1 text-xs bg-bg-elevated border border-border rounded text-txt-primary placeholder:text-txt-tertiary resize-y"
+                  />
+                </label>
+                <label className="text-[11px] text-txt-secondary block">
+                  Signature phrases (comma-separated, used sparingly)
+                  <input
+                    type="text"
+                    value={editToneSignaturePhrases}
+                    onChange={(e) => setEditToneSignaturePhrases(e.target.value)}
+                    placeholder='e.g. "the receipts show", "what is actually true is"'
+                    className="w-full px-2 py-1 mt-1 text-xs bg-bg-elevated border border-border rounded text-txt-primary placeholder:text-txt-tertiary"
+                  />
+                </label>
+                <div className="flex gap-4 flex-wrap">
+                  <label className="flex items-center gap-2 text-[11px] text-txt-secondary cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editToneAllowListicle}
+                      onChange={(e) => setEditToneAllowListicle(e.target.checked)}
+                    />
+                    Allow listicle ("Number 1, Number 2…") structure
+                  </label>
+                  <label className="flex items-center gap-2 text-[11px] text-txt-secondary cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editToneCtaBoilerplate}
+                      onChange={(e) => setEditToneCtaBoilerplate(e.target.checked)}
+                    />
+                    Allow subscribe / like CTAs in description
+                  </label>
+                </div>
               </div>
 
               {/* Phase E — Character + Style locks */}

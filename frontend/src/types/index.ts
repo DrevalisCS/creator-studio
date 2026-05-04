@@ -26,6 +26,18 @@ export interface CaptionStyle {
 // Series
 // ---------------------------------------------------------------------------
 
+export interface ToneProfile {
+  persona?: string;
+  forbidden_words?: string[];
+  required_moves?: string[];
+  reading_level?: number;
+  max_sentence_words?: number;
+  style_sample?: string | null;
+  signature_phrases?: string[];
+  allow_listicle?: boolean;
+  cta_boilerplate?: boolean;
+}
+
 export interface SeriesCreate {
   name: string;
   description?: string | null;
@@ -45,6 +57,7 @@ export interface SeriesCreate {
   music_volume_db?: number;
   music_enabled?: boolean;
   video_comfyui_workflow_id?: string;
+  tone_profile?: ToneProfile | null;
 }
 
 export interface SeriesUpdate {
@@ -77,6 +90,7 @@ export interface SeriesUpdate {
   base_seed?: number | null;
   visual_consistency_prompt?: string | null;
   aspect_ratio?: string | null;
+  tone_profile?: ToneProfile | null;
 }
 
 export interface Series {
@@ -112,6 +126,7 @@ export interface Series {
   outro_template: Record<string, unknown> | null;
   visual_consistency_prompt: string | null;
   aspect_ratio: string;
+  tone_profile: ToneProfile;
   created_at: string;
   updated_at: string;
 }

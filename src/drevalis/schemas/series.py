@@ -9,6 +9,42 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class ToneProfile(BaseModel):
+    """Per-series voice + banned-vocab + style-sample profile.
+
+    Drives the script step's persona, banned words, sentence-length cap,
+    and structural rules. Stored as JSONB on ``series.tone_profile``;
+    callers may pass any subset — defaults below match the script
+    template's neutral baseline so an empty profile produces the same
+    output the template would on its own.
+    """
+
+    persona: str = Field(default="", description='e.g. "wry historian"')
+    forbidden_words: list[str] = Field(
+        default_factory=list,
+        description="Series-specific banned words (extends the global ban list).",
+    )
+    required_moves: list[str] = Field(
+        default_factory=list,
+        description='Recurring rhetorical moves (e.g. "always cite a primary source").',
+    )
+    reading_level: int = Field(default=8, ge=1, le=18)
+    max_sentence_words: int = Field(default=18, ge=6, le=40)
+    style_sample: str | None = Field(
+        default=None,
+        description="Optional ~200-word prose sample to mimic.",
+    )
+    signature_phrases: list[str] = Field(default_factory=list)
+    allow_listicle: bool = Field(
+        default=False,
+        description='Permit "Number 1, Number 2..." structures (gated off by default).',
+    )
+    cta_boilerplate: bool = Field(
+        default=False,
+        description="When true, descriptions may include subscribe/like CTAs.",
+    )
+
+
 class SeriesCreate(BaseModel):
     """Payload for creating a new series."""
 
@@ -50,6 +86,7 @@ class SeriesCreate(BaseModel):
     music_key: str | None = None
     audio_preset: str | None = None
     video_clip_duration: int = 5
+    tone_profile: ToneProfile | None = None
 
 
 class SeriesUpdate(BaseModel):
@@ -97,6 +134,7 @@ class SeriesUpdate(BaseModel):
     reference_asset_ids: list[str] | None = None
     character_lock: dict[str, Any] | None = None
     style_lock: dict[str, Any] | None = None
+    tone_profile: ToneProfile | None = None
 
 
 class SeriesResponse(BaseModel):
@@ -146,6 +184,7 @@ class SeriesResponse(BaseModel):
     reference_asset_ids: list[str] | None = None
     character_lock: dict[str, Any] | None = None
     style_lock: dict[str, Any] | None = None
+    tone_profile: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
     updated_at: datetime
 

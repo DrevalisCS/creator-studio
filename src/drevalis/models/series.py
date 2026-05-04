@@ -175,6 +175,17 @@ class Series(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     character_lock: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
     style_lock: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
+    # ── Tone profile (script voice / banned vocab / style sample) ────
+    # JSONB for fast partial reads in the script step. Validated by
+    # ``schemas.series.ToneProfile`` at the API boundary; the column is
+    # nullable so callers can clear it back to "no profile" by sending
+    # ``null``. Existing rows after the 041 migration default to ``{}``.
+    tone_profile: Mapped[dict[str, Any] | None] = mapped_column(
+        JSONB,
+        nullable=True,
+        server_default=text("'{}'::jsonb"),
+    )
+
     # ── Relationships ──────────────────────────────────────────────────
     voice_profile: Mapped[VoiceProfile | None] = relationship(
         back_populates="series",
