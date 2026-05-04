@@ -546,12 +546,16 @@ class YouTubeService:
         token_expiry: datetime | None,
         video_ids: list[str],
     ) -> list[dict[str, Any]]:
-        """Fetch statistics and snippet for a batch of video IDs.
+        """Fetch statistics and snippet for any number of video IDs.
 
-        Returns a list of dicts with ``video_id``, ``title``, ``views``,
-        ``likes``, ``comments``, and ``published_at``.  The YouTube API
-        silently omits videos that do not exist or are private, so the
-        returned list may be shorter than ``video_ids``.
+        YouTube's ``videos.list`` accepts at most 50 IDs per call. This
+        method chunks the input at 50 and concatenates the results, so
+        callers can hand us thousands of IDs without worrying about the
+        upstream limit. Returns a list of dicts with ``video_id``,
+        ``title``, ``views``, ``likes``, ``comments``, and
+        ``published_at``. The YouTube API silently omits videos that do
+        not exist or are private, so the returned list may be shorter
+        than ``video_ids``.
         """
         if not video_ids:
             return []
@@ -560,10 +564,19 @@ class YouTubeService:
             access_token_encrypted, refresh_token_encrypted, token_expiry
         )
 
-        # YouTube API accepts a comma-joined string for the ``id`` parameter.
-        ids_param = ",".join(video_ids)
+        # Dedupe while preserving order — multiple callers occasionally
+        # pass the same ID twice (e.g. an episode showing up in two
+        # series), and YouTube returns it once anyway.
+        seen: set[str] = set()
+        ordered_ids: list[str] = []
+        for vid in video_ids:
+            if vid not in seen:
+                seen.add(vid)
+                ordered_ids.append(vid)
 
-        def _fetch() -> list[dict[str, Any]]:
+        chunks = [ordered_ids[i : i + 50] for i in range(0, len(ordered_ids), 50)]
+
+        def _fetch_chunk(ids_param: str) -> list[dict[str, Any]]:
             from googleapiclient.discovery import build
 
             youtube = build("youtube", "v3", credentials=credentials)
@@ -576,11 +589,11 @@ class YouTubeService:
                 .execute()
             )
 
-            stats: list[dict[str, Any]] = []
+            chunk_stats: list[dict[str, Any]] = []
             for item in response.get("items", []):
                 statistics = item.get("statistics", {})
                 snippet = item.get("snippet", {})
-                stats.append(
+                chunk_stats.append(
                     {
                         "video_id": item["id"],
                         "title": snippet.get("title", ""),
@@ -590,9 +603,16 @@ class YouTubeService:
                         "published_at": snippet.get("publishedAt"),
                     }
                 )
-            return stats
+            return chunk_stats
 
-        return await asyncio.to_thread(_fetch)
+        async def _fetch_all() -> list[dict[str, Any]]:
+            results: list[dict[str, Any]] = []
+            for chunk in chunks:
+                ids_param = ",".join(chunk)
+                results.extend(await asyncio.to_thread(_fetch_chunk, ids_param))
+            return results
+
+        return await _fetch_all()
 
     async def get_channel_analytics(
         self,

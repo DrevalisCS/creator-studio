@@ -887,10 +887,13 @@ async def get_video_analytics(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="video_ids must contain at least one video ID",
         )
-    if len(ids) > 50:
+    # Hard upper bound only — YouTube's 50-IDs-per-call cap is enforced
+    # inside ``yt_service.get_video_stats`` by chunking + merging, so
+    # callers can hand us thousands of IDs without worrying about it.
+    if len(ids) > 5000:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="video_ids must contain at most 50 IDs per request",
+            detail="video_ids must contain at most 5000 IDs per request",
         )
 
     try:
