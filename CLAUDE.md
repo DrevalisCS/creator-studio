@@ -69,6 +69,7 @@ Per-step description lives in [README.md](README.md#generation-pipeline). Implem
 - **Progress**: Redis pub/sub → WebSocket. `/ws/progress/all` supports pattern subscription. DB written for all status changes.
 - **Long-form**: `chapters` JSONB on episode, per-chapter music with crossfade, chapter timing/title/scene-range metadata.
 - **Orphan reset**: worker startup resets `generating` episodes/audiobooks to `failed`.
+- **Quality gates**: After each step, `_run_quality_gates` runs best-effort checks. Script step uses `check_script_content` (banned vocab + specificity + sentence-length + opening-repetition + listicle), parameterised by `series.tone_profile`. Voice + scenes have their own gates. Failures surface as `warning` progress messages — never block the step.
 
 ### arq Worker Jobs
 
@@ -128,9 +129,9 @@ Provider selection is per-series/per-voice-profile, DB-driven, resolved at runti
 `series.content_format` (`shorts` | `longform`) controls the pipeline path.
 
 **LongFormScriptService** (`services/longform_script.py`) — 3 phases:
-1. **Outline** — high-level chapters from bible + topic
-2. **Chapter** — expand each independently, continuity context from previous
-3. **Quality** — review assembled script, rewrite scenes failing checks
+1. **Outline** — high-level chapters from bible + topic. Outline prompt enforces banned-vocab + specificity rules.
+2. **Chapter** — expand each independently, continuity context from previous. Same banned-vocab + rhythm rules.
+3. **Quality** — runs `check_script_content` against the assembled scenes; for each failing scene the LLM is asked to rewrite the narration only (single pass, no loop). Failures persist as warnings rather than blocking the step.
 
 `episodes.chapters` JSONB stores: title, scene range, duration estimate, music mood.
 
@@ -207,6 +208,9 @@ Engineering patterns to follow when adding or changing code in this repo.
 - **Background jobs**: music gen + SEO gen moved from sync HTTP handlers to arq jobs (was blocking 10+ min).
 - **Frontend**: `React.lazy` + `Suspense` for all routes. Large pages split into directory packages.
 - **Modular packages**: services >600 LOC and routes >800 LOC → packages with backward-compat `__init__.py` re-exports. Code lives in `_monolith.py`. **Never import from `_monolith` directly** — always from the package.
+- **Tone profile**: `series.tone_profile` (JSONB, validated by `schemas.series.ToneProfile`) drives the script step's voice + banned-vocabulary list + sentence-length cap + style sample. Threaded through `LLMService.generate_script` (shorts) and `LongFormScriptService` (longform) via the same `_render_tone_profile` helper. The post-script quality gate (`check_script_content`) applies the same banned-word + specificity rules so violations surface as warnings even when the LLM ignores the prompt.
+- **Script gate**: `check_script_content` in `services/quality_gates.py` is the source of truth for banned vocabulary + listicle markers. Keep it in sync with the prompt template's banned-words section — the gate catches what the LLM smuggles past the prompt.
+- **Visual prompt placeholders**: `_refine_visual_prompts` substitutes `{scene_prompt}`, `{style}`, `{character}` (legacy `{prompt}` alias still works) via `_DefaultPromptDict.format_map`. Unknown placeholders silently substitute to `""` rather than crashing the script step.
 
 ## Gotchas
 
@@ -362,7 +366,7 @@ Postgres 16, asyncpg + SQLAlchemy 2.x async. Alembic migrations. All models use 
 
 | Table | Purpose |
 |-------|---------|
-| `series` | Bible, visual style, config FKs, `content_format`, `aspect_ratio`, `youtube_channel_id` |
+| `series` | Bible, visual style, config FKs, `content_format`, `aspect_ratio`, `youtube_channel_id`, `tone_profile` (JSONB voice/banned-vocab/style sample) |
 | `episodes` | Script JSONB, status, topic, overrides, `content_format`, `chapters` JSONB, `total_duration_seconds` |
 | `voice_profiles` | TTS provider + model |
 | `llm_configs` | Endpoint, model, encrypted key |

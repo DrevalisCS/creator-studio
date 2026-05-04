@@ -49,7 +49,7 @@ Open the app:
 
 ### Video Generation (Shorts + Long-Form)
 
-- **AI script writing** -- LLM generates structured episodic scripts from a series bible with per-scene narration, visual prompts, durations, and keywords. Long-form episodes use a 3-phase chunked approach: outline → chapters → quality review.
+- **AI script writing** -- LLM generates structured episodic scripts from a series bible with per-scene narration, visual prompts, durations, and keywords. Each series can carry an optional **tone profile** (persona, banned vocabulary, sentence-length cap, style sample) that steers the LLM and is enforced by a post-step quality gate. Long-form episodes use a 3-phase chunked approach: outline → chapters → quality rewrite of failing scenes.
 - **5 TTS providers** -- Edge TTS (free cloud, no API key), Piper (local ONNX), Kokoro (local high-quality ONNX), ElevenLabs (cloud REST), ComfyUI ElevenLabs (ElevenLabs via ComfyUI nodes). TTS synthesis is parallelised across multiple ComfyUI servers.
 - **Aspect ratio support** -- 9:16 (Shorts), 16:9 (long-form), 1:1 (square). FFmpeg and ComfyUI workflow resolution are derived from the series setting.
 - **ComfyUI integration** -- image generation (Qwen Image for Shorts) and video generation (Wan 2.2 for long-form), multi-server pool with round-robin distribution and per-server concurrency caps. Pool syncs from the database before each pipeline run; unhealthy servers are skipped automatically.
@@ -337,7 +337,7 @@ Each episode goes through six sequential steps, executed as a single arq job. Th
 
 | Step | What It Does |
 |------|-------------|
-| **Script** | LLM generates a structured JSON script (title, per-scene narrations, visual prompts, durations, keywords). Long-form uses 3-phase chunked generation via `LongFormScriptService`. |
+| **Script** | LLM generates a structured JSON script (title, per-scene narrations, visual prompts, durations, keywords). The optional `series.tone_profile` (persona, banned words, sentence-length cap, style sample) shapes voice. Long-form uses 3-phase chunked generation via `LongFormScriptService` (outline → chapters → quality rewrite of failing scenes). After the step, `check_script_content` flags banned-vocabulary, specificity, sentence-length, opening-repetition, and listicle violations as warnings — never blocking. |
 | **Voice** | TTS synthesizes narration into WAV. Word-level timestamps saved as sidecar JSON. Existing WAV files on disk are reused on retry without re-synthesis. |
 | **Scenes** | ComfyUI generates one image or video clip per scene. Round-robin across server pool. Per-scene resumability: scenes with existing `media_assets` records are skipped. Partial batch failures preserve completed scenes. |
 | **Captions** | Generates SRT and ASS subtitle files. Uses TTS word timestamps when available; falls back to faster-whisper transcription. Multiple visual presets (karaoke highlight, pop, minimal, classic). |
