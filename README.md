@@ -71,7 +71,7 @@ Open the app:
 
 ### Social Platforms
 
-- TikTok, Instagram, and X OAuth connections are supported (upload workflows in progress).
+- TikTok, Instagram, Facebook, and X OAuth connections are supported. Upload workflows live behind the `publish_pending_social_uploads` cron (runs every 5 min) and accept manual immediate uploads as well as time-scheduled posts via the Calendar page (any platform — YouTube and the social four are equally supported).
 
 ### Text-to-Voice Studio (Audiobooks)
 
@@ -154,6 +154,7 @@ Copy `.env.example` to `.env` and configure as needed. Only `ENCRYPTION_KEY` is 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `ENCRYPTION_KEY` | **(required)** | Fernet key for encrypting API keys and OAuth tokens. Generate with the command above. |
+| `ENCRYPTION_KEY_V<N>` | *(unset)* | Optional historical Fernet keys for rotation. To rotate: deploy with new `ENCRYPTION_KEY=K2` and `ENCRYPTION_KEY_V1=<old K1>`. New writes encrypt under K2; existing rows still decrypt. After re-encrypting all rows you can drop the V1 env var. See [the rotation guide](#encryption-key-rotation) below. |
 | `DATABASE_URL` | `postgresql+asyncpg://drevalis:drevalis@localhost:5432/drevalis` | PostgreSQL connection string (asyncpg driver). |
 | `REDIS_URL` | `redis://localhost:6379/0` | Redis connection for job queue and pub/sub. |
 | `STORAGE_BASE_PATH` | `./storage` | Root directory for all generated media files. Point to an external drive for more space. |
@@ -201,6 +202,16 @@ YOUTUBE_REDIRECT_URI=http://localhost:8000/api/v1/youtube/callback
 
 6. In the app, go to **Settings** and click **Connect YouTube** to authorize. Repeat for each channel.
 7. Assign each series to a YouTube channel from the series settings page.
+
+### Encryption Key Rotation
+
+API keys and OAuth tokens are encrypted at rest with a Fernet key from `ENCRYPTION_KEY`. To rotate without downtime:
+
+1. **Deploy with both keys**: set `ENCRYPTION_KEY=<new K2>` and `ENCRYPTION_KEY_V1=<old K1>` in `.env`. Restart the API + worker. New writes encrypt under K2 with `key_version=2`; existing rows encrypted under K1 still decrypt because every service walks the full versioned key map.
+2. **Re-encrypt existing rows in the background** (a sweep that reads each row encrypted under V1, decrypts via the keyring, re-encrypts with the current key, writes back). Filter by `key_version < current_version` to find stale rows.
+3. **Drop the historical key**: once no row references V1, remove the `ENCRYPTION_KEY_V1` env var and restart. The keyring shrinks back to a single entry.
+
+Cipher-text version tags are best-effort metadata — decryption walks every loaded key regardless of the stored tag, so a wrong tag never causes a read to fail.
 
 ## How to Use
 

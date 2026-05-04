@@ -85,11 +85,11 @@ Per-step description lives in [README.md](README.md#generation-pipeline). Implem
 | `generate_ai_audiobook` | LLM script + TTS (skips LLM if script exists) |
 | `generate_series_async` | AI-generate series + episodes |
 | `auto_deploy_runpod_pod` | Poll RunPod, register when ready |
-| `publish_scheduled_posts` | Cron every 5 min — resolves channel from series, 3× retry+backoff |
+| `publish_scheduled_posts` | Cron every 5 min — YouTube uploaded inline; tiktok/instagram/facebook/x hand off to a fresh `SocialUpload` row that the social cron picks up next tick. 3× retry+backoff for YouTube |
 | `generate_episode_music` | Background AceStep via ComfyUI |
 | `generate_seo_async` | Background SEO LLM (per-fn timeout 900s) |
 | `regenerate_audiobook_chapter_image` | One audiobook chapter image |
-| `publish_pending_social_uploads` | Cron every 5 min — TikTok / IG / X direct uploads (per-fn timeout 900s) |
+| `publish_pending_social_uploads` | Cron every 5 min — TikTok / IG / Facebook / X direct uploads (per-fn timeout 900s). Also picks up rows enqueued by `publish_scheduled_posts` for non-YouTube scheduled posts |
 | `compute_ab_test_winners` | Cron daily 04:31 UTC — settle title-A/B test pairs after 7+ days of YouTube data (per-fn timeout 900s) |
 | `worker_heartbeat` | Cron every 1 min — write `worker:heartbeat` Redis key (per-fn timeout 120s) |
 | `license_heartbeat` | Cron daily 04:17 UTC — refresh license JWT from license server (per-fn timeout 120s) |
@@ -227,7 +227,7 @@ Surprising behaviors and footguns. Read before changing related code.
 - Audiobook statuses: `draft` → `generating` → `done`/`failed`.
 - YouTube upload statuses: `pending` → `uploading` → `done`/`failed`.
 - Multi-channel YouTube: no "active" concept — resolved per-series via `youtube_channel_id`. Upload of episode whose series has no channel **fails at upload step**, not enqueue.
-- `publish_scheduled_posts` cron every 5 min (was 15). 3× retry w/ backoff. Missing `youtube_channel_id` skips + logs error rather than crashing.
+- `publish_scheduled_posts` cron every 5 min (was 15). YouTube branch: 3× retry w/ backoff; missing `youtube_channel_id` skips + logs error rather than crashing. tiktok/instagram/facebook/x branch: creates a `SocialUpload` row pointing at the same episode and flips the ScheduledPost to `published` with `remote_id="social_upload:<uuid>"`; up to a 5-min latency before the social cron actually publishes.
 - LLMPool failover transparent to callers — round-robin, retries on next provider on 5xx/timeout.
 - Scene gen `asyncio.gather(..., return_exceptions=True)` saves completed scenes to `media_assets` before raising. Retry skips them.
 - Worker heartbeat key: `worker:heartbeat`. Health = healthy if <120s old.
@@ -375,7 +375,7 @@ Postgres 16, asyncpg + SQLAlchemy 2.x async. Alembic migrations. All models use 
 | `youtube_channels` | Connected channels w/ encrypted OAuth, `upload_days`, `upload_time` |
 | `youtube_uploads` | Upload tracking per episode (status, video_id, URL) |
 | `api_key_store` | `key_name`, `encrypted_value`, `key_version` |
-| `social_platforms` | TikTok / Instagram / X connections |
+| `social_platforms` | TikTok / Instagram / Facebook / X connections |
 | `social_uploads` | Per-platform tracking |
 | `video_templates` | Composition templates |
 | `scheduled_posts` | platform, `scheduled_at`, status, `youtube_channel_id` |
