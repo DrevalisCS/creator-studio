@@ -6,7 +6,10 @@ using a 3-phase chunked LLM approach:
 1. **Outline**: Generate chapter structure with summaries and moods.
 2. **Chapters**: Generate scenes for each chapter sequentially,
    maintaining narrative continuity via previous-chapter context.
-3. **Quality pass** (optional): Review and fix inconsistencies.
+3. **Quality pass**: Run :func:`check_script_content` against the
+   assembled scenes; for each failing rule, ask the LLM to rewrite the
+   offending scenes only. One pass — repeated failures are logged and
+   persisted as-is so a single bad batch can't loop indefinitely.
 
 Uses the existing ``LLMProvider`` protocol — no new providers needed.
 """
@@ -15,11 +18,48 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import structlog
 
+if TYPE_CHECKING:
+    from drevalis.services.quality_gates import QualityReport
+
 log = structlog.get_logger(__name__)
+
+
+# ── Shared rule blocks (kept in sync with the shorts script prompt) ───
+
+_BANNED_VOCAB_BLOCK = (
+    "BANNED VOCABULARY (these are AI tells — do not output any of them):\n"
+    "delve, tapestry, navigate, realm, journey, embark, elevate, unleash, "
+    "leverage, harness, intricate, nuanced, foster, cultivate, robust, "
+    "seamless, meticulously, profoundly, fundamentally, essentially, "
+    "ultimately, in conclusion, moreover, furthermore, it's worth noting, "
+    "the world of\n"
+    "BANNED FILLER PHRASES: 'Let's dive in', 'Buckle up', 'Stay tuned', "
+    "'Without further ado', 'But wait, there's more', 'you won't believe "
+    "what happened next', 'the answer will shock you', 'absolutely "
+    "incredible', 'mind-blowing'"
+)
+
+_SPECIFICITY_BLOCK = (
+    "SPECIFICITY: every scene must contain at least one concrete fact — "
+    "a name, number, date, place, document, dollar amount, or named thing. "
+    "If a sentence could appear in any video on this topic, you have failed."
+)
+
+_RHYTHM_BLOCK = (
+    "SPOKEN-WORD RHYTHM: average sentence length ≤ 16 words, max 22. "
+    "Use contractions. One idea per sentence. No parentheticals. "
+    "No three parallel clauses in a row."
+)
+
+_HASHTAG_RULES = (
+    "HASHTAG RULES: max 8 items. No '#viral', '#fyp', '#subscribe'. "
+    "Prefer 2-3 word long-tail phrases over single broad terms. "
+    "DESCRIPTION RULES: never start with 'In this video...'."
+)
 
 
 # ── Data structures ──────────────────────────────────────────────────────
@@ -54,10 +94,14 @@ class LongFormScriptService:
         *,
         visual_consistency_prompt: str = "",
         character_description: str = "",
+        tone_profile: dict[str, Any] | None = None,
+        language_code: str = "en-US",
     ) -> None:
         self._provider = provider
         self._visual_consistency_prompt = visual_consistency_prompt
         self._character_description = character_description
+        self._tone_profile = tone_profile or {}
+        self._language_code = language_code or "en-US"
 
     async def generate(
         self,
@@ -162,6 +206,10 @@ class LongFormScriptService:
                 scenes=len(ch_scenes),
             )
 
+        # Phase 3: Quality review — best-effort rewrite of failing scenes.
+        structlog.contextvars.bind_contextvars(longform_phase="quality")
+        all_scenes = await self._quality_review(all_scenes, topic=topic)
+
         # Build EpisodeScript-compatible dict
         title = outline.get("title", topic[:80])
         script = {
@@ -170,9 +218,9 @@ class LongFormScriptService:
             "scenes": all_scenes,
             "outro": outline.get("outro", ""),
             "total_duration_seconds": sum(s.get("duration_seconds", 10) for s in all_scenes),
-            "language": "en-US",
+            "language": self._language_code,
             "description": outline.get("description", ""),
-            "hashtags": outline.get("hashtags", []),
+            "hashtags": _sanitise_hashtags(outline.get("hashtags", [])),
         }
 
         log.info(
@@ -199,12 +247,20 @@ class LongFormScriptService:
         scenes_per_chapter: int,
     ) -> dict[str, Any]:
         """Generate the chapter outline via LLM."""
+        from drevalis.services.llm import _render_tone_profile
+
+        tone_block = _render_tone_profile(self._tone_profile)
+
         system_prompt = (
             "You are a professional video scriptwriter specializing in long-form "
             "content. Generate a detailed chapter outline for a video.\n\n"
+            f"{_SPECIFICITY_BLOCK}\n\n"
+            f"{_BANNED_VOCAB_BLOCK}\n\n"
+            f"{_RHYTHM_BLOCK}\n\n"
+            f"{_HASHTAG_RULES}\n\n"
             "Output ONLY valid JSON with this structure:\n"
             '{"title": "Video Title", "hook": "Opening hook text", '
-            '"description": "Video description for SEO", '
+            '"description": "Video description for SEO (no \'In this video...\')", '
             '"hashtags": ["#tag1", "#tag2"], '
             '"outro": "Closing text", '
             '"chapters": [{"title": "Chapter 1: ...", '
@@ -223,9 +279,11 @@ class LongFormScriptService:
             f"Create a chapter outline for a {target_duration_minutes}-minute video.\n\n"
             f"Topic: {topic}\n"
             f"Series context: {series_description}\n"
-            f"{character_ctx}\n"
+            f"{character_ctx}\n\n"
+            f"TONE PROFILE:\n{tone_block}\n\n"
             f"Number of chapters: {chapter_count}\n"
-            f"Scenes per chapter: ~{scenes_per_chapter}\n\n"
+            f"Scenes per chapter: ~{scenes_per_chapter}\n"
+            f"Language: {self._language_code}\n\n"
             f"Each chapter should have a clear narrative arc. "
             f"Distribute pacing naturally — intro chapters shorter, "
             f"climax chapters longer. Vary moods across chapters."
@@ -259,6 +317,10 @@ class LongFormScriptService:
         target_scene_count: int,
     ) -> list[dict[str, Any]]:
         """Generate scenes for a single chapter."""
+        from drevalis.services.llm import _render_tone_profile
+
+        tone_block = _render_tone_profile(self._tone_profile)
+
         # Build outline summary for context (truncated to save context window)
         outline_summary = "\n".join(
             f"- {ch.get('title', f'Chapter {i + 1}')}: {ch.get('summary', '')[:80]}"
@@ -291,6 +353,9 @@ class LongFormScriptService:
         system_prompt = (
             "You are a professional video scriptwriter. Generate scenes for "
             "one chapter of a long-form video.\n\n"
+            f"{_SPECIFICITY_BLOCK}\n\n"
+            f"{_BANNED_VOCAB_BLOCK}\n\n"
+            f"{_RHYTHM_BLOCK}\n\n"
             "Output ONLY valid JSON: a list of scene objects:\n"
             '[{"scene_number": 1, "narration": "Voice-over text", '
             '"visual_prompt": "Detailed image/video generation prompt", '
@@ -309,6 +374,7 @@ class LongFormScriptService:
             f"Chapter: {chapter_outline.get('title', '?')}\n"
             f"Summary: {chapter_outline.get('summary', '')[:200]}\n"
             f"Mood: {chapter_outline.get('mood', 'neutral')}\n\n"
+            f"TONE PROFILE:\n{tone_block}\n\n"
             f"Outline:\n{outline_summary}\n"
             f"{continuity}\n\n"
             f"Start scene numbering at {scene_start_number}."
@@ -342,6 +408,140 @@ class LongFormScriptService:
 
         return scenes
 
+    # ── Phase 3: Quality review ─────────────────────────────────────────
+
+    async def _quality_review(
+        self,
+        scenes: list[dict[str, Any]],
+        *,
+        topic: str,
+    ) -> list[dict[str, Any]]:
+        """Run :func:`check_script_content` and rewrite failing scenes once.
+
+        Best-effort: any rewrite-side failure logs a warning and keeps the
+        original narration. We deliberately don't loop — a second-pass
+        gate failure means the model and the tone profile disagree, and
+        burning more tokens won't change that.
+        """
+        if not scenes:
+            return scenes
+
+        # Build a synthetic EpisodeScript so we can reuse the gate
+        # without persisting anything to the DB.
+        from drevalis.schemas.script import EpisodeScript
+        from drevalis.services.quality_gates import check_script_content
+
+        try:
+            synthetic = EpisodeScript.model_validate(
+                {
+                    "title": topic[:80] or "long-form",
+                    "scenes": scenes,
+                    "total_duration_seconds": sum(
+                        float(s.get("duration_seconds", 10)) for s in scenes
+                    ),
+                }
+            )
+        except Exception as exc:  # noqa: BLE001
+            log.warning("longform_script.quality_validate_failed", error=str(exc)[:200])
+            return scenes
+
+        report: QualityReport = await check_script_content(synthetic, self._tone_profile)
+        if report.passed:
+            log.info("longform_script.quality_passed", scenes=len(scenes))
+            return scenes
+
+        failing_indices = _scene_indices_from_issues(report.issues)
+        if not failing_indices:
+            log.info(
+                "longform_script.quality_issues_unscoped",
+                issues=len(report.issues),
+            )
+            return scenes
+
+        log.info(
+            "longform_script.quality_rewrite_start",
+            failing_scenes=sorted(failing_indices),
+            issue_count=len(report.issues),
+        )
+
+        rewrites_applied = 0
+        for scene in scenes:
+            scene_no = scene.get("scene_number")
+            if scene_no not in failing_indices:
+                continue
+            specific_issues = [
+                msg for msg in report.issues if f"scene {scene_no}:" in msg
+            ]
+            if not specific_issues:
+                continue
+            try:
+                new_narration = await self._rewrite_scene(
+                    scene_data=scene,
+                    issues=specific_issues,
+                )
+            except Exception as exc:  # noqa: BLE001
+                log.warning(
+                    "longform_script.quality_rewrite_failed",
+                    scene=scene_no,
+                    error=str(exc)[:200],
+                )
+                continue
+            if new_narration:
+                scene["narration"] = new_narration
+                rewrites_applied += 1
+
+        log.info(
+            "longform_script.quality_rewrite_done",
+            applied=rewrites_applied,
+            failing_scenes=len(failing_indices),
+        )
+        return scenes
+
+    async def _rewrite_scene(
+        self,
+        *,
+        scene_data: dict[str, Any],
+        issues: list[str],
+    ) -> str:
+        """Ask the LLM to rewrite a single scene's narration to fix the
+        specific issues. Returns the new narration string or ``""`` if
+        the rewrite was unusable."""
+        from drevalis.services.llm import _render_tone_profile
+
+        tone_block = _render_tone_profile(self._tone_profile)
+        original = scene_data.get("narration", "")
+
+        issue_block = "\n".join(f"- {msg}" for msg in issues)
+
+        system_prompt = (
+            "You rewrite a single scene's narration to fix the listed issues. "
+            "Preserve the meaning and the visual_prompt context. "
+            "Output ONLY the rewritten narration text — no JSON, no quotes, no commentary.\n\n"
+            f"{_SPECIFICITY_BLOCK}\n\n"
+            f"{_BANNED_VOCAB_BLOCK}\n\n"
+            f"{_RHYTHM_BLOCK}"
+        )
+        user_prompt = (
+            f"TONE PROFILE:\n{tone_block}\n\n"
+            f"Original narration:\n{original}\n\n"
+            f"Issues to fix:\n{issue_block}\n\n"
+            f"Rewrite the narration."
+        )
+
+        result = await self._provider.generate(
+            system_prompt,
+            user_prompt,
+            temperature=0.6,
+            max_tokens=400,
+            json_mode=False,
+        )
+        cleaned = (result.content or "").strip().strip('"').strip()
+        # Reject suspiciously short rewrites — those usually mean the
+        # model returned an empty completion or hallucinated a refusal.
+        if len(cleaned) < 20:
+            return ""
+        return cleaned
+
     # ── Helpers ───────────────────────────────────────────────────────────
 
     @staticmethod
@@ -374,3 +574,48 @@ class LongFormScriptService:
                         continue
             log.warning("longform_script.json_parse_failed", text=text[:200])
             raise ValueError("LLM did not return parseable JSON") from None
+
+
+def _scene_indices_from_issues(issues: list[str]) -> set[int]:
+    """Extract the scene numbers mentioned in ``check_script_content`` issue strings.
+
+    The gate emits issues like ``"scene 7: banned word 'delve'"``; this
+    helper pulls the integers out so the rewrite step only re-runs
+    failing scenes.
+    """
+    out: set[int] = set()
+    for msg in issues:
+        match = re.match(r"scene (\d+):", msg)
+        if match:
+            try:
+                out.add(int(match.group(1)))
+            except ValueError:
+                continue
+    return out
+
+
+_BANNED_HASHTAGS: tuple[str, ...] = ("#viral", "#fyp", "#subscribe")
+
+
+def _sanitise_hashtags(raw: object) -> list[str]:
+    """Drop banned tags and cap the count at 8 — applied to whatever the
+    outline returned. Non-list inputs silently coerce to ``[]``."""
+    if not isinstance(raw, list):
+        return []
+    out: list[str] = []
+    for tag in raw:
+        if not isinstance(tag, str):
+            continue
+        normalised = tag.strip()
+        if not normalised:
+            continue
+        if not normalised.startswith("#"):
+            normalised = f"#{normalised}"
+        if normalised.lower() in _BANNED_HASHTAGS:
+            continue
+        if normalised in out:
+            continue
+        out.append(normalised)
+        if len(out) >= 8:
+            break
+    return out
