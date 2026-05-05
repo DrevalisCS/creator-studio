@@ -1497,9 +1497,16 @@ class TTSService:
         audio_dir.mkdir(parents=True, exist_ok=True)
 
         # Build the full narration text: hook + scene narrations + outro.
+        # Prefer ``scene.narration_tts`` when populated — it carries the
+        # provider-specific formatting (numbers spelled out, acronyms
+        # expanded, parentheticals split) produced by the script step's
+        # narration_formatter pass. The original ``scene.narration`` stays
+        # untouched for the editor + UI; only the synthesiser sees the
+        # rewrite.
         segments: list[str] = [script.hook]
         for scene in script.scenes:
-            segments.append(scene.narration)
+            tts_text = scene.narration_tts if scene.narration_tts else scene.narration
+            segments.append(tts_text)
         if script.outro:
             segments.append(script.outro)
 

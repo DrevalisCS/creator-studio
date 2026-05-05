@@ -443,11 +443,18 @@ class PipelineOrchestrator:
                 # _load_episode also eager-loads series so the gate has
                 # a tone_profile without an extra round-trip.
                 fresh = await self._load_episode()
-                if not fresh.script:
+                # Defensive isinstance — under unit-test mocks ``fresh``
+                # may be a MagicMock and ``fresh.script`` a magic
+                # attribute that's truthy but not a dict; we'd rather
+                # short-circuit than walk a phantom script.
+                if not isinstance(fresh.script, dict) or not fresh.script:
                     return
                 tone_profile: dict[str, Any] | None = None
-                if fresh.series is not None:
-                    tone_profile = getattr(fresh.series, "tone_profile", None)
+                series_obj = fresh.series if fresh.series is not None else None
+                if series_obj is not None:
+                    raw_tp = getattr(series_obj, "tone_profile", None)
+                    if isinstance(raw_tp, dict):
+                        tone_profile = raw_tp
                 try:
                     script_obj = EpisodeScript.model_validate(fresh.script)
                 except Exception:  # noqa: BLE001
@@ -617,6 +624,11 @@ class PipelineOrchestrator:
 
             await self._broadcast_progress(PipelineStep.SCRIPT, 80, "running", "Saving script...")
 
+            # Phase 2.10 — populate ``narration_tts`` per scene on the
+            # raw script dict before persistence. Same provider-quirk
+            # rules as the shorts branch.
+            await self._populate_narration_tts_dict(result["script"], episode, series)
+
             # Preserve the episode's actual ``content_format`` —
             # music_video also takes the long-form path, but overwriting
             # it with "longform" would misclassify the episode for every
@@ -669,6 +681,12 @@ class PipelineOrchestrator:
                 from drevalis.schemas.script import EpisodeScript as _EpisodeScript
 
                 script = _EpisodeScript.model_validate(script_data_shorts)
+
+            # Phase 2.10 — populate ``narration_tts`` per scene based on
+            # the resolved voice profile's provider quirks. Best-effort:
+            # any failure leaves ``narration_tts`` unset and the TTS step
+            # falls back to the original ``narration``.
+            await self._populate_narration_tts(script, episode, series)
 
             await self._broadcast_progress(PipelineStep.SCRIPT, 80, "running", "Saving script...")
 
@@ -785,6 +803,104 @@ class PipelineOrchestrator:
             "step_script.visual_prompts_refined",
             total_scenes=len(scenes),
             refined=refined_count,
+        )
+
+    # ── Phase 2.10 narration TTS formatting ─────────────────────────────
+
+    def _resolve_voice_provider_key(
+        self,
+        episode: Episode,
+        series: Series,
+    ) -> str | None:
+        """Resolve which TTS provider will synthesise this episode so the
+        narration formatter can pick the right rule set.
+
+        Episode override beats series default. Returns ``None`` when no
+        voice profile is set yet — narration_tts stays unset and the TTS
+        step falls back to ``narration``.
+        """
+        voice_profile = (
+            getattr(episode, "override_voice_profile", None) or series.voice_profile
+        )
+        if voice_profile is None:
+            return None
+        provider = getattr(voice_profile, "provider", None)
+        return str(provider).lower() if provider else None
+
+    async def _populate_narration_tts(
+        self,
+        script: EpisodeScript,
+        episode: Episode,
+        series: Series,
+    ) -> None:
+        """Mutate ``script.scenes`` in place, setting ``narration_tts``
+        when the formatter produces a non-trivial rewrite. No-op when no
+        voice profile is resolvable yet."""
+        provider_key = self._resolve_voice_provider_key(episode, series)
+        if provider_key is None:
+            return
+        from drevalis.services.narration_formatter import format_for_tts
+
+        rewritten = 0
+        for scene in script.scenes:
+            try:
+                tts_text = format_for_tts(scene.narration, provider_key)
+            except Exception as exc:  # noqa: BLE001
+                self.log.warning(
+                    "step_script.narration_tts_failed",
+                    scene=scene.scene_number,
+                    error=str(exc)[:120],
+                )
+                continue
+            if tts_text:
+                scene.narration_tts = tts_text
+                rewritten += 1
+        self.log.info(
+            "step_script.narration_tts_populated",
+            provider=provider_key,
+            total_scenes=len(script.scenes),
+            rewritten=rewritten,
+        )
+
+    async def _populate_narration_tts_dict(
+        self,
+        script_dict: dict[str, Any],
+        episode: Episode,
+        series: Series,
+    ) -> None:
+        """Same as :meth:`_populate_narration_tts` but operates on the
+        raw script dict (the longform path persists from this rather
+        than from an EpisodeScript instance)."""
+        provider_key = self._resolve_voice_provider_key(episode, series)
+        if provider_key is None:
+            return
+        from drevalis.services.narration_formatter import format_for_tts
+
+        scenes = script_dict.get("scenes", [])
+        if not isinstance(scenes, list):
+            return
+        rewritten = 0
+        for scene in scenes:
+            if not isinstance(scene, dict):
+                continue
+            narration = scene.get("narration") or ""
+            try:
+                tts_text = format_for_tts(narration, provider_key)
+            except Exception as exc:  # noqa: BLE001
+                self.log.warning(
+                    "step_script.narration_tts_failed",
+                    scene=scene.get("scene_number"),
+                    error=str(exc)[:120],
+                )
+                continue
+            if tts_text:
+                scene["narration_tts"] = tts_text
+                rewritten += 1
+        self.log.info(
+            "step_script.narration_tts_populated",
+            provider=provider_key,
+            total_scenes=len(scenes),
+            rewritten=rewritten,
         )
 
     async def _step_voice(

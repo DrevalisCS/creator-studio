@@ -86,6 +86,22 @@ class SceneScript(BaseModel):
         '"top", "bottom", or "face".',
     )
 
+    # Phase 2.10: TTS-formatted narration. ``narration`` is what the
+    # frontend editor shows; ``narration_tts`` (when set) is the
+    # provider-massaged variant the TTS step actually feeds to the
+    # synthesiser. Numbers spelled out, acronyms expanded, parentheticals
+    # split — provider-specific so the rules live next to each TTS class.
+    # When None, callers fall back to ``narration``.
+    narration_tts: str | None = Field(
+        default=None,
+        description=(
+            "Optional TTS-massaged variant of ``narration`` (numbers spelled out, "
+            "acronyms expanded, parentheticals split). Populated by the script step "
+            "after refinement; consumed by ``TTSService.generate_voiceover``. When "
+            "absent, the synthesiser uses ``narration`` directly."
+        ),
+    )
+
     @model_validator(mode="before")
     @classmethod
     def normalize_field_names(cls, data: dict) -> dict:  # type: ignore[type-arg]

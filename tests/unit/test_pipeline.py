@@ -219,6 +219,11 @@ class TestPipelineRunsAllSteps:
         orchestrator._broadcast_progress = AsyncMock()
         orchestrator._mark_step_done = AsyncMock()
         orchestrator._ensure_job = AsyncMock(return_value=_make_mock_job())
+        # Mock the post-step quality gate so its repo accesses (against
+        # an AsyncMock-backed db_session) don't leak unawaited coroutines
+        # in the test output. Production behaviour is exercised in the
+        # dedicated quality-gate tests.
+        orchestrator._run_quality_gates = AsyncMock()
 
         with _no_metrics():
             await orchestrator.run()
@@ -254,6 +259,8 @@ class TestPipelineSkipsCompletedSteps:
         orchestrator._ensure_job = AsyncMock(return_value=_make_mock_job())
         orchestrator._broadcast_progress = AsyncMock()
         orchestrator._mark_step_done = AsyncMock()
+        # See sibling test — gate is exercised in dedicated test files.
+        orchestrator._run_quality_gates = AsyncMock()
 
         for step in PIPELINE_ORDER:
             handler = AsyncMock(side_effect=lambda *a, sn=step.value: step_calls.append(sn))
