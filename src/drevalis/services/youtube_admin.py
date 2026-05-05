@@ -376,18 +376,24 @@ class YouTubeAdminService:
                     model=self._settings.lm_studio_default_model,
                 )
 
-            seo_prompt = (
-                "You are a YouTube SEO expert. Generate optimized metadata. "
-                "Output ONLY valid JSON: "
-                '{"title": "SEO title (max 60 chars)", '
-                '"description": "engaging description with keywords and hashtags '
-                '(max 2000 chars)", "hashtags": ["#tag1", "#tag2"], '
-                '"tags": ["keyword1", "keyword2"]}'
+            from drevalis.services.seo_prompts import (
+                SEO_SYSTEM_PROMPT,
+                build_seo_user_prompt,
             )
+
+            existing_description = ""
+            if isinstance(episode.script, dict):
+                raw_desc = episode.script.get("description")
+                if isinstance(raw_desc, str):
+                    existing_description = raw_desc
+
             result = await provider.generate(
-                seo_prompt,
-                f"Video title: {episode.title}\nContent: {narration[:1000]}\n"
-                f"Generate SEO metadata:",
+                SEO_SYSTEM_PROMPT,
+                build_seo_user_prompt(
+                    title=episode.title,
+                    narration=narration,
+                    script_description=existing_description,
+                ),
                 temperature=0.7,
                 max_tokens=1024,
                 json_mode=True,

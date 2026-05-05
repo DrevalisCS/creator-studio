@@ -413,40 +413,61 @@ async def upload_episode(
     except ValidationError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, exc.detail) from exc
 
-    seo_data = await admin.get_or_generate_seo(episode)
+    # Resolution order (after the Phase 2.3 prompt overhaul):
+    #   1. payload.* (explicit caller override)
+    #   2. script.description / .hashtags (vetted by check_script_content)
+    #   3. SEO data (LLM call, applies the same banned-vocab rules)
+    #   4. episode.title
+    # The script step now produces a clean description for shorts +
+    # longform; resolving SEO last means we don't burn an LLM call on
+    # episodes that already have one. SEO still runs as a fallback when
+    # the script field is empty (legacy episodes generated pre-2.3).
+    script = episode.script if isinstance(episode.script, dict) else {}
+    script_description = script.get("description") if isinstance(script, dict) else ""
+    script_description = script_description if isinstance(script_description, str) else ""
+    script_hashtags_raw = script.get("hashtags") if isinstance(script, dict) else []
+    script_hashtags: list[str] = (
+        [h for h in script_hashtags_raw if isinstance(h, str)]
+        if isinstance(script_hashtags_raw, list)
+        else []
+    )
 
-    upload_title = payload.title or seo_data.get("title", episode.title)
-    upload_description = payload.description or seo_data.get("description", "")
-    upload_tags = payload.tags if payload.tags else seo_data.get("tags", [])
+    seo_data: dict[str, Any] = {}
+    if not (payload.description and payload.title and payload.tags) or not script_description:
+        # Only call the SEO subsystem when we'd actually consume its
+        # output — saves up to a 30-second LLM round-trip on uploads
+        # whose script + payload already have everything we need.
+        seo_data = await admin.get_or_generate_seo(episode)
 
-    seo_hashtags = seo_data.get("hashtags", [])
-    if seo_hashtags and isinstance(seo_hashtags, list):
-        hashtag_str = " ".join(h if h.startswith("#") else f"#{h}" for h in seo_hashtags)
+    upload_title = (
+        payload.title
+        or (script.get("title") if isinstance(script.get("title"), str) else "")
+        or seo_data.get("title")
+        or episode.title
+    )
+    upload_description = (
+        payload.description
+        or script_description
+        or seo_data.get("description", "")
+    )
+    upload_tags = (
+        payload.tags
+        or [h.lstrip("#") for h in script_hashtags]
+        or seo_data.get("tags", [])
+    )
+
+    # Hashtag tail: prefer the script's own hashtags; only fall back to
+    # SEO's when the script didn't supply any.
+    hashtags_for_tail = script_hashtags or [
+        str(h) for h in seo_data.get("hashtags", []) if isinstance(h, str)
+    ]
+    if hashtags_for_tail:
+        hashtag_str = " ".join(
+            h if h.startswith("#") else f"#{h}" for h in hashtags_for_tail
+        )
         if hashtag_str and hashtag_str not in upload_description:
-            upload_description = f"{upload_description}\n\n{hashtag_str}"
-
-    # Fallback to script data if SEO produced nothing.
-    script = episode.script or {}
-    if not upload_description and isinstance(script, dict):
-        parts: list[str] = []
-        script_title = script.get("title")
-        script_desc = script.get("description")
-        script_hashtags = script.get("hashtags")
-        if script_title and isinstance(script_title, str):
-            parts.append(script_title)
-        if script_desc and isinstance(script_desc, str):
-            parts.append(script_desc)
-        if script_hashtags and isinstance(script_hashtags, list):
-            hashtag_str = " ".join(
-                f"#{h.lstrip('#')}" for h in script_hashtags if isinstance(h, str)
-            )
-            if hashtag_str:
-                parts.append(hashtag_str)
-        upload_description = "\n\n".join(parts)
-    if not upload_tags and isinstance(script, dict):
-        script_hashtags = script.get("hashtags")
-        if script_hashtags and isinstance(script_hashtags, list):
-            upload_tags = [h.lstrip("#") for h in script_hashtags if isinstance(h, str)]
+            sep = "\n\n" if upload_description else ""
+            upload_description = f"{upload_description}{sep}{hashtag_str}"
 
     thumb_path = await admin.get_thumbnail_path(episode_id)
 

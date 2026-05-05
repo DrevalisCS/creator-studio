@@ -66,22 +66,27 @@ async def generate_seo_async(ctx: dict[str, Any], episode_id: str) -> dict[str, 
             model=settings.lm_studio_default_model,
         )
 
-    system_prompt = (
-        "You are a YouTube SEO expert. Generate optimized metadata for a video. "
-        "Output ONLY valid JSON with this structure:\n"
-        '{"title": "SEO title (max 60 chars)", "description": "engaging description with keywords (max 500 chars)", '
-        '"hashtags": ["#tag1", "#tag2", ...], "tags": ["keyword1", "keyword2", ...], '
-        '"hook": "attention-grabbing first line for the video", '
-        '"virality_score": 1-10 (how likely this is to go viral), "virality_reasoning": "brief explanation"}'
-    )
-    user_prompt = (
-        f"Video title: {episode.title}\n"
-        f"Content: {narration[:1000]}\n\n"
-        "Generate SEO-optimized metadata now:"
+    from drevalis.services.seo_prompts import (
+        SEO_SYSTEM_PROMPT,
+        build_seo_user_prompt,
     )
 
+    existing_description = ""
+    if isinstance(episode.script, dict):
+        raw_desc = episode.script.get("description")
+        if isinstance(raw_desc, str):
+            existing_description = raw_desc
+
     result = await provider.generate(
-        system_prompt, user_prompt, temperature=0.7, max_tokens=1024, json_mode=True
+        SEO_SYSTEM_PROMPT,
+        build_seo_user_prompt(
+            title=episode.title,
+            narration=narration,
+            script_description=existing_description,
+        ),
+        temperature=0.7,
+        max_tokens=1024,
+        json_mode=True,
     )
     try:
         data = _json.loads(extract_json(result.content))
