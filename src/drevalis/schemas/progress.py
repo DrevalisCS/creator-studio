@@ -68,8 +68,14 @@ class ProgressMessage(BaseModel):
     step: Literal["script", "voice", "scenes", "captions", "assembly", "thumbnail"] = Field(
         ..., description="Pipeline step this message relates to"
     )
-    status: Literal["queued", "running", "done", "failed"] = Field(
-        ..., description="Current status of the job"
+    status: Literal["queued", "running", "done", "failed", "warning"] = Field(
+        ...,
+        description=(
+            "Current status of the job. ``warning`` is emitted by the "
+            "post-step quality gates (script-content / voice / scenes) "
+            "when a non-blocking issue is found — generation continues "
+            "but the operator sees a flag in the activity monitor."
+        ),
     )
     progress_pct: int = Field(..., ge=0, le=100, description="Progress percentage 0-100")
     message: str = Field(default="", description="Human-readable status message")

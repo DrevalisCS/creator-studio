@@ -67,6 +67,13 @@ Desktop.ini
 
 # ── Docker ────────────────────────────────────────────────────────────────────
 *.log
+# Local-dev-only docker-compose override. Production deployments do not
+# load this file (compose only auto-loads override.yml when present in
+# the working directory of the operator running the command).
+docker-compose.override.yml
+
+# ── Scratch artefacts from verification / recovery passes ─────────────────────
+.tmp_*
 
 # Avoid stray '-' files from typo'd shell redirects
 /-
