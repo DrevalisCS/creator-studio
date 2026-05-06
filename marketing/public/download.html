@@ -48,17 +48,36 @@
   <!-- Install commands -->
   <section class="section-compact">
     <div class="container-xl">
-      <div class="grid md:grid-cols-2 gap-5 reveal">
+      <div class="grid md:grid-cols-3 gap-5 reveal">
 
-        <!-- Linux / macOS -->
+        <!-- Linux -->
         <div class="card p-7">
           <div class="flex items-center gap-3 mb-2">
-            <span class="pill pill-green">Linux · macOS</span>
+            <span class="pill pill-green">Linux · server or desktop</span>
           </div>
-          <h3 class="mb-2">One line to install</h3>
-          <p class="text-sm text-[var(--txt-secondary)] mb-4">You need Docker Desktop installed first (free download). On macOS it comes with everything included.</p>
+          <h3 class="mb-2">One line, headless or GUI</h3>
+          <p class="text-sm text-[var(--txt-secondary)] mb-4">Just needs Docker Engine + the Compose plugin. Works on Ubuntu, Debian, Fedora, Arch — anything with <code class="inline">docker</code> and <code class="inline">docker compose</code> on PATH. SSH into your VPS or workstation and paste:</p>
           <pre class="text-sm"><code>curl -fsSL https://drevalis.com/install.sh | bash</code></pre>
           <p class="small-muted mt-3">Prefer to read before piping? View <a href="/install.sh">install.sh</a>.</p>
+
+          <details class="mt-5 text-sm">
+            <summary class="cursor-pointer text-[var(--accent)] font-medium">No Docker yet? (Ubuntu / Debian)</summary>
+            <pre class="text-xs mt-3"><code>curl -fsSL https://get.docker.com | sh
+sudo usermod -aG docker $USER
+newgrp docker</code></pre>
+            <p class="small-muted mt-2">Log out and back in if <code class="inline">newgrp</code> isn't enough. Then rerun the install command above.</p>
+          </details>
+        </div>
+
+        <!-- macOS -->
+        <div class="card p-7">
+          <div class="flex items-center gap-3 mb-2">
+            <span class="pill pill-purple">macOS · Apple silicon &amp; Intel</span>
+          </div>
+          <h3 class="mb-2">One line on Mac</h3>
+          <p class="text-sm text-[var(--txt-secondary)] mb-4">Install <a href="https://www.docker.com/products/docker-desktop/" target="_blank" rel="noopener noreferrer">Docker Desktop for Mac</a> first (free, includes Compose). Then open Terminal and paste:</p>
+          <pre class="text-sm"><code>curl -fsSL https://drevalis.com/install.sh | bash</code></pre>
+          <p class="small-muted mt-3">View <a href="/install.sh">install.sh</a>.</p>
         </div>
 
         <!-- Windows -->
@@ -112,7 +131,7 @@
           <span class="pill pill-amber mb-3">Minimum</span>
           <h4 class="mt-4 mb-3">Works, some things slow</h4>
           <ul class="text-sm text-[var(--txt-secondary)] space-y-2">
-            <li>— Linux, macOS (Docker Desktop), or Windows (WSL2 + Docker Desktop)</li>
+            <li>— Linux (Docker Engine), macOS (Docker Desktop), or Windows (WSL2 + Docker Desktop)</li>
             <li>— 8 CPU cores, 16 GB RAM</li>
             <li>— 50 GB free disk space</li>
             <li>— Docker Engine 24+, Compose v2</li>
