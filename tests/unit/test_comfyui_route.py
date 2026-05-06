@@ -65,11 +65,11 @@ def _make_server(**overrides: Any) -> Any:
     s.id = overrides.get("id", uuid4())
     s.name = overrides.get("name", "Local")
     s.url = overrides.get("url", "http://localhost:8188")
-    s.api_key_encrypted = overrides.get("api_key_encrypted", None)
+    s.api_key_encrypted = overrides.get("api_key_encrypted")
     s.max_concurrent = overrides.get("max_concurrent", 2)
     s.is_active = overrides.get("is_active", True)
-    s.last_tested_at = overrides.get("last_tested_at", None)
-    s.last_test_status = overrides.get("last_test_status", None)
+    s.last_tested_at = overrides.get("last_tested_at")
+    s.last_test_status = overrides.get("last_test_status")
     s.created_at = overrides.get("created_at", datetime(2026, 1, 1))
     s.updated_at = overrides.get("updated_at", datetime(2026, 1, 1))
     return s
@@ -79,7 +79,7 @@ def _make_workflow(**overrides: Any) -> Any:
     w = MagicMock()
     w.id = overrides.get("id", uuid4())
     w.name = overrides.get("name", "Qwen Image")
-    w.description = overrides.get("description", None)
+    w.description = overrides.get("description")
     w.workflow_json_path = overrides.get(
         "workflow_json_path", "workflows/drevalis/qwen-1.json"
     )

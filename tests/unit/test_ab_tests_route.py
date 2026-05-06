@@ -43,9 +43,9 @@ def _make_test(**overrides: Any) -> Any:
     t.episode_a_id = overrides.get("episode_a_id", uuid4())
     t.episode_b_id = overrides.get("episode_b_id", uuid4())
     t.variant_label = overrides.get("variant_label", "title-A")
-    t.notes = overrides.get("notes", None)
-    t.winner_episode_id = overrides.get("winner_episode_id", None)
-    t.comparison_at = overrides.get("comparison_at", None)
+    t.notes = overrides.get("notes")
+    t.winner_episode_id = overrides.get("winner_episode_id")
+    t.comparison_at = overrides.get("comparison_at")
     t.created_at = overrides.get("created_at", datetime(2026, 1, 1))
     return t
 

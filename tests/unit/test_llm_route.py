@@ -55,7 +55,7 @@ def _make_config(**overrides: Any) -> Any:
     c.name = overrides.get("name", "LM Studio")
     c.base_url = overrides.get("base_url", "http://localhost:1234/v1")
     c.model_name = overrides.get("model_name", "qwen2.5-7b")
-    c.api_key_encrypted = overrides.get("api_key_encrypted", None)
+    c.api_key_encrypted = overrides.get("api_key_encrypted")
     c.max_tokens = overrides.get("max_tokens", 4096)
     c.temperature = overrides.get("temperature", 0.7)
     c.created_at = overrides.get("created_at", datetime(2026, 1, 1))

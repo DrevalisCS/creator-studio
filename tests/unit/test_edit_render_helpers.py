@@ -26,15 +26,12 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from drevalis.workers.jobs.edit_render import (
     _build_overlay_filters,
     _collect_audio_envelopes,
     _color_to_ffmpeg,
     _escape_drawtext,
 )
-
 
 # ── _escape_drawtext ───────────────────────────────────────────────
 

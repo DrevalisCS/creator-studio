@@ -20,7 +20,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 from drevalis.workers.jobs.video_ingest import _llm_pick, _naive_candidates
 
-
 # ── _naive_candidates ─────────────────────────────────────────────
 
 

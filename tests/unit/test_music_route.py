@@ -165,10 +165,10 @@ class TestUploadCustomTrack:
     ) -> None:
         # Patch the cap to a tiny value so we can trigger oversize
         # cheaply — 100 bytes vs the real 25 MB.
-        from drevalis.api.routes import music as mod
-
         # Use object patching via context manager.
         from unittest.mock import patch as _patch  # noqa: PLC0415
+
+        from drevalis.api.routes import music as mod
 
         big = b"x" * 200
         with _patch.object(mod, "_MAX_UPLOAD_BYTES", 100):

@@ -30,8 +30,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
 from drevalis.workers.jobs.audiobook import generate_ai_audiobook
 
 

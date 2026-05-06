@@ -51,9 +51,9 @@ def _make_user(**overrides: Any) -> Any:
     u.id = overrides.get("id", uuid4())
     u.email = overrides.get("email", "owner@drevalis.test")
     u.role = overrides.get("role", "owner")
-    u.display_name = overrides.get("display_name", None)
+    u.display_name = overrides.get("display_name")
     u.is_active = overrides.get("is_active", True)
-    u.last_login_at = overrides.get("last_login_at", None)
+    u.last_login_at = overrides.get("last_login_at")
     u.password_hash = overrides.get("password_hash", "$pbkdf2$xx")
     u.created_at = overrides.get("created_at", datetime(2026, 1, 1, tzinfo=UTC))
     return u

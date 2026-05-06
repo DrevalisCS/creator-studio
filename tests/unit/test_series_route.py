@@ -30,7 +30,6 @@ from fastapi import HTTPException
 from drevalis.api.routes.series import (
     AddEpisodesRequest,
     SeriesGenerateRequest,
-    SeriesGenerateResponse,
     _service,
     add_episodes_ai,
     cancel_series_generate_job,

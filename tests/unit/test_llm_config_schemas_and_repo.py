@@ -30,7 +30,6 @@ from drevalis.schemas.llm_config import (
     LLMTestResponse,
 )
 
-
 # ── LLMConfigCreate.validate_base_url ───────────────────────────────
 
 

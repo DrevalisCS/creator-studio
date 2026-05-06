@@ -28,8 +28,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
 from drevalis.api.routes.backup import (
     _STORAGE_PROBE_CACHE_KEY,
     _STORAGE_PROBE_CACHE_TTL_S,

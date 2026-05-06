@@ -41,7 +41,7 @@ from drevalis.api.routes.youtube._monolith import (
     get_channel_scopes,
     upload_episode,
 )
-from drevalis.core.exceptions import NotFoundError, ValidationError
+from drevalis.core.exceptions import NotFoundError
 from drevalis.schemas.youtube import YouTubeUploadRequest
 from drevalis.services.youtube import AnalyticsNotAuthorized, YouTubeService
 from drevalis.services.youtube_admin import (
@@ -260,8 +260,13 @@ class TestUploadEpisodeHappyPath:
     async def test_script_fallback_fills_description_when_seo_empty(
         self,
     ) -> None:
-        # Pin: SEO empty + payload description empty → falls back to
-        # script title + description + hashtags joined with blank lines.
+        # Pin (post-Phase-2.3 resolution chain): SEO empty + payload
+        # description empty → script.description wins on its own
+        # (clean copy is the primary deliverable now), with hashtags
+        # appended on a trailing line. The pre-overhaul chain joined
+        # script.title + description + hashtags; we no longer do that
+        # because the script's description is already a vetted
+        # standalone blurb.
         ep = _make_episode(
             script={
                 "title": "Script Title",
@@ -296,10 +301,10 @@ class TestUploadEpisodeHappyPath:
                 admin=admin,
             )
         kwargs = yt.upload_video.call_args.kwargs
-        # Script title + description + hashtags appear in the description.
-        assert "Script Title" in kwargs["description"]
+        # script.description wins; hashtags get appended on a blank line.
         assert "Script desc" in kwargs["description"]
         assert "#a" in kwargs["description"]
+        assert "#b" in kwargs["description"]
         # Tags also derived from script hashtags (with '#' stripped).
         assert kwargs["tags"] == ["a", "b"]
 

@@ -39,12 +39,12 @@ def _make_job(**overrides: Any) -> Any:
     j.id = overrides.get("id", uuid4())
     j.asset_id = overrides.get("asset_id", uuid4())
     j.status = overrides.get("status", "queued")
-    j.stage = overrides.get("stage", None)
+    j.stage = overrides.get("stage")
     j.progress_pct = overrides.get("progress_pct", 0)
-    j.candidate_clips = overrides.get("candidate_clips", None)
-    j.selected_clip_index = overrides.get("selected_clip_index", None)
-    j.resulting_episode_id = overrides.get("resulting_episode_id", None)
-    j.error_message = overrides.get("error_message", None)
+    j.candidate_clips = overrides.get("candidate_clips")
+    j.selected_clip_index = overrides.get("selected_clip_index")
+    j.resulting_episode_id = overrides.get("resulting_episode_id")
+    j.error_message = overrides.get("error_message")
     return j
 
 

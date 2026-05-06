@@ -15,8 +15,6 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
-import pytest
-
 from drevalis.workers.jobs.social import (
     _compose_caption,
     _compose_caption_multiline,
@@ -253,7 +251,7 @@ class TestComposeCaptionMultiline:
         out = _compose_caption_multiline(
             "Title", "Description", "#a #b", limit=500
         )
-        assert "Title\n\nDescription\n\n#a #b" == out
+        assert out == "Title\n\nDescription\n\n#a #b"
 
     def test_truncates_to_limit(self) -> None:
         out = _compose_caption_multiline(

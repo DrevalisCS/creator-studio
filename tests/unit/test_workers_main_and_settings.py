@@ -28,7 +28,6 @@ from drevalis.workers.settings import (
     _redis_settings_from_config,
 )
 
-
 # ── _redis_host_port ───────────────────────────────────────────────
 
 

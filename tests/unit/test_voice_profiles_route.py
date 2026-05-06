@@ -26,12 +26,8 @@ from drevalis.api.routes.voice_profiles import (
     update_voice_profile,
 )
 from drevalis.api.routes.voice_profiles import (
-    test_voice_profile as _test_voice_profile,  # noqa: F401  -- avoid pytest collection
+    test_voice_profile as _test_voice_profile,  # noqa: F401 -- aliased below
 )
-
-# Pytest collects bare ``test_*`` callables imported into the module as
-# tests. Rename the route handler so it isn't picked up.
-voice_test_endpoint = _test_voice_profile
 from drevalis.core.exceptions import NotFoundError, ValidationError
 from drevalis.schemas.voice_profile import (
     CloneVoiceRequest,
@@ -43,23 +39,27 @@ from drevalis.schemas.voice_profile import (
 )
 from drevalis.services.voice_profile import VoiceProfileService
 
+# Pytest collects bare ``test_*`` callables imported into the module as
+# tests. Rename the route handler so it isn't picked up.
+voice_test_endpoint = _test_voice_profile
+
 
 def _make_profile(**overrides: Any) -> Any:
     p = MagicMock()
     p.id = overrides.get("id", uuid4())
     p.name = overrides.get("name", "Default")
     p.provider = overrides.get("provider", "piper")
-    p.piper_model_path = overrides.get("piper_model_path", None)
-    p.piper_speaker_id = overrides.get("piper_speaker_id", None)
+    p.piper_model_path = overrides.get("piper_model_path")
+    p.piper_speaker_id = overrides.get("piper_speaker_id")
     p.speed = overrides.get("speed", 1.0)
     p.pitch = overrides.get("pitch", 1.0)
-    p.elevenlabs_voice_id = overrides.get("elevenlabs_voice_id", None)
-    p.kokoro_voice_name = overrides.get("kokoro_voice_name", None)
-    p.kokoro_model_path = overrides.get("kokoro_model_path", None)
-    p.edge_voice_id = overrides.get("edge_voice_id", None)
-    p.gender = overrides.get("gender", None)
-    p.sample_audio_path = overrides.get("sample_audio_path", None)
-    p.language_code = overrides.get("language_code", None)
+    p.elevenlabs_voice_id = overrides.get("elevenlabs_voice_id")
+    p.kokoro_voice_name = overrides.get("kokoro_voice_name")
+    p.kokoro_model_path = overrides.get("kokoro_model_path")
+    p.edge_voice_id = overrides.get("edge_voice_id")
+    p.gender = overrides.get("gender")
+    p.sample_audio_path = overrides.get("sample_audio_path")
+    p.language_code = overrides.get("language_code")
     p.created_at = overrides.get("created_at", datetime(2026, 1, 1))
     p.updated_at = overrides.get("updated_at", datetime(2026, 1, 1))
     return p

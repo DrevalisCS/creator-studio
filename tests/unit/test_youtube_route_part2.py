@@ -21,7 +21,7 @@ Pin:
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from types import SimpleNamespace
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch

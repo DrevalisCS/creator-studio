@@ -24,8 +24,8 @@ from drevalis.api.routes.character_packs import (
     delete_pack,
     list_packs,
 )
-from drevalis.services.character_pack import CharacterPackService
 from drevalis.core.exceptions import NotFoundError, ValidationError
+from drevalis.services.character_pack import CharacterPackService
 
 
 class TestServiceFactory:
@@ -43,9 +43,9 @@ def _make_pack(**overrides: Any) -> Any:
     p.id = overrides.get("id", uuid4())
     p.name = overrides.get("name", "Mech Hero")
     p.description = overrides.get("description", "Stylised cyberpunk lead")
-    p.thumbnail_asset_id = overrides.get("thumbnail_asset_id", None)
+    p.thumbnail_asset_id = overrides.get("thumbnail_asset_id")
     p.character_lock = overrides.get("character_lock", {"face": "abc"})
-    p.style_lock = overrides.get("style_lock", None)
+    p.style_lock = overrides.get("style_lock")
     p.created_at = overrides.get("created_at", datetime(2026, 1, 1))
     return p
 

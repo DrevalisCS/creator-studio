@@ -57,14 +57,14 @@ def _make_job(**overrides: Any) -> Any:
     j.step = overrides.get("step", "script")
     j.status = overrides.get("status", "queued")
     j.progress_pct = overrides.get("progress_pct", 0)
-    j.started_at = overrides.get("started_at", None)
-    j.completed_at = overrides.get("completed_at", None)
-    j.error_message = overrides.get("error_message", None)
+    j.started_at = overrides.get("started_at")
+    j.completed_at = overrides.get("completed_at")
+    j.error_message = overrides.get("error_message")
     j.retry_count = overrides.get("retry_count", 0)
-    j.worker_id = overrides.get("worker_id", None)
+    j.worker_id = overrides.get("worker_id")
     j.created_at = overrides.get("created_at", datetime(2026, 1, 1))
     j.updated_at = overrides.get("updated_at", datetime(2026, 1, 1))
-    j.episode = overrides.get("episode", None)
+    j.episode = overrides.get("episode")
     return j
 
 

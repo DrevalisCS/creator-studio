@@ -9,7 +9,6 @@ surfaces a structured 500 hint pointing at alembic.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -41,8 +40,8 @@ def _make_session(**overrides: Any) -> Any:
     s.episode_id = overrides.get("episode_id", uuid4())
     s.version = overrides.get("version", 1)
     s.timeline = overrides.get("timeline", {"tracks": []})
-    s.last_render_job_id = overrides.get("last_render_job_id", None)
-    s.last_rendered_at = overrides.get("last_rendered_at", None)
+    s.last_render_job_id = overrides.get("last_render_job_id")
+    s.last_rendered_at = overrides.get("last_rendered_at")
     return s
 
 

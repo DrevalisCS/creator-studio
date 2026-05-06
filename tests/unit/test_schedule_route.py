@@ -8,7 +8,7 @@ Thin router over ``ScheduleService``. Pin the layering contract:
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
@@ -50,11 +50,11 @@ def _make_post(**overrides: Any) -> Any:
     p.tags = overrides.get("tags", "")
     p.privacy = overrides.get("privacy", "private")
     p.status = overrides.get("status", "scheduled")
-    p.error_message = overrides.get("error_message", None)
-    p.published_at = overrides.get("published_at", None)
-    p.remote_id = overrides.get("remote_id", None)
-    p.remote_url = overrides.get("remote_url", None)
-    p.youtube_channel_id = overrides.get("youtube_channel_id", None)
+    p.error_message = overrides.get("error_message")
+    p.published_at = overrides.get("published_at")
+    p.remote_id = overrides.get("remote_id")
+    p.remote_url = overrides.get("remote_url")
+    p.youtube_channel_id = overrides.get("youtube_channel_id")
     p.created_at = overrides.get("created_at", datetime(2026, 5, 1))
     return p
 
@@ -64,7 +64,7 @@ def _make_create() -> ScheduleCreate:
         content_type="episode",
         content_id=uuid4(),
         platform="youtube",
-        scheduled_at=datetime(2026, 5, 15, 12, tzinfo=timezone.utc),
+        scheduled_at=datetime(2026, 5, 15, 12, tzinfo=UTC),
         title="Hook",
     )
 
@@ -203,7 +203,7 @@ class TestAutoSchedule:
         slot = PlannedSlot(
             episode_id=uuid4(),
             episode_title="Ep1",
-            scheduled_at=datetime(2026, 5, 16, 12, tzinfo=timezone.utc),
+            scheduled_at=datetime(2026, 5, 16, 12, tzinfo=UTC),
             privacy="public",
             youtube_channel_id=None,
         )
@@ -212,7 +212,7 @@ class TestAutoSchedule:
         )
         body = AutoScheduleRequest(
             cadence="daily",
-            start_at=datetime(2026, 5, 1, tzinfo=timezone.utc),
+            start_at=datetime(2026, 5, 1, tzinfo=UTC),
         )
         out = await auto_schedule_series(sid, body, svc=svc)
         assert out.series_id == sid
@@ -224,7 +224,7 @@ class TestAutoSchedule:
         svc.auto_schedule_series = AsyncMock(
             side_effect=NotFoundError("series", uuid4())
         )
-        body = AutoScheduleRequest(start_at=datetime(2026, 5, 1, tzinfo=timezone.utc))
+        body = AutoScheduleRequest(start_at=datetime(2026, 5, 1, tzinfo=UTC))
         with pytest.raises(HTTPException) as exc:
             await auto_schedule_series(uuid4(), body, svc=svc)
         assert exc.value.status_code == 404
@@ -234,7 +234,7 @@ class TestAutoSchedule:
         svc.auto_schedule_series = AsyncMock(
             side_effect=ValidationError("no upload_days configured")
         )
-        body = AutoScheduleRequest(start_at=datetime(2026, 5, 1, tzinfo=timezone.utc))
+        body = AutoScheduleRequest(start_at=datetime(2026, 5, 1, tzinfo=UTC))
         with pytest.raises(HTTPException) as exc:
             await auto_schedule_series(uuid4(), body, svc=svc)
         assert exc.value.status_code == 422

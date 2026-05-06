@@ -84,8 +84,10 @@ class TestOnJobStartLicenseGate:
         set_state(LicenseState(status=LicenseStatus.UNACTIVATED))
         with pytest.raises(Retry) as exc:
             await on_job_start({"job_name": "generate_episode", "job_id": "x"})
-        # Defer is 1 hour (3600s).
-        assert exc.value.defer_score is not None or True
+        # Defer is 1 hour (3600s). arq's Retry stores the defer-until
+        # value on ``defer_score`` (epoch seconds when set) — just
+        # confirm it's populated; exact value depends on test wall clock.
+        assert exc.value.defer_score is not None
 
     async def test_invalid_license_protected_job_raises_retry(self) -> None:
         from arq.worker import Retry
