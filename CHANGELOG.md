@@ -7,6 +7,168 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-05-06
+
+### Added
+
+- **`series.tone_profile` JSONB column** — per-series voice + banned-
+  vocabulary list + sentence-length cap + style sample. Validated at
+  the API boundary by `schemas.series.ToneProfile`. Threaded through
+  both the shorts and long-form script paths via the new
+  `_render_tone_profile` helper. Migration `041_series_tone_profile`
+  adds the column with `'{}'::jsonb` server default so existing rows
+  behave as "no profile". Frontend SeriesDetail edit form gains a
+  tone-profile section under the visual-style block.
+
+- **`check_script_content` post-script quality gate** in
+  `services/quality_gates.py`. Rules: banned-vocabulary scan against a
+  curated 40-word global list (extends with `tone_profile.forbidden_words`),
+  specificity heuristic (digit / 4-digit year / proper-noun, optional
+  spaCy NER), sentence-length cap (default 18, hard cap at cap+4), opening-
+  repetition detection (lowercased word-stems), listicle-marker detection
+  (gated by `tone_profile.allow_listicle`). Wired into
+  `_run_quality_gates` as the SCRIPT branch — surfaces violations as
+  warnings, never blocks generation.
+
+- **`POST /api/v1/episodes/{id}/quality-report`** endpoint runs the gate
+  against an episode's existing stored script and returns the
+  `QualityReport`. Useful for back-cataloguing episodes generated
+  before the overhaul without regeneration.
+
+- **Long-form `LongFormScriptService` 3rd quality phase** — actually
+  exists now. Runs `check_script_content` against the assembled scenes
+  after the chapter-by-chapter pass; for each failing scene the LLM is
+  asked to rewrite the narration only. Single pass, no loop. Verified
+  in production: a 20-scene long-form generation flagged 9 specificity
+  violations after the chapter pass, phase 3 ran 17 LLM calls in ~34s,
+  recovered 1 scene. The remaining 8 stayed flagged as warnings.
+  CLAUDE.md and README.md previously claimed this phase existed but it
+  didn't — the docs were aspirational; now they're true.
+
+- **`scenes[].narration_tts`** field on `EpisodeScript` (Phase 2.10) —
+  TTS-formatted variant of `narration` populated by the new
+  `services/narration_formatter.py`. Per-provider rule sets handle:
+  money/percent expansion (`$1.7M` → `1.7 million dollars`),
+  parenthetical lifting into separate sentences, em-/en-dash → comma
+  rewrites, ellipsis collapse, dotted-spelling on first use for
+  problematic acronyms (UAW, COVID-19, ICBM, DARPA, JPEG, MPEG —
+  NASA / FBI / CEO untouched). ElevenLabs gets a lighter pass since it
+  handles numbers natively; Edge / Piper / Kokoro get the full
+  treatment. `TTSService.generate_voiceover` prefers `narration_tts`
+  when present, falls back to `narration`. The original narration
+  field stays untouched for the editor + UI.
+
+- **Shared SEO prompt module** at `services/seo_prompts.py`. Both SEO
+  call sites (`YouTubeAdminService.get_or_generate_seo` inline +
+  `workers/jobs/seo.py` background job) used to ship near-duplicate
+  hard-coded prompts that drifted; both now import from the shared
+  module. The new prompt mirrors the script template's banned-vocab +
+  hashtag + description rules.
+
+- **57 new unit tests** across four files: `test_content_quality`
+  (banned-vocab, specificity, sentence-length, opening-repetition,
+  listicle markers), `test_visual_prompt_substitution` (the four
+  template-shape cases including the legacy `{prompt}` alias),
+  `test_narration_formatter` (per-provider routing, idempotency, all
+  rule sets), `test_seo_prompts` (rule blocks + carry-forward of
+  script.description as a "preferred draft").
+
+### Changed
+
+- **Shorts script prompt overhaul** (migration
+  `042_overhaul_shorts_script_prompt`). The `Default Script` row was
+  deleted (it was a duplicate of `YouTube Shorts Script Generator` and
+  was the alphabetical winner of the auto-fallback). The remaining
+  shorts row was rewritten with the specificity-focused, banned-vocab
+  system prompt that requires a digit/name/date in every scene; bans
+  the cargo-cult AI vocabulary list (`delve`, `tapestry`, `journey`,
+  `realm`, `8k`, `masterpiece`, …); enforces a ≤16-word average
+  sentence length; and demands `description`, `hashtags`,
+  `thumbnail_prompt` as top-level JSON keys (previously empty in every
+  shorts script). Down-migration restores prior content from constants
+  in the migration file.
+
+- **Visual prompt enhancer overhaul** (migration
+  `043_overhaul_visual_enhancer_prompt`). The seeded `Scene Visual
+  Enhancer` row's user template said `{scene_prompt}` but the
+  orchestrator substituted `{prompt}` — the placeholder shipped to the
+  LLM literally and the raw prompt body was appended via two `+=`
+  lines, producing measurably worse images. The new template uses
+  `{scene_prompt}` / `{style}` / `{character}` and the orchestrator
+  substitutes them via `format_map` with a `_DefaultPromptDict` so
+  unknown placeholders silently substitute to `""` rather than
+  crashing. Legacy `{prompt}` alias still works. The hardcoded
+  fallback system prompt for series with no enhancer template attached
+  also grew from 2 sentences to the full 4-rule + banned-tokens block.
+
+- **`LLMService.generate_script` signature** now accepts
+  `tone_profile: dict | None`, `visual_style: str`, `negative_prompt: str`
+  kwargs that substitute into the rendered template via the existing
+  `str.replace` pipeline. The `{character}` line-stripping behaviour
+  for empty characters (landscapes, fractals) is preserved.
+
+- **YouTube upload description resolution chain** in
+  `api/routes/youtube/_monolith.py`. New order: payload → `script.description` /
+  `.hashtags` (vetted by `check_script_content`) → SEO data → episode.title.
+  Previously SEO won over script. Now `script.description` is preferred
+  when non-empty — the script step now produces a clean description as
+  a primary output, so SEO is a fallback for legacy episodes only. The
+  route also short-circuits the SEO LLM call entirely when payload +
+  script supply title/description/tags, saving up to 30s per upload.
+
+- **`ProgressMessage.status` Literal** now accepts `"warning"` in
+  addition to `queued|running|done|failed`. The post-step quality
+  gates have always emitted `"warning"` but `ProgressMessage` was
+  rejecting it; the surrounding exception swallow caught the
+  `ValidationError` so generation continued normally but the warnings
+  never reached WebSocket subscribers. The bug was silently swallowed
+  by the pre-existing VOICE/SCENES gate branches since they landed.
+
+### Fixed
+
+- **Visual prompt placeholder mismatch** that had been silently
+  producing degraded scene images for every series with the seeded
+  `Scene Visual Enhancer` template attached. (See migration 043 above.)
+
+- **Long-form `default_language` was hardcoded to `en-US`** —
+  `LongFormScriptService` now threads the series language through
+  outline + chapter prompts and writes the final `script["language"]`
+  field correctly.
+
+- **Pre-existing pytest failures (13 total)**, all stale or under-mocked
+  test fixtures where production code had moved on. None of the
+  failures touched the content-quality work; they all surface in
+  publish-all / social / video-analytics / job-queue routes. CI is now
+  fully green: 2658 passed, 2 skipped (ffmpeg-required), 0 failed.
+
+- **Orphan `tests/unit/test_animation.py`** deleted — the module it
+  imported (`drevalis.services.animation`) was removed in v0.31.0 but
+  the test file was left behind, blocking pytest collection on CI.
+
+- **Ruff backlog of 83 errors** in `tests/` cleared (79 auto-fixed,
+  4 hand-fixed: `test_voice_profiles_route` import order,
+  `test_worker_lifecycle` vacuous `assert ... or True`).
+
+### Documentation
+
+- New `docs/content-quality-audit.md` — Phase 1 read-only verification
+  of `LLMService.generate_script` interpolation behaviour, prompt-template
+  fallback resolution, shorts/longform `description` population, the
+  YouTube upload description chain, and the full set of series fields
+  read by the script step.
+
+- New `docs/content-quality-before-after.md` — live regeneration pass
+  on 2026-05-05 against LM Studio (`qwen2.5-14b-instruct-uncensored`).
+  Three episodes captured: shorts-neutral (gate passed clean),
+  shorts-with-tone-profile (LLM adopted persona + signature_phrases),
+  longform-neutral (phase 3 quality rewrite ran in production).
+  Includes the actual generated scenes, descriptions, hashtags, and
+  gate output.
+
+- CLAUDE.md + README.md updated to describe `series.tone_profile`,
+  `check_script_content`, the now-actually-3-phase long-form flow, and
+  the new visual-prompt placeholder semantics.
+
 ## [0.30.6] - 2026-05-04
 
 ### Changed
