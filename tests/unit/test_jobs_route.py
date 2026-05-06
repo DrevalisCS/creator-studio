@@ -16,7 +16,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -103,7 +103,14 @@ class TestActive:
     async def test_queue_status_passes_concurrency(self) -> None:
         svc = MagicMock()
         svc.queue_status = AsyncMock(return_value={"running": 2, "queued": 0})
-        out = await get_queue_status(svc=svc, settings=_settings())
+        # Patch effective_max_concurrent_generations so the license tier
+        # active in the test process cannot cap the value below the
+        # settings-derived 4.
+        with patch(
+            "drevalis.core.concurrency.effective_max_concurrent_generations",
+            side_effect=lambda v: v,
+        ):
+            out = await get_queue_status(svc=svc, settings=_settings())
         assert out["running"] == 2
         svc.queue_status.assert_awaited_once_with(4)
 

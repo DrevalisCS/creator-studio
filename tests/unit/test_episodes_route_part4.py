@@ -172,12 +172,18 @@ class TestPublishAllYouTube:
         db.flush = AsyncMock()
         db.commit = AsyncMock()
 
-        out = await publish_all(
-            ep.id,
-            _publish_request(platforms=["youtube"], privacy="unlisted"),
-            db=db,
-            svc=svc,
-        )
+        yt_repo_instance = MagicMock()
+        yt_repo_instance.get_existing_done = AsyncMock(return_value=None)
+        with patch(
+            "drevalis.repositories.youtube.YouTubeUploadRepository",
+            return_value=yt_repo_instance,
+        ):
+            out = await publish_all(
+                ep.id,
+                _publish_request(platforms=["youtube"], privacy="unlisted"),
+                db=db,
+                svc=svc,
+            )
 
         assert len(out.accepted) == 1
         assert out.accepted[0]["platform"] == "youtube"
@@ -213,16 +219,22 @@ class TestPublishAllYouTube:
         db.flush = AsyncMock()
         db.commit = AsyncMock()
 
-        await publish_all(
-            ep.id,
-            _publish_request(
-                platforms=["youtube"],
-                title="My Override",
-                description="My override desc",
-            ),
-            db=db,
-            svc=svc,
-        )
+        yt_repo_instance = MagicMock()
+        yt_repo_instance.get_existing_done = AsyncMock(return_value=None)
+        with patch(
+            "drevalis.repositories.youtube.YouTubeUploadRepository",
+            return_value=yt_repo_instance,
+        ):
+            await publish_all(
+                ep.id,
+                _publish_request(
+                    platforms=["youtube"],
+                    title="My Override",
+                    description="My override desc",
+                ),
+                db=db,
+                svc=svc,
+            )
         row = added[0]
         assert row.title == "My Override"
         assert row.description == "My override desc"
@@ -251,28 +263,39 @@ class TestPublishAllYouTube:
         db.flush = AsyncMock()
         db.commit = AsyncMock()
 
-        await publish_all(
-            ep.id,
-            _publish_request(platforms=["youtube"]),
-            db=db,
-            svc=svc,
-        )
+        yt_repo_instance = MagicMock()
+        yt_repo_instance.get_existing_done = AsyncMock(return_value=None)
+        with patch(
+            "drevalis.repositories.youtube.YouTubeUploadRepository",
+            return_value=yt_repo_instance,
+        ):
+            await publish_all(
+                ep.id,
+                _publish_request(platforms=["youtube"]),
+                db=db,
+                svc=svc,
+            )
         row = added[0]
         assert row.title == "Episode Title"
         assert row.description == "Episode topic text"
 
 
 class TestPublishAllSocial:
-    async def test_instagram_always_skipped_not_shipped(self) -> None:
-        # Pin: Instagram is in the allowed list (so the API accepts the
-        # request) but never fulfilled — the worker doesn't exist yet.
-        # This avoids silently enqueuing rows nothing will process.
+    async def test_instagram_no_account_skipped(self) -> None:
+        # Pin: Instagram is handled via the same SocialPlatform lookup as
+        # TikTok. When no active instagram account is connected the route
+        # skips and emits a "No active instagram account connected" hint.
         ep = _make_episode(series=SimpleNamespace(youtube_channel_id=None))
         svc = MagicMock()
         svc.get_or_raise = AsyncMock(return_value=ep)
         svc.get_video_asset_path = AsyncMock(return_value="video.mp4")
+
+        # SocialPlatform query returns None → skip with hint.
         db = AsyncMock()
         db.refresh = AsyncMock()
+        result = MagicMock()
+        result.scalar_one_or_none = MagicMock(return_value=None)
+        db.execute = AsyncMock(return_value=result)
         db.commit = AsyncMock()
 
         out = await publish_all(
@@ -282,7 +305,7 @@ class TestPublishAllSocial:
             svc=svc,
         )
         assert any(
-            s["platform"] == "instagram" and "aren't shipped yet" in s["reason"]
+            s["platform"] == "instagram" and "No active instagram" in s["reason"]
             for s in out.skipped
         )
 

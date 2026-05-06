@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -106,7 +106,8 @@ class TestTikTokAuthURL:
         svc.tiktok_auth_url = AsyncMock(
             return_value=("https://tiktok.test/oauth/auth?state=abc", "abc")
         )
-        out = await tiktok_auth_url(svc=svc)
+        with patch("drevalis.api.routes.social.require_feature"):
+            out = await tiktok_auth_url(svc=svc)
         assert out.auth_url.startswith("https://tiktok")
         assert out.state == "abc"
 
@@ -115,8 +116,9 @@ class TestTikTokAuthURL:
         svc.tiktok_auth_url = AsyncMock(
             side_effect=TikTokNotConfiguredError("client_key unset")
         )
-        with pytest.raises(HTTPException) as exc:
-            await tiktok_auth_url(svc=svc)
+        with patch("drevalis.api.routes.social.require_feature"):
+            with pytest.raises(HTTPException) as exc:
+                await tiktok_auth_url(svc=svc)
         assert exc.value.status_code == 400
 
 
@@ -248,7 +250,8 @@ class TestPlatformCrud:
             account_id="tt-acc-1",
             access_token="token",
         )
-        out = await connect_platform(body, svc=svc)
+        with patch("drevalis.api.routes.social.require_feature"):
+            out = await connect_platform(body, svc=svc)
         assert out.platform == "tiktok"
 
     async def test_connect_platform_validation_error(self) -> None:
@@ -259,8 +262,9 @@ class TestPlatformCrud:
         body = PlatformConnect(
             platform="x", account_name="acc", access_token="tok"
         )
-        with pytest.raises(HTTPException) as exc:
-            await connect_platform(body, svc=svc)
+        with patch("drevalis.api.routes.social.require_feature"):
+            with pytest.raises(HTTPException) as exc:
+                await connect_platform(body, svc=svc)
         assert exc.value.status_code == 400
 
     async def test_disconnect_platform_success(self) -> None:
@@ -285,29 +289,35 @@ class TestPlatformCrud:
 class TestUploads:
     async def test_create_upload_success(self) -> None:
         svc = MagicMock()
+        svc.get_platform = AsyncMock(return_value=_make_platform())
         svc.create_upload = AsyncMock(return_value=_make_upload())
         body = SocialUploadRequest(platform_id=uuid4(), title="Hook")
-        out = await create_upload(body, svc=svc)
+        with patch("drevalis.api.routes.social.require_feature"):
+            out = await create_upload(body, svc=svc)
         assert out.title == "Hook A"
 
     async def test_create_upload_not_found(self) -> None:
         svc = MagicMock()
+        svc.get_platform = AsyncMock(return_value=_make_platform())
         svc.create_upload = AsyncMock(
             side_effect=NotFoundError("social_platform", uuid4())
         )
         body = SocialUploadRequest(platform_id=uuid4(), title="Hook")
-        with pytest.raises(HTTPException) as exc:
-            await create_upload(body, svc=svc)
+        with patch("drevalis.api.routes.social.require_feature"):
+            with pytest.raises(HTTPException) as exc:
+                await create_upload(body, svc=svc)
         assert exc.value.status_code == 404
 
     async def test_create_upload_validation(self) -> None:
         svc = MagicMock()
+        svc.get_platform = AsyncMock(return_value=_make_platform())
         svc.create_upload = AsyncMock(
             side_effect=ValidationError("episode not exported")
         )
         body = SocialUploadRequest(platform_id=uuid4(), title="Hook")
-        with pytest.raises(HTTPException) as exc:
-            await create_upload(body, svc=svc)
+        with patch("drevalis.api.routes.social.require_feature"):
+            with pytest.raises(HTTPException) as exc:
+                await create_upload(body, svc=svc)
         assert exc.value.status_code == 400
 
     async def test_list_uploads(self) -> None:

@@ -650,6 +650,8 @@ class TestVideoAnalytics:
         assert exc.value.status_code == 422
 
     async def test_too_many_ids_422(self) -> None:
+        # The route now chunks internally and accepts up to 5000 IDs.
+        # A request with > 5000 IDs must still be rejected with 422.
         admin = MagicMock()
         admin.resolve_channel = AsyncMock(return_value=_make_channel())
         with patch(
@@ -658,7 +660,7 @@ class TestVideoAnalytics:
         ):
             with pytest.raises(HTTPException) as exc:
                 await get_video_analytics(
-                    video_ids=",".join(f"v{i}" for i in range(60)),
+                    video_ids=",".join(f"v{i}" for i in range(5001)),
                     channel_id=None,
                     db=AsyncMock(),
                     settings=_settings(),
