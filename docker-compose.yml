@@ -18,13 +18,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "4"
-          memory: 4G
+          # Tunable via .env; defaults fit a 4-CPU / 8 GB minimum host.
+          # Beefier workstations can raise via POSTGRES_CPUS / POSTGRES_MEMORY.
+          cpus: "${POSTGRES_CPUS:-2}"
+          memory: ${POSTGRES_MEMORY:-2G}
     command: >
       postgres
-      -c shared_buffers=1GB
-      -c effective_cache_size=3GB
-      -c work_mem=64MB
+      -c shared_buffers=512MB
+      -c effective_cache_size=1536MB
+      -c work_mem=32MB
       -c max_connections=200
       -c random_page_cost=1.1
     healthcheck:
@@ -47,8 +49,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "2"
-          memory: 2G
+          cpus: "${REDIS_CPUS:-1}"
+          memory: ${REDIS_MEMORY:-1G}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -105,8 +107,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "8"
-          memory: 8G
+          # Defaults fit a small VPS; raise via APP_CPUS / APP_MEMORY in
+          # .env for beefier hosts. ``--workers 4`` already sets the
+          # uvicorn fan-out independently of this cap.
+          cpus: "${APP_CPUS:-4}"
+          memory: ${APP_MEMORY:-4G}
     command: >
       sh -c "/app/.venv/bin/python -m alembic upgrade head &&
              exec /app/.venv/bin/python -m uvicorn drevalis.main:app --host 0.0.0.0 --port 8000 --workers 4"
@@ -140,8 +145,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "20"
-          memory: 32G
+          # Defaults fit a small VPS (8-CPU / 16 GB). The worker can
+          # legitimately use more on a workstation — raise via
+          # WORKER_CPUS / WORKER_MEMORY in .env. arq's ``max_jobs=8``
+          # caps in-flight jobs separately. The previous hard-coded
+          # ``cpus: "20"`` exceeded any small VPS's host total and made
+          # ``docker compose up`` outright refuse to start.
+          cpus: "${WORKER_CPUS:-6}"
+          memory: ${WORKER_MEMORY:-8G}
     # Use our wrapper instead of ``python -m arq`` directly: it
     # waits for redis DNS to register + TCP to accept before
     # invoking arq, so a slow Docker-DNS race after ``compose up``
