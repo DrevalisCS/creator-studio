@@ -69,9 +69,7 @@ class TestServiceFactory:
 class TestListApiKeys:
     async def test_returns_names_with_timestamps(self) -> None:
         svc = MagicMock()
-        svc.list = AsyncMock(
-            return_value=[_make_entry("runpod"), _make_entry("anthropic")]
-        )
+        svc.list = AsyncMock(return_value=[_make_entry("runpod"), _make_entry("anthropic")])
         out = await list_api_keys(svc=svc)
         names = [item.key_name for item in out.items]
         assert names == ["runpod", "anthropic"]
@@ -123,9 +121,7 @@ class TestDeleteApiKey:
 class TestIntegrationsStatus:
     async def test_db_keys_take_priority_over_env(self) -> None:
         svc = MagicMock()
-        svc.list_stored_names = AsyncMock(
-            return_value={"runpod", "anthropic"}
-        )
+        svc.list_stored_names = AsyncMock(return_value={"runpod", "anthropic"})
         # Env has runpod + anthropic too, but DB wins.
         settings = _make_settings(
             runpod_api_key="env-runpod",

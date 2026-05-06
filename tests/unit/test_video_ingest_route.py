@@ -103,9 +103,7 @@ class TestStartVideoIngest:
 
     async def test_validation_error_maps_to_400(self) -> None:
         svc = MagicMock()
-        svc.upload_and_enqueue = AsyncMock(
-            side_effect=ValidationError("file too large")
-        )
+        svc.upload_and_enqueue = AsyncMock(side_effect=ValidationError("file too large"))
         with pytest.raises(HTTPException) as exc:
             await start_video_ingest(
                 file=_fake_upload(),
@@ -144,9 +142,7 @@ class TestGetVideoIngestJob:
 
     async def test_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.get_job = AsyncMock(
-            side_effect=NotFoundError("video_ingest_job", uuid4())
-        )
+        svc.get_job = AsyncMock(side_effect=NotFoundError("video_ingest_job", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await get_video_ingest_job(uuid4(), svc=svc)
         assert exc.value.status_code == 404
@@ -177,9 +173,7 @@ class TestPickClip:
 
     async def test_validation_error_maps_to_400(self) -> None:
         svc = MagicMock()
-        svc.pick_clip = AsyncMock(
-            side_effect=ValidationError("clip_index out of range")
-        )
+        svc.pick_clip = AsyncMock(side_effect=ValidationError("clip_index out of range"))
         with pytest.raises(HTTPException) as exc:
             await pick_video_ingest_clip(
                 uuid4(),

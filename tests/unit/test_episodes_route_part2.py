@@ -103,9 +103,7 @@ def _make_episode(**overrides: Any) -> Any:
 
 
 class TestFfprobeDuration:
-    async def test_returns_duration_on_zero_returncode(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_returns_duration_on_zero_returncode(self, tmp_path: Path) -> None:
         proc = MagicMock()
         proc.returncode = 0
         proc.communicate = AsyncMock(return_value=(b"42.5\n", b""))
@@ -116,9 +114,7 @@ class TestFfprobeDuration:
             out = await _ffprobe_duration(tmp_path / "x.wav")
         assert out == pytest.approx(42.5)
 
-    async def test_non_zero_returncode_returns_zero(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_non_zero_returncode_returns_zero(self, tmp_path: Path) -> None:
         proc = MagicMock()
         proc.returncode = 1
         proc.communicate = AsyncMock(return_value=(b"", b"err"))
@@ -129,9 +125,7 @@ class TestFfprobeDuration:
             out = await _ffprobe_duration(tmp_path / "x.wav")
         assert out == 0.0
 
-    async def test_unparseable_stdout_returns_zero(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_unparseable_stdout_returns_zero(self, tmp_path: Path) -> None:
         proc = MagicMock()
         proc.returncode = 0
         proc.communicate = AsyncMock(return_value=(b"N/A\n", b""))
@@ -174,34 +168,24 @@ class TestRegenerateScene:
 
     async def test_no_script_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.regenerate_scene = AsyncMock(
-            side_effect=EpisodeNoScriptError(uuid4())
-        )
+        svc.regenerate_scene = AsyncMock(side_effect=EpisodeNoScriptError(uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await regenerate_scene(
-                uuid4(), 1, None, settings=_settings(tmp_path), svc=svc
-            )
+            await regenerate_scene(uuid4(), 1, None, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_scene_not_found_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
         svc.regenerate_scene = AsyncMock(side_effect=SceneNotFoundError(99))
         with pytest.raises(HTTPException) as exc:
-            await regenerate_scene(
-                uuid4(), 99, None, settings=_settings(tmp_path), svc=svc
-            )
+            await regenerate_scene(uuid4(), 99, None, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
         assert "99" in exc.value.detail
 
     async def test_concurrency_429(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.regenerate_scene = AsyncMock(
-            side_effect=ConcurrencyCapReachedError(4)
-        )
+        svc.regenerate_scene = AsyncMock(side_effect=ConcurrencyCapReachedError(4))
         with pytest.raises(HTTPException) as exc:
-            await regenerate_scene(
-                uuid4(), 1, None, settings=_settings(tmp_path), svc=svc
-            )
+            await regenerate_scene(uuid4(), 1, None, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 429
 
 
@@ -209,9 +193,7 @@ class TestRegenerateScene:
 
 
 class TestRegenerateVoice:
-    async def test_query_param_takes_priority_over_body(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_query_param_takes_priority_over_body(self, tmp_path: Path) -> None:
         # Query param wins over JSON body's voice_profile_id.
         svc = MagicMock()
         svc.regenerate_voice = AsyncMock(return_value=[])
@@ -278,9 +260,7 @@ class TestRegenerateVoice:
 
     async def test_no_script_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.regenerate_voice = AsyncMock(
-            side_effect=EpisodeNoScriptError(uuid4())
-        )
+        svc.regenerate_voice = AsyncMock(side_effect=EpisodeNoScriptError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await regenerate_voice(
                 uuid4(),
@@ -295,9 +275,7 @@ class TestRegenerateVoice:
 
     async def test_concurrency_429(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.regenerate_voice = AsyncMock(
-            side_effect=ConcurrencyCapReachedError(4)
-        )
+        svc.regenerate_voice = AsyncMock(side_effect=ConcurrencyCapReachedError(4))
         with pytest.raises(HTTPException) as exc:
             await regenerate_voice(
                 uuid4(),
@@ -353,9 +331,7 @@ class TestRegenerateCaptions:
 
     async def test_not_found_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.regenerate_captions = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.regenerate_captions = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await regenerate_captions(
                 uuid4(),
@@ -378,9 +354,7 @@ class TestSimpleHandlers:
 
     async def test_estimate_cost_404(self) -> None:
         svc = MagicMock()
-        svc.estimate_cost = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.estimate_cost = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await estimate_cost(uuid4(), svc=svc)
         assert exc.value.status_code == 404
@@ -407,9 +381,7 @@ class TestSimpleHandlers:
 
     async def test_reset_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.reset_to_draft = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.reset_to_draft = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await reset_episode(uuid4(), svc=svc)
         assert exc.value.status_code == 404
@@ -464,20 +436,14 @@ class TestListEpisodeMusic:
     async def test_delegates_to_service(self, tmp_path: Path) -> None:
         svc = MagicMock()
         svc.list_music_tracks = AsyncMock(return_value={"tracks": []})
-        out = await list_episode_music(
-            uuid4(), settings=_settings(tmp_path), svc=svc
-        )
+        out = await list_episode_music(uuid4(), settings=_settings(tmp_path), svc=svc)
         assert out == {"tracks": []}
 
     async def test_not_found_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.list_music_tracks = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.list_music_tracks = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await list_episode_music(
-                uuid4(), settings=_settings(tmp_path), svc=svc
-            )
+            await list_episode_music(uuid4(), settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
 
@@ -495,9 +461,7 @@ class TestGenerateEpisodeMusic:
 
     async def test_episode_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.get_or_raise = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.get_or_raise = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await generate_episode_music(
                 uuid4(),
@@ -511,9 +475,7 @@ class TestGenerateEpisodeMusic:
         svc = MagicMock()
         svc.get_or_raise = AsyncMock()
         with pytest.raises(HTTPException) as exc:
-            await generate_episode_music(
-                uuid4(), {"duration": 30}, redis=MagicMock(), svc=svc
-            )
+            await generate_episode_music(uuid4(), {"duration": 30}, redis=MagicMock(), svc=svc)
         assert exc.value.status_code == 400
 
     async def test_empty_mood_400(self) -> None:
@@ -555,9 +517,7 @@ class TestSelectEpisodeMusic:
     async def test_missing_music_path_400(self, tmp_path: Path) -> None:
         svc = MagicMock()
         with pytest.raises(HTTPException) as exc:
-            await select_episode_music(
-                uuid4(), {}, settings=_settings(tmp_path), svc=svc
-            )
+            await select_episode_music(uuid4(), {}, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 400
 
     async def test_clear_selection_succeeds(self, tmp_path: Path) -> None:
@@ -603,9 +563,7 @@ class TestSelectEpisodeMusic:
 
     async def test_episode_not_found_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.select_music = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.select_music = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         out_path = tmp_path / "music" / "track.mp3"
         out_path.parent.mkdir(parents=True)
         out_path.write_bytes(b"\x00")
@@ -648,9 +606,7 @@ class TestSetMusic:
 
     async def test_concurrency_429(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.set_music = AsyncMock(
-            side_effect=ConcurrencyCapReachedError(4)
-        )
+        svc.set_music = AsyncMock(side_effect=ConcurrencyCapReachedError(4))
         with pytest.raises(HTTPException) as exc:
             await set_music(
                 uuid4(),
@@ -666,7 +622,7 @@ class TestSetMusic:
 
 class TestSanitizeFilename:
     def test_strips_bad_chars(self) -> None:
-        out = _sanitize_filename("Series: Test/Co", "Hook \"A\"")
+        out = _sanitize_filename("Series: Test/Co", 'Hook "A"')
         # No slashes / colons / quotes survive.
         assert "/" not in out
         assert ":" not in out
@@ -727,9 +683,7 @@ class TestExportEndpoints:
         svc.get_with_series_or_raise = AsyncMock(return_value=ep)
         svc.get_video_asset_path = AsyncMock(return_value=None)
         with pytest.raises(HTTPException) as exc:
-            await export_video(
-                ep.id, settings=_settings(tmp_path), svc=svc
-            )
+            await export_video(ep.id, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_video_file_not_on_disk_404(self, tmp_path: Path) -> None:
@@ -738,9 +692,7 @@ class TestExportEndpoints:
         svc.get_with_series_or_raise = AsyncMock(return_value=ep)
         svc.get_video_asset_path = AsyncMock(return_value="missing.mp4")
         with pytest.raises(HTTPException) as exc:
-            await export_video(
-                ep.id, settings=_settings(tmp_path), svc=svc
-            )
+            await export_video(ep.id, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
         assert "Video file not found" in exc.value.detail
 
@@ -752,22 +704,16 @@ class TestExportEndpoints:
         out_path.write_bytes(b"\x00" * 100)
         svc.get_video_asset_path = AsyncMock(return_value="video.mp4")
 
-        out = await export_video(
-            ep.id, settings=_settings(tmp_path), svc=svc
-        )
+        out = await export_video(ep.id, settings=_settings(tmp_path), svc=svc)
         # FileResponse with sanitized filename.
         assert out.media_type == "video/mp4"
         assert "Hook" in out.filename or "Series" in out.filename
 
     async def test_episode_not_found_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.get_with_series_or_raise = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.get_with_series_or_raise = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await export_video(
-                uuid4(), settings=_settings(tmp_path), svc=svc
-            )
+            await export_video(uuid4(), settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_thumbnail_no_asset_404(self, tmp_path: Path) -> None:
@@ -776,9 +722,7 @@ class TestExportEndpoints:
         svc.get_with_series_or_raise = AsyncMock(return_value=ep)
         svc.get_thumbnail_asset_path = AsyncMock(return_value=None)
         with pytest.raises(HTTPException) as exc:
-            await export_thumbnail(
-                ep.id, settings=_settings(tmp_path), svc=svc
-            )
+            await export_thumbnail(ep.id, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_thumbnail_file_missing_404(self, tmp_path: Path) -> None:
@@ -787,9 +731,7 @@ class TestExportEndpoints:
         svc.get_with_series_or_raise = AsyncMock(return_value=ep)
         svc.get_thumbnail_asset_path = AsyncMock(return_value="missing.jpg")
         with pytest.raises(HTTPException) as exc:
-            await export_thumbnail(
-                ep.id, settings=_settings(tmp_path), svc=svc
-            )
+            await export_thumbnail(ep.id, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_description_returns_text(self, tmp_path: Path) -> None:
@@ -813,9 +755,7 @@ class TestExportBundle:
         svc.get_thumbnail_asset_path = AsyncMock(return_value=None)
         svc.get_caption_asset_path = AsyncMock(return_value=None)
         with pytest.raises(HTTPException) as exc:
-            await export_bundle(
-                ep.id, settings=_settings(tmp_path), svc=svc
-            )
+            await export_bundle(ep.id, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_assembles_zip_bundle(self, tmp_path: Path) -> None:
@@ -834,9 +774,7 @@ class TestExportBundle:
         svc.get_thumbnail_asset_path = AsyncMock(return_value="thumb.jpg")
         svc.get_caption_asset_path = AsyncMock(return_value="captions.srt")
 
-        out = await export_bundle(
-            ep.id, settings=_settings(tmp_path), svc=svc
-        )
+        out = await export_bundle(ep.id, settings=_settings(tmp_path), svc=svc)
         assert out.media_type == "application/zip"
         assert len(out.body) > 0
 
@@ -884,9 +822,7 @@ class TestUploadThumbnail:
 
     async def test_episode_not_found_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.get_or_raise = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.get_or_raise = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         # Use a real PNG so we get past the Pillow decode and reach the
         # episode lookup (where 404 fires).
         from io import BytesIO
@@ -916,9 +852,7 @@ class TestUploadThumbnail:
             )
         assert exc.value.status_code == 400
 
-    async def test_success_writes_jpeg_and_replaces_asset(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_success_writes_jpeg_and_replaces_asset(self, tmp_path: Path) -> None:
         from io import BytesIO
 
         from PIL import Image

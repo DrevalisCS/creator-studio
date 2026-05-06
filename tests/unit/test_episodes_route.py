@@ -165,9 +165,7 @@ class TestCreate:
         svc = MagicMock()
         ep = _make_episode(title="X")
         svc.create = AsyncMock(return_value=ep)
-        out = await create_episode(
-            EpisodeCreate(series_id=ep.series_id, title="X"), svc=svc
-        )
+        out = await create_episode(EpisodeCreate(series_id=ep.series_id, title="X"), svc=svc)
         assert out.title == "X"
 
 
@@ -204,9 +202,7 @@ class TestGetEpisode:
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.get_with_assets_or_raise = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.get_with_assets_or_raise = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await get_episode(uuid4(), svc=svc)
         assert exc.value.status_code == 404
@@ -220,9 +216,7 @@ class TestUpdate:
         svc = MagicMock()
         ep = _make_episode(title="renamed")
         svc.update = AsyncMock(return_value=ep)
-        out = await update_episode(
-            ep.id, EpisodeUpdate(title="renamed"), svc=svc
-        )
+        out = await update_episode(ep.id, EpisodeUpdate(title="renamed"), svc=svc)
         assert out.title == "renamed"
         # exclude_unset semantics.
         kwargs = svc.update.call_args.args[1]
@@ -247,9 +241,7 @@ class TestUpdate:
 
 
 class TestDelete:
-    async def test_delegates_to_service_with_storage_callback(
-        self, tmp_path: Any
-    ) -> None:
+    async def test_delegates_to_service_with_storage_callback(self, tmp_path: Any) -> None:
         svc = MagicMock()
         svc.delete = AsyncMock()
         await delete_episode(uuid4(), settings=_settings(tmp_path), svc=svc)
@@ -282,11 +274,12 @@ class TestGenerateEpisode:
         async def _redis_gen() -> Any:
             yield AsyncMock()
 
-        with patch(
-            "drevalis.core.license.quota.check_and_increment_episode_quota",
-            quota,
-        ), patch(
-            "drevalis.core.redis.get_redis", return_value=_redis_gen()
+        with (
+            patch(
+                "drevalis.core.license.quota.check_and_increment_episode_quota",
+                quota,
+            ),
+            patch("drevalis.core.redis.get_redis", return_value=_redis_gen()),
         ):
             await generate_episode(
                 uuid4(),
@@ -304,11 +297,12 @@ class TestGenerateEpisode:
         async def _redis_gen() -> Any:
             yield AsyncMock()
 
-        with patch(
-            "drevalis.core.license.quota.check_and_increment_episode_quota",
-            AsyncMock(),
-        ), patch(
-            "drevalis.core.redis.get_redis", return_value=_redis_gen()
+        with (
+            patch(
+                "drevalis.core.license.quota.check_and_increment_episode_quota",
+                AsyncMock(),
+            ),
+            patch("drevalis.core.redis.get_redis", return_value=_redis_gen()),
         ):
             out = await generate_episode(
                 uuid4(),
@@ -327,11 +321,12 @@ class TestGenerateEpisode:
         async def _redis_gen() -> Any:
             yield AsyncMock()
 
-        with patch(
-            "drevalis.core.license.quota.check_and_increment_episode_quota",
-            AsyncMock(),
-        ), patch(
-            "drevalis.core.redis.get_redis", return_value=_redis_gen()
+        with (
+            patch(
+                "drevalis.core.license.quota.check_and_increment_episode_quota",
+                AsyncMock(),
+            ),
+            patch("drevalis.core.redis.get_redis", return_value=_redis_gen()),
         ):
             await generate_episode(
                 uuid4(),
@@ -349,16 +344,15 @@ class TestGenerateEpisode:
         async def _redis_gen() -> Any:
             yield AsyncMock()
 
-        with patch(
-            "drevalis.core.license.quota.check_and_increment_episode_quota",
-            AsyncMock(),
-        ), patch(
-            "drevalis.core.redis.get_redis", return_value=_redis_gen()
+        with (
+            patch(
+                "drevalis.core.license.quota.check_and_increment_episode_quota",
+                AsyncMock(),
+            ),
+            patch("drevalis.core.redis.get_redis", return_value=_redis_gen()),
         ):
             with pytest.raises(HTTPException) as exc:
-                await generate_episode(
-                    uuid4(), payload=None, settings=_settings(), svc=svc
-                )
+                await generate_episode(uuid4(), payload=None, settings=_settings(), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_invalid_status_409_with_current_status(self) -> None:
@@ -376,39 +370,35 @@ class TestGenerateEpisode:
         async def _redis_gen() -> Any:
             yield AsyncMock()
 
-        with patch(
-            "drevalis.core.license.quota.check_and_increment_episode_quota",
-            AsyncMock(),
-        ), patch(
-            "drevalis.core.redis.get_redis", return_value=_redis_gen()
+        with (
+            patch(
+                "drevalis.core.license.quota.check_and_increment_episode_quota",
+                AsyncMock(),
+            ),
+            patch("drevalis.core.redis.get_redis", return_value=_redis_gen()),
         ):
             with pytest.raises(HTTPException) as exc:
-                await generate_episode(
-                    uuid4(), payload=None, settings=_settings(), svc=svc
-                )
+                await generate_episode(uuid4(), payload=None, settings=_settings(), svc=svc)
         assert exc.value.status_code == 409
         assert "exported" in exc.value.detail
         assert "draft" in exc.value.detail or "failed" in exc.value.detail
 
     async def test_concurrency_cap_429(self) -> None:
         svc = MagicMock()
-        svc.generate = AsyncMock(
-            side_effect=ConcurrencyCapReachedError("4/4 generations active")
-        )
+        svc.generate = AsyncMock(side_effect=ConcurrencyCapReachedError("4/4 generations active"))
 
         async def _redis_gen() -> Any:
             yield AsyncMock()
 
-        with patch(
-            "drevalis.core.license.quota.check_and_increment_episode_quota",
-            AsyncMock(),
-        ), patch(
-            "drevalis.core.redis.get_redis", return_value=_redis_gen()
+        with (
+            patch(
+                "drevalis.core.license.quota.check_and_increment_episode_quota",
+                AsyncMock(),
+            ),
+            patch("drevalis.core.redis.get_redis", return_value=_redis_gen()),
         ):
             with pytest.raises(HTTPException) as exc:
-                await generate_episode(
-                    uuid4(), payload=None, settings=_settings(), svc=svc
-                )
+                await generate_episode(uuid4(), payload=None, settings=_settings(), svc=svc)
         assert exc.value.status_code == 429
 
 
@@ -426,18 +416,14 @@ class TestRetry:
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.retry_first_failed = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.retry_first_failed = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await retry_episode(uuid4(), settings=_settings(), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_concurrency_cap_429(self) -> None:
         svc = MagicMock()
-        svc.retry_first_failed = AsyncMock(
-            side_effect=ConcurrencyCapReachedError("cap")
-        )
+        svc.retry_first_failed = AsyncMock(side_effect=ConcurrencyCapReachedError("cap"))
         with pytest.raises(HTTPException) as exc:
             await retry_episode(uuid4(), settings=_settings(), svc=svc)
         assert exc.value.status_code == 429
@@ -457,9 +443,7 @@ class TestRetryStep:
         svc = MagicMock()
         jid = uuid4()
         svc.retry_step = AsyncMock(return_value=jid)
-        out = await retry_episode_step(
-            uuid4(), step="voice", settings=_settings(), svc=svc
-        )
+        out = await retry_episode_step(uuid4(), step="voice", settings=_settings(), svc=svc)
         assert out.job_id == jid
         assert out.step == "voice"
 
@@ -467,20 +451,14 @@ class TestRetryStep:
         svc = MagicMock()
         svc.retry_step = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await retry_episode_step(
-                uuid4(), step="voice", settings=_settings(), svc=svc
-            )
+            await retry_episode_step(uuid4(), step="voice", settings=_settings(), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_concurrency_429(self) -> None:
         svc = MagicMock()
-        svc.retry_step = AsyncMock(
-            side_effect=ConcurrencyCapReachedError("x")
-        )
+        svc.retry_step = AsyncMock(side_effect=ConcurrencyCapReachedError("x"))
         with pytest.raises(HTTPException) as exc:
-            await retry_episode_step(
-                uuid4(), step="voice", settings=_settings(), svc=svc
-            )
+            await retry_episode_step(uuid4(), step="voice", settings=_settings(), svc=svc)
         assert exc.value.status_code == 429
 
 
@@ -515,31 +493,21 @@ class TestUpdateScript:
     async def test_success(self) -> None:
         svc = MagicMock()
         svc.update_script = AsyncMock(return_value={"scenes": []})
-        out = await update_episode_script(
-            uuid4(), ScriptUpdate(script={"scenes": []}), svc=svc
-        )
+        out = await update_episode_script(uuid4(), ScriptUpdate(script={"scenes": []}), svc=svc)
         assert out == {"scenes": []}
 
     async def test_validation_422(self) -> None:
         svc = MagicMock()
-        svc.update_script = AsyncMock(
-            side_effect=ScriptValidationError("missing keys")
-        )
+        svc.update_script = AsyncMock(side_effect=ScriptValidationError("missing keys"))
         with pytest.raises(HTTPException) as exc:
-            await update_episode_script(
-                uuid4(), ScriptUpdate(script={}), svc=svc
-            )
+            await update_episode_script(uuid4(), ScriptUpdate(script={}), svc=svc)
         assert exc.value.status_code == 422
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.update_script = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.update_script = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await update_episode_script(
-                uuid4(), ScriptUpdate(script={}), svc=svc
-            )
+            await update_episode_script(uuid4(), ScriptUpdate(script={}), svc=svc)
         assert exc.value.status_code == 404
 
 
@@ -550,25 +518,19 @@ class TestUpdateScene:
     async def test_success(self) -> None:
         svc = MagicMock()
         svc.update_scene = AsyncMock(return_value={"scene_number": 1})
-        out = await update_scene(
-            uuid4(), 1, {"narration": "new"}, svc=svc
-        )
+        out = await update_scene(uuid4(), 1, {"narration": "new"}, svc=svc)
         assert out["scene"]["scene_number"] == 1
 
     async def test_no_script_404(self) -> None:
         svc = MagicMock()
-        svc.update_scene = AsyncMock(
-            side_effect=EpisodeNoScriptError(uuid4())
-        )
+        svc.update_scene = AsyncMock(side_effect=EpisodeNoScriptError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await update_scene(uuid4(), 1, {}, svc=svc)
         assert exc.value.status_code == 404
 
     async def test_scene_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.update_scene = AsyncMock(
-            side_effect=SceneNotFoundError(99)
-        )
+        svc.update_scene = AsyncMock(side_effect=SceneNotFoundError(99))
         with pytest.raises(HTTPException) as exc:
             await update_scene(uuid4(), 99, {}, svc=svc)
         assert exc.value.status_code == 404
@@ -588,27 +550,21 @@ class TestDeleteScene:
 
     async def test_no_script_404(self) -> None:
         svc = MagicMock()
-        svc.delete_scene = AsyncMock(
-            side_effect=EpisodeNoScriptError(uuid4())
-        )
+        svc.delete_scene = AsyncMock(side_effect=EpisodeNoScriptError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await delete_scene(uuid4(), 1, svc=svc)
         assert exc.value.status_code == 404
 
     async def test_scene_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.delete_scene = AsyncMock(
-            side_effect=SceneNotFoundError(99)
-        )
+        svc.delete_scene = AsyncMock(side_effect=SceneNotFoundError(99))
         with pytest.raises(HTTPException) as exc:
             await delete_scene(uuid4(), 99, svc=svc)
         assert exc.value.status_code == 404
 
     async def test_validation_422(self) -> None:
         svc = MagicMock()
-        svc.delete_scene = AsyncMock(
-            side_effect=ScriptValidationError("would leave 0 scenes")
-        )
+        svc.delete_scene = AsyncMock(side_effect=ScriptValidationError("would leave 0 scenes"))
         with pytest.raises(HTTPException) as exc:
             await delete_scene(uuid4(), 1, svc=svc)
         assert exc.value.status_code == 422
@@ -638,18 +594,14 @@ class TestReorderScenes:
 
     async def test_validation_422(self) -> None:
         svc = MagicMock()
-        svc.reorder_scenes = AsyncMock(
-            side_effect=ScriptValidationError("dup scene")
-        )
+        svc.reorder_scenes = AsyncMock(side_effect=ScriptValidationError("dup scene"))
         with pytest.raises(HTTPException) as exc:
             await reorder_scenes(uuid4(), {"order": [1, 1, 2]}, svc=svc)
         assert exc.value.status_code == 422
 
     async def test_no_script_404(self) -> None:
         svc = MagicMock()
-        svc.reorder_scenes = AsyncMock(
-            side_effect=EpisodeNoScriptError(uuid4())
-        )
+        svc.reorder_scenes = AsyncMock(side_effect=EpisodeNoScriptError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await reorder_scenes(uuid4(), {"order": [1]}, svc=svc)
         assert exc.value.status_code == 404
@@ -662,9 +614,7 @@ class TestSplitMerge:
     async def test_split_success(self) -> None:
         svc = MagicMock()
         svc.split_scene = AsyncMock(return_value=6)
-        out = await split_scene(
-            uuid4(), 1, {"char_offset": 50}, svc=svc
-        )
+        out = await split_scene(uuid4(), 1, {"char_offset": 50}, svc=svc)
         assert out["total_scenes"] == 6
         # int coercion happened.
         called_offset = svc.split_scene.call_args.args[2]
@@ -678,27 +628,21 @@ class TestSplitMerge:
 
     async def test_split_scene_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.split_scene = AsyncMock(
-            side_effect=SceneNotFoundError(1)
-        )
+        svc.split_scene = AsyncMock(side_effect=SceneNotFoundError(1))
         with pytest.raises(HTTPException) as exc:
             await split_scene(uuid4(), 1, {}, svc=svc)
         assert exc.value.status_code == 404
 
     async def test_split_validation_422(self) -> None:
         svc = MagicMock()
-        svc.split_scene = AsyncMock(
-            side_effect=ScriptValidationError("char_offset out of range")
-        )
+        svc.split_scene = AsyncMock(side_effect=ScriptValidationError("char_offset out of range"))
         with pytest.raises(HTTPException) as exc:
             await split_scene(uuid4(), 1, {"char_offset": 9999}, svc=svc)
         assert exc.value.status_code == 422
 
     async def test_split_no_script_404(self) -> None:
         svc = MagicMock()
-        svc.split_scene = AsyncMock(
-            side_effect=EpisodeNoScriptError(uuid4())
-        )
+        svc.split_scene = AsyncMock(side_effect=EpisodeNoScriptError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await split_scene(uuid4(), 1, {}, svc=svc)
         assert exc.value.status_code == 404
@@ -706,7 +650,5 @@ class TestSplitMerge:
     async def test_merge_success(self) -> None:
         svc = MagicMock()
         svc.merge_scenes = AsyncMock(return_value=4)
-        out = await merge_scenes(
-            uuid4(), {"scene_number": 2}, svc=svc
-        )
+        out = await merge_scenes(uuid4(), {"scene_number": 2}, svc=svc)
         assert out["total_scenes"] == 4

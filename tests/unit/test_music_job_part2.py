@@ -102,25 +102,29 @@ class TestMusicGenerationHappy:
 
         ep_id = uuid4()
 
-        with patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=srv_repo,
-        ), patch(
-            "drevalis.services.comfyui.ComfyUIClient",
-            return_value=client,
-        ), patch(
-            "drevalis.core.config.Settings",
-            return_value=_settings(tmp_path),
-        ), patch(
-            "drevalis.services.ffmpeg.FFmpegService",
-            return_value=ffmpeg,
+        with (
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=srv_repo,
+            ),
+            patch(
+                "drevalis.services.comfyui.ComfyUIClient",
+                return_value=client,
+            ),
+            patch(
+                "drevalis.core.config.Settings",
+                return_value=_settings(tmp_path),
+            ),
+            patch(
+                "drevalis.services.ffmpeg.FFmpegService",
+                return_value=ffmpeg,
+            ),
         ):
-            out = await generate_episode_music(
-                _ctx(db), str(ep_id), "epic", 30.0
-            )
+            out = await generate_episode_music(_ctx(db), str(ep_id), "epic", 30.0)
 
         assert out["mood"] == "epic"
         assert out["duration"] == 42.0
@@ -171,25 +175,29 @@ class TestMusicGenerationHappy:
         ffmpeg = MagicMock()
         ffmpeg.get_duration = AsyncMock(side_effect=ConnectionError("ffmpeg"))
 
-        with patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=srv_repo,
-        ), patch(
-            "drevalis.services.comfyui.ComfyUIClient",
-            return_value=client,
-        ), patch(
-            "drevalis.core.config.Settings",
-            return_value=_settings(tmp_path),
-        ), patch(
-            "drevalis.services.ffmpeg.FFmpegService",
-            return_value=ffmpeg,
+        with (
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=srv_repo,
+            ),
+            patch(
+                "drevalis.services.comfyui.ComfyUIClient",
+                return_value=client,
+            ),
+            patch(
+                "drevalis.core.config.Settings",
+                return_value=_settings(tmp_path),
+            ),
+            patch(
+                "drevalis.services.ffmpeg.FFmpegService",
+                return_value=ffmpeg,
+            ),
         ):
-            out = await generate_episode_music(
-                _ctx(db), str(uuid4()), "calm", 10.0
-            )
+            out = await generate_episode_music(_ctx(db), str(uuid4()), "calm", 10.0)
         # Pin: duration falls back to 0.0 instead of raising.
         assert out["duration"] == 0.0
 
@@ -213,9 +221,7 @@ class TestMusicGenerationErrors:
         ep_repo = MagicMock()
         ep_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         srv_repo = MagicMock()
-        srv_repo.get_active_servers = AsyncMock(
-            return_value=[_server(api_key_encrypted=b"opaque")]
-        )
+        srv_repo.get_active_servers = AsyncMock(return_value=[_server(api_key_encrypted=b"opaque")])
 
         client = MagicMock()
         client.queue_prompt = AsyncMock(return_value="p1")
@@ -241,28 +247,33 @@ class TestMusicGenerationErrors:
         ffmpeg = MagicMock()
         ffmpeg.get_duration = AsyncMock(return_value=10.0)
 
-        with patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=srv_repo,
-        ), patch(
-            "drevalis.services.comfyui.ComfyUIClient",
-            return_value=client,
-        ), patch(
-            "drevalis.core.config.Settings",
-            return_value=_settings(tmp_path),
-        ), patch(
-            "drevalis.services.ffmpeg.FFmpegService",
-            return_value=ffmpeg,
-        ), patch(
-            "drevalis.core.security.decrypt_value",
-            side_effect=ValueError("decrypt failed"),
+        with (
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=srv_repo,
+            ),
+            patch(
+                "drevalis.services.comfyui.ComfyUIClient",
+                return_value=client,
+            ),
+            patch(
+                "drevalis.core.config.Settings",
+                return_value=_settings(tmp_path),
+            ),
+            patch(
+                "drevalis.services.ffmpeg.FFmpegService",
+                return_value=ffmpeg,
+            ),
+            patch(
+                "drevalis.core.security.decrypt_value",
+                side_effect=ValueError("decrypt failed"),
+            ),
         ):
-            out = await generate_episode_music(
-                _ctx(db), str(uuid4()), "epic", 10.0
-            )
+            out = await generate_episode_music(_ctx(db), str(uuid4()), "epic", 10.0)
         # Job still completes despite decrypt failure.
         assert "error" not in out
         assert out["filename"].startswith("epic_")
@@ -302,22 +313,25 @@ class TestMusicGenerationErrors:
         )
         client.close = AsyncMock()
 
-        with patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=srv_repo,
-        ), patch(
-            "drevalis.services.comfyui.ComfyUIClient",
-            return_value=client,
-        ), patch(
-            "drevalis.core.config.Settings",
-            return_value=_settings(tmp_path),
+        with (
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=srv_repo,
+            ),
+            patch(
+                "drevalis.services.comfyui.ComfyUIClient",
+                return_value=client,
+            ),
+            patch(
+                "drevalis.core.config.Settings",
+                return_value=_settings(tmp_path),
+            ),
         ):
-            out = await generate_episode_music(
-                _ctx(db), str(uuid4()), "epic", 10.0
-            )
+            out = await generate_episode_music(_ctx(db), str(uuid4()), "epic", 10.0)
         assert "error" in out
         # Pin: error string surfaces both the node type and exception
         # message so the operator can see exactly which workflow node
@@ -349,22 +363,25 @@ class TestMusicGenerationErrors:
         )
         client.close = AsyncMock()
 
-        with patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=srv_repo,
-        ), patch(
-            "drevalis.services.comfyui.ComfyUIClient",
-            return_value=client,
-        ), patch(
-            "drevalis.core.config.Settings",
-            return_value=_settings(tmp_path),
+        with (
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=srv_repo,
+            ),
+            patch(
+                "drevalis.services.comfyui.ComfyUIClient",
+                return_value=client,
+            ),
+            patch(
+                "drevalis.core.config.Settings",
+                return_value=_settings(tmp_path),
+            ),
         ):
-            out = await generate_episode_music(
-                _ctx(db), str(uuid4()), "epic", 10.0
-            )
+            out = await generate_episode_music(_ctx(db), str(uuid4()), "epic", 10.0)
         assert "error" in out
         assert "no audio output" in out["error"]
         client.close.assert_awaited_once()
@@ -391,22 +408,25 @@ class TestMusicGenerationErrors:
         client.get_history = AsyncMock(return_value=None)
         client.close = AsyncMock()
 
-        with patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=srv_repo,
-        ), patch(
-            "drevalis.services.comfyui.ComfyUIClient",
-            return_value=client,
-        ), patch(
-            "drevalis.core.config.Settings",
-            return_value=_settings(tmp_path),
+        with (
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=srv_repo,
+            ),
+            patch(
+                "drevalis.services.comfyui.ComfyUIClient",
+                return_value=client,
+            ),
+            patch(
+                "drevalis.core.config.Settings",
+                return_value=_settings(tmp_path),
+            ),
         ):
-            out = await generate_episode_music(
-                _ctx(db), str(uuid4()), "epic", 10.0
-            )
+            out = await generate_episode_music(_ctx(db), str(uuid4()), "epic", 10.0)
         assert "error" in out
         assert "timed out" in out["error"]
         client.close.assert_awaited_once()

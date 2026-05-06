@@ -151,9 +151,7 @@ async def _publish_scheduled_posts_locked(
                     # local error — re-uploading would duplicate the
                     # video on YouTube.
                     upload_repo_pre = YouTubeUploadRepository(session)
-                    existing = await upload_repo_pre.get_existing_done(
-                        post.content_id, channel.id
-                    )
+                    existing = await upload_repo_pre.get_existing_done(post.content_id, channel.id)
                     if existing is not None and post.content_type == "episode":
                         log.info(
                             "scheduled_post_skip_duplicate",
@@ -343,9 +341,7 @@ async def _publish_scheduled_posts_locked(
                         post.content_id, "video"
                     )
                     if not video_assets:
-                        raise RuntimeError(
-                            f"No video asset for episode {post.content_id}"
-                        )
+                        raise RuntimeError(f"No video asset for episode {post.content_id}")
 
                     upload_row = SocialUpload(
                         platform_id=platform_row.id,

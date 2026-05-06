@@ -169,9 +169,7 @@ class TestApplyTemplateToSeries:
 
     async def test_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.apply_to_series = AsyncMock(
-            side_effect=NotFoundError("video_template", uuid4())
-        )
+        svc.apply_to_series = AsyncMock(side_effect=NotFoundError("video_template", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await apply_template_to_series(uuid4(), uuid4(), svc=svc)
         assert exc.value.status_code == 404

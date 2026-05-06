@@ -117,7 +117,5 @@ class TestApplyPack:
         svc = MagicMock()
         svc.apply = AsyncMock(side_effect=NotFoundError("character_pack", uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await apply_pack(
-                uuid4(), ApplyPackRequest(series_id=uuid4()), svc=svc
-            )
+            await apply_pack(uuid4(), ApplyPackRequest(series_id=uuid4()), svc=svc)
         assert exc.value.status_code == 404

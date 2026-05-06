@@ -141,9 +141,7 @@ class TestGenerateScript:
 class TestGetScriptJob:
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.get_script_job = AsyncMock(
-            side_effect=NotFoundError("script_job", uuid4())
-        )
+        svc.get_script_job = AsyncMock(side_effect=NotFoundError("script_job", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await get_script_job("missing", svc=svc)
         assert exc.value.status_code == 404
@@ -204,9 +202,7 @@ class TestCancelScriptJob:
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.cancel_script_job = AsyncMock(
-            side_effect=NotFoundError("script_job", uuid4())
-        )
+        svc.cancel_script_job = AsyncMock(side_effect=NotFoundError("script_job", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await cancel_script_job("nope", svc=svc)
         assert exc.value.status_code == 404
@@ -230,9 +226,7 @@ class TestCreateAI:
 
     async def test_validation_400(self) -> None:
         svc = MagicMock()
-        svc.create_ai = AsyncMock(
-            side_effect=ValidationError("LLM not configured")
-        )
+        svc.create_ai = AsyncMock(side_effect=ValidationError("LLM not configured"))
         with pytest.raises(HTTPException) as exc:
             await create_ai_audiobook(
                 AudiobookAICreateRequest(concept="A dragon adventure tale"),
@@ -242,9 +236,7 @@ class TestCreateAI:
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.create_ai = AsyncMock(
-            side_effect=NotFoundError("voice_profile", uuid4())
-        )
+        svc.create_ai = AsyncMock(side_effect=NotFoundError("voice_profile", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await create_ai_audiobook(
                 AudiobookAICreateRequest(concept="A dragon adventure tale"),
@@ -260,13 +252,9 @@ class TestListAndCreate:
     async def test_list_passes_filters(self) -> None:
         svc = MagicMock()
         svc.list_filtered = AsyncMock(return_value=[_make_ab()])
-        out = await list_audiobooks(
-            status_filter="done", offset=10, limit=25, svc=svc
-        )
+        out = await list_audiobooks(status_filter="done", offset=10, limit=25, svc=svc)
         assert len(out) == 1
-        svc.list_filtered.assert_awaited_once_with(
-            status_filter="done", offset=10, limit=25
-        )
+        svc.list_filtered.assert_awaited_once_with(status_filter="done", offset=10, limit=25)
 
     async def test_create_success(self) -> None:
         svc = MagicMock()
@@ -301,9 +289,7 @@ class TestListAndCreate:
 
     async def test_create_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.create = AsyncMock(
-            side_effect=NotFoundError("voice_profile", uuid4())
-        )
+        svc.create = AsyncMock(side_effect=NotFoundError("voice_profile", uuid4()))
         with patch(
             "drevalis.schemas.audiobook.resolve_audiobook_settings",
             return_value=MagicMock(model_dump=MagicMock(return_value={})),
@@ -378,9 +364,7 @@ class TestUploadCover:
         assert target.exists()
         assert target.read_bytes()[:4] == b"\x89PNG"
 
-    async def test_unknown_extension_falls_back_to_png(
-        self, tmp_path: Any
-    ) -> None:
+    async def test_unknown_extension_falls_back_to_png(self, tmp_path: Any) -> None:
         # Filename without extension → fallback `.png`.
         out = await upload_cover_image(
             file=_ufile(_png_bytes(), filename="bare", mime="image/png"),
@@ -410,9 +394,7 @@ class TestCrud:
     async def test_update_success(self) -> None:
         svc = MagicMock()
         svc.update_metadata = AsyncMock(return_value=_make_ab(title="renamed"))
-        out = await update_audiobook(
-            uuid4(), AudiobookUpdate(title="renamed"), svc=svc
-        )
+        out = await update_audiobook(uuid4(), AudiobookUpdate(title="renamed"), svc=svc)
         assert out.title == "renamed"
         # exclude_unset semantics.
         kwargs = svc.update_metadata.call_args.args[1]
@@ -422,39 +404,27 @@ class TestCrud:
         svc = MagicMock()
         svc.update_metadata = AsyncMock(side_effect=ValidationError("bad"))
         with pytest.raises(HTTPException) as exc:
-            await update_audiobook(
-                uuid4(), AudiobookUpdate(title="x"), svc=svc
-            )
+            await update_audiobook(uuid4(), AudiobookUpdate(title="x"), svc=svc)
         assert exc.value.status_code == 422
 
     async def test_update_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.update_metadata = AsyncMock(
-            side_effect=NotFoundError("audiobook", uuid4())
-        )
+        svc.update_metadata = AsyncMock(side_effect=NotFoundError("audiobook", uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await update_audiobook(
-                uuid4(), AudiobookUpdate(title="x"), svc=svc
-            )
+            await update_audiobook(uuid4(), AudiobookUpdate(title="x"), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_update_text_success(self) -> None:
         svc = MagicMock()
         svc.update_text = AsyncMock(return_value=_make_ab())
-        await update_audiobook_text(
-            uuid4(), AudiobookTextUpdate(text="new text"), svc=svc
-        )
+        await update_audiobook_text(uuid4(), AudiobookTextUpdate(text="new text"), svc=svc)
         svc.update_text.assert_awaited_once()
 
     async def test_update_text_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.update_text = AsyncMock(
-            side_effect=NotFoundError("audiobook", uuid4())
-        )
+        svc.update_text = AsyncMock(side_effect=NotFoundError("audiobook", uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await update_audiobook_text(
-                uuid4(), AudiobookTextUpdate(text="x"), svc=svc
-            )
+            await update_audiobook_text(uuid4(), AudiobookTextUpdate(text="x"), svc=svc)
         assert exc.value.status_code == 404
 
 
@@ -465,16 +435,12 @@ class TestRegenerateChapter:
     async def test_success(self) -> None:
         svc = MagicMock()
         svc.regenerate_chapter = AsyncMock()
-        out = await regenerate_chapter(
-            uuid4(), 2, ChapterRegeneratePayload(text="new"), svc=svc
-        )
+        out = await regenerate_chapter(uuid4(), 2, ChapterRegeneratePayload(text="new"), svc=svc)
         assert out["chapter_index"] == 2
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.regenerate_chapter = AsyncMock(
-            side_effect=NotFoundError("audiobook", uuid4())
-        )
+        svc.regenerate_chapter = AsyncMock(side_effect=NotFoundError("audiobook", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await regenerate_chapter(uuid4(), 1, None, svc=svc)
         assert exc.value.status_code == 404
@@ -522,18 +488,14 @@ class TestRegenerateChapterImage:
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.regenerate_chapter_image = AsyncMock(
-            side_effect=NotFoundError("audiobook", uuid4())
-        )
+        svc.regenerate_chapter_image = AsyncMock(side_effect=NotFoundError("audiobook", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await regenerate_chapter_image(uuid4(), 1, None, svc=svc)
         assert exc.value.status_code == 404
 
     async def test_validation_422(self) -> None:
         svc = MagicMock()
-        svc.regenerate_chapter_image = AsyncMock(
-            side_effect=ValidationError("invalid prompt")
-        )
+        svc.regenerate_chapter_image = AsyncMock(side_effect=ValidationError("invalid prompt"))
         with pytest.raises(HTTPException) as exc:
             await regenerate_chapter_image(uuid4(), 1, None, svc=svc)
         assert exc.value.status_code == 422
@@ -565,9 +527,7 @@ class TestUpdateVoices:
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.update_voices = AsyncMock(
-            side_effect=NotFoundError("audiobook", uuid4())
-        )
+        svc.update_voices = AsyncMock(side_effect=NotFoundError("audiobook", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await update_audiobook_voices(uuid4(), {}, svc=svc)
         assert exc.value.status_code == 404
@@ -612,9 +572,7 @@ class TestRegenerateAudiobook:
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.regenerate = AsyncMock(
-            side_effect=NotFoundError("audiobook", uuid4())
-        )
+        svc.regenerate = AsyncMock(side_effect=NotFoundError("audiobook", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await regenerate_audiobook(uuid4(), svc=svc)
         assert exc.value.status_code == 404
@@ -627,18 +585,14 @@ class TestRemix:
     async def test_success(self) -> None:
         svc = MagicMock()
         svc.remix = AsyncMock(return_value={"voice_db": -2.0})
-        out = await remix_audiobook(
-            uuid4(), TrackMixPayload(voice_db=-2.0), svc=svc
-        )
+        out = await remix_audiobook(uuid4(), TrackMixPayload(voice_db=-2.0), svc=svc)
         assert out["track_mix"] == {"voice_db": -2.0}
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
         svc.remix = AsyncMock(side_effect=NotFoundError("audiobook", uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await remix_audiobook(
-                uuid4(), TrackMixPayload(voice_db=-2.0), svc=svc
-            )
+            await remix_audiobook(uuid4(), TrackMixPayload(voice_db=-2.0), svc=svc)
         assert exc.value.status_code == 404
 
 

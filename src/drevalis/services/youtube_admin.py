@@ -557,9 +557,7 @@ class YouTubeAdminService:
                         {
                             "upload_id": str(d.id),
                             "video_id": d.youtube_video_id,
-                            "created_at": d.created_at.isoformat()
-                            if d.created_at
-                            else None,
+                            "created_at": d.created_at.isoformat() if d.created_at else None,
                         }
                         for d in dupes
                     ],
@@ -609,9 +607,7 @@ class YouTubeAdminService:
                 #    but don't stop the row-level cleanup.
                 if delete_on_youtube and channel and dupe.youtube_video_id:
                     try:
-                        await self.refresh_and_persist_tokens(
-                            channel, yt_service, commit=False
-                        )
+                        await self.refresh_and_persist_tokens(channel, yt_service, commit=False)
                     except Exception:  # noqa: BLE001
                         # refresh failure isn't fatal — try the delete
                         # with whatever token we already have.
@@ -625,9 +621,7 @@ class YouTubeAdminService:
                         )
                         videos_deleted += 1
                     except Exception as exc:  # noqa: BLE001
-                        delete_errors.append(
-                            f"video={dupe.youtube_video_id}: {str(exc)[:160]}"
-                        )
+                        delete_errors.append(f"video={dupe.youtube_video_id}: {str(exc)[:160]}")
 
                 # 2) Mark the row failed with a clear note. Keeping the
                 #    row (rather than deleting it) preserves the audit

@@ -73,9 +73,7 @@ class TestEarlyCancellation:
             "drevalis.repositories.llm_config.LLMConfigRepository",
             side_effect=AssertionError("must not be reached"),
         ):
-            out = await generate_script_async(
-                ctx, "abc", _payload()
-            )
+            out = await generate_script_async(ctx, "abc", _payload())
         assert out == {"status": "cancelled"}
 
 
@@ -97,18 +95,23 @@ class TestProviderResolution:
         repo = MagicMock()
         repo.get_all = AsyncMock(return_value=[cfg])
 
-        with patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=repo,
-        ), patch(
-            "drevalis.core.security.decrypt_value",
-            return_value="real-key",
-        ), patch(
-            "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
-            AsyncMock(return_value="Title\n\n## Chapter 1\n[Narrator] hi"),
-        ), patch(
-            "drevalis.services.llm.OpenAICompatibleProvider",
-        ) as provider_class:
+        with (
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=repo,
+            ),
+            patch(
+                "drevalis.core.security.decrypt_value",
+                return_value="real-key",
+            ),
+            patch(
+                "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
+                AsyncMock(return_value="Title\n\n## Chapter 1\n[Narrator] hi"),
+            ),
+            patch(
+                "drevalis.services.llm.OpenAICompatibleProvider",
+            ) as provider_class,
+        ):
             await generate_script_async(ctx, "abc", _payload())
 
         # Provider built with DB config's URL + model + decrypted key.
@@ -133,21 +136,22 @@ class TestProviderResolution:
         settings_obj.lm_studio_default_model = "default-model"
         import base64
 
-        settings_obj.encryption_key = base64.urlsafe_b64encode(
-            b"\x00" * 32
-        ).decode()
+        settings_obj.encryption_key = base64.urlsafe_b64encode(b"\x00" * 32).decode()
 
-        with patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=repo,
-        ), patch(
-            "drevalis.core.config.Settings", return_value=settings_obj
-        ), patch(
-            "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
-            AsyncMock(return_value="Title\n\n## Chapter 1\n[Narrator] hi"),
-        ), patch(
-            "drevalis.services.llm.OpenAICompatibleProvider",
-        ) as provider_class:
+        with (
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=repo,
+            ),
+            patch("drevalis.core.config.Settings", return_value=settings_obj),
+            patch(
+                "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
+                AsyncMock(return_value="Title\n\n## Chapter 1\n[Narrator] hi"),
+            ),
+            patch(
+                "drevalis.services.llm.OpenAICompatibleProvider",
+            ) as provider_class,
+        ):
             await generate_script_async(ctx, "abc", _payload())
 
         # Pin: only TWO `Settings()` invocations happen — but the
@@ -171,12 +175,15 @@ class TestMidLLMCancellation:
         repo = MagicMock()
         repo.get_all = AsyncMock(return_value=[])
 
-        with patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=repo,
-        ), patch(
-            "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
-            AsyncMock(return_value=None),  # cancelled mid-LLM
+        with (
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=repo,
+            ),
+            patch(
+                "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
+                AsyncMock(return_value=None),  # cancelled mid-LLM
+            ),
         ):
             out = await generate_script_async(ctx, "abc", _payload())
         assert out == {"status": "cancelled"}
@@ -212,12 +219,15 @@ class TestHappyPath:
             "[Sfx: thunder]\n"  # case-insensitive sfx filter
         )
 
-        with patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=repo,
-        ), patch(
-            "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
-            AsyncMock(return_value=script),
+        with (
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=repo,
+            ),
+            patch(
+                "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
+                AsyncMock(return_value=script),
+            ),
         ):
             out = await generate_script_async(ctx, "abc", _payload())
 
@@ -244,14 +254,10 @@ class TestHappyPath:
         # speakers retained.
         assert "Narrator" in result["characters"]
         assert "Bram" in result["characters"]
-        assert all(
-            not c.lower().startswith("sfx") for c in result["characters"]
-        )
+        assert all(not c.lower().startswith("sfx") for c in result["characters"])
         # Word count + estimated_minutes derived from script text.
         assert result["word_count"] > 0
-        assert result["estimated_minutes"] == round(
-            result["word_count"] / 150, 1
-        )
+        assert result["estimated_minutes"] == round(result["word_count"] / 150, 1)
 
     async def test_empty_script_yields_untitled(self) -> None:
         ctx, redis, _ = _ctx()
@@ -261,12 +267,15 @@ class TestHappyPath:
         repo = MagicMock()
         repo.get_all = AsyncMock(return_value=[])
 
-        with patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=repo,
-        ), patch(
-            "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
-            AsyncMock(return_value=""),
+        with (
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=repo,
+            ),
+            patch(
+                "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
+                AsyncMock(return_value=""),
+            ),
         ):
             out = await generate_script_async(ctx, "abc", _payload())
         # Pin: empty script still goes "done" (the worker doesn't

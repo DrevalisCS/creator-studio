@@ -446,14 +446,10 @@ async def upload_episode(
         or episode.title
     )
     upload_description = (
-        payload.description
-        or script_description
-        or seo_data.get("description", "")
+        payload.description or script_description or seo_data.get("description", "")
     )
     upload_tags = (
-        payload.tags
-        or [h.lstrip("#") for h in script_hashtags]
-        or seo_data.get("tags", [])
+        payload.tags or [h.lstrip("#") for h in script_hashtags] or seo_data.get("tags", [])
     )
 
     # Hashtag tail: prefer the script's own hashtags; only fall back to
@@ -462,9 +458,7 @@ async def upload_episode(
         str(h) for h in seo_data.get("hashtags", []) if isinstance(h, str)
     ]
     if hashtags_for_tail:
-        hashtag_str = " ".join(
-            h if h.startswith("#") else f"#{h}" for h in hashtags_for_tail
-        )
+        hashtag_str = " ".join(h if h.startswith("#") else f"#{h}" for h in hashtags_for_tail)
         if hashtag_str and hashtag_str not in upload_description:
             sep = "\n\n" if upload_description else ""
             upload_description = f"{upload_description}{sep}{hashtag_str}"
@@ -617,9 +611,7 @@ async def dedupe_uploads(
     admin: YouTubeAdminService = Depends(_service),
 ) -> dict[str, Any]:
     yt_service = await build_youtube_service(settings, db)
-    return await admin.dedupe_uploads(
-        yt_service=yt_service, delete_on_youtube=delete_on_youtube
-    )
+    return await admin.dedupe_uploads(yt_service=yt_service, delete_on_youtube=delete_on_youtube)
 
 
 # ── Playlist management ──────────────────────────────────────────────────

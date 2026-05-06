@@ -83,9 +83,7 @@ class TestColorToFfmpeg:
 
 
 class TestBuildOverlayFilters:
-    def test_text_overlay_uses_defaults_and_enable_window(
-        self, tmp_path: Path
-    ) -> None:
+    def test_text_overlay_uses_defaults_and_enable_window(self, tmp_path: Path) -> None:
         overlays: list[dict[str, Any]] = [
             {
                 "kind": "text",
@@ -106,9 +104,7 @@ class TestBuildOverlayFilters:
         assert "enable='between(t,0.000,5.000)'" in f
         assert extras == []
 
-    def test_text_overlay_with_box_and_custom_color(
-        self, tmp_path: Path
-    ) -> None:
+    def test_text_overlay_with_box_and_custom_color(self, tmp_path: Path) -> None:
         overlays: list[dict[str, Any]] = [
             {
                 "kind": "text",
@@ -154,16 +150,12 @@ class TestBuildOverlayFilters:
         # Pin: a `kind=shape` entry without an explicit `shape` field
         # is treated as a rectangle (the v1 default), NOT silently
         # dropped.
-        overlays: list[dict[str, Any]] = [
-            {"kind": "shape", "start_s": 0, "end_s": 1}
-        ]
+        overlays: list[dict[str, Any]] = [{"kind": "shape", "start_s": 0, "end_s": 1}]
         fragments, _ = _build_overlay_filters(overlays, tmp_path)
         assert len(fragments) == 1
         assert "drawbox=" in fragments[0]
 
-    def test_image_overlay_emits_two_fragments_and_extra_input(
-        self, tmp_path: Path
-    ) -> None:
+    def test_image_overlay_emits_two_fragments_and_extra_input(self, tmp_path: Path) -> None:
         # Stage a real image file the resolver will find.
         img = tmp_path / "logo.png"
         img.write_bytes(b"\x89PNG\r\n\x1a\n")
@@ -189,19 +181,13 @@ class TestBuildOverlayFilters:
         assert extras[0][0] == 1
         assert extras[0][1] == img
 
-    def test_image_overlay_missing_asset_path_skipped(
-        self, tmp_path: Path
-    ) -> None:
-        overlays: list[dict[str, Any]] = [
-            {"kind": "image", "start_s": 0, "end_s": 1}
-        ]
+    def test_image_overlay_missing_asset_path_skipped(self, tmp_path: Path) -> None:
+        overlays: list[dict[str, Any]] = [{"kind": "image", "start_s": 0, "end_s": 1}]
         fragments, extras = _build_overlay_filters(overlays, tmp_path)
         assert fragments == []
         assert extras == []
 
-    def test_image_overlay_file_missing_on_disk_skipped(
-        self, tmp_path: Path
-    ) -> None:
+    def test_image_overlay_file_missing_on_disk_skipped(self, tmp_path: Path) -> None:
         # Asset path provided, but the file doesn't exist (post-restore).
         overlays: list[dict[str, Any]] = [
             {
@@ -215,9 +201,7 @@ class TestBuildOverlayFilters:
         assert fragments == []
         assert extras == []
 
-    def test_input_index_increments_across_multiple_images(
-        self, tmp_path: Path
-    ) -> None:
+    def test_input_index_increments_across_multiple_images(self, tmp_path: Path) -> None:
         a = tmp_path / "a.png"
         a.write_bytes(b"\x89PNG")
         b = tmp_path / "b.png"
@@ -243,9 +227,7 @@ class TestBuildOverlayFilters:
         assert [e[0] for e in extras] == [1, 2]
 
     def test_unknown_kind_skipped(self, tmp_path: Path) -> None:
-        overlays: list[dict[str, Any]] = [
-            {"kind": "lottie", "start_s": 0, "end_s": 1}
-        ]
+        overlays: list[dict[str, Any]] = [{"kind": "lottie", "start_s": 0, "end_s": 1}]
         fragments, extras = _build_overlay_filters(overlays, tmp_path)
         # Unknown kinds are silently skipped — the route ignores
         # tracks it doesn't recognise so future timeline shapes don't
@@ -253,9 +235,7 @@ class TestBuildOverlayFilters:
         assert fragments == []
         assert extras == []
 
-    def test_default_end_s_is_one_second_after_start(
-        self, tmp_path: Path
-    ) -> None:
+    def test_default_end_s_is_one_second_after_start(self, tmp_path: Path) -> None:
         # Pin: when `end_s` is missing, the helper defaults it to
         # `start_s + 1`. Without this, a malformed overlay would emit
         # a degenerate `between(t, 5, 5)` enable expression.

@@ -199,9 +199,7 @@ class TestNonYouTubePlatform:
         repo.update = AsyncMock()
 
         # Active social platform connection exists.
-        platform_row = SimpleNamespace(
-            id=uuid4(), platform="instagram", is_active=True
-        )
+        platform_row = SimpleNamespace(id=uuid4(), platform="instagram", is_active=True)
 
         # Build a session that:
         #   - Returns the scheduled post for get_pending

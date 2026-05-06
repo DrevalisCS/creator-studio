@@ -116,9 +116,7 @@ class TestActive:
 
     async def test_active_tasks_wraps_service_payload(self) -> None:
         svc = MagicMock()
-        svc.active_tasks = AsyncMock(
-            return_value=[{"task_id": "abc", "kind": "episode"}]
-        )
+        svc.active_tasks = AsyncMock(return_value=[{"task_id": "abc", "kind": "episode"}])
         out = await get_active_tasks(svc=svc)
         assert "tasks" in out
         assert out["tasks"][0]["task_id"] == "abc"
@@ -130,9 +128,7 @@ class TestActive:
 class TestBatchOperations:
     async def test_cleanup_includes_counts_in_message(self) -> None:
         svc = MagicMock()
-        svc.cleanup_stale = AsyncMock(
-            return_value={"cleaned_jobs": 3, "reset_episodes": 2}
-        )
+        svc.cleanup_stale = AsyncMock(return_value={"cleaned_jobs": 3, "reset_episodes": 2})
         out = await cleanup_stale_jobs(svc=svc)
         assert "3 orphaned" in out["message"]
         assert "2 stale" in out["message"]
@@ -140,9 +136,7 @@ class TestBatchOperations:
 
     async def test_cancel_all_returns_count_message(self) -> None:
         svc = MagicMock()
-        svc.cancel_all = AsyncMock(
-            return_value={"cancelled_episodes": 5, "cancelled_jobs": 9}
-        )
+        svc.cancel_all = AsyncMock(return_value={"cancelled_episodes": 5, "cancelled_jobs": 9})
         out = await cancel_all_jobs(svc=svc)
         assert "5 episode" in out["message"]
         assert out["cancelled_episodes"] == 5
@@ -181,9 +175,7 @@ class TestPriority:
     async def test_set_priority_invalid_maps_to_422(self) -> None:
         svc = MagicMock()
         svc.set_priority = AsyncMock(
-            side_effect=InvalidStatusError(
-                "priority_mode", "x", current="x", allowed=["fifo"]
-            )
+            side_effect=InvalidStatusError("priority_mode", "x", current="x", allowed=["fifo"])
         )
         with pytest.raises(HTTPException) as exc:
             await set_priority(mode="bogus", svc=svc)
@@ -208,9 +200,7 @@ class TestListAllJobs:
         with_episode = _make_job(episode=_make_episode("Hook B", series_name=None))
         # Job with no episode (rare — orphaned job).
         no_episode = _make_job(episode=None)
-        svc.list_all_filtered = AsyncMock(
-            return_value=[with_series, with_episode, no_episode]
-        )
+        svc.list_all_filtered = AsyncMock(return_value=[with_series, with_episode, no_episode])
         out = await list_all_jobs(
             status_filter="queued",
             episode_id=None,
@@ -253,12 +243,8 @@ class TestListJobs:
         svc = MagicMock()
         svc.list_filtered = AsyncMock(return_value=[])
         eid = uuid4()
-        await list_jobs(
-            episode_id=eid, status_filter="queued", limit=50, svc=svc
-        )
-        svc.list_filtered.assert_awaited_once_with(
-            episode_id=eid, status_filter="queued", limit=50
-        )
+        await list_jobs(episode_id=eid, status_filter="queued", limit=50, svc=svc)
+        svc.list_filtered.assert_awaited_once_with(episode_id=eid, status_filter="queued", limit=50)
 
 
 # ── Worker health/restart ──────────────────────────────────────────
@@ -290,9 +276,7 @@ class TestCancelJob:
 
     async def test_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.cancel_job = AsyncMock(
-            side_effect=NotFoundError("generation_job", uuid4())
-        )
+        svc.cancel_job = AsyncMock(side_effect=NotFoundError("generation_job", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await cancel_job(uuid4(), svc=svc)
         assert exc.value.status_code == 404

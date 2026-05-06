@@ -79,9 +79,7 @@ class TestEmDashAndEllipsis:
 
 class TestParentheticalLifting:
     def test_parenthetical_becomes_separate_sentence(self) -> None:
-        out = format_for_tts(
-            "He arrived in 1947 (the same year as Roswell).", "edge"
-        )
+        out = format_for_tts("He arrived in 1947 (the same year as Roswell).", "edge")
         assert out is not None
         assert "(" not in out and ")" not in out
         # The lifted clause becomes its own sentence with a capitalised first letter.

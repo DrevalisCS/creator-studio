@@ -142,9 +142,7 @@ class TestDeleteVideo:
 
     async def test_channel_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.resolve_channel = AsyncMock(
-            side_effect=NotFoundError("youtube_channel", uuid4())
-        )
+        admin.resolve_channel = AsyncMock(side_effect=NotFoundError("youtube_channel", uuid4()))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -235,9 +233,7 @@ class TestCreatePlaylist:
 
     async def test_channel_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.resolve_channel = AsyncMock(
-            side_effect=NotFoundError("youtube_channel", uuid4())
-        )
+        admin.resolve_channel = AsyncMock(side_effect=NotFoundError("youtube_channel", uuid4()))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -255,9 +251,7 @@ class TestCreatePlaylist:
     async def test_ambiguous_400(self) -> None:
         admin = MagicMock()
         admin.resolve_channel = AsyncMock(
-            side_effect=MultipleChannelsAmbiguousError(
-                channels=[_make_channel(), _make_channel()]
-            )
+            side_effect=MultipleChannelsAmbiguousError(channels=[_make_channel(), _make_channel()])
         )
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
@@ -277,9 +271,7 @@ class TestCreatePlaylist:
     async def test_token_refresh_401(self) -> None:
         admin = MagicMock()
         admin.resolve_channel = AsyncMock(return_value=_make_channel())
-        admin.refresh_and_persist_tokens = AsyncMock(
-            side_effect=TokenRefreshError("expired")
-        )
+        admin.refresh_and_persist_tokens = AsyncMock(side_effect=TokenRefreshError("expired"))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -338,9 +330,7 @@ class TestListPlaylists:
 
     async def test_channel_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.resolve_channel = AsyncMock(
-            side_effect=NotFoundError("youtube_channel", uuid4())
-        )
+        admin.resolve_channel = AsyncMock(side_effect=NotFoundError("youtube_channel", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await list_playlists(channel_id=uuid4(), admin=admin)
         assert exc.value.status_code == 404
@@ -348,9 +338,7 @@ class TestListPlaylists:
     async def test_ambiguous_400(self) -> None:
         admin = MagicMock()
         admin.resolve_channel = AsyncMock(
-            side_effect=MultipleChannelsAmbiguousError(
-                channels=[_make_channel()]
-            )
+            side_effect=MultipleChannelsAmbiguousError(channels=[_make_channel()])
         )
         with pytest.raises(HTTPException) as exc:
             await list_playlists(channel_id=None, admin=admin)
@@ -386,9 +374,7 @@ class TestAddVideoToPlaylist:
 
     async def test_playlist_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.get_playlist_with_channel = AsyncMock(
-            side_effect=NotFoundError("playlist", uuid4())
-        )
+        admin.get_playlist_with_channel = AsyncMock(side_effect=NotFoundError("playlist", uuid4()))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -408,9 +394,7 @@ class TestAddVideoToPlaylist:
         admin.get_playlist_with_channel = AsyncMock(
             return_value=(_make_playlist(), _make_channel())
         )
-        admin.refresh_and_persist_tokens = AsyncMock(
-            side_effect=TokenRefreshError("expired")
-        )
+        admin.refresh_and_persist_tokens = AsyncMock(side_effect=TokenRefreshError("expired"))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -476,9 +460,7 @@ class TestDeletePlaylist:
 
     async def test_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.get_playlist_with_channel = AsyncMock(
-            side_effect=NotFoundError("playlist", uuid4())
-        )
+        admin.get_playlist_with_channel = AsyncMock(side_effect=NotFoundError("playlist", uuid4()))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -497,9 +479,7 @@ class TestDeletePlaylist:
         admin.get_playlist_with_channel = AsyncMock(
             return_value=(_make_playlist(), _make_channel())
         )
-        admin.refresh_and_persist_tokens = AsyncMock(
-            side_effect=TokenRefreshError("expired")
-        )
+        admin.refresh_and_persist_tokens = AsyncMock(side_effect=TokenRefreshError("expired"))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -594,9 +574,7 @@ class TestVideoAnalytics:
 
     async def test_channel_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.resolve_channel = AsyncMock(
-            side_effect=NotFoundError("youtube_channel", uuid4())
-        )
+        admin.resolve_channel = AsyncMock(side_effect=NotFoundError("youtube_channel", uuid4()))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -614,9 +592,7 @@ class TestVideoAnalytics:
     async def test_ambiguous_400(self) -> None:
         admin = MagicMock()
         admin.resolve_channel = AsyncMock(
-            side_effect=MultipleChannelsAmbiguousError(
-                channels=[_make_channel()]
-            )
+            side_effect=MultipleChannelsAmbiguousError(channels=[_make_channel()])
         )
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",

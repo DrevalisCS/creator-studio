@@ -38,9 +38,7 @@ class TestDefaultPromptDictSubstitution:
         assert "kodachrome 70s" in out
 
     def test_mixed_placeholders(self) -> None:
-        template = (
-            "Original: {scene_prompt}\nLegacy: {prompt}\nCharacter: {character}"
-        )
+        template = "Original: {scene_prompt}\nLegacy: {prompt}\nCharacter: {character}"
         out = _format(
             template,
             scene_prompt="A",

@@ -119,9 +119,7 @@ class TestStorageUsage:
         # Total reflects only the non-hidden tree.
         assert out.total_size_bytes == 10
 
-    async def test_unreadable_file_skipped_not_crashed(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_unreadable_file_skipped_not_crashed(self, tmp_path: Path) -> None:
         # If `os.path.getsize` raises, the walker continues — pin: the
         # rest of the tree is still summed.
         (tmp_path / "episodes").mkdir()
@@ -152,10 +150,7 @@ class TestStorageMountinfo:
         # /srv/data/storage → tmp_path inside the container. Pin: the
         # route's deepest-mount-wins logic surfaces /srv/data/storage.
         path_str = str(tmp_path.resolve())
-        line = (
-            f"100 99 0:0 /srv/data/storage {path_str} rw,relatime "
-            "shared:1 - ext4 /dev/x rw"
-        )
+        line = f"100 99 0:0 /srv/data/storage {path_str} rw,relatime shared:1 - ext4 /dev/x rw"
         line_root = "1 0 0:0 / / rw - tmpfs tmpfs rw"
         fake_content = f"{line_root}\n{line}\n"
 
@@ -176,9 +171,7 @@ class TestStorageMountinfo:
         # (root + the storage mount).
         assert any("/srv/data/storage" in ln for ln in out.mountinfo_lines)
 
-    async def test_unreadable_mountinfo_falls_back_to_none(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_unreadable_mountinfo_falls_back_to_none(self, tmp_path: Path) -> None:
         # /proc/self/mountinfo missing (Windows host) — pin: the route
         # returns None for host_source_path without crashing.
         original_read_text = Path.read_text
@@ -213,13 +206,14 @@ class TestCheckComfyuiServers:
         # ComfyUIServerService.list_all returns nothing → fallback path.
         admin_svc = MagicMock()
         admin_svc.list_all = AsyncMock(return_value=[])
-        with patch(
-            "drevalis.services.comfyui_admin.ComfyUIServerService",
-            return_value=admin_svc,
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await _check_comfyui_servers(
-                AsyncMock(), "http://localhost:8188", "key"
-            )
+        with (
+            patch(
+                "drevalis.services.comfyui_admin.ComfyUIServerService",
+                return_value=admin_svc,
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await _check_comfyui_servers(AsyncMock(), "http://localhost:8188", "key")
         assert len(out) == 1
         assert out[0].name == "comfyui"
         assert out[0].status == "ok"
@@ -238,13 +232,14 @@ class TestCheckComfyuiServers:
 
         admin_svc = MagicMock()
         admin_svc.list_all = AsyncMock(return_value=[])
-        with patch(
-            "drevalis.services.comfyui_admin.ComfyUIServerService",
-            return_value=admin_svc,
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await _check_comfyui_servers(
-                AsyncMock(), "http://localhost:8188", "key"
-            )
+        with (
+            patch(
+                "drevalis.services.comfyui_admin.ComfyUIServerService",
+                return_value=admin_svc,
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await _check_comfyui_servers(AsyncMock(), "http://localhost:8188", "key")
         assert out[0].status == "unreachable"
 
     async def test_default_url_non_200_marked_degraded(self) -> None:
@@ -261,13 +256,14 @@ class TestCheckComfyuiServers:
 
         admin_svc = MagicMock()
         admin_svc.list_all = AsyncMock(return_value=[])
-        with patch(
-            "drevalis.services.comfyui_admin.ComfyUIServerService",
-            return_value=admin_svc,
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await _check_comfyui_servers(
-                AsyncMock(), "http://localhost:8188", "key"
-            )
+        with (
+            patch(
+                "drevalis.services.comfyui_admin.ComfyUIServerService",
+                return_value=admin_svc,
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await _check_comfyui_servers(AsyncMock(), "http://localhost:8188", "key")
         assert out[0].status == "degraded"
 
     async def test_active_servers_each_checked(self) -> None:
@@ -295,13 +291,14 @@ class TestCheckComfyuiServers:
         s2.url = "http://localhost:8189"
         admin_svc = MagicMock()
         admin_svc.list_all = AsyncMock(return_value=[s1, s2])
-        with patch(
-            "drevalis.services.comfyui_admin.ComfyUIServerService",
-            return_value=admin_svc,
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await _check_comfyui_servers(
-                AsyncMock(), "http://default:8188", "key"
-            )
+        with (
+            patch(
+                "drevalis.services.comfyui_admin.ComfyUIServerService",
+                return_value=admin_svc,
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await _check_comfyui_servers(AsyncMock(), "http://default:8188", "key")
         # Both servers were tested.
         names = {h.name for h in out}
         assert names == {"comfyui:primary", "comfyui:backup"}
@@ -329,13 +326,14 @@ class TestCheckComfyuiServers:
         s1.url = "http://localhost:8188"
         admin_svc = MagicMock()
         admin_svc.list_all = AsyncMock(return_value=[s1])
-        with patch(
-            "drevalis.services.comfyui_admin.ComfyUIServerService",
-            return_value=admin_svc,
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await _check_comfyui_servers(
-                AsyncMock(), "http://default:8188", "key"
-            )
+        with (
+            patch(
+                "drevalis.services.comfyui_admin.ComfyUIServerService",
+                return_value=admin_svc,
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await _check_comfyui_servers(AsyncMock(), "http://default:8188", "key")
         assert out[0].status == "unreachable"
 
     async def test_db_lookup_failure_falls_back_to_default_url(self) -> None:
@@ -352,13 +350,14 @@ class TestCheckComfyuiServers:
             kwargs["transport"] = httpx.MockTransport(_h)
             return real(*args, **kwargs)
 
-        with patch(
-            "drevalis.services.comfyui_admin.ComfyUIServerService",
-            side_effect=RuntimeError("db down"),
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await _check_comfyui_servers(
-                AsyncMock(), "http://localhost:8188", "key"
-            )
+        with (
+            patch(
+                "drevalis.services.comfyui_admin.ComfyUIServerService",
+                side_effect=RuntimeError("db down"),
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await _check_comfyui_servers(AsyncMock(), "http://localhost:8188", "key")
         assert len(out) == 1
         assert out[0].status == "ok"
 
@@ -471,9 +470,7 @@ class TestCheckFfmpeg:
     async def test_ok_when_returncode_zero(self) -> None:
         proc = MagicMock()
         proc.returncode = 0
-        proc.communicate = AsyncMock(
-            return_value=(b"ffmpeg version 6.0\nbuilt with...", b"")
-        )
+        proc.communicate = AsyncMock(return_value=(b"ffmpeg version 6.0\nbuilt with...", b""))
         with patch(
             "drevalis.api.routes.settings.asyncio.create_subprocess_exec",
             AsyncMock(return_value=proc),
@@ -545,9 +542,7 @@ class TestCheckLMStudio:
         import httpx
 
         def _h(_request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, json={"data": [{"id": "qwen"}, {"id": "llama"}]}
-            )
+            return httpx.Response(200, json={"data": [{"id": "qwen"}, {"id": "llama"}]})
 
         real = httpx.AsyncClient
 
@@ -602,95 +597,115 @@ class TestSystemHealth:
         from drevalis.schemas.settings import ServiceHealth
 
         ok = ServiceHealth(name="x", status="ok")
-        with patch(
-            "drevalis.api.routes.settings._check_database",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_redis",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_worker",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_comfyui_servers",
-            AsyncMock(return_value=[ok]),
-        ), patch(
-            "drevalis.api.routes.settings._check_ffmpeg",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_piper_tts",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_lm_studio",
-            AsyncMock(return_value=ok),
+        with (
+            patch(
+                "drevalis.api.routes.settings._check_database",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_redis",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_worker",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_comfyui_servers",
+                AsyncMock(return_value=[ok]),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_ffmpeg",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_piper_tts",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_lm_studio",
+                AsyncMock(return_value=ok),
+            ),
         ):
             out = await system_health(
                 db=AsyncMock(), redis=AsyncMock(), settings=_settings(tmp_path)
             )
         assert out.overall == "ok"
 
-    async def test_overall_unhealthy_when_any_unreachable(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_overall_unhealthy_when_any_unreachable(self, tmp_path: Path) -> None:
         from drevalis.schemas.settings import ServiceHealth
 
         ok = ServiceHealth(name="x", status="ok")
         unreachable = ServiceHealth(name="x", status="unreachable")
-        with patch(
-            "drevalis.api.routes.settings._check_database",
-            AsyncMock(return_value=unreachable),
-        ), patch(
-            "drevalis.api.routes.settings._check_redis",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_worker",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_comfyui_servers",
-            AsyncMock(return_value=[ok]),
-        ), patch(
-            "drevalis.api.routes.settings._check_ffmpeg",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_piper_tts",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_lm_studio",
-            AsyncMock(return_value=ok),
+        with (
+            patch(
+                "drevalis.api.routes.settings._check_database",
+                AsyncMock(return_value=unreachable),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_redis",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_worker",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_comfyui_servers",
+                AsyncMock(return_value=[ok]),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_ffmpeg",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_piper_tts",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_lm_studio",
+                AsyncMock(return_value=ok),
+            ),
         ):
             out = await system_health(
                 db=AsyncMock(), redis=AsyncMock(), settings=_settings(tmp_path)
             )
         assert out.overall == "unhealthy"
 
-    async def test_overall_degraded_when_only_degraded(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_overall_degraded_when_only_degraded(self, tmp_path: Path) -> None:
         from drevalis.schemas.settings import ServiceHealth
 
         ok = ServiceHealth(name="x", status="ok")
         degraded = ServiceHealth(name="x", status="degraded")
-        with patch(
-            "drevalis.api.routes.settings._check_database",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_redis",
-            AsyncMock(return_value=degraded),
-        ), patch(
-            "drevalis.api.routes.settings._check_worker",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_comfyui_servers",
-            AsyncMock(return_value=[ok]),
-        ), patch(
-            "drevalis.api.routes.settings._check_ffmpeg",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_piper_tts",
-            AsyncMock(return_value=ok),
-        ), patch(
-            "drevalis.api.routes.settings._check_lm_studio",
-            AsyncMock(return_value=ok),
+        with (
+            patch(
+                "drevalis.api.routes.settings._check_database",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_redis",
+                AsyncMock(return_value=degraded),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_worker",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_comfyui_servers",
+                AsyncMock(return_value=[ok]),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_ffmpeg",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_piper_tts",
+                AsyncMock(return_value=ok),
+            ),
+            patch(
+                "drevalis.api.routes.settings._check_lm_studio",
+                AsyncMock(return_value=ok),
+            ),
         ):
             out = await system_health(
                 db=AsyncMock(), redis=AsyncMock(), settings=_settings(tmp_path)
@@ -711,12 +726,13 @@ class TestFfmpegInfo:
     async def test_success_returns_version(self, tmp_path: Path) -> None:
         proc = MagicMock()
         proc.returncode = 0
-        proc.communicate = AsyncMock(
-            return_value=(b"ffmpeg version 6.1.1\nbuilt", b"")
-        )
-        with patch("shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-            "drevalis.api.routes.settings.asyncio.create_subprocess_exec",
-            AsyncMock(return_value=proc),
+        proc.communicate = AsyncMock(return_value=(b"ffmpeg version 6.1.1\nbuilt", b""))
+        with (
+            patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+            patch(
+                "drevalis.api.routes.settings.asyncio.create_subprocess_exec",
+                AsyncMock(return_value=proc),
+            ),
         ):
             out = await ffmpeg_info(settings=_settings(tmp_path))
         assert out.available is True
@@ -726,18 +742,24 @@ class TestFfmpegInfo:
         proc = MagicMock()
         proc.returncode = 2
         proc.communicate = AsyncMock(return_value=(b"", b""))
-        with patch("shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-            "drevalis.api.routes.settings.asyncio.create_subprocess_exec",
-            AsyncMock(return_value=proc),
+        with (
+            patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+            patch(
+                "drevalis.api.routes.settings.asyncio.create_subprocess_exec",
+                AsyncMock(return_value=proc),
+            ),
         ):
             out = await ffmpeg_info(settings=_settings(tmp_path))
         assert out.available is False
         assert "exit" in out.message.lower()
 
     async def test_subprocess_exception_unavailable(self, tmp_path: Path) -> None:
-        with patch("shutil.which", return_value="/usr/bin/ffmpeg"), patch(
-            "drevalis.api.routes.settings.asyncio.create_subprocess_exec",
-            AsyncMock(side_effect=OSError("boom")),
+        with (
+            patch("shutil.which", return_value="/usr/bin/ffmpeg"),
+            patch(
+                "drevalis.api.routes.settings.asyncio.create_subprocess_exec",
+                AsyncMock(side_effect=OSError("boom")),
+            ),
         ):
             out = await ffmpeg_info(settings=_settings(tmp_path))
         assert out.available is False

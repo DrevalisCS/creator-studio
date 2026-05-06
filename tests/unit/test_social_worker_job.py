@@ -32,9 +32,7 @@ def _ctx_with_pending(uploads: list[Any], video_asset: Any | None = None) -> Any
     # The first call returns the pending list; subsequent calls return
     # video assets per upload.
     pending_result = MagicMock()
-    pending_result.scalars = MagicMock(
-        return_value=MagicMock(all=MagicMock(return_value=uploads))
-    )
+    pending_result.scalars = MagicMock(return_value=MagicMock(all=MagicMock(return_value=uploads)))
 
     def _video_result_for(_upload: Any) -> Any:
         r = MagicMock()
@@ -107,9 +105,7 @@ class TestPublishPendingCronGuard:
         async def _lock(*_args: Any, **_kwargs: Any) -> Any:
             yield False  # didn't acquire
 
-        with patch(
-            "drevalis.workers.cron_lock.cron_lock", _lock
-        ):
+        with patch("drevalis.workers.cron_lock.cron_lock", _lock):
             out = await publish_pending_social_uploads({})
         assert out == {
             "processed": 0,
@@ -123,12 +119,20 @@ class TestPublishPendingCronGuard:
         async def _lock(*_args: Any, **_kwargs: Any) -> Any:
             yield True  # owned
 
-        with patch(
-            "drevalis.workers.cron_lock.cron_lock", _lock
-        ), patch(
-            "drevalis.workers.jobs.social._publish_pending_social_uploads_locked",
-            AsyncMock(return_value={"processed": 5, "succeeded": 3, "failed": 1, "skipped_other_platforms": 1}),
-        ) as locked:
+        with (
+            patch("drevalis.workers.cron_lock.cron_lock", _lock),
+            patch(
+                "drevalis.workers.jobs.social._publish_pending_social_uploads_locked",
+                AsyncMock(
+                    return_value={
+                        "processed": 5,
+                        "succeeded": 3,
+                        "failed": 1,
+                        "skipped_other_platforms": 1,
+                    }
+                ),
+            ) as locked,
+        ):
             out = await publish_pending_social_uploads({})
         locked.assert_awaited_once()
         assert out["processed"] == 5
@@ -183,9 +187,7 @@ class TestLockedBody:
         assert u.upload_status == "failed"
         assert "No final video" in u.error_message
 
-    async def test_video_file_missing_on_disk_marks_failed(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_video_file_missing_on_disk_marks_failed(self, tmp_path: Path) -> None:
         # Asset row points at a path that doesn't exist.
         u = _upload_row()
         video = SimpleNamespace(file_path="missing/x.mp4")
@@ -197,9 +199,7 @@ class TestLockedBody:
         assert out["failed"] == 1
         assert "Video file missing" in u.error_message
 
-    async def test_uploader_failure_marks_failed_with_capped_message(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_uploader_failure_marks_failed_with_capped_message(self, tmp_path: Path) -> None:
         # Pin: any exception raised inside the platform-specific
         # uploader is caught, the row is marked failed, and the
         # error_message is capped at 500 chars.
@@ -248,15 +248,11 @@ class TestComposeCaption:
 
 class TestComposeCaptionMultiline:
     def test_blank_lines_between_parts(self) -> None:
-        out = _compose_caption_multiline(
-            "Title", "Description", "#a #b", limit=500
-        )
+        out = _compose_caption_multiline("Title", "Description", "#a #b", limit=500)
         assert out == "Title\n\nDescription\n\n#a #b"
 
     def test_truncates_to_limit(self) -> None:
-        out = _compose_caption_multiline(
-            "X" * 100, "Y" * 100, "Z" * 100, limit=50
-        )
+        out = _compose_caption_multiline("X" * 100, "Y" * 100, "Z" * 100, limit=50)
         assert len(out) == 50
 
     def test_omits_blanks(self) -> None:
@@ -270,17 +266,13 @@ class TestComposeCaptionMultiline:
 
 class TestRelativeStorageUrl:
     def test_strips_path_up_to_storage(self) -> None:
-        out = _relative_storage_url(
-            Path("/app/storage/episodes/abc/output/video.mp4")
-        )
+        out = _relative_storage_url(Path("/app/storage/episodes/abc/output/video.mp4"))
         assert out == "episodes/abc/output/video.mp4"
 
     def test_no_storage_segment_falls_back_to_last_three(self) -> None:
         # Pin: when the path doesn't contain a `storage` segment,
         # the helper falls back to the last 3 path components — better
         # than crashing.
-        out = _relative_storage_url(
-            Path("/var/lib/drevalis/episodes/abc/video.mp4")
-        )
+        out = _relative_storage_url(Path("/var/lib/drevalis/episodes/abc/video.mp4"))
         # 3 components: abc/video.mp4 (the helper joins from idx+1).
         assert "video.mp4" in out

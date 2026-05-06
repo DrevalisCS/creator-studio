@@ -37,9 +37,7 @@ def _make_template(**overrides: Any) -> Any:
     t.name = overrides.get("name", "Default Script")
     t.template_type = overrides.get("template_type", "script")
     t.system_prompt = overrides.get("system_prompt", "You are a writer.")
-    t.user_prompt_template = overrides.get(
-        "user_prompt_template", "Write about {topic}"
-    )
+    t.user_prompt_template = overrides.get("user_prompt_template", "Write about {topic}")
     t.created_at = overrides.get("created_at", datetime(2026, 1, 1))
     t.updated_at = overrides.get("updated_at", datetime(2026, 1, 1))
     return t
@@ -130,20 +128,14 @@ class TestUpdate:
         svc = MagicMock()
         svc.update = AsyncMock(side_effect=ValidationError("empty patch"))
         with pytest.raises(HTTPException) as exc:
-            await update_prompt_template(
-                uuid4(), PromptTemplateUpdate(), svc=svc
-            )
+            await update_prompt_template(uuid4(), PromptTemplateUpdate(), svc=svc)
         assert exc.value.status_code == 422
 
     async def test_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.update = AsyncMock(
-            side_effect=NotFoundError("prompt_template", uuid4())
-        )
+        svc.update = AsyncMock(side_effect=NotFoundError("prompt_template", uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await update_prompt_template(
-                uuid4(), PromptTemplateUpdate(name="x"), svc=svc
-            )
+            await update_prompt_template(uuid4(), PromptTemplateUpdate(name="x"), svc=svc)
         assert exc.value.status_code == 404
 
 
@@ -159,9 +151,7 @@ class TestDelete:
 
     async def test_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.delete = AsyncMock(
-            side_effect=NotFoundError("prompt_template", uuid4())
-        )
+        svc.delete = AsyncMock(side_effect=NotFoundError("prompt_template", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await delete_prompt_template(uuid4(), svc=svc)
         assert exc.value.status_code == 404

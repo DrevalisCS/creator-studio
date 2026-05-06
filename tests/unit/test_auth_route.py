@@ -124,9 +124,7 @@ class TestCurrentUser:
             "drevalis.api.routes.auth.parse_session_token",
             return_value={"uid": str(uuid4())},
         ):
-            out = await _current_user(
-                request=_request(cookie="x"), db=db, settings=_settings()
-            )
+            out = await _current_user(request=_request(cookie="x"), db=db, settings=_settings())
         assert out is None
 
     async def test_inactive_user_returns_none(self) -> None:
@@ -136,9 +134,7 @@ class TestCurrentUser:
             "drevalis.api.routes.auth.parse_session_token",
             return_value={"uid": str(uuid4())},
         ):
-            out = await _current_user(
-                request=_request(cookie="x"), db=db, settings=_settings()
-            )
+            out = await _current_user(request=_request(cookie="x"), db=db, settings=_settings())
         assert out is None
 
     async def test_active_user_returned(self) -> None:
@@ -149,9 +145,7 @@ class TestCurrentUser:
             "drevalis.api.routes.auth.parse_session_token",
             return_value={"uid": str(u.id)},
         ):
-            out = await _current_user(
-                request=_request(cookie="x"), db=db, settings=_settings()
-            )
+            out = await _current_user(request=_request(cookie="x"), db=db, settings=_settings())
         assert out is u
 
 
@@ -186,9 +180,12 @@ class TestRequireGuards:
 class TestLogin:
     async def test_rate_limit_maps_to_429(self) -> None:
         db = AsyncMock()
-        with patch("drevalis.api.routes.auth.ensure_owner_from_env", AsyncMock()), patch(
-            "drevalis.api.routes.auth.check_login_rate_limit",
-            AsyncMock(side_effect=LoginRateLimitedError("too many tries")),
+        with (
+            patch("drevalis.api.routes.auth.ensure_owner_from_env", AsyncMock()),
+            patch(
+                "drevalis.api.routes.auth.check_login_rate_limit",
+                AsyncMock(side_effect=LoginRateLimitedError("too many tries")),
+            ),
         ):
             with pytest.raises(HTTPException) as exc:
                 await login(
@@ -206,9 +203,11 @@ class TestLogin:
             return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=None))
         )
         record = AsyncMock()
-        with patch("drevalis.api.routes.auth.ensure_owner_from_env", AsyncMock()), patch(
-            "drevalis.api.routes.auth.check_login_rate_limit", AsyncMock()
-        ), patch("drevalis.api.routes.auth.record_login_failure", record):
+        with (
+            patch("drevalis.api.routes.auth.ensure_owner_from_env", AsyncMock()),
+            patch("drevalis.api.routes.auth.check_login_rate_limit", AsyncMock()),
+            patch("drevalis.api.routes.auth.record_login_failure", record),
+        ):
             with pytest.raises(HTTPException) as exc:
                 await login(
                     body=LoginRequest(email="a@b.co", password="x"),
@@ -227,14 +226,13 @@ class TestLogin:
         # — auth must not leak the existence of disabled accounts.
         u = _make_user(is_active=False)
         db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=u))
-        )
-        with patch("drevalis.api.routes.auth.ensure_owner_from_env", AsyncMock()), patch(
-            "drevalis.api.routes.auth.check_login_rate_limit", AsyncMock()
-        ), patch(
-            "drevalis.api.routes.auth.verify_password", return_value=True
-        ), patch("drevalis.api.routes.auth.record_login_failure", AsyncMock()):
+        db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=u)))
+        with (
+            patch("drevalis.api.routes.auth.ensure_owner_from_env", AsyncMock()),
+            patch("drevalis.api.routes.auth.check_login_rate_limit", AsyncMock()),
+            patch("drevalis.api.routes.auth.verify_password", return_value=True),
+            patch("drevalis.api.routes.auth.record_login_failure", AsyncMock()),
+        ):
             with pytest.raises(HTTPException) as exc:
                 await login(
                     body=LoginRequest(email="a@b.co", password="x"),
@@ -248,17 +246,14 @@ class TestLogin:
     async def test_success_sets_cookie_and_bumps_last_login(self) -> None:
         u = _make_user()
         db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=u))
-        )
+        db.execute = AsyncMock(return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=u)))
         db.commit = AsyncMock()
         resp = Response()
-        with patch("drevalis.api.routes.auth.ensure_owner_from_env", AsyncMock()), patch(
-            "drevalis.api.routes.auth.check_login_rate_limit", AsyncMock()
-        ), patch(
-            "drevalis.api.routes.auth.verify_password", return_value=True
-        ), patch(
-            "drevalis.api.routes.auth.mint_session_token", return_value="tok"
+        with (
+            patch("drevalis.api.routes.auth.ensure_owner_from_env", AsyncMock()),
+            patch("drevalis.api.routes.auth.check_login_rate_limit", AsyncMock()),
+            patch("drevalis.api.routes.auth.verify_password", return_value=True),
+            patch("drevalis.api.routes.auth.mint_session_token", return_value="tok"),
         ):
             out = await login(
                 body=LoginRequest(email="a@b.co", password="x"),
@@ -309,14 +304,10 @@ class TestWhoami:
 
 
 class TestAuthMode:
-    async def test_team_mode_when_users_exist(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_team_mode_when_users_exist(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("OWNER_EMAIL", raising=False)
         db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(scalar_one=MagicMock(return_value=1))
-        )
+        db.execute = AsyncMock(return_value=MagicMock(scalar_one=MagicMock(return_value=1)))
         out = await auth_mode(db=db, settings=_settings())
         assert out["team_mode"] is True
         assert out["demo_mode"] is False
@@ -326,9 +317,7 @@ class TestAuthMode:
     ) -> None:
         monkeypatch.setenv("OWNER_EMAIL", "owner@drevalis.test")
         db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(scalar_one=MagicMock(return_value=0))
-        )
+        db.execute = AsyncMock(return_value=MagicMock(scalar_one=MagicMock(return_value=0)))
         out = await auth_mode(db=db, settings=_settings())
         assert out["team_mode"] is True
 
@@ -337,9 +326,7 @@ class TestAuthMode:
     ) -> None:
         monkeypatch.delenv("OWNER_EMAIL", raising=False)
         db = AsyncMock()
-        db.execute = AsyncMock(
-            return_value=MagicMock(scalar_one=MagicMock(return_value=0))
-        )
+        db.execute = AsyncMock(return_value=MagicMock(scalar_one=MagicMock(return_value=0)))
         out = await auth_mode(db=db, settings=_settings())
         assert out["team_mode"] is False
 
@@ -367,9 +354,7 @@ class TestCreateUser:
     async def test_duplicate_email_raises_409(self) -> None:
         db = AsyncMock()
         db.execute = AsyncMock(
-            return_value=MagicMock(
-                scalar_one_or_none=MagicMock(return_value=_make_user())
-            )
+            return_value=MagicMock(scalar_one_or_none=MagicMock(return_value=_make_user()))
         )
         with pytest.raises(HTTPException) as exc:
             await create_user(
@@ -403,13 +388,9 @@ class TestCreateUser:
 
         db.refresh = AsyncMock(side_effect=_refresh)
 
-        with patch(
-            "drevalis.api.routes.auth.hash_password", return_value="hashed"
-        ):
+        with patch("drevalis.api.routes.auth.hash_password", return_value="hashed"):
             out = await create_user(
-                body=UserCreate(
-                    email="new@b.co", password="passwordpw", role="editor"
-                ),
+                body=UserCreate(email="new@b.co", password="passwordpw", role="editor"),
                 _=_make_user(role="owner"),
                 db=db,
             )
@@ -485,9 +466,7 @@ class TestUpdateUser:
         db.get = AsyncMock(return_value=u)
         db.commit = AsyncMock()
         db.refresh = AsyncMock()
-        with patch(
-            "drevalis.api.routes.auth.hash_password", return_value="new-hash"
-        ):
+        with patch("drevalis.api.routes.auth.hash_password", return_value="new-hash"):
             await update_user(
                 user_id=u.id,
                 body=UserUpdate(password="newsecret123"),
@@ -529,9 +508,7 @@ class TestDeleteUser:
         # for both "deleted" and "didn't exist". Pin the 204 path.
         db = AsyncMock()
         db.get = AsyncMock(return_value=None)
-        out = await delete_user(
-            user_id=uuid4(), me=_make_user(role="owner"), db=db
-        )
+        out = await delete_user(user_id=uuid4(), me=_make_user(role="owner"), db=db)
         assert out is None
         db.delete.assert_not_called()
 
@@ -541,8 +518,6 @@ class TestDeleteUser:
         db.get = AsyncMock(return_value=target)
         db.delete = AsyncMock()
         db.commit = AsyncMock()
-        await delete_user(
-            user_id=target.id, me=_make_user(role="owner"), db=db
-        )
+        await delete_user(user_id=target.id, me=_make_user(role="owner"), db=db)
         db.delete.assert_awaited_once_with(target)
         db.commit.assert_awaited_once()

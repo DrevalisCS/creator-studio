@@ -120,9 +120,7 @@ class TestUploadEpisodeHappyPath:
         ep = _make_episode()
         ch = _make_channel()
         admin = MagicMock()
-        admin.resolve_episode_upload_target = AsyncMock(
-            return_value=(ep, ch, "/path/to/video.mp4")
-        )
+        admin.resolve_episode_upload_target = AsyncMock(return_value=(ep, ch, "/path/to/video.mp4"))
         admin.get_or_generate_seo = AsyncMock(
             return_value={
                 "title": "SEO Title",
@@ -138,9 +136,7 @@ class TestUploadEpisodeHappyPath:
         admin.auto_add_to_series_playlist = AsyncMock()
 
         yt = MagicMock()
-        yt.upload_video = AsyncMock(
-            return_value={"video_id": "yt-x", "url": "https://y/x"}
-        )
+        yt.upload_video = AsyncMock(return_value={"video_id": "yt-x", "url": "https://y/x"})
 
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
@@ -174,9 +170,7 @@ class TestUploadEpisodeHappyPath:
         ep = _make_episode()
         ch = _make_channel()
         admin = MagicMock()
-        admin.resolve_episode_upload_target = AsyncMock(
-            return_value=(ep, ch, "/v.mp4")
-        )
+        admin.resolve_episode_upload_target = AsyncMock(return_value=(ep, ch, "/v.mp4"))
         admin.get_or_generate_seo = AsyncMock(
             return_value={
                 "title": "SEO",
@@ -191,9 +185,7 @@ class TestUploadEpisodeHappyPath:
         admin.record_upload_success = AsyncMock()
         admin.auto_add_to_series_playlist = AsyncMock()
         yt = MagicMock()
-        yt.upload_video = AsyncMock(
-            return_value={"video_id": "x", "url": "https://y/x"}
-        )
+        yt.upload_video = AsyncMock(return_value={"video_id": "x", "url": "https://y/x"})
 
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
@@ -223,21 +215,15 @@ class TestUploadEpisodeHappyPath:
         ep = _make_episode()
         ch = _make_channel()
         admin = MagicMock()
-        admin.resolve_episode_upload_target = AsyncMock(
-            return_value=(ep, ch, "/v.mp4")
-        )
-        admin.get_or_generate_seo = AsyncMock(
-            return_value={"hashtags": ["foo", "bar"]}
-        )
+        admin.resolve_episode_upload_target = AsyncMock(return_value=(ep, ch, "/v.mp4"))
+        admin.get_or_generate_seo = AsyncMock(return_value={"hashtags": ["foo", "bar"]})
         admin.get_thumbnail_path = AsyncMock(return_value=None)
         admin.refresh_and_persist_tokens = AsyncMock()
         admin.create_upload_row = AsyncMock(return_value=_make_upload_row())
         admin.record_upload_success = AsyncMock()
         admin.auto_add_to_series_playlist = AsyncMock()
         yt = MagicMock()
-        yt.upload_video = AsyncMock(
-            return_value={"video_id": "x", "url": "https://y/x"}
-        )
+        yt.upload_video = AsyncMock(return_value={"video_id": "x", "url": "https://y/x"})
 
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
@@ -276,9 +262,7 @@ class TestUploadEpisodeHappyPath:
         )
         ch = _make_channel()
         admin = MagicMock()
-        admin.resolve_episode_upload_target = AsyncMock(
-            return_value=(ep, ch, "/v.mp4")
-        )
+        admin.resolve_episode_upload_target = AsyncMock(return_value=(ep, ch, "/v.mp4"))
         admin.get_or_generate_seo = AsyncMock(return_value={})
         admin.get_thumbnail_path = AsyncMock(return_value=None)
         admin.refresh_and_persist_tokens = AsyncMock()
@@ -286,9 +270,7 @@ class TestUploadEpisodeHappyPath:
         admin.record_upload_success = AsyncMock()
         admin.auto_add_to_series_playlist = AsyncMock()
         yt = MagicMock()
-        yt.upload_video = AsyncMock(
-            return_value={"video_id": "x", "url": "https://y/x"}
-        )
+        yt.upload_video = AsyncMock(return_value={"video_id": "x", "url": "https://y/x"})
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=yt),
@@ -312,14 +294,10 @@ class TestUploadEpisodeHappyPath:
         ep = _make_episode()
         ch = _make_channel()
         admin = MagicMock()
-        admin.resolve_episode_upload_target = AsyncMock(
-            return_value=(ep, ch, "/v.mp4")
-        )
+        admin.resolve_episode_upload_target = AsyncMock(return_value=(ep, ch, "/v.mp4"))
         admin.get_or_generate_seo = AsyncMock(return_value={})
         admin.get_thumbnail_path = AsyncMock(return_value=None)
-        admin.refresh_and_persist_tokens = AsyncMock(
-            side_effect=TokenRefreshError("expired")
-        )
+        admin.refresh_and_persist_tokens = AsyncMock(side_effect=TokenRefreshError("expired"))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -345,9 +323,7 @@ class TestUploadEpisodeHappyPath:
         ep = _make_episode()
         ch = _make_channel()
         admin = MagicMock()
-        admin.resolve_episode_upload_target = AsyncMock(
-            return_value=(ep, ch, "/v.mp4")
-        )
+        admin.resolve_episode_upload_target = AsyncMock(return_value=(ep, ch, "/v.mp4"))
         admin.get_or_generate_seo = AsyncMock(return_value={})
         admin.get_thumbnail_path = AsyncMock(return_value=None)
         admin.refresh_and_persist_tokens = AsyncMock()
@@ -393,9 +369,7 @@ class TestChannelAnalytics:
         assert out["window_days"] == 14
         assert len(out["daily"]) == 14
         # totals.views == sum of daily views.
-        assert out["totals"]["views"] == sum(
-            d["views"] for d in out["daily"]
-        )
+        assert out["totals"]["views"] == sum(d["views"] for d in out["daily"])
         # All required totals fields populated.
         for key in ("views", "minutes_watched", "subscribers_gained", "likes"):
             assert key in out["totals"]
@@ -419,9 +393,7 @@ class TestChannelAnalytics:
 
     async def test_channel_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.resolve_channel = AsyncMock(
-            side_effect=NotFoundError("youtube_channel", uuid4())
-        )
+        admin.resolve_channel = AsyncMock(side_effect=NotFoundError("youtube_channel", uuid4()))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -439,9 +411,7 @@ class TestChannelAnalytics:
     async def test_ambiguous_400(self) -> None:
         admin = MagicMock()
         admin.resolve_channel = AsyncMock(
-            side_effect=MultipleChannelsAmbiguousError(
-                channels=[_make_channel()]
-            )
+            side_effect=MultipleChannelsAmbiguousError(channels=[_make_channel()])
         )
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
@@ -460,9 +430,7 @@ class TestChannelAnalytics:
     async def test_token_refresh_401(self) -> None:
         admin = MagicMock()
         admin.resolve_channel = AsyncMock(return_value=_make_channel())
-        admin.refresh_and_persist_tokens = AsyncMock(
-            side_effect=TokenRefreshError("expired")
-        )
+        admin.refresh_and_persist_tokens = AsyncMock(side_effect=TokenRefreshError("expired"))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -485,9 +453,7 @@ class TestChannelAnalytics:
         admin.resolve_channel = AsyncMock(return_value=ch)
         admin.refresh_and_persist_tokens = AsyncMock()
         yt = MagicMock()
-        yt.get_channel_analytics = AsyncMock(
-            side_effect=AnalyticsNotAuthorized("scope missing")
-        )
+        yt.get_channel_analytics = AsyncMock(side_effect=AnalyticsNotAuthorized("scope missing"))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=yt),
@@ -570,9 +536,7 @@ class TestChannelScopes:
 
     async def test_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.resolve_channel = AsyncMock(
-            side_effect=NotFoundError("youtube_channel", uuid4())
-        )
+        admin.resolve_channel = AsyncMock(side_effect=NotFoundError("youtube_channel", uuid4()))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -593,9 +557,7 @@ class TestChannelScopes:
         admin = MagicMock()
         ch = _make_channel(access_token_encrypted=None)
         admin.resolve_channel = AsyncMock(return_value=ch)
-        admin.refresh_and_persist_tokens = AsyncMock(
-            side_effect=TokenRefreshError("expired")
-        )
+        admin.refresh_and_persist_tokens = AsyncMock(side_effect=TokenRefreshError("expired"))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=MagicMock()),
@@ -646,15 +608,19 @@ class TestChannelScopes:
             "https://www.googleapis.com/auth/yt-analytics.readonly",
             "https://www.googleapis.com/auth/youtube.upload",
         ]
-        with patch(
-            "drevalis.api.routes.youtube._monolith.build_youtube_service",
-            AsyncMock(return_value=MagicMock()),
-        ), patch(
-            "drevalis.core.security.decrypt_value",
-            return_value="decrypted-token",
-        ), patch(
-            "drevalis.api.routes.youtube._monolith.fetch_token_scopes",
-            AsyncMock(return_value=full_scopes),
+        with (
+            patch(
+                "drevalis.api.routes.youtube._monolith.build_youtube_service",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "drevalis.core.security.decrypt_value",
+                return_value="decrypted-token",
+            ),
+            patch(
+                "drevalis.api.routes.youtube._monolith.fetch_token_scopes",
+                AsyncMock(return_value=full_scopes),
+            ),
         ):
             out = await get_channel_scopes(
                 channel_id=ch.id,
@@ -676,15 +642,19 @@ class TestChannelScopes:
         admin.resolve_channel = AsyncMock(return_value=ch)
         admin.refresh_and_persist_tokens = AsyncMock()
         upload_only = ["https://www.googleapis.com/auth/youtube.upload"]
-        with patch(
-            "drevalis.api.routes.youtube._monolith.build_youtube_service",
-            AsyncMock(return_value=MagicMock()),
-        ), patch(
-            "drevalis.core.security.decrypt_value",
-            return_value="decrypted",
-        ), patch(
-            "drevalis.api.routes.youtube._monolith.fetch_token_scopes",
-            AsyncMock(return_value=upload_only),
+        with (
+            patch(
+                "drevalis.api.routes.youtube._monolith.build_youtube_service",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "drevalis.core.security.decrypt_value",
+                return_value="decrypted",
+            ),
+            patch(
+                "drevalis.api.routes.youtube._monolith.fetch_token_scopes",
+                AsyncMock(return_value=upload_only),
+            ),
         ):
             out = await get_channel_scopes(
                 channel_id=ch.id,
@@ -704,15 +674,19 @@ class TestChannelScopes:
         ch = _make_channel()
         admin.resolve_channel = AsyncMock(return_value=ch)
         admin.refresh_and_persist_tokens = AsyncMock()
-        with patch(
-            "drevalis.api.routes.youtube._monolith.build_youtube_service",
-            AsyncMock(return_value=MagicMock()),
-        ), patch(
-            "drevalis.core.security.decrypt_value",
-            return_value="decrypted",
-        ), patch(
-            "drevalis.api.routes.youtube._monolith.fetch_token_scopes",
-            AsyncMock(return_value=[]),
+        with (
+            patch(
+                "drevalis.api.routes.youtube._monolith.build_youtube_service",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "drevalis.core.security.decrypt_value",
+                return_value="decrypted",
+            ),
+            patch(
+                "drevalis.api.routes.youtube._monolith.fetch_token_scopes",
+                AsyncMock(return_value=[]),
+            ),
         ):
             out = await get_channel_scopes(
                 channel_id=ch.id,

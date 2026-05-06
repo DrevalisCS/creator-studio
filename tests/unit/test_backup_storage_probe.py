@@ -121,9 +121,7 @@ class TestStorageProbeHints:
                 "total_visible_bytes": 1_000_000,
             }
         )
-        assert any(
-            "chown" in h and "1000:1000" in h for h in hints
-        )
+        assert any("chown" in h and "1000:1000" in h for h in hints)
 
     def test_symlinked_samples_hint(self) -> None:
         hints = _storage_probe_hints(
@@ -153,9 +151,7 @@ class TestStorageProbeHints:
                 "total_visible_bytes": 1_000_000,
             }
         )
-        assert any(
-            "Docker Desktop" in h and "USERPROFILE" in h for h in hints
-        )
+        assert any("Docker Desktop" in h and "USERPROFILE" in h for h in hints)
         # Sanity-check command also appears.
         assert any("docker inspect" in h for h in hints)
 
@@ -185,9 +181,7 @@ class TestStorageProbeHints:
                 "total_visible_bytes": 1_000_000,
             }
         )
-        assert any(
-            "/srv/data/storage" in h and "must live under" in h for h in hints
-        )
+        assert any("/srv/data/storage" in h and "must live under" in h for h in hints)
 
     def test_empty_container_hint(self) -> None:
         # Pin: container sees ≤2 entries AND non-backup dirs are empty
@@ -203,9 +197,7 @@ class TestStorageProbeHints:
                 "total_visible_bytes": 0,
             }
         )
-        assert any(
-            "0–1 files" in h and "different directory" in h for h in hints
-        )
+        assert any("0–1 files" in h and "different directory" in h for h in hints)
 
     async def test_low_byte_count_hint(self) -> None:
         # Container sees content but it's <1 MB total — likely the wrong
@@ -290,9 +282,7 @@ class TestStorageProbeRoute:
         # Hints flagged the missing path.
         assert any("Docker volume mount" in h for h in out["hints"])
 
-    async def test_lists_top_level_entries_with_kinds(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_lists_top_level_entries_with_kinds(self, tmp_path: Path) -> None:
         # Build a real storage tree: 1 file, 2 directories.
         (tmp_path / "loose.txt").write_bytes(b"x" * 100)
         (tmp_path / "episodes").mkdir()
@@ -306,9 +296,7 @@ class TestStorageProbeRoute:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=result)
 
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=_redis_miss()
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=_redis_miss())
 
         assert out["storage_base_exists"] is True
         assert out["episodes_dir_exists"] is True
@@ -341,9 +329,7 @@ class TestStorageProbeRoute:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=result)
 
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=_redis_miss()
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=_redis_miss())
         ep = next(e for e in out["top_level_entries"] if e["name"] == "episodes")
         assert ep["child_count"] == 1000
         assert ep["child_count_capped"] is True
@@ -372,18 +358,14 @@ class TestStorageProbeRoute:
         for kind in ("video", "thumbnail", "scene", "caption", "voiceover"):
             r = MagicMock()
             scalars = MagicMock()
-            scalars.all = MagicMock(
-                return_value=[row] if kind == "video" else []
-            )
+            scalars.all = MagicMock(return_value=[row] if kind == "video" else [])
             r.scalars = MagicMock(return_value=scalars)
             results.append(r)
 
         db = AsyncMock()
         db.execute = AsyncMock(side_effect=results)
 
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=_redis_miss()
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=_redis_miss())
 
         assert len(out["samples"]) == 1
         sample = out["samples"][0]
@@ -408,24 +390,18 @@ class TestStorageProbeRoute:
         for kind in ("video", "thumbnail", "scene", "caption", "voiceover"):
             r = MagicMock()
             scalars = MagicMock()
-            scalars.all = MagicMock(
-                return_value=[row] if kind == "video" else []
-            )
+            scalars.all = MagicMock(return_value=[row] if kind == "video" else [])
             r.scalars = MagicMock(return_value=scalars)
             results.append(r)
         db = AsyncMock()
         db.execute = AsyncMock(side_effect=results)
 
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=_redis_miss()
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=_redis_miss())
         sample = out["samples"][0]
         assert sample["exists"] is False
         assert sample["readable"] is False
 
-    async def test_iterdir_failure_recorded_as_error_entry(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_iterdir_failure_recorded_as_error_entry(self, tmp_path: Path) -> None:
         # Pin: when listing the top of storage_base raises (e.g.
         # permission denied on the bind mount), the route records an
         # error entry rather than 500ing.
@@ -445,9 +421,7 @@ class TestStorageProbeRoute:
         db.execute = AsyncMock(return_value=result)
 
         with patch.object(Path, "iterdir", _fake_iterdir):
-            out = await storage_probe(
-                db=db, settings=_settings(tmp_path), redis=_redis_miss()
-            )
+            out = await storage_probe(db=db, settings=_settings(tmp_path), redis=_redis_miss())
 
         # The error landed in top_level_entries.
         assert any("error" in e for e in out["top_level_entries"])
@@ -457,9 +431,7 @@ class TestStorageProbeRoute:
 
 
 class TestStorageProbeCache:
-    async def test_fresh_compute_marks_cached_false_and_writes_cache(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_fresh_compute_marks_cached_false_and_writes_cache(self, tmp_path: Path) -> None:
         # Pin: on a cache miss, the route computes the report, marks
         # ``cached: false``, attaches a ``cached_at`` timestamp, and
         # writes the result back to Redis with the documented TTL.
@@ -471,9 +443,7 @@ class TestStorageProbeCache:
         db.execute = AsyncMock(return_value=result)
 
         redis = _redis_miss()
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=redis
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=redis)
 
         assert out["cached"] is False
         assert "cached_at" in out
@@ -504,9 +474,7 @@ class TestStorageProbeCache:
         db = AsyncMock()
         db.execute = AsyncMock(side_effect=AssertionError("DB hit on cache hit"))
 
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=redis
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=redis)
 
         assert out["cached"] is True
         assert out["hints"] == ["cached hint"]
@@ -530,9 +498,7 @@ class TestStorageProbeCache:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=result)
 
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=redis, force=True
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=redis, force=True)
 
         assert out["cached"] is False
         # get was not consulted.
@@ -540,9 +506,7 @@ class TestStorageProbeCache:
         # Fresh value persisted.
         redis.setex.assert_awaited_once()
 
-    async def test_malformed_cache_falls_through_to_recompute(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_malformed_cache_falls_through_to_recompute(self, tmp_path: Path) -> None:
         # Pin: a corrupt JSON blob in Redis must not crash the route —
         # the route falls through to a live recompute.
         redis = MagicMock()
@@ -556,9 +520,7 @@ class TestStorageProbeCache:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=result)
 
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=redis
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=redis)
 
         assert out["cached"] is False
         assert "storage_base_path" in out
@@ -577,9 +539,7 @@ class TestStorageProbeCache:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=result)
 
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=redis
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=redis)
 
         assert out["cached"] is False
 
@@ -598,9 +558,7 @@ class TestStorageProbeCache:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=result)
 
-        out = await storage_probe(
-            db=db, settings=_settings(tmp_path), redis=redis
-        )
+        out = await storage_probe(db=db, settings=_settings(tmp_path), redis=redis)
 
         assert out["cached"] is False
         assert "storage_base_path" in out

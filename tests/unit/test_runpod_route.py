@@ -97,9 +97,7 @@ class TestResolveApiKey:
         # The UI shows "RunPod is not configured" instead of treating it
         # as a session-expiry condition.
         orch = MagicMock()
-        orch.resolve_api_key = AsyncMock(
-            side_effect=RunPodAuthError("no key configured")
-        )
+        orch.resolve_api_key = AsyncMock(side_effect=RunPodAuthError("no key configured"))
         with pytest.raises(HTTPException) as exc:
             await _resolve_api_key(orch=orch, settings=_settings())
         assert exc.value.status_code == 503
@@ -111,32 +109,24 @@ class TestResolveApiKey:
 class TestHandleRunpodError:
     @pytest.mark.parametrize("upstream_status", [401, 403])
     def test_auth_failures_map_to_401(self, upstream_status: int) -> None:
-        out = _handle_runpod_error(
-            RunPodAPIError(status_code=upstream_status, detail="bad token")
-        )
+        out = _handle_runpod_error(RunPodAPIError(status_code=upstream_status, detail="bad token"))
         assert out.status_code == 401
         assert "API key" in out.detail
 
     def test_404_maps_to_404_with_detail_passed_through(self) -> None:
-        out = _handle_runpod_error(
-            RunPodAPIError(status_code=404, detail="pod abc123 missing")
-        )
+        out = _handle_runpod_error(RunPodAPIError(status_code=404, detail="pod abc123 missing"))
         assert out.status_code == 404
         assert "pod abc123 missing" in out.detail
 
     def test_429_maps_to_429(self) -> None:
-        out = _handle_runpod_error(
-            RunPodAPIError(status_code=429, detail="rate limited")
-        )
+        out = _handle_runpod_error(RunPodAPIError(status_code=429, detail="rate limited"))
         assert out.status_code == 429
 
     def test_other_status_maps_to_502_bad_gateway(self) -> None:
         # Pin: anything else (500, 503, 504, or our "0" for transport
         # errors) is reported as 502 Bad Gateway — the upstream is
         # unreachable from our POV.
-        out = _handle_runpod_error(
-            RunPodAPIError(status_code=500, detail="upstream crash")
-        )
+        out = _handle_runpod_error(RunPodAPIError(status_code=500, detail="upstream crash"))
         assert out.status_code == 502
 
 
@@ -183,9 +173,7 @@ class TestLookups:
 
     async def test_list_pods_runpod_error(self) -> None:
         orch = MagicMock()
-        orch.list_pods = AsyncMock(
-            side_effect=RunPodAPIError(status_code=502, detail="oops")
-        )
+        orch.list_pods = AsyncMock(side_effect=RunPodAPIError(status_code=502, detail="oops"))
         with pytest.raises(HTTPException) as exc:
             await list_pods(orch=orch, api_key="k")
         assert exc.value.status_code == 502
@@ -234,9 +222,7 @@ class TestPodLifecycle:
 
     async def test_start_pod_runpod_error(self) -> None:
         orch = MagicMock()
-        orch.start_pod = AsyncMock(
-            side_effect=RunPodAPIError(status_code=404, detail="no pod")
-        )
+        orch.start_pod = AsyncMock(side_effect=RunPodAPIError(status_code=404, detail="no pod"))
         with pytest.raises(HTTPException) as exc:
             await start_pod(pod_id="abc", orch=orch, api_key="k")
         assert exc.value.status_code == 404
@@ -249,9 +235,7 @@ class TestPodLifecycle:
 
     async def test_stop_pod_runpod_error(self) -> None:
         orch = MagicMock()
-        orch.stop_pod = AsyncMock(
-            side_effect=RunPodAPIError(status_code=403, detail="forbidden")
-        )
+        orch.stop_pod = AsyncMock(side_effect=RunPodAPIError(status_code=403, detail="forbidden"))
         with pytest.raises(HTTPException) as exc:
             await stop_pod(pod_id="abc", orch=orch, api_key="k")
         assert exc.value.status_code == 401  # 403 maps to 401 in our table
@@ -264,9 +248,7 @@ class TestPodLifecycle:
 
     async def test_delete_pod_runpod_error(self) -> None:
         orch = MagicMock()
-        orch.delete_pod = AsyncMock(
-            side_effect=RunPodAPIError(status_code=502, detail="upstream")
-        )
+        orch.delete_pod = AsyncMock(side_effect=RunPodAPIError(status_code=502, detail="upstream"))
         with pytest.raises(HTTPException) as exc:
             await delete_pod(pod_id="abc", orch=orch, api_key="k")
         assert exc.value.status_code == 502
@@ -310,9 +292,7 @@ class TestRegisterAsComfyUI:
         orch = MagicMock()
         from uuid import uuid4
 
-        orch.register_as_comfyui = AsyncMock(
-            side_effect=NotFoundError("pod", uuid4())
-        )
+        orch.register_as_comfyui = AsyncMock(side_effect=NotFoundError("pod", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await register_pod_as_comfyui_server(
                 pod_id="abc",
@@ -324,9 +304,7 @@ class TestRegisterAsComfyUI:
 
     async def test_validation_error_maps_to_422(self) -> None:
         orch = MagicMock()
-        orch.register_as_comfyui = AsyncMock(
-            side_effect=ValidationError("port mapping missing")
-        )
+        orch.register_as_comfyui = AsyncMock(side_effect=ValidationError("port mapping missing"))
         with pytest.raises(HTTPException) as exc:
             await register_pod_as_comfyui_server(
                 pod_id="abc",
@@ -341,20 +319,14 @@ class TestRegisterAsLLM:
     async def test_success(self) -> None:
         orch = MagicMock()
         orch.register_as_llm = AsyncMock(return_value={"llm_config_id": "cfg-1"})
-        out = await register_pod_as_llm_server(
-            pod_id="abc", payload=None, orch=orch, api_key="k"
-        )
+        out = await register_pod_as_llm_server(pod_id="abc", payload=None, orch=orch, api_key="k")
         assert out["llm_config_id"] == "cfg-1"
 
     async def test_runpod_error(self) -> None:
         orch = MagicMock()
-        orch.register_as_llm = AsyncMock(
-            side_effect=RunPodAPIError(status_code=401, detail="bad")
-        )
+        orch.register_as_llm = AsyncMock(side_effect=RunPodAPIError(status_code=401, detail="bad"))
         with pytest.raises(HTTPException) as exc:
-            await register_pod_as_llm_server(
-                pod_id="abc", payload=None, orch=orch, api_key="k"
-            )
+            await register_pod_as_llm_server(pod_id="abc", payload=None, orch=orch, api_key="k")
         assert exc.value.status_code == 401
 
     async def test_not_found_maps_to_404(self) -> None:
@@ -363,20 +335,14 @@ class TestRegisterAsLLM:
 
         orch.register_as_llm = AsyncMock(side_effect=NotFoundError("pod", uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await register_pod_as_llm_server(
-                pod_id="abc", payload=None, orch=orch, api_key="k"
-            )
+            await register_pod_as_llm_server(pod_id="abc", payload=None, orch=orch, api_key="k")
         assert exc.value.status_code == 404
 
     async def test_validation_maps_to_422(self) -> None:
         orch = MagicMock()
-        orch.register_as_llm = AsyncMock(
-            side_effect=ValidationError("port mapping missing")
-        )
+        orch.register_as_llm = AsyncMock(side_effect=ValidationError("port mapping missing"))
         with pytest.raises(HTTPException) as exc:
-            await register_pod_as_llm_server(
-                pod_id="abc", payload=None, orch=orch, api_key="k"
-            )
+            await register_pod_as_llm_server(pod_id="abc", payload=None, orch=orch, api_key="k")
         assert exc.value.status_code == 422
 
 

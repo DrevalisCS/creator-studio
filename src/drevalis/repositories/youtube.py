@@ -72,9 +72,7 @@ class YouTubeUploadRepository(BaseRepository[YouTubeUpload]):
         result = await self.session.execute(stmt)
         return list(result.scalars().all())
 
-    async def get_existing_done(
-        self, episode_id: UUID, channel_id: UUID
-    ) -> YouTubeUpload | None:
+    async def get_existing_done(self, episode_id: UUID, channel_id: UUID) -> YouTubeUpload | None:
         """Return the earliest ``done`` upload for an (episode, channel) pair.
 
         Used as a duplicate-upload guard. If a ``done`` row already exists,

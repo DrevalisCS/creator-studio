@@ -22,7 +22,7 @@ class TestSystemPrompt:
         assert BANNED_VOCAB_BLOCK in SEO_SYSTEM_PROMPT
 
     def test_forbids_in_this_video_opener(self) -> None:
-        assert 'In this video' in SEO_SYSTEM_PROMPT
+        assert "In this video" in SEO_SYSTEM_PROMPT
 
     def test_includes_hashtag_rules(self) -> None:
         # The shared rule set forbids the same three hashtags as the

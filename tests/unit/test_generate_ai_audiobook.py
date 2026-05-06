@@ -51,9 +51,7 @@ def _payload(**overrides: Any) -> dict[str, Any]:
         "concept": "A short tale",
         "target_minutes": 5,
         "mood": "neutral",
-        "characters": [
-            {"name": "Narrator", "description": "Omniscient narrator"}
-        ],
+        "characters": [{"name": "Narrator", "description": "Omniscient narrator"}],
     }
     base.update(overrides)
     return base
@@ -114,9 +112,7 @@ class TestResumeFromFailure:
         ab_repo_2.get_by_id = AsyncMock(return_value=ab_with_text)
         ab_repo_2.update = AsyncMock()
         vp_repo = MagicMock()
-        vp_repo.get_by_id = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        vp_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         session_2 = AsyncMock()
         session_2.commit = AsyncMock()
 
@@ -136,22 +132,25 @@ class TestResumeFromFailure:
         ab_service._clear_cancel_flag = AsyncMock()
 
         # The LLM provider construction MUST NOT be invoked.
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=[ab_repo_1, ab_repo_2],
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
-        ), patch(
-            "drevalis.services.llm.OpenAICompatibleProvider",
-            side_effect=AssertionError("LLM must not be called"),
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=[ab_repo_1, ab_repo_2],
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
+            patch(
+                "drevalis.services.llm.OpenAICompatibleProvider",
+                side_effect=AssertionError("LLM must not be called"),
+            ),
         ):
-            out = await generate_ai_audiobook(
-                ctx, str(ab_id), _payload()
-            )
+            out = await generate_ai_audiobook(ctx, str(ab_id), _payload())
         assert out["status"] == "done"
         assert out["duration"] == 120.0
 
@@ -186,25 +185,25 @@ class TestScriptGenerationFailure:
         session_3 = AsyncMock()
         session_3.commit = AsyncMock()
 
-        ctx["session_factory"] = _factory_returning(
-            session_1, session_2, session_3
-        )
+        ctx["session_factory"] = _factory_returning(session_1, session_2, session_3)
 
         long_err = "X" * 800
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=[ab_repo_1, ab_repo_3],
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch(
-            "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
-            AsyncMock(side_effect=ConnectionError(long_err)),
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=[ab_repo_1, ab_repo_3],
+            ),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch(
+                "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
+                AsyncMock(side_effect=ConnectionError(long_err)),
+            ),
         ):
-            out = await generate_ai_audiobook(
-                ctx, str(ab_id), _payload()
-            )
+            out = await generate_ai_audiobook(ctx, str(ab_id), _payload())
         assert out["status"] == "failed"
         # Pin: error message stored on the audiobook capped to 500 chars
         # of payload + the "Script generation failed: " prefix.
@@ -245,23 +244,23 @@ class TestMissingResource:
         ab_repo_3.get_by_id = AsyncMock(return_value=None)
         session_3 = AsyncMock()
 
-        ctx["session_factory"] = _factory_returning(
-            session_1, session_2, session_3
-        )
+        ctx["session_factory"] = _factory_returning(session_1, session_2, session_3)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=[ab_repo_1, ab_repo_3],
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch(
-            "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
-            AsyncMock(return_value="Title\n\n## Chapter 1\n[Narrator] hi"),
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=[ab_repo_1, ab_repo_3],
+            ),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch(
+                "drevalis.workers.jobs.audiobook._generate_audiobook_script_text",
+                AsyncMock(return_value="Title\n\n## Chapter 1\n[Narrator] hi"),
+            ),
         ):
-            out = await generate_ai_audiobook(
-                ctx, str(ab_id), _payload()
-            )
+            out = await generate_ai_audiobook(ctx, str(ab_id), _payload())
         assert out["status"] == "failed"
 
     async def test_voice_profile_missing_before_tts(self) -> None:
@@ -287,16 +286,17 @@ class TestMissingResource:
 
         ctx["session_factory"] = _factory_returning(session_1, session_2)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=[ab_repo_1, ab_repo_2],
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=[ab_repo_1, ab_repo_2],
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
         ):
-            out = await generate_ai_audiobook(
-                ctx, str(ab_id), _payload()
-            )
+            out = await generate_ai_audiobook(ctx, str(ab_id), _payload())
         assert out["status"] == "failed"
         ab_repo_2.update.assert_awaited_once()
         kwargs = ab_repo_2.update.call_args.kwargs
@@ -324,9 +324,7 @@ class TestCancellation:
         ab_repo_2 = MagicMock()
         ab_repo_2.get_by_id = AsyncMock(return_value=ab_with_text)
         vp_repo = MagicMock()
-        vp_repo.get_by_id = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        vp_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         session_2 = AsyncMock()
 
         # Session 3 (mark failed).
@@ -335,28 +333,26 @@ class TestCancellation:
         session_3 = AsyncMock()
         session_3.commit = AsyncMock()
 
-        ctx["session_factory"] = _factory_returning(
-            session_1, session_2, session_3
-        )
+        ctx["session_factory"] = _factory_returning(session_1, session_2, session_3)
 
         ab_service = MagicMock()
-        ab_service.generate = AsyncMock(
-            side_effect=asyncio.CancelledError("user clicked Stop")
-        )
+        ab_service.generate = AsyncMock(side_effect=asyncio.CancelledError("user clicked Stop"))
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=[ab_repo_1, ab_repo_2, ab_repo_3],
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=[ab_repo_1, ab_repo_2, ab_repo_3],
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
-            out = await generate_ai_audiobook(
-                ctx, str(ab_id), _payload()
-            )
+            out = await generate_ai_audiobook(ctx, str(ab_id), _payload())
         assert out["status"] == "cancelled"
 
         # Pin: the audiobook is marked failed with the cancellation
@@ -376,9 +372,7 @@ class TestCancellation:
         # Pin: when the cancel-flag cleanup raises, the cancellation
         # path STILL returns cleanly.
         ctx = _ctx()
-        ctx["redis"].delete = AsyncMock(
-            side_effect=ConnectionError("redis down")
-        )
+        ctx["redis"].delete = AsyncMock(side_effect=ConnectionError("redis down"))
         ab_id = uuid4()
         ab_with_text = _ab(id=ab_id, text="X" * 200)
 
@@ -388,34 +382,32 @@ class TestCancellation:
         ab_repo_2 = MagicMock()
         ab_repo_2.get_by_id = AsyncMock(return_value=ab_with_text)
         vp_repo = MagicMock()
-        vp_repo.get_by_id = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        vp_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         session_2 = AsyncMock()
         ab_repo_3 = MagicMock()
         ab_repo_3.update = AsyncMock()
         session_3 = AsyncMock()
         session_3.commit = AsyncMock()
-        ctx["session_factory"] = _factory_returning(
-            session_1, session_2, session_3
-        )
+        ctx["session_factory"] = _factory_returning(session_1, session_2, session_3)
 
         ab_service = MagicMock()
         ab_service.generate = AsyncMock(side_effect=asyncio.CancelledError())
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=[ab_repo_1, ab_repo_2, ab_repo_3],
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=[ab_repo_1, ab_repo_2, ab_repo_3],
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
-            out = await generate_ai_audiobook(
-                ctx, str(ab_id), _payload()
-            )
+            out = await generate_ai_audiobook(ctx, str(ab_id), _payload())
         # Cancellation path completes despite redis failure.
         assert out["status"] == "cancelled"
 
@@ -438,9 +430,7 @@ class TestAudioGenerationFailure:
         ab_repo_2 = MagicMock()
         ab_repo_2.get_by_id = AsyncMock(return_value=ab_with_text)
         vp_repo = MagicMock()
-        vp_repo.get_by_id = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        vp_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         session_2 = AsyncMock()
 
         ab_repo_3 = MagicMock()
@@ -448,29 +438,27 @@ class TestAudioGenerationFailure:
         session_3 = AsyncMock()
         session_3.commit = AsyncMock()
 
-        ctx["session_factory"] = _factory_returning(
-            session_1, session_2, session_3
-        )
+        ctx["session_factory"] = _factory_returning(session_1, session_2, session_3)
 
         long_err = "X" * 800
         ab_service = MagicMock()
-        ab_service.generate = AsyncMock(
-            side_effect=RuntimeError(long_err)
-        )
+        ab_service.generate = AsyncMock(side_effect=RuntimeError(long_err))
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=[ab_repo_1, ab_repo_2, ab_repo_3],
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=[ab_repo_1, ab_repo_2, ab_repo_3],
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
-            out = await generate_ai_audiobook(
-                ctx, str(ab_id), _payload()
-            )
+            out = await generate_ai_audiobook(ctx, str(ab_id), _payload())
         assert out["status"] == "failed"
         ab_repo_3.update.assert_awaited_once()
         kwargs = ab_repo_3.update.call_args.kwargs
@@ -500,9 +488,7 @@ class TestHappyPathPersistence:
         ab_repo_2.get_by_id = AsyncMock(return_value=ab_with_text)
         ab_repo_2.update = AsyncMock()
         vp_repo = MagicMock()
-        vp_repo.get_by_id = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        vp_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         session_2 = AsyncMock()
         session_2.commit = AsyncMock()
 
@@ -520,19 +506,21 @@ class TestHappyPathPersistence:
         ab_service.generate = AsyncMock(return_value=gen_result)
         ab_service._clear_cancel_flag = AsyncMock()
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=[ab_repo_1, ab_repo_2],
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=[ab_repo_1, ab_repo_2],
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
-            out = await generate_ai_audiobook(
-                ctx, str(ab_id), _payload()
-            )
+            out = await generate_ai_audiobook(ctx, str(ab_id), _payload())
         assert out["status"] == "done"
         assert out["duration"] == 600.0
 

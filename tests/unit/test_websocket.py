@@ -49,15 +49,11 @@ def _ws(token: str | None = None) -> Any:
 
 
 class TestValidateWsToken:
-    async def test_auth_disabled_when_env_unset(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_auth_disabled_when_env_unset(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
         assert await _validate_ws_token(_ws()) is True
 
-    async def test_auth_disabled_when_env_empty(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_auth_disabled_when_env_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("API_AUTH_TOKEN", "")
         assert await _validate_ws_token(_ws()) is True
 
@@ -76,15 +72,11 @@ class TestValidateWsToken:
         monkeypatch.setenv("API_AUTH_TOKEN", "   \n\t")
         assert await _validate_ws_token(_ws()) is True
 
-    async def test_matching_query_token_passes(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_matching_query_token_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("API_AUTH_TOKEN", "secret-tok")
         assert await _validate_ws_token(_ws(token="secret-tok")) is True
 
-    async def test_mismatched_token_rejected(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_mismatched_token_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("API_AUTH_TOKEN", "secret-tok")
         assert await _validate_ws_token(_ws(token="wrong")) is False
 
@@ -96,9 +88,7 @@ class TestValidateWsToken:
         monkeypatch.setenv("API_AUTH_TOKEN", "tok")
         assert await _validate_ws_token(_ws(token="tok\n")) is True
 
-    async def test_missing_query_token_rejected(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_missing_query_token_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("API_AUTH_TOKEN", "tok")
         assert await _validate_ws_token(_ws(token=None)) is False
 
@@ -208,8 +198,10 @@ class TestListenRedisPubsub:
         client.pubsub = MagicMock(return_value=pubsub)
         client.aclose = AsyncMock()
 
-        with patch("drevalis.api.websocket.Redis", return_value=client), \
-             patch("drevalis.api.websocket.get_pool", return_value=MagicMock()):
+        with (
+            patch("drevalis.api.websocket.Redis", return_value=client),
+            patch("drevalis.api.websocket.get_pool", return_value=MagicMock()),
+        ):
             stop = asyncio.Event()
             await _listen_redis_pubsub("eid", ws, stop)
 
@@ -240,8 +232,10 @@ class TestListenRedisPubsub:
         client.pubsub = MagicMock(return_value=pubsub)
         client.aclose = AsyncMock()
 
-        with patch("drevalis.api.websocket.Redis", return_value=client), \
-             patch("drevalis.api.websocket.get_pool", return_value=MagicMock()):
+        with (
+            patch("drevalis.api.websocket.Redis", return_value=client),
+            patch("drevalis.api.websocket.get_pool", return_value=MagicMock()),
+        ):
             await _listen_redis_pubsub("eid", ws, asyncio.Event())
 
         ws.send_text.assert_awaited_once()
@@ -266,8 +260,10 @@ class TestListenRedisPubsub:
         client.pubsub = MagicMock(return_value=pubsub)
         client.aclose = AsyncMock()
 
-        with patch("drevalis.api.websocket.Redis", return_value=client), \
-             patch("drevalis.api.websocket.get_pool", return_value=MagicMock()):
+        with (
+            patch("drevalis.api.websocket.Redis", return_value=client),
+            patch("drevalis.api.websocket.get_pool", return_value=MagicMock()),
+        ):
             await _listen_redis_pubsub("eid", ws, asyncio.Event())
 
         # Cleanup ran despite the send failure.
@@ -295,8 +291,10 @@ class TestListenRedisPubsub:
         client.pubsub = MagicMock(return_value=pubsub)
         client.aclose = AsyncMock()
 
-        with patch("drevalis.api.websocket.Redis", return_value=client), \
-             patch("drevalis.api.websocket.get_pool", return_value=MagicMock()):
+        with (
+            patch("drevalis.api.websocket.Redis", return_value=client),
+            patch("drevalis.api.websocket.get_pool", return_value=MagicMock()),
+        ):
             await _listen_redis_pubsub("eid", ws, asyncio.Event())
 
         # send_text called with the decoded JSON, not the raw bytes.
@@ -334,8 +332,10 @@ class TestListenRedisPubsub:
         client.pubsub = MagicMock(return_value=pubsub)
         client.aclose = AsyncMock()
 
-        with patch("drevalis.api.websocket.Redis", return_value=client), \
-             patch("drevalis.api.websocket.get_pool", return_value=MagicMock()):
+        with (
+            patch("drevalis.api.websocket.Redis", return_value=client),
+            patch("drevalis.api.websocket.get_pool", return_value=MagicMock()),
+        ):
             await _listen_redis_pubsub("eid", ws, stop)
 
         assert delivered == 2
@@ -353,8 +353,10 @@ class TestListenRedisPubsub:
         client.pubsub = MagicMock(return_value=pubsub)
         client.aclose = AsyncMock()
 
-        with patch("drevalis.api.websocket.Redis", return_value=client), \
-             patch("drevalis.api.websocket.get_pool", return_value=MagicMock()):
+        with (
+            patch("drevalis.api.websocket.Redis", return_value=client),
+            patch("drevalis.api.websocket.get_pool", return_value=MagicMock()),
+        ):
             # Should NOT raise.
             await _listen_redis_pubsub("eid", _ws(), asyncio.Event())
 
@@ -365,9 +367,7 @@ class TestListenRedisPubsub:
 
 
 class TestWebsocketProgress:
-    async def test_unauthenticated_closed_with_4001(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_unauthenticated_closed_with_4001(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("API_AUTH_TOKEN", "tok")
         ws = _ws(token="wrong")
         await websocket_progress(ws, "00000000-0000-0000-0000-000000000001")
@@ -377,9 +377,7 @@ class TestWebsocketProgress:
         # No accept() — handshake refused before that.
         ws.accept.assert_not_called()
 
-    async def test_invalid_uuid_closed_with_1008(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_invalid_uuid_closed_with_1008(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Pin: malformed episode_id is rejected with 1008 (Policy
         # Violation), NOT 4001 — the auth was fine, the path was bad.
         monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
@@ -414,9 +412,7 @@ class TestWebsocketProgress:
         async def _fake_listener(*_args: Any, **_kwargs: Any) -> None:
             await asyncio.sleep(60)  # block until cancelled
 
-        with patch(
-            "drevalis.api.websocket._listen_redis_pubsub", _fake_listener
-        ):
+        with patch("drevalis.api.websocket._listen_redis_pubsub", _fake_listener):
             await websocket_progress(ws, "11111111-1111-1111-1111-111111111111")
 
         # Ping echoed as pong.
@@ -429,20 +425,14 @@ class TestWebsocketProgress:
 
 
 class TestAudiobookProgress:
-    async def test_unauthenticated_closed_with_4001(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_unauthenticated_closed_with_4001(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("API_AUTH_TOKEN", "tok")
         ws = _ws(token="wrong")
-        await websocket_audiobook_progress(
-            ws, "11111111-1111-1111-1111-111111111111"
-        )
+        await websocket_audiobook_progress(ws, "11111111-1111-1111-1111-111111111111")
         ws.close.assert_awaited_once()
         assert ws.close.call_args.kwargs["code"] == 4001
 
-    async def test_bad_uuid_closed_with_1008(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_bad_uuid_closed_with_1008(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
         ws = _ws()
         await websocket_audiobook_progress(ws, "not-a-uuid")
@@ -456,19 +446,13 @@ class TestAudiobookProgress:
         async def _fake_listener(*_args: Any, **_kwargs: Any) -> None:
             await asyncio.sleep(60)
 
-        with patch(
-            "drevalis.api.websocket._listen_redis_pubsub", _fake_listener
-        ):
-            await websocket_audiobook_progress(
-                ws, "22222222-2222-2222-2222-222222222222"
-            )
+        with patch("drevalis.api.websocket._listen_redis_pubsub", _fake_listener):
+            await websocket_audiobook_progress(ws, "22222222-2222-2222-2222-222222222222")
 
         # Manager must register + cleanup; ws.accept was called inside
         # connect(). No raise.
 
-    async def test_ping_round_trip(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_ping_round_trip(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
         ws = _ws()
         recv = ["ping"]
@@ -483,12 +467,8 @@ class TestAudiobookProgress:
         async def _fake_listener(*_args: Any, **_kwargs: Any) -> None:
             await asyncio.sleep(60)
 
-        with patch(
-            "drevalis.api.websocket._listen_redis_pubsub", _fake_listener
-        ):
-            await websocket_audiobook_progress(
-                ws, "33333333-3333-3333-3333-333333333333"
-            )
+        with patch("drevalis.api.websocket._listen_redis_pubsub", _fake_listener):
+            await websocket_audiobook_progress(ws, "33333333-3333-3333-3333-333333333333")
 
         ws.send_text.assert_awaited_once()
         assert "pong" in ws.send_text.call_args.args[0]
@@ -498,18 +478,14 @@ class TestAudiobookProgress:
 
 
 class TestAllProgress:
-    async def test_unauthenticated_closed_with_4001(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_unauthenticated_closed_with_4001(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("API_AUTH_TOKEN", "tok")
         ws = _ws(token="wrong")
         await websocket_all_progress(ws)
         ws.close.assert_awaited_once()
         assert ws.close.call_args.kwargs["code"] == 4001
 
-    async def test_pmessage_forwarded_to_client(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    async def test_pmessage_forwarded_to_client(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("API_AUTH_TOKEN", raising=False)
         ws = _ws()
 
@@ -555,8 +531,10 @@ class TestAllProgress:
         client.pubsub = MagicMock(return_value=pubsub)
         client.aclose = AsyncMock()
 
-        with patch("drevalis.api.websocket.Redis", return_value=client), \
-             patch("drevalis.api.websocket.get_pool", return_value=MagicMock()):
+        with (
+            patch("drevalis.api.websocket.Redis", return_value=client),
+            patch("drevalis.api.websocket.get_pool", return_value=MagicMock()),
+        ):
             await websocket_all_progress(ws)
 
         assert ws.send_text.await_count >= 1

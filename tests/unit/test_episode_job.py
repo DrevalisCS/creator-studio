@@ -81,13 +81,16 @@ class TestGenerateEpisodeSafetyBranches:
     async def test_demo_mode_redirects_to_demo_pipeline(self) -> None:
         ctx = _ctx()
         ep_id = str(uuid4())
-        with patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(demo_mode=True),
-        ), patch(
-            "drevalis.workers.jobs.demo_pipeline.generate_episode_demo",
-            AsyncMock(return_value={"status": "demo-success"}),
-        ) as demo:
+        with (
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(demo_mode=True),
+            ),
+            patch(
+                "drevalis.workers.jobs.demo_pipeline.generate_episode_demo",
+                AsyncMock(return_value={"status": "demo-success"}),
+            ) as demo,
+        ):
             out = await generate_episode(ctx, ep_id)
         assert out == {"status": "demo-success"}
         demo.assert_awaited_once()
@@ -96,12 +99,15 @@ class TestGenerateEpisodeSafetyBranches:
         # 4th-line license validation: blocks bypassing the on_job_start
         # hook + middleware + lifespan bootstrap.
         ctx = _ctx()
-        with patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(demo_mode=False),
-        ), patch(
-            "drevalis.core.license.state.get_state",
-            return_value=_license_state(usable=False, status_value="expired"),
+        with (
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(demo_mode=False),
+            ),
+            patch(
+                "drevalis.core.license.state.get_state",
+                return_value=_license_state(usable=False, status_value="expired"),
+            ),
         ):
             with pytest.raises(RuntimeError, match="license_not_usable:expired"):
                 await generate_episode(ctx, str(uuid4()))
@@ -142,18 +148,23 @@ class TestGenerateEpisodeSafetyBranches:
         ser_repo = MagicMock()
         ser_repo.get_by_id = AsyncMock(return_value=series)
 
-        with patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(demo_mode=False),
-        ), patch(
-            "drevalis.core.license.state.get_state",
-            return_value=_license_state(usable=True),
-        ), patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.series.SeriesRepository",
-            return_value=ser_repo,
+        with (
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(demo_mode=False),
+            ),
+            patch(
+                "drevalis.core.license.state.get_state",
+                return_value=_license_state(usable=True),
+            ),
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.series.SeriesRepository",
+                return_value=ser_repo,
+            ),
         ):
             out = await generate_episode(ctx, ep_id)
         assert out["status"] == "deferred"
@@ -190,21 +201,27 @@ class TestGenerateEpisodeSafetyBranches:
         ep_repo.get_by_id = AsyncMock(return_value=None)
         ser_repo = MagicMock()
         ser_repo.get_by_id = AsyncMock(return_value=None)
-        with patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(demo_mode=False),
-        ), patch(
-            "drevalis.core.license.state.get_state",
-            return_value=_license_state(usable=True),
-        ), patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.series.SeriesRepository",
-            return_value=ser_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(demo_mode=False),
+            ),
+            patch(
+                "drevalis.core.license.state.get_state",
+                return_value=_license_state(usable=True),
+            ),
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.series.SeriesRepository",
+                return_value=ser_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             out = await generate_episode(ctx, ep_id)
         assert out["status"] == "success"
@@ -228,21 +245,27 @@ class TestGenerateEpisodeSafetyBranches:
         ser_repo = MagicMock()
         ser_repo.get_by_id = AsyncMock(return_value=None)
 
-        with patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(demo_mode=False),
-        ), patch(
-            "drevalis.core.license.state.get_state",
-            return_value=_license_state(usable=True),
-        ), patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.series.SeriesRepository",
-            return_value=ser_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(demo_mode=False),
+            ),
+            patch(
+                "drevalis.core.license.state.get_state",
+                return_value=_license_state(usable=True),
+            ),
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.series.SeriesRepository",
+                return_value=ser_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             # Pin: arq retry semantics depend on the exception
             # propagating, NOT a {"status": "failed"} return.
@@ -274,15 +297,19 @@ class TestReassembleEpisode:
         orch = MagicMock()
         orch.run = AsyncMock(side_effect=RuntimeError("ffmpeg crashed"))
 
-        with patch(
-            "drevalis.repositories.media_asset.MediaAssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.generation_job.GenerationJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.repositories.media_asset.MediaAssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.generation_job.GenerationJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             # Pin: re-raise so arq retries (don't return failed → arq
             # would consider the job complete).
@@ -324,15 +351,19 @@ class TestReassembleEpisode:
         orch = MagicMock()
         orch.run = AsyncMock()
 
-        with patch(
-            "drevalis.repositories.media_asset.MediaAssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.generation_job.GenerationJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.repositories.media_asset.MediaAssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.generation_job.GenerationJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             out = await reassemble_episode(ctx, ep_id)
         assert out["status"] == "success"
@@ -367,15 +398,19 @@ class TestRegenerateVoice:
         orch = MagicMock()
         orch.run = AsyncMock()
 
-        with patch(
-            "drevalis.repositories.media_asset.MediaAssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.generation_job.GenerationJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.repositories.media_asset.MediaAssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.generation_job.GenerationJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             out = await regenerate_voice(ctx, ep_id)
         assert out["status"] == "success"
@@ -400,15 +435,19 @@ class TestRegenerateVoice:
         job_repo.get_latest_by_episode_and_step = AsyncMock(return_value=None)
         orch = MagicMock()
         orch.run = AsyncMock(side_effect=RuntimeError("tts down"))
-        with patch(
-            "drevalis.repositories.media_asset.MediaAssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.generation_job.GenerationJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.repositories.media_asset.MediaAssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.generation_job.GenerationJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             with pytest.raises(RuntimeError, match="tts down"):
                 await regenerate_voice(ctx, ep_id)
@@ -442,18 +481,23 @@ class TestRegenerateScene:
         orch = MagicMock()
         orch.run = AsyncMock(side_effect=RuntimeError("comfyui timeout"))
 
-        with patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.generation_job.GenerationJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.media_asset.MediaAssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.generation_job.GenerationJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.media_asset.MediaAssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             out = await regenerate_scene(ctx, ep_id, 3)
         assert out["status"] == "failed"
@@ -514,22 +558,25 @@ class TestRegenerateScene:
         orch = MagicMock()
         orch.run = AsyncMock()
 
-        with patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
-        ), patch(
-            "drevalis.repositories.generation_job.GenerationJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.media_asset.MediaAssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
+            patch(
+                "drevalis.repositories.generation_job.GenerationJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.media_asset.MediaAssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
-            out = await regenerate_scene(
-                ctx, ep_id, 2, visual_prompt="brand new prompt"
-            )
+            out = await regenerate_scene(ctx, ep_id, 2, visual_prompt="brand new prompt")
         assert out["status"] == "success"
         # Scene 2's prompt was replaced; others kept.
         prompts = {s["scene_number"]: s["visual_prompt"] for s in episode.script["scenes"]}
@@ -561,12 +608,15 @@ class TestRetryEpisodeStep:
         orch = MagicMock()
         orch.run = AsyncMock(side_effect=RuntimeError("step crashed"))
 
-        with patch(
-            "drevalis.repositories.generation_job.GenerationJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.repositories.generation_job.GenerationJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             out = await retry_episode_step(ctx, ep_id, "scenes")
         assert out["status"] == "failed"
@@ -593,12 +643,15 @@ class TestRetryEpisodeStep:
         orch = MagicMock()
         orch.run = AsyncMock()
 
-        with patch(
-            "drevalis.repositories.generation_job.GenerationJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.repositories.generation_job.GenerationJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             out = await retry_episode_step(ctx, ep_id, "scenes")
         assert out["status"] == "success"
@@ -630,12 +683,15 @@ class TestRetryEpisodeStep:
         orch = MagicMock()
         orch.run = AsyncMock()
 
-        with patch(
-            "drevalis.repositories.generation_job.GenerationJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.services.pipeline.PipelineOrchestrator",
-            return_value=orch,
+        with (
+            patch(
+                "drevalis.repositories.generation_job.GenerationJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.services.pipeline.PipelineOrchestrator",
+                return_value=orch,
+            ),
         ):
             await retry_episode_step(ctx, ep_id, "scenes")
         job_repo.update.assert_not_awaited()

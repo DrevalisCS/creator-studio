@@ -417,7 +417,10 @@ async def check_script_content(
     # are matched as substrings via lowercased ``in`` checks.
     banned_word_patterns = [
         re.compile(rf"\b{re.escape(w)}\b", re.IGNORECASE)
-        for w in (*_GLOBAL_BANNED_WORDS, *(str(w).strip() for w in extra_forbidden if str(w).strip()))
+        for w in (
+            *_GLOBAL_BANNED_WORDS,
+            *(str(w).strip() for w in extra_forbidden if str(w).strip()),
+        )
     ]
     banned_phrase_lower = [p.lower() for p in _GLOBAL_BANNED_PHRASES]
 
@@ -436,15 +439,12 @@ async def check_script_content(
         for pattern in banned_word_patterns:
             match = pattern.search(narration)
             if match:
-                issues.append(
-                    f"scene {scene_no}: banned word '{match.group(0).lower()}'"
-                )
+                issues.append(f"scene {scene_no}: banned word '{match.group(0).lower()}'")
 
         # 2. Specificity
         if not _has_specificity(narration):
             issues.append(
-                f"scene {scene_no}: no concrete fact "
-                "(no digit, year, or proper noun detected)"
+                f"scene {scene_no}: no concrete fact (no digit, year, or proper noun detected)"
             )
 
         # 3. Sentence length
@@ -454,23 +454,20 @@ async def check_script_content(
             sentence_lengths.append(len(words))
             if len(words) > hard_cap:
                 issues.append(
-                    f"scene {scene_no}: sentence exceeds hard cap "
-                    f"({len(words)} > {hard_cap} words)"
+                    f"scene {scene_no}: sentence exceeds hard cap ({len(words)} > {hard_cap} words)"
                 )
 
         # 4. Opening-repetition. Normalise to lowercased word stems so
         # near-identical openings ("In 1947 NASA's …" vs "In 1947 NASA …")
         # don't slip past on a stray apostrophe — the rule's about the
         # listener-facing rhythm, not exact token equality.
-        first_three = [
-            re.sub(r"[^a-z0-9]", "", w.lower()) for w in narration.split()[:3]
-        ]
-        if last_open_words is not None and first_three == last_open_words and any(
-            w for w in first_three
+        first_three = [re.sub(r"[^a-z0-9]", "", w.lower()) for w in narration.split()[:3]]
+        if (
+            last_open_words is not None
+            and first_three == last_open_words
+            and any(w for w in first_three)
         ):
-            issues.append(
-                f"scene {scene_no}: opens with the same 3 words as the previous scene"
-            )
+            issues.append(f"scene {scene_no}: opens with the same 3 words as the previous scene")
         last_open_words = first_three
 
         # 5. Listicle markers (gated)
@@ -478,8 +475,7 @@ async def check_script_content(
             for marker in _LISTICLE_MARKERS:
                 if marker in narration_lower:
                     issues.append(
-                        f"scene {scene_no}: listicle marker '{marker}' "
-                        "(allow_listicle is false)"
+                        f"scene {scene_no}: listicle marker '{marker}' (allow_listicle is false)"
                     )
 
     # Average sentence length across the whole script (informational —
@@ -489,9 +485,7 @@ async def check_script_content(
         metrics["avg_sentence_words"] = round(avg, 2)
         metrics["max_sentence_words_observed"] = max(sentence_lengths)
         if avg > cap_max_sentence:
-            issues.append(
-                f"average sentence length {avg:.1f} exceeds cap {cap_max_sentence}"
-            )
+            issues.append(f"average sentence length {avg:.1f} exceeds cap {cap_max_sentence}")
 
     return QualityReport(
         gate="script_content",

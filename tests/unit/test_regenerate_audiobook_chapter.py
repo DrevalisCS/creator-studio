@@ -97,16 +97,12 @@ class TestRegenerateChapter:
     async def test_text_replacement_preserves_other_chapters(self) -> None:
         # Pin: the in-place replacement strategy keeps whitespace +
         # the surrounding `## ` style EXACTLY as in the source text.
-        ab = _ab(
-            text="## Chapter 1\n\nOLD body 1.\n\n## Chapter 2\n\nbody 2."
-        )
+        ab = _ab(text="## Chapter 1\n\nOLD body 1.\n\n## Chapter 2\n\nbody 2.")
         ab_repo = MagicMock()
         ab_repo.get_by_id = AsyncMock(return_value=ab)
         ab_repo.update = AsyncMock()
         vp_repo = MagicMock()
-        vp_repo.get_by_id = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        vp_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         session = AsyncMock()
         session.commit = AsyncMock()
 
@@ -123,15 +119,19 @@ class TestRegenerateChapter:
         ctx = _ctx()
         ctx["session_factory"] = _factory_with(session)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
             out = await regenerate_audiobook_chapter(
                 ctx, str(ab.id), 0, new_chapter_text="NEW body 1."
@@ -142,10 +142,7 @@ class TestRegenerateChapter:
         # Pin: the first ab_repo.update with text=... carries the
         # in-place-replaced source text (Chapter 2's `## ` header AND
         # body preserved, Chapter 1's body swapped).
-        text_updates = [
-            c.kwargs for c in ab_repo.update.await_args_list
-            if "text" in c.kwargs
-        ]
+        text_updates = [c.kwargs for c in ab_repo.update.await_args_list if "text" in c.kwargs]
         assert text_updates
         new_text = text_updates[0]["text"]
         assert "NEW body 1." in new_text
@@ -155,9 +152,7 @@ class TestRegenerateChapter:
 
         # Pin: per-chapter chunk-cache invalidation ran BEFORE
         # generate (so only chapter 0's chunks get re-TTSed).
-        ab_service.invalidate_chapter_chunks.assert_awaited_once_with(
-            ab.id, 0
-        )
+        ab_service.invalidate_chapter_chunks.assert_awaited_once_with(ab.id, 0)
 
     async def test_unfindable_body_falls_back_to_rebuild(self) -> None:
         # Pin: when the parsed body can't be found in the source text
@@ -169,9 +164,7 @@ class TestRegenerateChapter:
         ab_repo.get_by_id = AsyncMock(return_value=ab)
         ab_repo.update = AsyncMock()
         vp_repo = MagicMock()
-        vp_repo.get_by_id = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        vp_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         session = AsyncMock()
         session.commit = AsyncMock()
 
@@ -189,15 +182,19 @@ class TestRegenerateChapter:
         ctx = _ctx()
         ctx["session_factory"] = _factory_with(session)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
             out = await regenerate_audiobook_chapter(
                 ctx, str(ab.id), 0, new_chapter_text="REPLACED"
@@ -207,10 +204,7 @@ class TestRegenerateChapter:
 
         # The rebuild text contains REPLACED (the new chapter 0 body)
         # AND the unchanged chapter 2 body.
-        text_updates = [
-            c.kwargs for c in ab_repo.update.await_args_list
-            if "text" in c.kwargs
-        ]
+        text_updates = [c.kwargs for c in ab_repo.update.await_args_list if "text" in c.kwargs]
         assert text_updates
         new_text = text_updates[0]["text"]
         assert "REPLACED" in new_text
@@ -229,16 +223,17 @@ class TestRegenerateChapter:
         ctx = _ctx()
         ctx["session_factory"] = _factory_with(session)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
         ):
-            out = await regenerate_audiobook_chapter(
-                ctx, str(ab.id), 0, new_chapter_text=None
-            )
+            out = await regenerate_audiobook_chapter(ctx, str(ab.id), 0, new_chapter_text=None)
         assert out["status"] == "failed"
         # error_message persisted.
         last = ab_repo.update.await_args_list[-1].kwargs
@@ -251,9 +246,7 @@ class TestRegenerateChapter:
         ab_repo.get_by_id = AsyncMock(return_value=ab)
         ab_repo.update = AsyncMock()
         vp_repo = MagicMock()
-        vp_repo.get_by_id = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        vp_repo.get_by_id = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         session = AsyncMock()
         session.commit = AsyncMock()
 
@@ -265,19 +258,21 @@ class TestRegenerateChapter:
         ctx = _ctx()
         ctx["session_factory"] = _factory_with(session)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
-            out = await regenerate_audiobook_chapter(
-                ctx, str(ab.id), 0
-            )
+            out = await regenerate_audiobook_chapter(ctx, str(ab.id), 0)
         assert out["status"] == "failed"
         last = ab_repo.update.await_args_list[-1].kwargs
         assert last["status"] == "failed"
@@ -300,9 +295,7 @@ class TestRegenerateChapterImage:
             "drevalis.repositories.audiobook.AudiobookRepository",
             return_value=ab_repo,
         ):
-            out = await regenerate_audiobook_chapter_image(
-                ctx, str(ab.id), 99
-            )
+            out = await regenerate_audiobook_chapter_image(ctx, str(ab.id), 99)
         assert out["status"] == "failed"
         assert "out of range" in out["error"]
 
@@ -317,9 +310,7 @@ class TestRegenerateChapterImage:
             "drevalis.repositories.audiobook.AudiobookRepository",
             return_value=ab_repo,
         ):
-            out = await regenerate_audiobook_chapter_image(
-                ctx, str(ab.id), -1
-            )
+            out = await regenerate_audiobook_chapter_image(ctx, str(ab.id), -1)
         assert out["status"] == "failed"
 
     async def test_no_comfyui_service_marks_failed(self) -> None:
@@ -337,27 +328,22 @@ class TestRegenerateChapterImage:
         ab_service = MagicMock()
         ab_service.comfyui_service = None
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
-            out = await regenerate_audiobook_chapter_image(
-                ctx, str(ab.id), 0
-            )
+            out = await regenerate_audiobook_chapter_image(ctx, str(ab.id), 0)
         assert out["status"] == "failed"
         assert "ComfyUI not configured" in out["error"]
 
-    async def test_no_image_returned_marks_failed(
-        self, tmp_path: Path
-    ) -> None:
-        ab = _ab(
-            chapters=[
-                {"title": "Chapter 1", "image_path": None}
-            ]
-        )
+    async def test_no_image_returned_marks_failed(self, tmp_path: Path) -> None:
+        ab = _ab(chapters=[{"title": "Chapter 1", "image_path": None}])
         ab_repo = MagicMock()
         ab_repo.get_by_id = AsyncMock(return_value=ab)
         session = AsyncMock()
@@ -370,22 +356,21 @@ class TestRegenerateChapterImage:
         ab_service.comfyui_service = MagicMock()
         ab_service._generate_chapter_images = AsyncMock(return_value=[None])
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
-            out = await regenerate_audiobook_chapter_image(
-                ctx, str(ab.id), 0
-            )
+            out = await regenerate_audiobook_chapter_image(ctx, str(ab.id), 0)
         assert out["status"] == "failed"
         assert "no result" in out["error"]
 
-    async def test_old_image_deleted_best_effort(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_old_image_deleted_best_effort(self, tmp_path: Path) -> None:
         # Pin: the existing `image_path` on disk is best-effort deleted
         # before regenerating. Pin with a real file that exists, then
         # assert it's gone.
@@ -411,20 +396,19 @@ class TestRegenerateChapterImage:
 
         ab_service = MagicMock()
         ab_service.comfyui_service = MagicMock()
-        ab_service._generate_chapter_images = AsyncMock(
-            return_value=[new_image]
-        )
+        ab_service._generate_chapter_images = AsyncMock(return_value=[new_image])
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
-            out = await regenerate_audiobook_chapter_image(
-                ctx, str(ab.id), 0
-            )
+            out = await regenerate_audiobook_chapter_image(ctx, str(ab.id), 0)
         assert out["status"] == "done"
         assert out["image_path"] == str(new_image)
         # Old image was removed.
@@ -433,9 +417,7 @@ class TestRegenerateChapterImage:
         update_kwargs = ab_repo.update.call_args.kwargs
         assert update_kwargs["chapters"][0]["image_path"] == str(new_image)
 
-    async def test_old_image_delete_failure_swallowed(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_old_image_delete_failure_swallowed(self, tmp_path: Path) -> None:
         # Pin: when unlinking the old image raises (Windows file lock,
         # permission), the route still proceeds to regenerate.
         ab = _ab(
@@ -458,27 +440,24 @@ class TestRegenerateChapterImage:
 
         ab_service = MagicMock()
         ab_service.comfyui_service = MagicMock()
-        ab_service._generate_chapter_images = AsyncMock(
-            return_value=[new_image]
-        )
+        ab_service._generate_chapter_images = AsyncMock(return_value=[new_image])
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
-            out = await regenerate_audiobook_chapter_image(
-                ctx, str(ab.id), 0
-            )
+            out = await regenerate_audiobook_chapter_image(ctx, str(ab.id), 0)
         # Pin: even though the old path doesn't exist (so can't be
         # unlinked), the route still completes successfully.
         assert out["status"] == "done"
 
-    async def test_prompt_override_passed_to_service(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_prompt_override_passed_to_service(self, tmp_path: Path) -> None:
         ab = _ab(
             chapters=[
                 {
@@ -503,16 +482,17 @@ class TestRegenerateChapterImage:
 
         ab_service = MagicMock()
         ab_service.comfyui_service = MagicMock()
-        ab_service._generate_chapter_images = AsyncMock(
-            return_value=[new_image]
-        )
+        ab_service._generate_chapter_images = AsyncMock(return_value=[new_image])
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
             await regenerate_audiobook_chapter_image(
                 ctx, str(ab.id), 0, prompt_override="custom prompt"

@@ -103,9 +103,7 @@ class TestApplyOverlays:
                     ffmpeg_path="ffmpeg",
                     input_path=in_path,
                     output_path=out_path,
-                    overlays=[
-                        {"kind": "text", "text": "x", "start_s": 0, "end_s": 1}
-                    ],
+                    overlays=[{"kind": "text", "text": "x", "start_s": 0, "end_s": 1}],
                     storage_base=tmp_path,
                 )
 
@@ -149,9 +147,7 @@ class TestApplyOverlays:
         # Pin: filter_complex used (not -vf) for the image overlay.
         assert "-filter_complex" in cmd
 
-    async def test_mixed_drawtext_and_image_runs_two_passes(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_mixed_drawtext_and_image_runs_two_passes(self, tmp_path: Path) -> None:
         in_path = tmp_path / "in.mp4"
         in_path.write_bytes(b"\x00")
         out_path = tmp_path / "out.mp4"
@@ -190,9 +186,7 @@ class TestApplyOverlays:
         assert "-vf" in captured[0]
         assert "-filter_complex" in captured[1]
 
-    async def test_image_overlay_missing_path_skipped(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_image_overlay_missing_path_skipped(self, tmp_path: Path) -> None:
         in_path = tmp_path / "in.mp4"
         in_path.write_bytes(b"\x00")
         out_path = tmp_path / "out.mp4"
@@ -229,9 +223,7 @@ class TestApplyOverlays:
         # there were no drawtext entries either.
         assert captured == []
 
-    async def test_image_overlay_failure_raises(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_image_overlay_failure_raises(self, tmp_path: Path) -> None:
         in_path = tmp_path / "in.mp4"
         in_path.write_bytes(b"\x00")
         out_path = tmp_path / "out.mp4"
@@ -342,9 +334,7 @@ class TestApplyAudioEnvelopes:
         # Head + tail = 2 ifs (no middle segment).
         assert af_expr.count("if(") == 2
 
-    async def test_unsorted_keyframes_sorted_first(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_unsorted_keyframes_sorted_first(self, tmp_path: Path) -> None:
         # Pin: input keyframes in any order are sorted by time before
         # building the expression. Without this, the head/tail logic
         # would be wrong.

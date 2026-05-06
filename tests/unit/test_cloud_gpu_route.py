@@ -81,9 +81,7 @@ class TestProviderPath:
 class TestHandleProviderExc:
     def test_config_error_maps_to_503(self) -> None:
         with pytest.raises(HTTPException) as exc:
-            _handle_provider_exc(
-                CloudGPUConfigError(provider="runpod", hint="set RUNPOD_API_KEY")
-            )
+            _handle_provider_exc(CloudGPUConfigError(provider="runpod", hint="set RUNPOD_API_KEY"))
         assert exc.value.status_code == 503
         assert exc.value.detail["error"] == "provider_not_configured"
         assert exc.value.detail["provider"] == "runpod"
@@ -91,9 +89,7 @@ class TestHandleProviderExc:
     def test_provider_error_passes_upstream_status(self) -> None:
         with pytest.raises(HTTPException) as exc:
             _handle_provider_exc(
-                CloudGPUProviderError(
-                    provider="vastai", status_code=429, detail="rate limited"
-                )
+                CloudGPUProviderError(provider="vastai", status_code=429, detail="rate limited")
             )
         assert exc.value.status_code == 429
         assert exc.value.detail["provider"] == "vastai"
@@ -104,9 +100,7 @@ class TestHandleProviderExc:
         # outside [400, 600)). Route clamps to 502.
         with pytest.raises(HTTPException) as exc:
             _handle_provider_exc(
-                CloudGPUProviderError(
-                    provider="runpod", status_code=0, detail="transport"
-                )
+                CloudGPUProviderError(provider="runpod", status_code=0, detail="transport")
             )
         assert exc.value.status_code == 502
 
@@ -150,9 +144,7 @@ class TestNonCloudGPUExceptionsBubbleUp:
             AsyncMock(side_effect=ValueError("bad config")),
         ):
             with pytest.raises(ValueError, match="bad config"):
-                await list_gpu_types(
-                    name="runpod", db=AsyncMock(), settings=_settings()
-                )
+                await list_gpu_types(name="runpod", db=AsyncMock(), settings=_settings())
 
     async def test_provider_call_value_error_reraised_and_close_awaited(
         self,
@@ -165,9 +157,7 @@ class TestNonCloudGPUExceptionsBubbleUp:
             AsyncMock(return_value=prov),
         ):
             with pytest.raises(ValueError):
-                await list_pods(
-                    name="runpod", db=AsyncMock(), settings=_settings()
-                )
+                await list_pods(name="runpod", db=AsyncMock(), settings=_settings())
         prov.close.assert_awaited_once()
 
     async def test_launch_pod_value_error_reraised(self) -> None:
@@ -269,9 +259,7 @@ class TestNonCloudGPUExceptionsBubbleUp:
             AsyncMock(return_value=prov),
         ):
             with pytest.raises(ValueError):
-                await list_gpu_types(
-                    name="runpod", db=AsyncMock(), settings=_settings()
-                )
+                await list_gpu_types(name="runpod", db=AsyncMock(), settings=_settings())
         prov.close.assert_awaited_once()
 
     async def test_list_pods_get_provider_value_error_reraised(self) -> None:
@@ -280,9 +268,7 @@ class TestNonCloudGPUExceptionsBubbleUp:
             AsyncMock(side_effect=ValueError("x")),
         ):
             with pytest.raises(ValueError):
-                await list_pods(
-                    name="runpod", db=AsyncMock(), settings=_settings()
-                )
+                await list_pods(name="runpod", db=AsyncMock(), settings=_settings())
 
     async def test_start_pod_call_value_error_reraised(self) -> None:
         prov = MagicMock()
@@ -322,23 +308,17 @@ class TestPerProviderEndpoints:
             "drevalis.api.routes.cloud_gpu.get_provider",
             AsyncMock(return_value=prov),
         ):
-            out = await list_gpu_types(
-                name="runpod", db=AsyncMock(), settings=_settings()
-            )
+            out = await list_gpu_types(name="runpod", db=AsyncMock(), settings=_settings())
         assert out == [{"id": "A4000"}]
         prov.close.assert_awaited_once()
 
     async def test_list_gpu_types_provider_not_configured(self) -> None:
         with patch(
             "drevalis.api.routes.cloud_gpu.get_provider",
-            AsyncMock(
-                side_effect=CloudGPUConfigError(provider="vastai", hint="missing key")
-            ),
+            AsyncMock(side_effect=CloudGPUConfigError(provider="vastai", hint="missing key")),
         ):
             with pytest.raises(HTTPException) as exc:
-                await list_gpu_types(
-                    name="vastai", db=AsyncMock(), settings=_settings()
-                )
+                await list_gpu_types(name="vastai", db=AsyncMock(), settings=_settings())
         assert exc.value.status_code == 503
 
     async def test_list_gpu_types_provider_error_during_call_closes(self) -> None:
@@ -346,9 +326,7 @@ class TestPerProviderEndpoints:
         # close() MUST still be awaited.
         prov = MagicMock()
         prov.list_gpu_types = AsyncMock(
-            side_effect=CloudGPUProviderError(
-                provider="runpod", status_code=429, detail="rate"
-            )
+            side_effect=CloudGPUProviderError(provider="runpod", status_code=429, detail="rate")
         )
         prov.close = AsyncMock()
         with patch(
@@ -356,9 +334,7 @@ class TestPerProviderEndpoints:
             AsyncMock(return_value=prov),
         ):
             with pytest.raises(HTTPException) as exc:
-                await list_gpu_types(
-                    name="runpod", db=AsyncMock(), settings=_settings()
-                )
+                await list_gpu_types(name="runpod", db=AsyncMock(), settings=_settings())
         assert exc.value.status_code == 429
         prov.close.assert_awaited_once()
 
@@ -373,9 +349,7 @@ class TestPerProviderEndpoints:
             "drevalis.api.routes.cloud_gpu.get_provider",
             AsyncMock(return_value=_NoClose()),
         ):
-            out = await list_gpu_types(
-                name="runpod", db=AsyncMock(), settings=_settings()
-            )
+            out = await list_gpu_types(name="runpod", db=AsyncMock(), settings=_settings())
         assert out == [{"id": "x"}]
 
     async def test_list_pods_success(self) -> None:
@@ -384,9 +358,7 @@ class TestPerProviderEndpoints:
             "drevalis.api.routes.cloud_gpu.get_provider",
             AsyncMock(return_value=prov),
         ):
-            out = await list_pods(
-                name="runpod", db=AsyncMock(), settings=_settings()
-            )
+            out = await list_pods(name="runpod", db=AsyncMock(), settings=_settings())
         assert out[0]["id"] == "p1"
         prov.close.assert_awaited_once()
 
@@ -396,15 +368,11 @@ class TestPerProviderEndpoints:
         with patch(
             "drevalis.api.routes.cloud_gpu.get_provider",
             AsyncMock(
-                side_effect=CloudGPUProviderError(
-                    provider="runpod", status_code=500, detail="boom"
-                )
+                side_effect=CloudGPUProviderError(provider="runpod", status_code=500, detail="boom")
             ),
         ):
             with pytest.raises(HTTPException) as exc:
-                await list_pods(
-                    name="runpod", db=AsyncMock(), settings=_settings()
-                )
+                await list_pods(name="runpod", db=AsyncMock(), settings=_settings())
         assert exc.value.status_code == 500
 
     async def test_launch_pod_success(self) -> None:
@@ -426,9 +394,7 @@ class TestPerProviderEndpoints:
     async def test_launch_pod_provider_error_closes(self) -> None:
         prov = MagicMock()
         prov.create_pod = AsyncMock(
-            side_effect=CloudGPUProviderError(
-                provider="runpod", status_code=409, detail="dup"
-            )
+            side_effect=CloudGPUProviderError(provider="runpod", status_code=409, detail="dup")
         )
         prov.close = AsyncMock()
         body = LaunchRequest(name="dre", gpu_type_id="A4000")
@@ -452,17 +418,13 @@ class TestPerProviderEndpoints:
             "drevalis.api.routes.cloud_gpu.get_provider",
             AsyncMock(return_value=prov),
         ):
-            out = await stop_pod(
-                pod_id="p1", name="runpod", db=AsyncMock(), settings=_settings()
-            )
+            out = await stop_pod(pod_id="p1", name="runpod", db=AsyncMock(), settings=_settings())
         assert out["status"] == "EXITED"
 
     async def test_stop_pod_get_provider_error(self) -> None:
         with patch(
             "drevalis.api.routes.cloud_gpu.get_provider",
-            AsyncMock(
-                side_effect=CloudGPUConfigError(provider="lambda", hint="no key")
-            ),
+            AsyncMock(side_effect=CloudGPUConfigError(provider="lambda", hint="no key")),
         ):
             with pytest.raises(HTTPException) as exc:
                 await stop_pod(
@@ -479,17 +441,13 @@ class TestPerProviderEndpoints:
             "drevalis.api.routes.cloud_gpu.get_provider",
             AsyncMock(return_value=prov),
         ):
-            out = await start_pod(
-                pod_id="p1", name="runpod", db=AsyncMock(), settings=_settings()
-            )
+            out = await start_pod(pod_id="p1", name="runpod", db=AsyncMock(), settings=_settings())
         assert out["status"] == "RUNNING"
 
     async def test_start_pod_provider_call_error(self) -> None:
         prov = MagicMock()
         prov.start_pod = AsyncMock(
-            side_effect=CloudGPUProviderError(
-                provider="runpod", status_code=404, detail="no pod"
-            )
+            side_effect=CloudGPUProviderError(provider="runpod", status_code=404, detail="no pod")
         )
         prov.close = AsyncMock()
         with patch(
@@ -523,9 +481,7 @@ class TestPerProviderEndpoints:
         with patch(
             "drevalis.api.routes.cloud_gpu.get_provider",
             AsyncMock(
-                side_effect=CloudGPUProviderError(
-                    provider="runpod", status_code=500, detail="x"
-                )
+                side_effect=CloudGPUProviderError(provider="runpod", status_code=500, detail="x")
             ),
         ):
             with pytest.raises(HTTPException) as exc:
@@ -540,9 +496,7 @@ class TestPerProviderEndpoints:
     async def test_delete_pod_provider_call_error_closes(self) -> None:
         prov = MagicMock()
         prov.delete_pod = AsyncMock(
-            side_effect=CloudGPUProviderError(
-                provider="runpod", status_code=404, detail="x"
-            )
+            side_effect=CloudGPUProviderError(provider="runpod", status_code=404, detail="x")
         )
         prov.close = AsyncMock()
         with patch(
@@ -576,12 +530,15 @@ class TestListAllPods:
         async def _factory(name: str, *_a: Any, **_k: Any) -> Any:
             return {"runpod": runpod, "lambda": lambda_p}[name]
 
-        with patch(
-            "drevalis.api.routes.cloud_gpu.list_providers_with_status",
-            AsyncMock(return_value=statuses),
-        ), patch(
-            "drevalis.api.routes.cloud_gpu.get_provider",
-            AsyncMock(side_effect=_factory),
+        with (
+            patch(
+                "drevalis.api.routes.cloud_gpu.list_providers_with_status",
+                AsyncMock(return_value=statuses),
+            ),
+            patch(
+                "drevalis.api.routes.cloud_gpu.get_provider",
+                AsyncMock(side_effect=_factory),
+            ),
         ):
             out = await list_all_pods(db=AsyncMock(), settings=_settings())
 
@@ -592,17 +549,20 @@ class TestListAllPods:
     async def test_unconfigured_only_returns_empty_list(self) -> None:
         # No configured providers at all — must return [] without
         # invoking get_provider.
-        with patch(
-            "drevalis.api.routes.cloud_gpu.list_providers_with_status",
-            AsyncMock(
-                return_value=[
-                    {"name": "runpod", "configured": False},
-                    {"name": "vastai", "configured": False},
-                ]
+        with (
+            patch(
+                "drevalis.api.routes.cloud_gpu.list_providers_with_status",
+                AsyncMock(
+                    return_value=[
+                        {"name": "runpod", "configured": False},
+                        {"name": "vastai", "configured": False},
+                    ]
+                ),
             ),
-        ), patch(
-            "drevalis.api.routes.cloud_gpu.get_provider",
-            AsyncMock(side_effect=AssertionError("must not be called")),
+            patch(
+                "drevalis.api.routes.cloud_gpu.get_provider",
+                AsyncMock(side_effect=AssertionError("must not be called")),
+            ),
         ):
             out = await list_all_pods(db=AsyncMock(), settings=_settings())
         assert out == []
@@ -615,9 +575,7 @@ class TestListAllPods:
         ]
         runpod = MagicMock()
         runpod.list_pods = AsyncMock(
-            side_effect=CloudGPUProviderError(
-                provider="runpod", status_code=429, detail="rate"
-            )
+            side_effect=CloudGPUProviderError(provider="runpod", status_code=429, detail="rate")
         )
         runpod.close = AsyncMock()
         lambda_p = _provider(list_pods=[{"id": "lp1"}])
@@ -625,12 +583,15 @@ class TestListAllPods:
         async def _factory(name: str, *_a: Any, **_k: Any) -> Any:
             return {"runpod": runpod, "lambda": lambda_p}[name]
 
-        with patch(
-            "drevalis.api.routes.cloud_gpu.list_providers_with_status",
-            AsyncMock(return_value=statuses),
-        ), patch(
-            "drevalis.api.routes.cloud_gpu.get_provider",
-            AsyncMock(side_effect=_factory),
+        with (
+            patch(
+                "drevalis.api.routes.cloud_gpu.list_providers_with_status",
+                AsyncMock(return_value=statuses),
+            ),
+            patch(
+                "drevalis.api.routes.cloud_gpu.get_provider",
+                AsyncMock(side_effect=_factory),
+            ),
         ):
             out = await list_all_pods(db=AsyncMock(), settings=_settings())
 

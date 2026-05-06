@@ -116,9 +116,7 @@ def _make_session() -> Any:
 
 
 class TestRenderFromEditHappyPath:
-    async def test_full_render_writes_video_asset(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_full_render_writes_video_asset(self, tmp_path: Path) -> None:
         # Stage 2 source clips on disk so the trim loop has real files
         # to read (ffmpeg.trim_video is stubbed but the existence
         # check fires first).
@@ -148,9 +146,7 @@ class TestRenderFromEditHappyPath:
             ]
         }
 
-        edit_session = SimpleNamespace(
-            id=uuid4(), timeline=timeline, last_rendered_at=None
-        )
+        edit_session = SimpleNamespace(id=uuid4(), timeline=timeline, last_rendered_at=None)
         episode = SimpleNamespace(id=uuid4())
         asset_repo = MagicMock()
         asset_repo.create = AsyncMock()
@@ -178,9 +174,7 @@ class TestRenderFromEditHappyPath:
         update_kwargs = edit_repo.update.call_args.kwargs
         assert "last_rendered_at" in update_kwargs
 
-    async def test_clip_with_missing_asset_path_skipped(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_clip_with_missing_asset_path_skipped(self, tmp_path: Path) -> None:
         # Pin: clip with no `asset_path` skipped without crashing.
         src = tmp_path / "uploads" / "good.mp4"
         src.parent.mkdir(parents=True)
@@ -201,26 +195,20 @@ class TestRenderFromEditHappyPath:
                 }
             ]
         }
-        edit_session = SimpleNamespace(
-            id=uuid4(), timeline=timeline, last_rendered_at=None
-        )
+        edit_session = SimpleNamespace(id=uuid4(), timeline=timeline, last_rendered_at=None)
         episode = SimpleNamespace(id=uuid4())
         asset_repo = MagicMock()
         asset_repo.create = AsyncMock()
 
         ctx = _ctx_with(_make_session(), tmp_path)
-        es, _ = _patch_repos(
-            edit_session=edit_session, episode=episode, asset_repo=asset_repo
-        )
+        es, _ = _patch_repos(edit_session=edit_session, episode=episode, asset_repo=asset_repo)
         with es, _settings_patch(tmp_path):
             out = await render_from_edit(ctx, str(episode.id))
         assert out["status"] == "done"
         # Only ONE trim ran (the good clip).
         assert ctx["ffmpeg_service"].trim_video.await_count == 1
 
-    async def test_clip_source_missing_on_disk_skipped(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_clip_source_missing_on_disk_skipped(self, tmp_path: Path) -> None:
         # Asset path provided but file doesn't exist on disk →
         # skipped (post-restore where the database row outlived the
         # file).
@@ -238,24 +226,18 @@ class TestRenderFromEditHappyPath:
                 }
             ]
         }
-        edit_session = SimpleNamespace(
-            id=uuid4(), timeline=timeline, last_rendered_at=None
-        )
+        edit_session = SimpleNamespace(id=uuid4(), timeline=timeline, last_rendered_at=None)
         episode = SimpleNamespace(id=uuid4())
         asset_repo = MagicMock()
         ctx = _ctx_with(_make_session(), tmp_path)
-        es, _ = _patch_repos(
-            edit_session=edit_session, episode=episode, asset_repo=asset_repo
-        )
+        es, _ = _patch_repos(edit_session=edit_session, episode=episode, asset_repo=asset_repo)
         with es, _settings_patch(tmp_path):
             out = await render_from_edit(ctx, str(episode.id))
         # All clips skipped → empty_output.
         assert out["status"] == "empty_output"
         assert ctx["ffmpeg_service"].trim_video.await_count == 0
 
-    async def test_zero_duration_clip_copied_not_trimmed(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_zero_duration_clip_copied_not_trimmed(self, tmp_path: Path) -> None:
         # Pin: when out_s <= in_s (zero-duration / image clip), the
         # source is used as-is — ffmpeg concat needs a real video so
         # we don't trim it but we DO include it in the trimmed list.
@@ -277,16 +259,12 @@ class TestRenderFromEditHappyPath:
                 }
             ]
         }
-        edit_session = SimpleNamespace(
-            id=uuid4(), timeline=timeline, last_rendered_at=None
-        )
+        edit_session = SimpleNamespace(id=uuid4(), timeline=timeline, last_rendered_at=None)
         episode = SimpleNamespace(id=uuid4())
         asset_repo = MagicMock()
         asset_repo.create = AsyncMock()
         ctx = _ctx_with(_make_session(), tmp_path)
-        es, _ = _patch_repos(
-            edit_session=edit_session, episode=episode, asset_repo=asset_repo
-        )
+        es, _ = _patch_repos(edit_session=edit_session, episode=episode, asset_repo=asset_repo)
         with es, _settings_patch(tmp_path):
             out = await render_from_edit(ctx, str(episode.id))
         # No trim for the zero-duration clip; concat still ran.
@@ -299,9 +277,7 @@ class TestRenderFromEditHappyPath:
 
 
 class TestProxyMode:
-    async def test_proxy_writes_proxy_mp4_with_video_proxy_asset_type(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_proxy_writes_proxy_mp4_with_video_proxy_asset_type(self, tmp_path: Path) -> None:
         # Stage source.
         src = tmp_path / "uploads" / "a.mp4"
         src.parent.mkdir(parents=True)
@@ -321,9 +297,7 @@ class TestProxyMode:
                 }
             ]
         }
-        edit_session = SimpleNamespace(
-            id=uuid4(), timeline=timeline, last_rendered_at=None
-        )
+        edit_session = SimpleNamespace(id=uuid4(), timeline=timeline, last_rendered_at=None)
         episode = SimpleNamespace(id=uuid4())
         asset_repo = MagicMock()
         asset_repo.create = AsyncMock()
@@ -344,12 +318,8 @@ class TestProxyMode:
             Path(args[-1]).write_bytes(b"proxy-output")
             return proc
 
-        with es, _settings_patch(tmp_path), patch(
-            "asyncio.create_subprocess_exec", _fake_exec
-        ):
-            out = await render_from_edit(
-                ctx, str(episode.id), proxy=True
-            )
+        with es, _settings_patch(tmp_path), patch("asyncio.create_subprocess_exec", _fake_exec):
+            out = await render_from_edit(ctx, str(episode.id), proxy=True)
 
         assert out["status"] == "done"
         assert out["output"].endswith("proxy.mp4")
@@ -361,9 +331,7 @@ class TestProxyMode:
         # editor's "last full render" indicator stays accurate.
         edit_repo.update.assert_not_awaited()
 
-    async def test_proxy_subprocess_failure_raises(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_proxy_subprocess_failure_raises(self, tmp_path: Path) -> None:
         # Pin: when the proxy ffmpeg invocation returns non-zero, the
         # route raises RuntimeError with the stderr tail. Worker arq
         # retry then kicks in.
@@ -385,15 +353,11 @@ class TestProxyMode:
                 }
             ]
         }
-        edit_session = SimpleNamespace(
-            id=uuid4(), timeline=timeline, last_rendered_at=None
-        )
+        edit_session = SimpleNamespace(id=uuid4(), timeline=timeline, last_rendered_at=None)
         episode = SimpleNamespace(id=uuid4())
         asset_repo = MagicMock()
         ctx = _ctx_with(_make_session(), tmp_path)
-        es, _ = _patch_repos(
-            edit_session=edit_session, episode=episode, asset_repo=asset_repo
-        )
+        es, _ = _patch_repos(edit_session=edit_session, episode=episode, asset_repo=asset_repo)
 
         proc = MagicMock()
         proc.returncode = 1
@@ -402,8 +366,6 @@ class TestProxyMode:
         async def _fake_exec(*_args: Any, **_kwargs: Any) -> Any:
             return proc
 
-        with es, _settings_patch(tmp_path), patch(
-            "asyncio.create_subprocess_exec", _fake_exec
-        ):
+        with es, _settings_patch(tmp_path), patch("asyncio.create_subprocess_exec", _fake_exec):
             with pytest.raises(RuntimeError, match="proxy downscale failed"):
                 await render_from_edit(ctx, str(episode.id), proxy=True)

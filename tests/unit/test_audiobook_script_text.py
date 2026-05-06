@@ -158,9 +158,7 @@ class TestTwoPhasePath:
             + json.dumps(
                 {
                     "title": "Wrapped",
-                    "chapters": [
-                        {"title": "Chapter 1", "summary": "Only chapter"}
-                    ],
+                    "chapters": [{"title": "Chapter 1", "summary": "Only chapter"}],
                 }
             )
             + "\n```"
@@ -244,9 +242,7 @@ class TestTwoPhasePath:
         # First call (cancellation check at top of loop): "generating"
         # → continue. Second call (after chapter 1): "cancelled" →
         # break.
-        redis.get = AsyncMock(
-            side_effect=["generating", "cancelled"]
-        )
+        redis.get = AsyncMock(side_effect=["generating", "cancelled"])
 
         out = await _generate_audiobook_script_text(
             provider,
@@ -268,15 +264,11 @@ class TestTwoPhasePath:
             {
                 "title": "Many",
                 "chapters": [
-                    {"title": f"Chapter {i + 1}", "summary": f"Summary {i + 1}"}
-                    for i in range(10)
+                    {"title": f"Chapter {i + 1}", "summary": f"Summary {i + 1}"} for i in range(10)
                 ],
             }
         )
-        chapter_texts = [
-            f"## Chapter {i + 1}\n\n[Narrator] Body {i + 1}."
-            for i in range(10)
-        ]
+        chapter_texts = [f"## Chapter {i + 1}\n\n[Narrator] Body {i + 1}." for i in range(10)]
         provider = _provider_returning(outline, *chapter_texts)
         out = await _generate_audiobook_script_text(
             provider,
@@ -307,13 +299,9 @@ class TestTwoPhasePath:
             }
         )
         chapter_1 = (
-            "## Chapter 1\n\n"
-            "[Narrator] Opening paragraph.\n\n"
-            "[Hero] Final-paragraph dialogue."
+            "## Chapter 1\n\n[Narrator] Opening paragraph.\n\n[Hero] Final-paragraph dialogue."
         )
-        provider = _provider_returning(
-            outline, chapter_1, "## Chapter 2\n\n[Narrator] cont."
-        )
+        provider = _provider_returning(outline, chapter_1, "## Chapter 2\n\n[Narrator] cont.")
         await _generate_audiobook_script_text(
             provider,
             concept="x",
@@ -327,6 +315,8 @@ class TestTwoPhasePath:
         # The user prompt should reference Chapter 1's last paragraph.
         # Args are (system, user, ...) — find the user prompt.
         user_prompt = (
-            third_call.args[1] if len(third_call.args) > 1 else third_call.kwargs.get("user_prompt", "")
+            third_call.args[1]
+            if len(third_call.args) > 1
+            else third_call.kwargs.get("user_prompt", "")
         )
         assert "Final-paragraph dialogue" in user_prompt

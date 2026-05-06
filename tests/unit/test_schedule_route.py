@@ -143,16 +143,12 @@ class TestUpdateScheduledPost:
         svc = MagicMock()
         post = _make_post()
         svc.update = AsyncMock(return_value=post)
-        out = await update_scheduled_post(
-            post.id, ScheduleUpdate(title="renamed"), svc=svc
-        )
+        out = await update_scheduled_post(post.id, ScheduleUpdate(title="renamed"), svc=svc)
         assert out.id == post.id
 
     async def test_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.update = AsyncMock(
-            side_effect=NotFoundError("scheduled_post", uuid4())
-        )
+        svc.update = AsyncMock(side_effect=NotFoundError("scheduled_post", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await update_scheduled_post(uuid4(), ScheduleUpdate(), svc=svc)
         assert exc.value.status_code == 404
@@ -207,9 +203,7 @@ class TestAutoSchedule:
             privacy="public",
             youtube_channel_id=None,
         )
-        svc.auto_schedule_series = AsyncMock(
-            return_value=([slot], [], True)
-        )
+        svc.auto_schedule_series = AsyncMock(return_value=([slot], [], True))
         body = AutoScheduleRequest(
             cadence="daily",
             start_at=datetime(2026, 5, 1, tzinfo=UTC),
@@ -221,9 +215,7 @@ class TestAutoSchedule:
 
     async def test_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.auto_schedule_series = AsyncMock(
-            side_effect=NotFoundError("series", uuid4())
-        )
+        svc.auto_schedule_series = AsyncMock(side_effect=NotFoundError("series", uuid4()))
         body = AutoScheduleRequest(start_at=datetime(2026, 5, 1, tzinfo=UTC))
         with pytest.raises(HTTPException) as exc:
             await auto_schedule_series(uuid4(), body, svc=svc)

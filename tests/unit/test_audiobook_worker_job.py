@@ -100,12 +100,15 @@ class TestGenerateAudiobookSafetyBranches:
         ab_repo.update = AsyncMock()
         vp_repo = MagicMock()
         vp_repo.get_by_id = AsyncMock(return_value=None)
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
         ):
             out = await generate_audiobook(_ctx(), str(uuid4()))
         assert out["status"] == "failed"
@@ -125,12 +128,15 @@ class TestGenerateAudiobookSafetyBranches:
         ab_repo.update = AsyncMock()
         vp_repo = MagicMock()
         vp_repo.get_by_id = AsyncMock(return_value=SimpleNamespace())
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
         ):
             out = await generate_audiobook(_ctx(), str(uuid4()))
         assert out["status"] == "failed"
@@ -173,15 +179,19 @@ class TestGenerateAudiobookSafetyBranches:
         ab_service = MagicMock()
         ab_service.preflight = AsyncMock(return_value=many_errors)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
             out = await generate_audiobook(_ctx(), str(uuid4()))
 
@@ -204,9 +214,7 @@ class TestRegenerateChapterSafetyBranches:
             "drevalis.repositories.audiobook.AudiobookRepository",
             return_value=ab_repo,
         ):
-            out = await regenerate_audiobook_chapter(
-                _ctx(), str(uuid4()), 0
-            )
+            out = await regenerate_audiobook_chapter(_ctx(), str(uuid4()), 0)
         assert out["status"] == "failed"
 
 
@@ -221,7 +229,5 @@ class TestRegenerateChapterImageSafetyBranches:
             "drevalis.repositories.audiobook.AudiobookRepository",
             return_value=ab_repo,
         ):
-            out = await regenerate_audiobook_chapter_image(
-                _ctx(), str(uuid4()), 0
-            )
+            out = await regenerate_audiobook_chapter_image(_ctx(), str(uuid4()), 0)
         assert out["status"] == "failed"

@@ -162,9 +162,7 @@ class TestEmptyScript:
     def test_no_scenes_fails(self) -> None:
         # Pydantic min_length=1 rejects empty scenes; build manually
         # via construct() to bypass.
-        broken = EpisodeScript.model_construct(
-            title="x", scenes=[], total_duration_seconds=0.0
-        )
+        broken = EpisodeScript.model_construct(title="x", scenes=[], total_duration_seconds=0.0)
         report = _run(check_script_content(broken))
         assert report.passed is False
         assert any("no scenes" in i for i in report.issues)

@@ -85,9 +85,7 @@ class TestGetEditorSession:
         # doesn't drop the breadcrumb.
         svc = MagicMock()
         svc.get_or_create = AsyncMock(
-            side_effect=RuntimeError(
-                'relation "video_edit_sessions" does not exist'
-            )
+            side_effect=RuntimeError('relation "video_edit_sessions" does not exist')
         )
         with pytest.raises(HTTPException) as exc:
             await get_editor_session(uuid4(), svc=svc)
@@ -135,9 +133,7 @@ class TestRender:
 
     async def test_render_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.enqueue_render = AsyncMock(
-            side_effect=NotFoundError("edit_session", uuid4())
-        )
+        svc.enqueue_render = AsyncMock(side_effect=NotFoundError("edit_session", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await render_editor_session(uuid4(), svc=svc)
         assert exc.value.status_code == 404
@@ -152,9 +148,7 @@ class TestPreview:
 
     async def test_preview_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.enqueue_preview = AsyncMock(
-            side_effect=NotFoundError("edit_session", uuid4())
-        )
+        svc.enqueue_preview = AsyncMock(side_effect=NotFoundError("edit_session", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await enqueue_preview(uuid4(), svc=svc)
         assert exc.value.status_code == 404
@@ -167,9 +161,7 @@ class TestCaptions:
     async def test_get_returns_payload(self) -> None:
         svc = MagicMock()
         svc.get_captions = AsyncMock(
-            return_value=[
-                {"word": "hi", "start_seconds": 0.0, "end_seconds": 0.4}
-            ]
+            return_value=[{"word": "hi", "start_seconds": 0.0, "end_seconds": 0.4}]
         )
         out = await get_captions(uuid4(), svc=svc)
         assert len(out.words) == 1
@@ -215,27 +207,21 @@ class TestGetWaveform:
 
     async def test_validation_error_maps_to_400(self) -> None:
         svc = MagicMock()
-        svc.render_waveform = AsyncMock(
-            side_effect=ValidationError("unknown track")
-        )
+        svc.render_waveform = AsyncMock(side_effect=ValidationError("unknown track"))
         with pytest.raises(HTTPException) as exc:
             await get_waveform(uuid4(), track="bogus", svc=svc)
         assert exc.value.status_code == 400
 
     async def test_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.render_waveform = AsyncMock(
-            side_effect=NotFoundError("audio_asset", uuid4())
-        )
+        svc.render_waveform = AsyncMock(side_effect=NotFoundError("audio_asset", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await get_waveform(uuid4(), track="music", svc=svc)
         assert exc.value.status_code == 404
 
     async def test_render_error_maps_to_500(self) -> None:
         svc = MagicMock()
-        svc.render_waveform = AsyncMock(
-            side_effect=WaveformRenderError("ffmpeg crashed")
-        )
+        svc.render_waveform = AsyncMock(side_effect=WaveformRenderError("ffmpeg crashed"))
         with pytest.raises(HTTPException) as exc:
             await get_waveform(uuid4(), track="voice", svc=svc)
         assert exc.value.status_code == 500

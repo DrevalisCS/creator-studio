@@ -71,9 +71,7 @@ class TestApiKeyStoreService:
         # Commits after the upsert.
         db.commit.assert_awaited_once()
 
-    async def test_upsert_with_rotated_keyring_tags_current_version(
-        self, fernet_key: str
-    ) -> None:
+    async def test_upsert_with_rotated_keyring_tags_current_version(self, fernet_key: str) -> None:
         # Pin: when the service is constructed with a multi-version
         # keyring (operator has rotated), new writes get tagged with
         # the highest version, not the legacy ``1``. This is what lets

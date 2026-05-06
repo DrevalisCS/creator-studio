@@ -99,11 +99,7 @@ class TestBuildYouTubeService:
         # flags so the UI can render an actionable error banner.
         with patch(
             "drevalis.api.routes.youtube._monolith._build_youtube_service",
-            AsyncMock(
-                side_effect=YouTubeNotConfiguredError(
-                    has_id_row=True, has_secret_row=True
-                )
-            ),
+            AsyncMock(side_effect=YouTubeNotConfiguredError(has_id_row=True, has_secret_row=True)),
         ):
             with pytest.raises(HTTPException) as exc:
                 await build_youtube_service(_settings(), AsyncMock())
@@ -118,11 +114,7 @@ class TestBuildYouTubeService:
         # a "rotate-the-key" footgun.
         with patch(
             "drevalis.api.routes.youtube._monolith._build_youtube_service",
-            AsyncMock(
-                side_effect=YouTubeNotConfiguredError(
-                    has_id_row=True, has_secret_row=False
-                )
-            ),
+            AsyncMock(side_effect=YouTubeNotConfiguredError(has_id_row=True, has_secret_row=False)),
         ):
             with pytest.raises(HTTPException) as exc:
                 await build_youtube_service(_settings(), AsyncMock())
@@ -134,9 +126,7 @@ class TestBuildYouTubeService:
         with patch(
             "drevalis.api.routes.youtube._monolith._build_youtube_service",
             AsyncMock(
-                side_effect=YouTubeNotConfiguredError(
-                    has_id_row=False, has_secret_row=False
-                )
+                side_effect=YouTubeNotConfiguredError(has_id_row=False, has_secret_row=False)
             ),
         ):
             with pytest.raises(HTTPException) as exc:
@@ -153,9 +143,7 @@ class TestAmbiguousChannel400:
     def test_includes_connected_channels(self) -> None:
         a = _make_channel(channel_id="UC_a", channel_name="A")
         b = _make_channel(channel_id="UC_b", channel_name="B")
-        exc = _ambiguous_channel_400(
-            MultipleChannelsAmbiguousError(channels=[a, b])
-        )
+        exc = _ambiguous_channel_400(MultipleChannelsAmbiguousError(channels=[a, b]))
         assert exc.status_code == 400
         assert exc.detail["error"] == "channel_id_required"
         names = {c["name"] for c in exc.detail["connected_channels"]}
@@ -175,9 +163,7 @@ class TestGetAuthURL:
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=yt),
         ):
-            out = await get_auth_url(
-                settings=_settings(), redis=redis, db=AsyncMock()
-            )
+            out = await get_auth_url(settings=_settings(), redis=redis, db=AsyncMock())
         assert out.auth_url == "https://google/x"
         # 10-minute TTL on the CSRF state key.
         redis.setex.assert_awaited_once()
@@ -198,9 +184,7 @@ class TestGetAuthURL:
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=yt),
         ):
-            out = await get_auth_url(
-                settings=_settings(), redis=redis, db=AsyncMock()
-            )
+            out = await get_auth_url(settings=_settings(), redis=redis, db=AsyncMock())
         assert out.auth_url == "https://google/x"
 
 
@@ -255,9 +239,7 @@ class TestOAuthCallback:
         redis = AsyncMock()
         redis.getdel = AsyncMock(return_value=b"1")
         yt = MagicMock()
-        yt.handle_callback = AsyncMock(
-            side_effect=ConnectionError("Google handshake failed")
-        )
+        yt.handle_callback = AsyncMock(side_effect=ConnectionError("Google handshake failed"))
         with patch(
             "drevalis.api.routes.youtube._monolith.build_youtube_service",
             AsyncMock(return_value=yt),
@@ -374,9 +356,7 @@ class TestDisconnect:
         admin = MagicMock()
         a = _make_channel(channel_name="A")
         b = _make_channel(channel_name="B")
-        admin.disconnect = AsyncMock(
-            side_effect=MultipleChannelsAmbiguousError(channels=[a, b])
-        )
+        admin.disconnect = AsyncMock(side_effect=MultipleChannelsAmbiguousError(channels=[a, b]))
         with pytest.raises(HTTPException) as exc:
             await disconnect(channel_id=None, admin=admin)
         assert exc.value.status_code == 400
@@ -387,9 +367,7 @@ class TestDisconnect:
 
     async def test_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.disconnect = AsyncMock(
-            side_effect=NotFoundError("youtube_channel", uuid4())
-        )
+        admin.disconnect = AsyncMock(side_effect=NotFoundError("youtube_channel", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await disconnect(channel_id=uuid4(), admin=admin)
         assert exc.value.status_code == 404
@@ -424,9 +402,7 @@ class TestDeleteChannel:
 
     async def test_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.delete_channel = AsyncMock(
-            side_effect=NotFoundError("youtube_channel", uuid4())
-        )
+        admin.delete_channel = AsyncMock(side_effect=NotFoundError("youtube_channel", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await delete_channel(uuid4(), admin=admin)
         assert exc.value.status_code == 404
@@ -438,9 +414,7 @@ class TestDeleteChannel:
 class TestUpdateChannel:
     async def test_success(self) -> None:
         admin = MagicMock()
-        admin.update_channel = AsyncMock(
-            return_value=_make_channel(upload_time="14:00")
-        )
+        admin.update_channel = AsyncMock(return_value=_make_channel(upload_time="14:00"))
         out = await update_channel(
             uuid4(),
             YouTubeChannelUpdate(upload_time="14:00"),
@@ -452,9 +426,7 @@ class TestUpdateChannel:
 
     async def test_not_found_404(self) -> None:
         admin = MagicMock()
-        admin.update_channel = AsyncMock(
-            side_effect=NotFoundError("youtube_channel", uuid4())
-        )
+        admin.update_channel = AsyncMock(side_effect=NotFoundError("youtube_channel", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await update_channel(
                 uuid4(),

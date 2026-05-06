@@ -167,7 +167,8 @@ async def bulk_generate(
     is reached, remaining episodes are skipped rather than raising an error.
     """
     queued_ids, skipped_ids = await svc.bulk_generate(
-        payload.episode_ids, effective_max_concurrent_generations(settings.max_concurrent_generations)
+        payload.episode_ids,
+        effective_max_concurrent_generations(settings.max_concurrent_generations),
     )
     return BulkGenerateResponse(
         queued=len(queued_ids),
@@ -282,7 +283,9 @@ async def generate_episode(
     requested_steps: list[str] | None = list(payload.steps) if payload and payload.steps else None
     try:
         job_ids = await svc.generate(
-            episode_id, requested_steps, effective_max_concurrent_generations(settings.max_concurrent_generations)
+            episode_id,
+            requested_steps,
+            effective_max_concurrent_generations(settings.max_concurrent_generations),
         )
     except EpisodeNotFoundError as exc:
         raise HTTPException(
@@ -323,7 +326,9 @@ async def retry_episode(
 ) -> RetryResponse:
     """Find the first failed generation job and re-enqueue it."""
     try:
-        job_id, step = await svc.retry_first_failed(episode_id, effective_max_concurrent_generations(settings.max_concurrent_generations))
+        job_id, step = await svc.retry_first_failed(
+            episode_id, effective_max_concurrent_generations(settings.max_concurrent_generations)
+        )
     except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -361,7 +366,11 @@ async def retry_episode_step(
 ) -> RetryResponse:
     """Re-enqueue a specific pipeline step for the episode."""
     try:
-        job_id = await svc.retry_step(episode_id, step, effective_max_concurrent_generations(settings.max_concurrent_generations))
+        job_id = await svc.retry_step(
+            episode_id,
+            step,
+            effective_max_concurrent_generations(settings.max_concurrent_generations),
+        )
     except EpisodeNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -762,7 +771,9 @@ async def reassemble(
 ) -> dict[str, Any]:
     """Enqueue a job to re-run captions, assembly, and thumbnail extraction."""
     try:
-        job_ids = await svc.reassemble(episode_id, effective_max_concurrent_generations(settings.max_concurrent_generations))
+        job_ids = await svc.reassemble(
+            episode_id, effective_max_concurrent_generations(settings.max_concurrent_generations)
+        )
     except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -805,7 +816,9 @@ async def regenerate_captions(
     """Store a new caption style override and enqueue reassembly."""
     try:
         job_ids = await svc.regenerate_captions(
-            episode_id, caption_style, effective_max_concurrent_generations(settings.max_concurrent_generations)
+            episode_id,
+            caption_style,
+            effective_max_concurrent_generations(settings.max_concurrent_generations),
         )
     except (EpisodeNotFoundError, EpisodeNoScriptError) as exc:
         raise HTTPException(

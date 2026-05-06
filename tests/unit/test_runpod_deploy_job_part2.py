@@ -89,18 +89,13 @@ class TestUnknownPodType:
         # Set up an env where the pod is RUNNING immediately so we
         # reach the dispatch branch.
         ctx, _ = _ctx_with_session({})
-        with _patch_runpod_service(
-            list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]
-        ):
-            out = await auto_deploy_runpod_pod(
-                ctx, "p1", "kubernetes", "rp-key", 8188
-            )
+        with _patch_runpod_service(list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]):
+            out = await auto_deploy_runpod_pod(ctx, "p1", "kubernetes", "rp-key", 8188)
         assert out["status"] == "failed"
         assert "kubernetes" in out["message"]
         # Last status write reflects the unknown-pod_type message.
         assert any(
-            w[1].get("status") == "failed"
-            and "Unknown pod_type" in w[1].get("message", "")
+            w[1].get("status") == "failed" and "Unknown pod_type" in w[1].get("message", "")
             for w in ctx["redis"].writes
         )
 
@@ -109,9 +104,7 @@ class TestUnknownPodType:
 
 
 class TestComfyUIRegistration:
-    async def test_creates_server_and_marks_connected_on_200(
-        self, fast_sleep: None
-    ) -> None:
+    async def test_creates_server_and_marks_connected_on_200(self, fast_sleep: None) -> None:
         ctx, _ = _ctx_with_session({})
 
         repo = MagicMock()
@@ -129,18 +122,19 @@ class TestComfyUIRegistration:
             kwargs["transport"] = httpx.MockTransport(_h)
             return real(*args, **kwargs)
 
-        with _patch_runpod_service(
-            list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=repo,
-        ), patch(
-            "drevalis.core.security.encrypt_value",
-            return_value=(b"opaque", 1),
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await auto_deploy_runpod_pod(
-                ctx, "p1", "comfyui", "rp-key", 8188
-            )
+        with (
+            _patch_runpod_service(list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=repo,
+            ),
+            patch(
+                "drevalis.core.security.encrypt_value",
+                return_value=(b"opaque", 1),
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await auto_deploy_runpod_pod(ctx, "p1", "comfyui", "rp-key", 8188)
 
         assert out["status"] == "ready"
         assert out["pod_id"] == "p1"
@@ -152,9 +146,7 @@ class TestComfyUIRegistration:
         assert ready_writes
         assert "registered and connected" in ready_writes[-1][1]["message"]
 
-    async def test_skips_create_when_url_already_registered(
-        self, fast_sleep: None
-    ) -> None:
+    async def test_skips_create_when_url_already_registered(self, fast_sleep: None) -> None:
         # Idempotent: existing server with same URL → no new row.
         ctx, _ = _ctx_with_session({})
         existing = SimpleNamespace(
@@ -174,22 +166,20 @@ class TestComfyUIRegistration:
             kwargs["transport"] = httpx.MockTransport(_h)
             return real(*args, **kwargs)
 
-        with _patch_runpod_service(
-            list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=repo,
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await auto_deploy_runpod_pod(
-                ctx, "p1", "comfyui", "rp-key", 8188
-            )
+        with (
+            _patch_runpod_service(list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=repo,
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await auto_deploy_runpod_pod(ctx, "p1", "comfyui", "rp-key", 8188)
 
         assert out["status"] == "ready"
         repo.create.assert_not_awaited()
 
-    async def test_marks_ready_pending_when_connection_test_fails(
-        self, fast_sleep: None
-    ) -> None:
+    async def test_marks_ready_pending_when_connection_test_fails(self, fast_sleep: None) -> None:
         # ComfyUI registered, but /system_stats returns 500 on every
         # attempt. Pin: status STILL goes "ready" but with the
         # "connection test pending" message — operator can act on it.
@@ -207,26 +197,25 @@ class TestComfyUIRegistration:
             kwargs["transport"] = httpx.MockTransport(_h)
             return real(*args, **kwargs)
 
-        with _patch_runpod_service(
-            list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=repo,
-        ), patch(
-            "drevalis.core.security.encrypt_value",
-            return_value=(b"opaque", 1),
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await auto_deploy_runpod_pod(
-                ctx, "p1", "comfyui", "rp-key", 8188
-            )
+        with (
+            _patch_runpod_service(list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=repo,
+            ),
+            patch(
+                "drevalis.core.security.encrypt_value",
+                return_value=(b"opaque", 1),
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await auto_deploy_runpod_pod(ctx, "p1", "comfyui", "rp-key", 8188)
         assert out["status"] == "ready"
         ready = [w for w in ctx["redis"].writes if w[1].get("status") == "ready"]
         assert ready
         assert "connection test pending" in ready[-1][1]["message"]
 
-    async def test_connection_test_exception_swallowed(
-        self, fast_sleep: None
-    ) -> None:
+    async def test_connection_test_exception_swallowed(self, fast_sleep: None) -> None:
         # If httpx raises (e.g. DNS error mid-test), the loop continues
         # to the next attempt and eventually marks ready-pending.
         ctx, _ = _ctx_with_session({})
@@ -243,18 +232,19 @@ class TestComfyUIRegistration:
             kwargs["transport"] = httpx.MockTransport(_h)
             return real(*args, **kwargs)
 
-        with _patch_runpod_service(
-            list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]
-        ), patch(
-            "drevalis.repositories.comfyui.ComfyUIServerRepository",
-            return_value=repo,
-        ), patch(
-            "drevalis.core.security.encrypt_value",
-            return_value=(b"opaque", 1),
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await auto_deploy_runpod_pod(
-                ctx, "p1", "comfyui", "rp-key", 8188
-            )
+        with (
+            _patch_runpod_service(list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]),
+            patch(
+                "drevalis.repositories.comfyui.ComfyUIServerRepository",
+                return_value=repo,
+            ),
+            patch(
+                "drevalis.core.security.encrypt_value",
+                return_value=(b"opaque", 1),
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await auto_deploy_runpod_pod(ctx, "p1", "comfyui", "rp-key", 8188)
         # Pin: even with ALL connection tests raising, the route
         # still returns ready (the server row IS created in DB).
         assert out["status"] == "ready"
@@ -264,9 +254,7 @@ class TestComfyUIRegistration:
 
 
 class TestVLLMRegistration:
-    async def test_creates_config_and_detects_model_name(
-        self, fast_sleep: None
-    ) -> None:
+    async def test_creates_config_and_detects_model_name(self, fast_sleep: None) -> None:
         # vLLM /v1/models responds 200 with model id → route persists
         # the detected name back to the config.
         ctx, _ = _ctx_with_session({})
@@ -282,9 +270,7 @@ class TestVLLMRegistration:
         llm_repo.get_all.side_effect = [[], [target]]
 
         def _h(_request: httpx.Request) -> httpx.Response:
-            return httpx.Response(
-                200, json={"data": [{"id": "qwen2.5-7b"}]}
-            )
+            return httpx.Response(200, json={"data": [{"id": "qwen2.5-7b"}]})
 
         real = httpx.AsyncClient
 
@@ -292,15 +278,15 @@ class TestVLLMRegistration:
             kwargs["transport"] = httpx.MockTransport(_h)
             return real(*args, **kwargs)
 
-        with _patch_runpod_service(
-            list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await auto_deploy_runpod_pod(
-                ctx, "p1", "vllm", "rp-key", 1234
-            )
+        with (
+            _patch_runpod_service(list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await auto_deploy_runpod_pod(ctx, "p1", "vllm", "rp-key", 1234)
 
         assert out["status"] == "ready"
         # Config created on first lookup, then updated with detected
@@ -315,9 +301,7 @@ class TestVLLMRegistration:
         ready = [w for w in ctx["redis"].writes if w[1].get("status") == "ready"]
         assert ready[-1][1].get("model_name") == "qwen2.5-7b"
 
-    async def test_skips_create_when_base_url_already_registered(
-        self, fast_sleep: None
-    ) -> None:
+    async def test_skips_create_when_base_url_already_registered(self, fast_sleep: None) -> None:
         ctx, _ = _ctx_with_session({})
         existing = SimpleNamespace(
             id=uuid4(),
@@ -337,21 +321,19 @@ class TestVLLMRegistration:
             kwargs["transport"] = httpx.MockTransport(_h)
             return real(*args, **kwargs)
 
-        with _patch_runpod_service(
-            list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await auto_deploy_runpod_pod(
-                ctx, "p1", "vllm", "rp-key", 1234
-            )
+        with (
+            _patch_runpod_service(list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await auto_deploy_runpod_pod(ctx, "p1", "vllm", "rp-key", 1234)
         assert out["status"] == "ready"
         llm_repo.create.assert_not_awaited()
 
-    async def test_marks_ready_pending_when_model_still_loading(
-        self, fast_sleep: None
-    ) -> None:
+    async def test_marks_ready_pending_when_model_still_loading(self, fast_sleep: None) -> None:
         # /v1/models returns 503 every attempt → vLLM model still
         # loading. Status STILL goes ready (config row exists) but
         # with "model still loading" in the message.
@@ -369,15 +351,15 @@ class TestVLLMRegistration:
             kwargs["transport"] = httpx.MockTransport(_h)
             return real(*args, **kwargs)
 
-        with _patch_runpod_service(
-            list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch("httpx.AsyncClient", side_effect=_patched):
-            out = await auto_deploy_runpod_pod(
-                ctx, "p1", "vllm", "rp-key", 1234
-            )
+        with (
+            _patch_runpod_service(list_pods_returns=[{"id": "p1", "desiredStatus": "RUNNING"}]),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch("httpx.AsyncClient", side_effect=_patched),
+        ):
+            out = await auto_deploy_runpod_pod(ctx, "p1", "vllm", "rp-key", 1234)
         assert out["status"] == "ready"
         ready = [w for w in ctx["redis"].writes if w[1].get("status") == "ready"]
         assert ready

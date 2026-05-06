@@ -80,9 +80,7 @@ def _make_workflow(**overrides: Any) -> Any:
     w.id = overrides.get("id", uuid4())
     w.name = overrides.get("name", "Qwen Image")
     w.description = overrides.get("description")
-    w.workflow_json_path = overrides.get(
-        "workflow_json_path", "workflows/drevalis/qwen-1.json"
-    )
+    w.workflow_json_path = overrides.get("workflow_json_path", "workflows/drevalis/qwen-1.json")
     w.version = overrides.get("version", 1)
     w.input_mappings = overrides.get("input_mappings", {"prompt_node": "6"})
     w.created_at = overrides.get("created_at", datetime(2026, 1, 1))
@@ -167,9 +165,7 @@ class TestServerCrud:
     async def test_update_success(self) -> None:
         svc = MagicMock()
         svc.update = AsyncMock(return_value=_make_server(name="renamed"))
-        out = await update_server(
-            uuid4(), ComfyUIServerUpdate(name="renamed"), svc=svc
-        )
+        out = await update_server(uuid4(), ComfyUIServerUpdate(name="renamed"), svc=svc)
         assert out.name == "renamed"
         kwargs = svc.update.call_args.kwargs
         assert kwargs == {"name": "renamed"}
@@ -178,9 +174,7 @@ class TestServerCrud:
         svc = MagicMock()
         svc.update = AsyncMock(side_effect=ValidationError("bad"))
         with pytest.raises(HTTPException) as exc:
-            await update_server(
-                uuid4(), ComfyUIServerUpdate(max_concurrent=8), svc=svc
-            )
+            await update_server(uuid4(), ComfyUIServerUpdate(max_concurrent=8), svc=svc)
         assert exc.value.status_code == 422
 
     async def test_update_not_found_404(self) -> None:
@@ -317,29 +311,21 @@ class TestWorkflowCrud:
     async def test_update_success(self) -> None:
         svc = MagicMock()
         svc.update = AsyncMock(return_value=_make_workflow(name="renamed"))
-        out = await update_workflow(
-            uuid4(), ComfyUIWorkflowUpdate(name="renamed"), svc=svc
-        )
+        out = await update_workflow(uuid4(), ComfyUIWorkflowUpdate(name="renamed"), svc=svc)
         assert out.name == "renamed"
 
     async def test_update_validation_422(self) -> None:
         svc = MagicMock()
         svc.update = AsyncMock(side_effect=ValidationError("invalid mapping"))
         with pytest.raises(HTTPException) as exc:
-            await update_workflow(
-                uuid4(), ComfyUIWorkflowUpdate(name="x"), svc=svc
-            )
+            await update_workflow(uuid4(), ComfyUIWorkflowUpdate(name="x"), svc=svc)
         assert exc.value.status_code == 422
 
     async def test_update_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.update = AsyncMock(
-            side_effect=NotFoundError("comfyui_workflow", uuid4())
-        )
+        svc.update = AsyncMock(side_effect=NotFoundError("comfyui_workflow", uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await update_workflow(
-                uuid4(), ComfyUIWorkflowUpdate(name="x"), svc=svc
-            )
+            await update_workflow(uuid4(), ComfyUIWorkflowUpdate(name="x"), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_delete_success(self) -> None:
@@ -350,9 +336,7 @@ class TestWorkflowCrud:
 
     async def test_delete_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.delete = AsyncMock(
-            side_effect=NotFoundError("comfyui_workflow", uuid4())
-        )
+        svc.delete = AsyncMock(side_effect=NotFoundError("comfyui_workflow", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await delete_workflow(uuid4(), svc=svc)
         assert exc.value.status_code == 404
@@ -368,19 +352,13 @@ class TestTemplates:
         assert len(out) > 0
         assert all(t.slug for t in out)
 
-    async def test_install_template_unknown_slug_404(
-        self, tmp_path: Any
-    ) -> None:
+    async def test_install_template_unknown_slug_404(self, tmp_path: Any) -> None:
         svc = MagicMock()
         with pytest.raises(HTTPException) as exc:
-            await install_template(
-                slug="does-not-exist", svc=svc, settings=_settings(tmp_path)
-            )
+            await install_template(slug="does-not-exist", svc=svc, settings=_settings(tmp_path))
         assert exc.value.status_code == 404
 
-    async def test_install_template_missing_json_returns_500(
-        self, tmp_path: Any
-    ) -> None:
+    async def test_install_template_missing_json_returns_500(self, tmp_path: Any) -> None:
         # Force the template-file lookup to a non-existent path so the
         # 500 ``template file missing on disk`` branch fires.
         svc = MagicMock()
@@ -396,17 +374,13 @@ class TestTemplates:
             return_value=bogus,
         ):
             with pytest.raises(HTTPException) as exc:
-                await install_template(
-                    slug=slug, svc=svc, settings=_settings(tmp_path)
-                )
+                await install_template(slug=slug, svc=svc, settings=_settings(tmp_path))
         # Use the imported function to confirm the test set up reality.
         assert template_json_path  # silence linter
         assert exc.value.status_code == 500
         assert "template file missing" in str(exc.value.detail)
 
-    async def test_install_template_success_copies_and_persists(
-        self, tmp_path: Any
-    ) -> None:
+    async def test_install_template_success_copies_and_persists(self, tmp_path: Any) -> None:
         svc = MagicMock()
         wf = _make_workflow()
         svc.install_template = AsyncMock(return_value=wf)
@@ -423,9 +397,7 @@ class TestTemplates:
             "drevalis.services.comfyui.templates.template_json_path",
             return_value=src,
         ):
-            out = await install_template(
-                slug=slug, svc=svc, settings=_settings(tmp_path)
-            )
+            out = await install_template(slug=slug, svc=svc, settings=_settings(tmp_path))
 
         # Returned path is relative to storage_base_path.
         assert out.workflow_json_path.startswith("comfyui_workflows/drevalis/")

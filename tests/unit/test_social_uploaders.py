@@ -154,9 +154,7 @@ class TestTikTokUpload:
 
 
 class TestTikTokWaitForPublish:
-    async def test_publish_complete_returns_url(
-        self, fast_sleep: None
-    ) -> None:
+    async def test_publish_complete_returns_url(self, fast_sleep: None) -> None:
         def _h(request: httpx.Request) -> httpx.Response:
             return httpx.Response(
                 200,
@@ -192,15 +190,11 @@ class TestTikTokWaitForPublish:
         self, fast_sleep: None, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         # Force the poll cap to 2 so we don't iterate 30 times.
-        monkeypatch.setattr(
-            "drevalis.workers.jobs.social._MAX_POLLS", 2
-        )
+        monkeypatch.setattr("drevalis.workers.jobs.social._MAX_POLLS", 2)
 
         def _h(request: httpx.Request) -> httpx.Response:
             # Always return PROCESSING — never PUBLISH_COMPLETE.
-            return httpx.Response(
-                200, json={"data": {"status": "PROCESSING_UPLOAD"}}
-            )
+            return httpx.Response(200, json={"data": {"status": "PROCESSING_UPLOAD"}})
 
         with _patched_httpx(_h):
             with pytest.raises(TimeoutError):
@@ -248,9 +242,7 @@ class TestInstagramReelsUpload:
             # GET — either status check or permalink fetch.
             if "status_code" in str(request.url):
                 return httpx.Response(200, json={"status_code": "FINISHED"})
-            return httpx.Response(
-                200, json={"permalink": "https://instagram.com/p/abc"}
-            )
+            return httpx.Response(200, json={"permalink": "https://instagram.com/p/abc"})
 
         with _patched_httpx(_h):
             mid, perm = await _instagram_reels_upload(
@@ -265,9 +257,7 @@ class TestInstagramReelsUpload:
         assert mid == "media-99"
         assert perm == "https://instagram.com/p/abc"
 
-    async def test_container_error_raises(
-        self, fast_sleep: None, tmp_path: Path
-    ) -> None:
+    async def test_container_error_raises(self, fast_sleep: None, tmp_path: Path) -> None:
         def _h(request: httpx.Request) -> httpx.Response:
             if request.method == "POST":
                 return httpx.Response(200, json={"id": "container-42"})
@@ -346,9 +336,7 @@ class TestFacebookVideoUpload:
                     hashtags="",
                 )
 
-    async def test_happy_path_returns_video_id_and_permalink(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_happy_path_returns_video_id_and_permalink(self, tmp_path: Path) -> None:
         size = 1024
         responses = iter(
             [
@@ -387,9 +375,7 @@ class TestFacebookVideoUpload:
         assert vid == "vid-1"
         assert perm == "https://www.facebook.com/pg/videos/vid-1"
 
-    async def test_finish_success_false_raises(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_finish_success_false_raises(self, tmp_path: Path) -> None:
         size = 1024
         responses = iter(
             [
@@ -443,15 +429,11 @@ class TestXVideoUpload:
                     hashtags="",
                 )
 
-    async def test_happy_path_returns_tweet_id_and_url(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_happy_path_returns_tweet_id_and_url(self, tmp_path: Path) -> None:
         responses = iter(
             [
                 # INIT
-                httpx.Response(
-                    200, json={"media_id_string": "media-7"}
-                ),
+                httpx.Response(200, json={"media_id_string": "media-7"}),
                 # APPEND segment 0
                 httpx.Response(200, json={}),
                 # FINALIZE — no processing_info → straight to tweet.
@@ -475,9 +457,7 @@ class TestXVideoUpload:
         assert tid == "tweet-9"
         assert url == "https://x.com/i/web/status/tweet-9"
 
-    async def test_processing_failed_raises(
-        self, fast_sleep: None, tmp_path: Path
-    ) -> None:
+    async def test_processing_failed_raises(self, fast_sleep: None, tmp_path: Path) -> None:
         # FINALIZE returns in_progress → STATUS poll returns failed
         # → pin: raises BEFORE creating the tweet.
         responses = iter(

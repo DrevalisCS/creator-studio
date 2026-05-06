@@ -572,9 +572,7 @@ async def storage_probe(
     return report
 
 
-async def _compute_storage_probe_report(
-    db: AsyncSession, settings: Settings
-) -> dict[str, Any]:
+async def _compute_storage_probe_report(db: AsyncSession, settings: Settings) -> dict[str, Any]:
     """Walk the storage tree + sample media_assets to build the probe
     report. Pulled out of the route handler so the route can cache
     the result without duplicating the diagnostic logic."""

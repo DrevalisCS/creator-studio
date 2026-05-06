@@ -151,9 +151,7 @@ class TestProbeMedia:
             out = await _probe_media(tmp_path / "x.mp4")
         assert out == (None, None, None)
 
-    async def test_non_zero_returncode_returns_none_tuple(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_non_zero_returncode_returns_none_tuple(self, tmp_path: Path) -> None:
         proc = MagicMock()
         proc.returncode = 1
         proc.communicate = AsyncMock(return_value=(b"", b""))
@@ -175,9 +173,7 @@ class TestProbeMedia:
             out = await _probe_media(tmp_path / "x.mp4")
         assert out == (None, None, None)
 
-    async def test_video_extracts_dimensions_and_duration(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_video_extracts_dimensions_and_duration(self, tmp_path: Path) -> None:
         payload = json.dumps(
             {
                 "streams": [
@@ -198,9 +194,7 @@ class TestProbeMedia:
         assert h == 1080
         assert d == pytest.approx(12.5)
 
-    async def test_invalid_duration_falls_back_to_none(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_invalid_duration_falls_back_to_none(self, tmp_path: Path) -> None:
         # Some ffprobe versions emit "N/A" for stream-only files —
         # float() raises and the helper must coerce to None instead of
         # crashing the upload.
@@ -272,9 +266,7 @@ class TestUploadAsset:
         assert out.id == existing.id
         assert not (tmp_path / "assets").exists()
 
-    async def test_success_writes_file_and_creates_row(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_success_writes_file_and_creates_row(self, tmp_path: Path) -> None:
         svc = MagicMock()
         svc.get_by_hash = AsyncMock(return_value=None)
         svc.create = AsyncMock(side_effect=lambda **kw: _make_asset(**kw))
@@ -430,9 +422,7 @@ class TestUpdateAsset:
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.update_metadata = AsyncMock(
-            side_effect=NotFoundError("asset", uuid4())
-        )
+        svc.update_metadata = AsyncMock(side_effect=NotFoundError("asset", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await update_asset(uuid4(), AssetUpdate(description="x"), svc=svc)
         assert exc.value.status_code == 404

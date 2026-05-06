@@ -111,9 +111,7 @@ class TestGeneratePreviews:
 
     async def test_validation_error_maps_to_400(self) -> None:
         svc = MagicMock()
-        svc.generate_all_previews = AsyncMock(
-            side_effect=ValidationError("no comfyui server")
-        )
+        svc.generate_all_previews = AsyncMock(side_effect=ValidationError("no comfyui server"))
         with pytest.raises(HTTPException) as exc:
             await generate_voice_previews(svc=svc)
         assert exc.value.status_code == 400
@@ -204,9 +202,7 @@ class TestVoiceTest:
         svc.test = AsyncMock(
             return_value=VoiceTestResponse(success=True, message="ok", audio_path="x.wav")
         )
-        out = await voice_test_endpoint(
-            uuid4(), VoiceTestRequest(text="custom"), svc=svc
-        )
+        out = await voice_test_endpoint(uuid4(), VoiceTestRequest(text="custom"), svc=svc)
         assert out.success
         # Service called with the custom text, not the default.
         kwargs_text = svc.test.call_args.args[1]
@@ -216,9 +212,7 @@ class TestVoiceTest:
         # The UI's "play sample" button posts an empty body — pin that
         # the route falls back to a meaningful default rather than 422.
         svc = MagicMock()
-        svc.test = AsyncMock(
-            return_value=VoiceTestResponse(success=True, message="ok")
-        )
+        svc.test = AsyncMock(return_value=VoiceTestResponse(success=True, message="ok"))
         await voice_test_endpoint(uuid4(), payload=None, svc=svc)
         called_text = svc.test.call_args.args[1]
         assert "test" in called_text.lower()

@@ -52,7 +52,7 @@ SEO_SYSTEM_PROMPT = (
     "- First 125 characters land before YouTube's read-more cut. They "
     "should read as a cold-open hook, not a description-of-a-video.\n"
     "- Total length ≤ 500 characters.\n"
-    '- No CTAs unless the input narration explicitly contains one.\n\n'
+    "- No CTAs unless the input narration explicitly contains one.\n\n"
     "HASHTAG RULES:\n"
     '- Max 8 items. No "#viral", "#fyp", "#subscribe" — they will be '
     "stripped downstream anyway.\n"

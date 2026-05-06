@@ -108,9 +108,7 @@ class TestListCustomTracks:
         assert out[0].music_volume_db == -10.0
         assert out[0].fade_in_seconds == 0.5
 
-    async def test_unreadable_sidecar_falls_back_to_no_meta(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_unreadable_sidecar_falls_back_to_no_meta(self, tmp_path: Path) -> None:
         root = tmp_path / "music" / "custom"
         root.mkdir(parents=True)
         (root / "epic.wav").write_bytes(b"audio")
@@ -118,9 +116,7 @@ class TestListCustomTracks:
         out = await list_custom_tracks(settings=_settings(tmp_path))
         assert out[0].music_volume_db is None
 
-    async def test_sidecar_with_non_dict_root_ignored(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_sidecar_with_non_dict_root_ignored(self, tmp_path: Path) -> None:
         # Defensive: a sidecar containing a JSON list (or other non-dict)
         # would crash a naive .get() — pin: helper falls back to {}.
         root = tmp_path / "music" / "custom"
@@ -160,9 +156,7 @@ class TestUploadCustomTrack:
         assert exc.value.status_code == 415
         assert exc.value.detail["received"] == "(none)"
 
-    async def test_oversize_413_deletes_partial_file(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_oversize_413_deletes_partial_file(self, tmp_path: Path) -> None:
         # Patch the cap to a tiny value so we can trigger oversize
         # cheaply — 100 bytes vs the real 25 MB.
         # Use object patching via context manager.
@@ -181,9 +175,7 @@ class TestUploadCustomTrack:
         # Pin: the partial write was deleted (no orphan).
         assert not (tmp_path / "music" / "custom" / "big.mp3").exists()
 
-    async def test_success_writes_file_and_returns_meta(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_success_writes_file_and_returns_meta(self, tmp_path: Path) -> None:
         out = await upload_custom_track(
             file=_upload(b"\x00\x01\x02data", filename="cool.mp3"),
             settings=_settings(tmp_path),
@@ -221,9 +213,7 @@ class TestUpdateCustomTrack:
             )
         assert exc.value.status_code == 404
 
-    async def test_writes_sidecar_with_provided_fields(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_writes_sidecar_with_provided_fields(self, tmp_path: Path) -> None:
         root = tmp_path / "music" / "custom"
         root.mkdir(parents=True)
         (root / "epic.wav").write_bytes(b"audio")
@@ -262,9 +252,7 @@ class TestUpdateCustomTrack:
         root = tmp_path / "music" / "custom"
         root.mkdir(parents=True)
         (root / "epic.wav").write_bytes(b"audio")
-        (root / "epic.wav.json").write_text(
-            json.dumps({"music_volume_db": -10.0})
-        )
+        (root / "epic.wav.json").write_text(json.dumps({"music_volume_db": -10.0}))
         await update_custom_track(
             filename="epic.wav",
             body=CustomTrackUpdate(music_volume_db=None),
@@ -282,16 +270,12 @@ class TestDeleteCustomTrack:
         root.mkdir(parents=True)
         (root / "epic.wav").write_bytes(b"audio")
         (root / "epic.wav.json").write_text("{}")
-        await delete_custom_track(
-            filename="epic.wav", settings=_settings(tmp_path)
-        )
+        await delete_custom_track(filename="epic.wav", settings=_settings(tmp_path))
         assert not (root / "epic.wav").exists()
         assert not (root / "epic.wav.json").exists()
 
     async def test_missing_track_silent_204(self, tmp_path: Path) -> None:
         # No track on disk — DELETE is idempotent. Pin: returns None
         # (204) without raising.
-        out = await delete_custom_track(
-            filename="never.mp3", settings=_settings(tmp_path)
-        )
+        out = await delete_custom_track(filename="never.mp3", settings=_settings(tmp_path))
         assert out is None

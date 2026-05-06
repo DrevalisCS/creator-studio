@@ -94,9 +94,7 @@ class TestGenerateScriptSync:
             "drevalis.services.llm.OpenAICompatibleProvider",
             return_value=provider,
         ):
-            out = await generate_audiobook_script_sync(
-                _script_request(), settings=_settings()
-            )
+            out = await generate_audiobook_script_sync(_script_request(), settings=_settings())
 
         assert out.title == "The Last Dragon"
         assert out.chapters == ["Chapter 1: Awakening", "Chapter 2: Flight"]
@@ -117,9 +115,7 @@ class TestGenerateScriptSync:
             "drevalis.services.llm.OpenAICompatibleProvider",
             return_value=provider,
         ):
-            out = await generate_audiobook_script_sync(
-                _script_request(), settings=_settings()
-            )
+            out = await generate_audiobook_script_sync(_script_request(), settings=_settings())
         assert out.title == "Untitled Story"
 
     async def test_empty_response_falls_back_to_untitled(self) -> None:
@@ -129,9 +125,7 @@ class TestGenerateScriptSync:
             "drevalis.services.llm.OpenAICompatibleProvider",
             return_value=provider,
         ):
-            out = await generate_audiobook_script_sync(
-                _script_request(), settings=_settings()
-            )
+            out = await generate_audiobook_script_sync(_script_request(), settings=_settings())
         # Empty content → empty title (route splits, takes first line
         # which is "" after strip).
         assert out.title in ("", "Untitled")
@@ -144,9 +138,7 @@ class TestGenerateScriptSync:
             return_value=provider,
         ):
             with pytest.raises(HTTPException) as exc:
-                await generate_audiobook_script_sync(
-                    _script_request(), settings=_settings()
-                )
+                await generate_audiobook_script_sync(_script_request(), settings=_settings())
         assert exc.value.status_code == 502
 
 
@@ -169,18 +161,14 @@ class TestMusicPreview:
             )
         assert exc.value.status_code == 404
 
-    async def test_returns_503_when_no_track_rendered(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_returns_503_when_no_track_rendered(self, tmp_path: Path) -> None:
         svc = MagicMock()
         svc.get = AsyncMock()
 
         # AudiobookService.render_music_preview returns a path that
         # does NOT exist on disk → 503 "no track resolved".
         ab_svc = MagicMock()
-        ab_svc.render_music_preview = AsyncMock(
-            return_value=tmp_path / "missing.wav"
-        )
+        ab_svc.render_music_preview = AsyncMock(return_value=tmp_path / "missing.wav")
 
         pool = MagicMock()
         pool.sync_from_db = AsyncMock()
@@ -190,19 +178,16 @@ class TestMusicPreview:
         redis = MagicMock()
         redis.aclose = AsyncMock()
 
-        with patch(
-            "drevalis.services.comfyui.ComfyUIPool", return_value=pool
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService", return_value=ab_svc
-        ), patch(
-            "drevalis.services.ffmpeg.FFmpegService", return_value=MagicMock()
-        ), patch(
-            "drevalis.services.storage.LocalStorage", return_value=MagicMock()
-        ), patch(
-            "redis.asyncio.Redis",
-            return_value=redis,
-        ), patch(
-            "drevalis.core.redis.get_pool", return_value=MagicMock()
+        with (
+            patch("drevalis.services.comfyui.ComfyUIPool", return_value=pool),
+            patch("drevalis.services.audiobook.AudiobookService", return_value=ab_svc),
+            patch("drevalis.services.ffmpeg.FFmpegService", return_value=MagicMock()),
+            patch("drevalis.services.storage.LocalStorage", return_value=MagicMock()),
+            patch(
+                "redis.asyncio.Redis",
+                return_value=redis,
+            ),
+            patch("drevalis.core.redis.get_pool", return_value=MagicMock()),
         ):
             with pytest.raises(HTTPException) as exc:
                 await music_preview(
@@ -236,19 +221,16 @@ class TestMusicPreview:
         redis = MagicMock()
         redis.aclose = AsyncMock()
 
-        with patch(
-            "drevalis.services.comfyui.ComfyUIPool", return_value=pool
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService", return_value=ab_svc
-        ), patch(
-            "drevalis.services.ffmpeg.FFmpegService", return_value=MagicMock()
-        ), patch(
-            "drevalis.services.storage.LocalStorage", return_value=MagicMock()
-        ), patch(
-            "redis.asyncio.Redis",
-            return_value=redis,
-        ), patch(
-            "drevalis.core.redis.get_pool", return_value=MagicMock()
+        with (
+            patch("drevalis.services.comfyui.ComfyUIPool", return_value=pool),
+            patch("drevalis.services.audiobook.AudiobookService", return_value=ab_svc),
+            patch("drevalis.services.ffmpeg.FFmpegService", return_value=MagicMock()),
+            patch("drevalis.services.storage.LocalStorage", return_value=MagicMock()),
+            patch(
+                "redis.asyncio.Redis",
+                return_value=redis,
+            ),
+            patch("drevalis.core.redis.get_pool", return_value=MagicMock()),
         ):
             out = await music_preview(
                 ab_id,
@@ -280,9 +262,7 @@ class TestListClips:
             )
         assert exc.value.status_code == 404
 
-    async def test_includes_overrides_from_track_mix(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_includes_overrides_from_track_mix(self, tmp_path: Path) -> None:
         svc = MagicMock()
         ab = SimpleNamespace(
             track_mix={
@@ -293,16 +273,12 @@ class TestListClips:
         svc.get = AsyncMock(return_value=ab)
 
         ab_svc = MagicMock()
-        ab_svc.list_clips = AsyncMock(
-            return_value={"voice": [{"id": "1"}], "music": []}
-        )
+        ab_svc.list_clips = AsyncMock(return_value={"voice": [{"id": "1"}], "music": []})
 
-        with patch(
-            "drevalis.services.audiobook.AudiobookService", return_value=ab_svc
-        ), patch(
-            "drevalis.services.ffmpeg.FFmpegService", return_value=MagicMock()
-        ), patch(
-            "drevalis.services.storage.LocalStorage", return_value=MagicMock()
+        with (
+            patch("drevalis.services.audiobook.AudiobookService", return_value=ab_svc),
+            patch("drevalis.services.ffmpeg.FFmpegService", return_value=MagicMock()),
+            patch("drevalis.services.storage.LocalStorage", return_value=MagicMock()),
         ):
             out = await list_clips(
                 uuid4(),
@@ -313,9 +289,7 @@ class TestListClips:
         assert "voice" in out
         assert out["overrides"] == {"voice:1": {"db_offset": -3}}
 
-    async def test_no_track_mix_yields_empty_overrides(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_no_track_mix_yields_empty_overrides(self, tmp_path: Path) -> None:
         # Pin: when the audiobook has no track_mix yet (fresh), the
         # route still returns `overrides: {}` rather than None / KeyError.
         svc = MagicMock()
@@ -323,12 +297,10 @@ class TestListClips:
         svc.get = AsyncMock(return_value=ab)
         ab_svc = MagicMock()
         ab_svc.list_clips = AsyncMock(return_value={"voice": []})
-        with patch(
-            "drevalis.services.audiobook.AudiobookService", return_value=ab_svc
-        ), patch(
-            "drevalis.services.ffmpeg.FFmpegService", return_value=MagicMock()
-        ), patch(
-            "drevalis.services.storage.LocalStorage", return_value=MagicMock()
+        with (
+            patch("drevalis.services.audiobook.AudiobookService", return_value=ab_svc),
+            patch("drevalis.services.ffmpeg.FFmpegService", return_value=MagicMock()),
+            patch("drevalis.services.storage.LocalStorage", return_value=MagicMock()),
         ):
             out = await list_clips(
                 uuid4(),
@@ -363,9 +335,7 @@ def _upload_request() -> AudiobookYouTubeUploadRequest:
 class TestYouTubeUpload:
     async def test_audiobook_missing_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.prepare_youtube_upload = AsyncMock(
-            side_effect=NotFoundError("audiobook", uuid4())
-        )
+        svc.prepare_youtube_upload = AsyncMock(side_effect=NotFoundError("audiobook", uuid4()))
         yt = MagicMock()
         yt.refresh_tokens_if_needed = AsyncMock(return_value=None)
         with patch(
@@ -387,9 +357,7 @@ class TestYouTubeUpload:
         # — the UI should show "generate a video first" so 404 is the
         # right semantic, NOT 422.
         svc = MagicMock()
-        svc.prepare_youtube_upload = AsyncMock(
-            side_effect=ValidationError("no video file")
-        )
+        svc.prepare_youtube_upload = AsyncMock(side_effect=ValidationError("no video file"))
         yt = MagicMock()
         with patch(
             "drevalis.api.routes.youtube.build_youtube_service",
@@ -405,13 +373,9 @@ class TestYouTubeUpload:
                 )
         assert exc.value.status_code == 404
 
-    async def test_no_channel_selected_400_with_hint(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_no_channel_selected_400_with_hint(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.prepare_youtube_upload = AsyncMock(
-            side_effect=NoChannelSelectedError()
-        )
+        svc.prepare_youtube_upload = AsyncMock(side_effect=NoChannelSelectedError())
         yt = MagicMock()
         with patch(
             "drevalis.api.routes.youtube.build_youtube_service",
@@ -466,9 +430,7 @@ class TestYouTubeUpload:
         assert out["status"] == "done"
         svc.record_youtube_upload_success.assert_awaited_once()
 
-    async def test_token_refresh_persists_updates(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_token_refresh_persists_updates(self, tmp_path: Path) -> None:
         # Pin: when refresh_tokens_if_needed returns updated tokens,
         # they're written back onto the channel + db.flush() runs.
         ab = SimpleNamespace(id=uuid4())
@@ -478,18 +440,12 @@ class TestYouTubeUpload:
 
         svc = MagicMock()
         svc.prepare_youtube_upload = AsyncMock(return_value=(ab, ch, video_path))
-        svc.create_youtube_upload_row = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        svc.create_youtube_upload_row = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         svc.record_youtube_upload_success = AsyncMock()
 
         yt = MagicMock()
-        yt.refresh_tokens_if_needed = AsyncMock(
-            return_value={"access_token_encrypted": "new-enc"}
-        )
-        yt.upload_video = AsyncMock(
-            return_value={"video_id": "x", "url": "https://y/x"}
-        )
+        yt.refresh_tokens_if_needed = AsyncMock(return_value={"access_token_encrypted": "new-enc"})
+        yt.upload_video = AsyncMock(return_value={"video_id": "x", "url": "https://y/x"})
 
         db = AsyncMock()
         db.flush = AsyncMock()
@@ -509,9 +465,7 @@ class TestYouTubeUpload:
         assert ch.access_token_encrypted == "new-enc"
         db.flush.assert_awaited_once()
 
-    async def test_upstream_failure_502_records_failure(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_upstream_failure_502_records_failure(self, tmp_path: Path) -> None:
         ab = SimpleNamespace(id=uuid4())
         ch = _make_channel()
         video_path = tmp_path / "v.mp4"
@@ -519,9 +473,7 @@ class TestYouTubeUpload:
 
         svc = MagicMock()
         svc.prepare_youtube_upload = AsyncMock(return_value=(ab, ch, video_path))
-        svc.create_youtube_upload_row = AsyncMock(
-            return_value=SimpleNamespace(id=uuid4())
-        )
+        svc.create_youtube_upload_row = AsyncMock(return_value=SimpleNamespace(id=uuid4()))
         svc.record_youtube_upload_failure = AsyncMock()
 
         yt = MagicMock()
@@ -551,9 +503,7 @@ class TestYouTubeUpload:
 class TestListAudiobookUploads:
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.list_youtube_uploads = AsyncMock(
-            side_effect=NotFoundError("audiobook", uuid4())
-        )
+        svc.list_youtube_uploads = AsyncMock(side_effect=NotFoundError("audiobook", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await list_audiobook_uploads(uuid4(), svc=svc)
         assert exc.value.status_code == 404

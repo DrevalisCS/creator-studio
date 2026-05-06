@@ -122,9 +122,7 @@ class TestLLMPick:
 
     async def test_long_clips_filtered(self) -> None:
         # Returned clip > 120 s → filtered.
-        clips_json = (
-            '{"clips": [{"start_s": 0, "end_s": 200, "title": "x", "score": 0.9}]}'
-        )
+        clips_json = '{"clips": [{"start_s": 0, "end_s": 200, "title": "x", "score": 0.9}]}'
         out = await _llm_pick(
             llm_service=_provider_returning(clips_json),
             llm_config=MagicMock(),
@@ -142,7 +140,7 @@ class TestLLMPick:
             '{"start_s": 0, "title": "no end"},'
             '{"end_s": 50, "title": "no start"},'
             '{"start_s": 0, "end_s": 30, "title": "valid", "score": 0.8}'
-            ']}'
+            "]}"
         )
         out = await _llm_pick(
             llm_service=_provider_returning(clips_json),
@@ -160,8 +158,7 @@ class TestLLMPick:
         clips_json = (
             '{"clips": ['
             + ",".join(
-                f'{{"start_s": {i * 30}, "end_s": {i * 30 + 30}, '
-                f'"title": "c{i}", "score": 0.9}}'
+                f'{{"start_s": {i * 30}, "end_s": {i * 30 + 30}, "title": "c{i}", "score": 0.9}}'
                 for i in range(7)
             )
             + "]}"

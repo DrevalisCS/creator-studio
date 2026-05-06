@@ -397,9 +397,7 @@ class TestRestoreBackupAsync:
         assert kwargs["restore_db"] is False
         assert kwargs["restore_media"] is True
 
-    async def test_storage_probe_cache_busted_on_success(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_storage_probe_cache_busted_on_success(self, tmp_path: Path) -> None:
         # Pin: a successful restore busts the storage_probe cache so the
         # next Backup-tab load reflects live post-restore state instead
         # of the pre-restore snapshot the route may have cached up to
@@ -423,15 +421,11 @@ class TestRestoreBackupAsync:
             ),
             patch("drevalis.services.backup.BackupService", return_value=svc),
         ):
-            await restore_backup_async(
-                self._ctx(redis, session), "job-1", str(archive)
-            )
+            await restore_backup_async(self._ctx(redis, session), "job-1", str(archive))
 
         assert STORAGE_PROBE_CACHE_KEY in redis.deletes
 
-    async def test_storage_probe_cache_busted_on_failure(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_storage_probe_cache_busted_on_failure(self, tmp_path: Path) -> None:
         # Pin: a failed restore can leave storage in a partial state —
         # the operator needs fresh signal on the Backup tab even more
         # than after a clean restore. So the cache bust runs in the
@@ -453,9 +447,7 @@ class TestRestoreBackupAsync:
             ),
             patch("drevalis.services.backup.BackupService", return_value=svc),
         ):
-            await restore_backup_async(
-                self._ctx(redis, session), "job-1", str(archive)
-            )
+            await restore_backup_async(self._ctx(redis, session), "job-1", str(archive))
 
         assert STORAGE_PROBE_CACHE_KEY in redis.deletes
 
@@ -485,8 +477,6 @@ class TestRestoreBackupAsync:
             patch("drevalis.services.backup.BackupService", return_value=svc),
         ):
             # Must not raise.
-            result = await restore_backup_async(
-                self._ctx(redis, session), "job-1", str(archive)
-            )
+            result = await restore_backup_async(self._ctx(redis, session), "job-1", str(archive))
 
         assert result["status"] == "done"

@@ -183,9 +183,7 @@ class TestGetSeoScore:
     async def test_too_many_hashtags_warn(self) -> None:
         svc = MagicMock()
         ep = _make_episode(
-            metadata_={
-                "seo": {"title": "x" * 50, "hashtags": [f"h{i}" for i in range(8)]}
-            }
+            metadata_={"seo": {"title": "x" * 50, "hashtags": [f"h{i}" for i in range(8)]}}
         )
         svc.get_or_raise = AsyncMock(return_value=ep)
         out = await get_seo_score(ep.id, svc=svc)
@@ -211,25 +209,17 @@ class TestExportRawAssets:
         svc.get_with_series_or_raise = AsyncMock(return_value=_make_episode())
         svc.get_all_assets = AsyncMock(return_value=[])
         with pytest.raises(HTTPException) as exc:
-            await export_raw_assets(
-                uuid4(), settings=_settings(tmp_path), svc=svc
-            )
+            await export_raw_assets(uuid4(), settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_episode_not_found_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.get_with_series_or_raise = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.get_with_series_or_raise = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await export_raw_assets(
-                uuid4(), settings=_settings(tmp_path), svc=svc
-            )
+            await export_raw_assets(uuid4(), settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
-    async def test_assembles_zip_with_per_kind_layout(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_assembles_zip_with_per_kind_layout(self, tmp_path: Path) -> None:
         # Stage real files for two scenes + a video + a thumbnail.
         scene_a = tmp_path / "scene_a.png"
         scene_a.write_bytes(b"\x89PNG")
@@ -266,9 +256,7 @@ class TestExportRawAssets:
         svc.get_with_series_or_raise = AsyncMock(return_value=_make_episode())
         svc.get_all_assets = AsyncMock(return_value=[a1, a2, a3])
 
-        out = await export_raw_assets(
-            uuid4(), settings=_settings(tmp_path), svc=svc
-        )
+        out = await export_raw_assets(uuid4(), settings=_settings(tmp_path), svc=svc)
         assert out.media_type == "application/zip"
         # The zip is non-trivial (>= 4 entries: 2 scenes + 1 video +
         # README).
@@ -321,9 +309,7 @@ class TestEditVideo:
         video = out_dir / "final.mp4"
         video.write_bytes(b"original-content")
 
-        asset = SimpleNamespace(
-            id=uuid4(), file_path=str(video.relative_to(tmp_path).as_posix())
-        )
+        asset = SimpleNamespace(id=uuid4(), file_path=str(video.relative_to(tmp_path).as_posix()))
         svc = MagicMock()
         svc.get_latest_video_asset = AsyncMock(return_value=asset)
         svc.update_asset_metadata = AsyncMock()
@@ -339,9 +325,7 @@ class TestEditVideo:
 
         ffmpeg_mock.apply_video_effects.side_effect = _fake_apply
 
-        with patch(
-            "drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock
-        ):
+        with patch("drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock):
             out = await edit_video(
                 ep_id,
                 payload=VideoEditRequest(speed=1.0),
@@ -356,9 +340,7 @@ class TestEditVideo:
         assert video.read_bytes() == b"edited-content"
         assert out.duration_seconds == 60.0
 
-    async def test_subsequent_edit_does_not_overwrite_original(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_subsequent_edit_does_not_overwrite_original(self, tmp_path: Path) -> None:
         # Original backup already exists from a prior edit.
         ep_id = uuid4()
         out_dir = tmp_path / "episodes" / str(ep_id) / "output"
@@ -368,9 +350,7 @@ class TestEditVideo:
         backup = video.parent / "final_original.mp4"
         backup.write_bytes(b"original-from-first-edit")
 
-        asset = SimpleNamespace(
-            id=uuid4(), file_path=str(video.relative_to(tmp_path).as_posix())
-        )
+        asset = SimpleNamespace(id=uuid4(), file_path=str(video.relative_to(tmp_path).as_posix()))
         svc = MagicMock()
         svc.get_latest_video_asset = AsyncMock(return_value=asset)
         svc.update_asset_metadata = AsyncMock()
@@ -383,9 +363,7 @@ class TestEditVideo:
         ffmpeg_mock.apply_video_effects = AsyncMock(side_effect=_fake_apply)
         ffmpeg_mock.get_duration = AsyncMock(return_value=42.0)
 
-        with patch(
-            "drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock
-        ):
+        with patch("drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock):
             await edit_video(
                 ep_id,
                 payload=VideoEditRequest(border=BorderConfig()),
@@ -436,9 +414,7 @@ class TestEditPreview:
         ffmpeg_mock.generate_preview = AsyncMock(side_effect=_fake_preview)
         ffmpeg_mock.get_duration = AsyncMock(return_value=10.0)
 
-        with patch(
-            "drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock
-        ):
+        with patch("drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock):
             await edit_preview(
                 ep_id,
                 payload=VideoEditRequest(),
@@ -449,9 +425,7 @@ class TestEditPreview:
         # the (already-edited) current video.
         assert captured["input_path"] == original
 
-    async def test_falls_back_to_current_when_no_backup(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_falls_back_to_current_when_no_backup(self, tmp_path: Path) -> None:
         ep_id = uuid4()
         out_dir = tmp_path / "episodes" / str(ep_id) / "output"
         out_dir.mkdir(parents=True)
@@ -473,9 +447,7 @@ class TestEditPreview:
         ffmpeg_mock.generate_preview = AsyncMock(side_effect=_fake_preview)
         ffmpeg_mock.get_duration = AsyncMock(return_value=10.0)
 
-        with patch(
-            "drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock
-        ):
+        with patch("drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock):
             await edit_preview(
                 ep_id,
                 payload=VideoEditRequest(),
@@ -494,9 +466,7 @@ class TestEditReset:
         svc = MagicMock()
         svc.get_latest_video_asset = AsyncMock(return_value=None)
         with pytest.raises(HTTPException) as exc:
-            await edit_reset(
-                uuid4(), settings=_settings(tmp_path), svc=svc
-            )
+            await edit_reset(uuid4(), settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
     async def test_no_backup_409(self, tmp_path: Path) -> None:
@@ -507,18 +477,14 @@ class TestEditReset:
         out_dir.mkdir(parents=True)
         video = out_dir / "final.mp4"
         video.write_bytes(b"x")
-        asset = SimpleNamespace(
-            id=uuid4(), file_path=str(video.relative_to(tmp_path).as_posix())
-        )
+        asset = SimpleNamespace(id=uuid4(), file_path=str(video.relative_to(tmp_path).as_posix()))
         svc = MagicMock()
         svc.get_latest_video_asset = AsyncMock(return_value=asset)
         with pytest.raises(HTTPException) as exc:
             await edit_reset(ep_id, settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 409
 
-    async def test_success_restores_original_and_drops_preview(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_success_restores_original_and_drops_preview(self, tmp_path: Path) -> None:
         ep_id = uuid4()
         out_dir = tmp_path / "episodes" / str(ep_id) / "output"
         out_dir.mkdir(parents=True)
@@ -529,9 +495,7 @@ class TestEditReset:
         preview = out_dir / "preview.mp4"
         preview.write_bytes(b"prev")
 
-        asset = SimpleNamespace(
-            id=uuid4(), file_path=str(video.relative_to(tmp_path).as_posix())
-        )
+        asset = SimpleNamespace(id=uuid4(), file_path=str(video.relative_to(tmp_path).as_posix()))
         svc = MagicMock()
         svc.get_latest_video_asset = AsyncMock(return_value=asset)
         svc.update_asset_metadata = AsyncMock()
@@ -539,12 +503,8 @@ class TestEditReset:
         ffmpeg_mock = MagicMock()
         ffmpeg_mock.get_duration = AsyncMock(return_value=30.0)
 
-        with patch(
-            "drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock
-        ):
-            out = await edit_reset(
-                ep_id, settings=_settings(tmp_path), svc=svc
-            )
+        with patch("drevalis.services.ffmpeg.FFmpegService", return_value=ffmpeg_mock):
+            out = await edit_reset(ep_id, settings=_settings(tmp_path), svc=svc)
         # Active video matches the backup contents.
         assert video.read_bytes() == b"original"
         # Preview file was deleted.
@@ -567,9 +527,7 @@ class TestGenerateSEO:
 
     async def test_episode_or_script_missing_404(self) -> None:
         svc = MagicMock()
-        svc.get_with_script_or_raise = AsyncMock(
-            side_effect=EpisodeNoScriptError(uuid4())
-        )
+        svc.get_with_script_or_raise = AsyncMock(side_effect=EpisodeNoScriptError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await generate_seo(uuid4(), redis=MagicMock(), svc=svc)
         assert exc.value.status_code == 404
@@ -583,17 +541,14 @@ class TestSeoPreflight:
         svc = MagicMock()
         svc.get_or_raise = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await seo_preflight(
-                uuid4(), settings=_settings(tmp_path), svc=svc
-            )
+            await seo_preflight(uuid4(), settings=_settings(tmp_path), svc=svc)
         assert exc.value.status_code == 404
 
-    async def test_routes_to_run_preflight_with_platform(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_routes_to_run_preflight_with_platform(self, tmp_path: Path) -> None:
         svc = MagicMock()
         ep = _make_episode(
-            title="Hook", topic="topic",
+            title="Hook",
+            topic="topic",
             metadata_={"seo": {"title": "Optimised", "tags": [], "hashtags": []}},
             content_format="longform",
         )
@@ -609,17 +564,13 @@ class TestSeoPreflight:
             "drevalis.services.seo_preflight.preflight",
             return_value=result_obj,
         ) as run:
-            out = await seo_preflight(
-                ep.id, settings=_settings(tmp_path), svc=svc
-            )
+            out = await seo_preflight(ep.id, settings=_settings(tmp_path), svc=svc)
         # longform → youtube_longform platform.
         called_kwargs = run.call_args.kwargs
         assert called_kwargs["platform"] == "youtube_longform"
         assert out.score == 80
 
-    async def test_shorts_format_routes_to_youtube_shorts(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_shorts_format_routes_to_youtube_shorts(self, tmp_path: Path) -> None:
         svc = MagicMock()
         ep = _make_episode(content_format="shorts", metadata_=None)
         svc.get_or_raise = AsyncMock(return_value=ep)
@@ -633,9 +584,7 @@ class TestSeoPreflight:
             "drevalis.services.seo_preflight.preflight",
             return_value=result_obj,
         ) as run:
-            await seo_preflight(
-                ep.id, settings=_settings(tmp_path), svc=svc
-            )
+            await seo_preflight(ep.id, settings=_settings(tmp_path), svc=svc)
         assert run.call_args.kwargs["platform"] == "youtube_shorts"
 
 
@@ -650,9 +599,7 @@ class TestInpaintScene:
             await inpaint_scene(
                 uuid4(),
                 1,
-                body=InpaintRequest(
-                    mask_png_base64="!!!not-base64!!!", prompt="x"
-                ),
+                body=InpaintRequest(mask_png_base64="!!!not-base64!!!", prompt="x"),
                 settings=_settings(tmp_path),
                 redis=AsyncMock(),
                 svc=svc,
@@ -661,9 +608,7 @@ class TestInpaintScene:
 
     async def test_episode_not_found_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.get_or_raise = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.get_or_raise = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await inpaint_scene(
                 uuid4(),
@@ -678,9 +623,7 @@ class TestInpaintScene:
             )
         assert exc.value.status_code == 404
 
-    async def test_success_writes_mask_and_enqueues(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_success_writes_mask_and_enqueues(self, tmp_path: Path) -> None:
         svc = MagicMock()
         svc.get_or_raise = AsyncMock()
         redis = AsyncMock()
@@ -707,9 +650,7 @@ class TestInpaintScene:
             )
         assert out["status"] == "enqueued"
         # Mask file landed under episodes/{id}/scenes/.
-        mask_path = (
-            tmp_path / "episodes" / str(ep_id) / "scenes" / "scene_03.mask.png"
-        )
+        mask_path = tmp_path / "episodes" / str(ep_id) / "scenes" / "scene_03.mask.png"
         assert mask_path.exists()
         assert mask_path.read_bytes() == mask_bytes
         # Redis hint persisted with the prompt + 1h TTL.
@@ -733,9 +674,7 @@ class TestInpaintScene:
 class TestContinuityCheck:
     async def test_episode_or_script_missing_404(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.get_with_script_or_raise = AsyncMock(
-            side_effect=EpisodeNotFoundError(uuid4())
-        )
+        svc.get_with_script_or_raise = AsyncMock(side_effect=EpisodeNotFoundError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await check_script_continuity(
                 uuid4(),
@@ -745,16 +684,12 @@ class TestContinuityCheck:
             )
         assert exc.value.status_code == 404
 
-    async def test_no_llm_configured_returns_empty(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_no_llm_configured_returns_empty(self, tmp_path: Path) -> None:
         # Pin: when no LLM config exists, the route degrades gracefully
         # to issues=[] instead of erroring out. Operators without an
         # LLM can still use the rest of the editor.
         svc = MagicMock()
-        svc.get_with_script_or_raise = AsyncMock(
-            return_value=(_make_episode(), MagicMock())
-        )
+        svc.get_with_script_or_raise = AsyncMock(return_value=(_make_episode(), MagicMock()))
         cfg_svc = MagicMock()
         cfg_svc.list_all = AsyncMock(return_value=[])
         with patch(
@@ -769,13 +704,9 @@ class TestContinuityCheck:
             )
         assert out.issues == []
 
-    async def test_with_llm_runs_check_continuity(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_with_llm_runs_check_continuity(self, tmp_path: Path) -> None:
         svc = MagicMock()
-        svc.get_with_script_or_raise = AsyncMock(
-            return_value=(_make_episode(), MagicMock())
-        )
+        svc.get_with_script_or_raise = AsyncMock(return_value=(_make_episode(), MagicMock()))
         llm_cfg = MagicMock()
         cfg_svc = MagicMock()
         cfg_svc.list_all = AsyncMock(return_value=[llm_cfg])
@@ -791,12 +722,15 @@ class TestContinuityCheck:
             }
         )
 
-        with patch(
-            "drevalis.services.llm_config.LLMConfigService",
-            return_value=cfg_svc,
-        ), patch(
-            "drevalis.services.continuity.check_continuity",
-            AsyncMock(return_value=[issue]),
+        with (
+            patch(
+                "drevalis.services.llm_config.LLMConfigService",
+                return_value=cfg_svc,
+            ),
+            patch(
+                "drevalis.services.continuity.check_continuity",
+                AsyncMock(return_value=[issue]),
+            ),
         ):
             out = await check_script_continuity(
                 uuid4(),

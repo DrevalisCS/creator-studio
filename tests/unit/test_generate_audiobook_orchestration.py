@@ -110,15 +110,19 @@ class TestHappyPath:
         ctx = _ctx()
         ctx["session_factory"] = _factory_with(session)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
             out = await generate_audiobook(ctx, str(ab.id))
 
@@ -161,18 +165,23 @@ class TestSettingsJsonParsing:
         ctx = _ctx()
         ctx["session_factory"] = _factory_with(session)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
-        ), patch(
-            "drevalis.schemas.audiobook.AudiobookSettings.model_validate",
-            side_effect=ValueError("bad settings_json"),
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
+            patch(
+                "drevalis.schemas.audiobook.AudiobookSettings.model_validate",
+                side_effect=ValueError("bad settings_json"),
+            ),
         ):
             out = await generate_audiobook(ctx, str(ab.id))
 
@@ -206,15 +215,19 @@ class TestCancellation:
         ctx = _ctx()
         ctx["session_factory"] = _factory_with(session)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
             out = await generate_audiobook(ctx, str(ab.id))
 
@@ -256,15 +269,19 @@ class TestGenericException:
         ctx = _ctx()
         ctx["session_factory"] = _factory_with(session)
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            return_value=ab_repo,
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                return_value=ab_repo,
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
             out = await generate_audiobook(ctx, str(ab.id))
 
@@ -328,15 +345,19 @@ class TestPersistCallbacks:
         ctx = _ctx()
         ctx["session_factory"] = _sf
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=lambda _s: next(repos),
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=lambda _s: next(repos),
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
             await generate_audiobook(ctx, str(ab.id))
 
@@ -364,14 +385,10 @@ class TestPersistCallbacks:
         main_session = AsyncMock()
         main_session.commit = AsyncMock()
         persist_session = AsyncMock()
-        persist_session.commit = AsyncMock(
-            side_effect=ConnectionError("DB blip")
-        )
+        persist_session.commit = AsyncMock(side_effect=ConnectionError("DB blip"))
 
         persist_repo = MagicMock()
-        persist_repo.update = AsyncMock(
-            side_effect=ConnectionError("DB blip")
-        )
+        persist_repo.update = AsyncMock(side_effect=ConnectionError("DB blip"))
         repos = iter([ab_repo_main, persist_repo])
         sessions = iter([main_session, persist_session])
 
@@ -393,15 +410,19 @@ class TestPersistCallbacks:
         ctx = _ctx()
         ctx["session_factory"] = _sf
 
-        with patch(
-            "drevalis.repositories.audiobook.AudiobookRepository",
-            side_effect=lambda _s: next(repos),
-        ), patch(
-            "drevalis.repositories.voice_profile.VoiceProfileRepository",
-            return_value=vp_repo,
-        ), patch(
-            "drevalis.services.audiobook.AudiobookService",
-            return_value=ab_service,
+        with (
+            patch(
+                "drevalis.repositories.audiobook.AudiobookRepository",
+                side_effect=lambda _s: next(repos),
+            ),
+            patch(
+                "drevalis.repositories.voice_profile.VoiceProfileRepository",
+                return_value=vp_repo,
+            ),
+            patch(
+                "drevalis.services.audiobook.AudiobookService",
+                return_value=ab_service,
+            ),
         ):
             await generate_audiobook(ctx, str(ab.id))
 

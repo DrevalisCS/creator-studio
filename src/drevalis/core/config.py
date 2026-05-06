@@ -214,22 +214,17 @@ class Settings(BaseSettings):
                 decoded = base64.urlsafe_b64decode(env_value.encode())
             except Exception:
                 raise ValueError(
-                    f"{env_name} is not a valid Fernet key "
-                    "(base64 decode failed)."
+                    f"{env_name} is not a valid Fernet key (base64 decode failed)."
                 ) from None
             if len(decoded) != 32:
-                raise ValueError(
-                    f"{env_name} decoded length is {len(decoded)}, expected 32."
-                )
+                raise ValueError(f"{env_name} decoded length is {len(decoded)}, expected 32.")
             versioned[version] = env_value
 
         # If ENCRYPTION_KEY matches one of the V_N values, the current
         # key *is* that historical version (operator hasn't rotated yet,
         # they just declared the same key under both names). Otherwise
         # the current key occupies the next-highest slot.
-        matching_versions = [
-            v for v, k in versioned.items() if k == self.encryption_key
-        ]
+        matching_versions = [v for v, k in versioned.items() if k == self.encryption_key]
         if matching_versions:
             current_version = max(matching_versions)
         else:
@@ -265,9 +260,7 @@ class Settings(BaseSettings):
         """
         from drevalis.core.security import decrypt_value_multi
 
-        plaintext, _version = decrypt_value_multi(
-            ciphertext, self.get_encryption_keys()
-        )
+        plaintext, _version = decrypt_value_multi(ciphertext, self.get_encryption_keys())
         return plaintext
 
     def encrypt(self, plaintext: str) -> tuple[str, int]:

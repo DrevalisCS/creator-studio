@@ -330,8 +330,7 @@ class TestPublishAllSocial:
             svc=svc,
         )
         assert any(
-            s["platform"] == "tiktok" and "No active tiktok" in s["reason"]
-            for s in out.skipped
+            s["platform"] == "tiktok" and "No active tiktok" in s["reason"] for s in out.skipped
         )
 
     async def test_tiktok_with_account_creates_upload(self) -> None:
@@ -379,9 +378,7 @@ class TestPublishAllSocial:
         # YouTube succeeds, TikTok skipped (no account), Instagram skipped
         # (not shipped). Single commit at the end.
         ch_id = uuid4()
-        ep = _make_episode(
-            series=SimpleNamespace(youtube_channel_id=ch_id)
-        )
+        ep = _make_episode(series=SimpleNamespace(youtube_channel_id=ch_id))
         svc = MagicMock()
         svc.get_or_raise = AsyncMock(return_value=ep)
         svc.get_video_asset_path = AsyncMock(return_value="video.mp4")
@@ -404,9 +401,7 @@ class TestPublishAllSocial:
 
         out = await publish_all(
             ep.id,
-            _publish_request(
-                platforms=["youtube", "tiktok", "instagram"]
-            ),
+            _publish_request(platforms=["youtube", "tiktok", "instagram"]),
             db=db,
             svc=svc,
         )
@@ -423,9 +418,7 @@ class TestPublishAllSocial:
 class TestSeoVariantsValidation:
     async def test_episode_or_script_missing_404(self) -> None:
         svc = MagicMock()
-        svc.get_with_script_or_raise = AsyncMock(
-            side_effect=EpisodeNoScriptError(uuid4())
-        )
+        svc.get_with_script_or_raise = AsyncMock(side_effect=EpisodeNoScriptError(uuid4()))
         with pytest.raises(HTTPException) as exc:
             await seo_variants(
                 uuid4(),
@@ -517,15 +510,19 @@ class TestSeoVariantsWithLLM:
         llm_service = MagicMock()
         llm_service.get_provider = MagicMock(return_value=provider)
 
-        with patch(
-            "drevalis.services.llm_config.LLMConfigService",
-            return_value=cfg_svc,
-        ), patch(
-            "drevalis.services.llm.LLMService",
-            return_value=llm_service,
-        ), patch(
-            "drevalis.services.llm.extract_json",
-            side_effect=lambda x: x,  # passthrough
+        with (
+            patch(
+                "drevalis.services.llm_config.LLMConfigService",
+                return_value=cfg_svc,
+            ),
+            patch(
+                "drevalis.services.llm.LLMService",
+                return_value=llm_service,
+            ),
+            patch(
+                "drevalis.services.llm.extract_json",
+                side_effect=lambda x: x,  # passthrough
+            ),
         ):
             out = await seo_variants(
                 ep.id,
@@ -557,21 +554,23 @@ class TestSeoVariantsWithLLM:
         cfg_svc.list_all = AsyncMock(return_value=[MagicMock()])
 
         provider = MagicMock()
-        provider.generate = AsyncMock(
-            return_value=SimpleNamespace(content="not json at all")
-        )
+        provider.generate = AsyncMock(return_value=SimpleNamespace(content="not json at all"))
         llm_service = MagicMock()
         llm_service.get_provider = MagicMock(return_value=provider)
 
-        with patch(
-            "drevalis.services.llm_config.LLMConfigService",
-            return_value=cfg_svc,
-        ), patch(
-            "drevalis.services.llm.LLMService",
-            return_value=llm_service,
-        ), patch(
-            "drevalis.services.llm.extract_json",
-            side_effect=lambda x: x,
+        with (
+            patch(
+                "drevalis.services.llm_config.LLMConfigService",
+                return_value=cfg_svc,
+            ),
+            patch(
+                "drevalis.services.llm.LLMService",
+                return_value=llm_service,
+            ),
+            patch(
+                "drevalis.services.llm.extract_json",
+                side_effect=lambda x: x,
+            ),
         ):
             out = await seo_variants(
                 ep.id,
@@ -610,15 +609,19 @@ class TestSeoVariantsWithLLM:
         llm_service = MagicMock()
         llm_service.get_provider = MagicMock(return_value=provider)
 
-        with patch(
-            "drevalis.services.llm_config.LLMConfigService",
-            return_value=cfg_svc,
-        ), patch(
-            "drevalis.services.llm.LLMService",
-            return_value=llm_service,
-        ), patch(
-            "drevalis.services.llm.extract_json",
-            side_effect=lambda x: x,
+        with (
+            patch(
+                "drevalis.services.llm_config.LLMConfigService",
+                return_value=cfg_svc,
+            ),
+            patch(
+                "drevalis.services.llm.LLMService",
+                return_value=llm_service,
+            ),
+            patch(
+                "drevalis.services.llm.extract_json",
+                side_effect=lambda x: x,
+            ),
         ):
             out = await seo_variants(
                 ep.id,

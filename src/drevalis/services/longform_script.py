@@ -469,9 +469,7 @@ class LongFormScriptService:
             scene_no = scene.get("scene_number")
             if scene_no not in failing_indices:
                 continue
-            specific_issues = [
-                msg for msg in report.issues if f"scene {scene_no}:" in msg
-            ]
+            specific_issues = [msg for msg in report.issues if f"scene {scene_no}:" in msg]
             if not specific_issues:
                 continue
             try:

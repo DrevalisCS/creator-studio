@@ -32,12 +32,12 @@ _PRO_FEATURES = _CREATOR_FEATURES | frozenset(
     {
         "runpod",
         "audiobooks",
-        "elevenlabs",          # ElevenLabs TTS + voice cloning
-        "character_packs",     # Character + style locks
+        "elevenlabs",  # ElevenLabs TTS + voice cloning
+        "character_packs",  # Character + style locks
         "continuity_check",
-        "social_tiktok",       # TikTok direct upload
-        "multichannel",        # YouTube cap raised from 1 to 3
-        "cross_platform_bulk", # Bulk publish across connected platforms
+        "social_tiktok",  # TikTok direct upload
+        "multichannel",  # YouTube cap raised from 1 to 3
+        "cross_platform_bulk",  # Bulk publish across connected platforms
     }
 )
 
@@ -46,8 +46,8 @@ _PRO_FEATURES = _CREATOR_FEATURES | frozenset(
 # minted before the split keep granting Studio its full social bundle.
 _STUDIO_FEATURES = _PRO_FEATURES | frozenset(
     {
-        "social_extended",     # Instagram Reels + Facebook + X
-        "social_platforms",    # legacy alias — granted at Studio for back-compat
+        "social_extended",  # Instagram Reels + Facebook + X
+        "social_platforms",  # legacy alias — granted at Studio for back-compat
         "team_mode",
         "api_access",
     }

@@ -256,9 +256,7 @@ class TestHeartbeat:
         # crash bubbling up.
         with _mock_transport_factory(_error_handler(502, "<html>bad gateway</html>")):
             with pytest.raises(ActivationError) as exc:
-                await heartbeat_with_server(
-                    "https://lic.test", license_key="k", machine_id="m"
-                )
+                await heartbeat_with_server("https://lic.test", license_key="k", machine_id="m")
         assert exc.value.status_code == 502
         assert exc.value.error == "heartbeat_failed"
 

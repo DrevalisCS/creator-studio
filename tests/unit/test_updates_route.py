@@ -102,9 +102,7 @@ class TestGetProgress:
         assert out.phase == "pulling"
         assert "0.29.72" in out.detail
 
-    async def test_unreadable_json_falls_back_to_idle_with_detail(
-        self, tmp_path: Any
-    ) -> None:
+    async def test_unreadable_json_falls_back_to_idle_with_detail(self, tmp_path: Any) -> None:
         # File exists but contains garbage — pin: route returns idle with
         # an explanatory detail rather than 500.
         status_file = tmp_path / "update_status.json"

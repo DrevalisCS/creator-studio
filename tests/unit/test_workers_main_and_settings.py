@@ -40,9 +40,7 @@ class TestRedisHostPort:
         monkeypatch.setenv("REDIS_URL", "redis://my-redis:6380/3")
         assert _redis_host_port() == ("my-redis", 6380)
 
-    def test_falls_back_to_redis_when_no_host(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_falls_back_to_redis_when_no_host(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("REDIS_URL", "redis://")
         host, port = _redis_host_port()
         # Defaults preserved.
@@ -67,12 +65,15 @@ class TestWaitForRedis:
         async def _fake_wait_for(coro: Any, *, timeout: float) -> Any:
             return await coro
 
-        with patch(
-            "drevalis.workers.__main__.asyncio.open_connection",
-            _fake_open,
-        ), patch(
-            "drevalis.workers.__main__.asyncio.wait_for",
-            _fake_wait_for,
+        with (
+            patch(
+                "drevalis.workers.__main__.asyncio.open_connection",
+                _fake_open,
+            ),
+            patch(
+                "drevalis.workers.__main__.asyncio.wait_for",
+                _fake_wait_for,
+            ),
         ):
             # Must not raise / sys.exit.
             await _wait_for_redis("localhost", 6379, total_seconds=1.0)
@@ -90,12 +91,15 @@ class TestWaitForRedis:
         async def _fake_wait_for(coro: Any, *, timeout: float) -> Any:
             return await coro
 
-        with patch(
-            "drevalis.workers.__main__.asyncio.open_connection",
-            _fake_open,
-        ), patch(
-            "drevalis.workers.__main__.asyncio.wait_for",
-            _fake_wait_for,
+        with (
+            patch(
+                "drevalis.workers.__main__.asyncio.open_connection",
+                _fake_open,
+            ),
+            patch(
+                "drevalis.workers.__main__.asyncio.wait_for",
+                _fake_wait_for,
+            ),
         ):
             await _wait_for_redis("localhost", 6379, total_seconds=1.0)
 
@@ -120,15 +124,19 @@ class TestWaitForRedis:
         async def _no_sleep(_seconds: float) -> None:
             return None
 
-        with patch(
-            "drevalis.workers.__main__.asyncio.open_connection",
-            _fake_open,
-        ), patch(
-            "drevalis.workers.__main__.asyncio.wait_for",
-            _fake_wait_for,
-        ), patch(
-            "drevalis.workers.__main__.asyncio.sleep",
-            _no_sleep,
+        with (
+            patch(
+                "drevalis.workers.__main__.asyncio.open_connection",
+                _fake_open,
+            ),
+            patch(
+                "drevalis.workers.__main__.asyncio.wait_for",
+                _fake_wait_for,
+            ),
+            patch(
+                "drevalis.workers.__main__.asyncio.sleep",
+                _no_sleep,
+            ),
         ):
             await _wait_for_redis("localhost", 6379, total_seconds=10.0)
         assert attempts["n"] == 2
@@ -151,16 +159,21 @@ class TestWaitForRedis:
         def _capture_write(msg: str) -> None:
             captured.append(msg)
 
-        with patch(
-            "drevalis.workers.__main__.asyncio.open_connection",
-            _always_fail,
-        ), patch(
-            "drevalis.workers.__main__.asyncio.wait_for",
-            _fake_wait_for,
-        ), patch(
-            "drevalis.workers.__main__.asyncio.sleep",
-            _no_sleep,
-        ), patch.object(sys.stderr, "write", _capture_write):
+        with (
+            patch(
+                "drevalis.workers.__main__.asyncio.open_connection",
+                _always_fail,
+            ),
+            patch(
+                "drevalis.workers.__main__.asyncio.wait_for",
+                _fake_wait_for,
+            ),
+            patch(
+                "drevalis.workers.__main__.asyncio.sleep",
+                _no_sleep,
+            ),
+            patch.object(sys.stderr, "write", _capture_write),
+        ):
             with pytest.raises(SystemExit) as exc:
                 await _wait_for_redis(
                     "nonexistent",
@@ -190,16 +203,21 @@ class TestWaitForRedis:
 
         captured: list[str] = []
 
-        with patch(
-            "drevalis.workers.__main__.asyncio.open_connection",
-            _always_timeout,
-        ), patch(
-            "drevalis.workers.__main__.asyncio.wait_for",
-            _fake_wait_for,
-        ), patch(
-            "drevalis.workers.__main__.asyncio.sleep",
-            _no_sleep,
-        ), patch.object(sys.stderr, "write", lambda m: captured.append(m)):
+        with (
+            patch(
+                "drevalis.workers.__main__.asyncio.open_connection",
+                _always_timeout,
+            ),
+            patch(
+                "drevalis.workers.__main__.asyncio.wait_for",
+                _fake_wait_for,
+            ),
+            patch(
+                "drevalis.workers.__main__.asyncio.sleep",
+                _no_sleep,
+            ),
+            patch.object(sys.stderr, "write", lambda m: captured.append(m)),
+        ):
             with pytest.raises(SystemExit):
                 await _wait_for_redis(
                     "localhost",
@@ -232,9 +250,7 @@ class TestRedisSettingsFromConfig:
         assert out.database == 3
         assert out.password == "secret"
 
-    def test_invalid_database_falls_back_to_zero(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_invalid_database_falls_back_to_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Pin: a non-numeric path segment doesn't crash settings build —
         # falls back to db=0.
         import base64
@@ -247,9 +263,7 @@ class TestRedisSettingsFromConfig:
         out = _redis_settings_from_config()
         assert out.database == 0
 
-    def test_no_path_yields_db_zero(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_no_path_yields_db_zero(self, monkeypatch: pytest.MonkeyPatch) -> None:
         import base64
 
         monkeypatch.setenv(
@@ -260,9 +274,7 @@ class TestRedisSettingsFromConfig:
         out = _redis_settings_from_config()
         assert out.database == 0
 
-    def test_retry_headroom_over_arq_defaults(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_retry_headroom_over_arq_defaults(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Pin: conn_timeout=5, conn_retries=5, conn_retry_delay=2.
         # Arq's defaults are smaller — ours give a fresh boot ~35s of
         # Redis-not-yet-up tolerance.
@@ -349,9 +361,7 @@ class TestWorkerSettings:
         # daily, ab winner daily, nightly backup, prune scheduled posts).
         assert len(WorkerSettings.cron_jobs) == 7
 
-    def test_job_timeout_uses_longform_setting(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_job_timeout_uses_longform_setting(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # The class is built at import time, so this is just a smoke
         # check: the value must be a positive int (default 14400 = 4h).
         assert isinstance(WorkerSettings.job_timeout, int)

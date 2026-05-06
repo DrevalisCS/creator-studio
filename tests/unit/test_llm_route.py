@@ -156,9 +156,7 @@ class TestUpdate:
         svc = MagicMock()
         svc.update = AsyncMock(side_effect=ValidationError("bad temperature"))
         with pytest.raises(HTTPException) as exc:
-            await update_llm_config(
-                uuid4(), LLMConfigUpdate(name="x"), svc=svc
-            )
+            await update_llm_config(uuid4(), LLMConfigUpdate(name="x"), svc=svc)
         assert exc.value.status_code == 422
 
     async def test_not_found_maps_to_404(self) -> None:
@@ -195,9 +193,7 @@ class TestLLMTest:
         svc = MagicMock()
         svc.get = AsyncMock(side_effect=NotFoundError("llm_config", uuid4()))
         with pytest.raises(HTTPException) as exc:
-            await llm_test_endpoint(
-                uuid4(), payload=None, svc=svc, settings=_settings()
-            )
+            await llm_test_endpoint(uuid4(), payload=None, svc=svc, settings=_settings())
         assert exc.value.status_code == 404
 
     async def test_success_path_calls_provider_and_expunges(self) -> None:
@@ -218,9 +214,7 @@ class TestLLMTest:
         provider.generate = AsyncMock(return_value=result)
         runtime.get_provider = MagicMock(return_value=provider)
 
-        with patch(
-            "drevalis.services.llm.LLMService", return_value=runtime
-        ):
+        with patch("drevalis.services.llm.LLMService", return_value=runtime):
             out = await llm_test_endpoint(
                 config.id,
                 payload=LLMTestRequest(prompt="hi"),
@@ -249,9 +243,7 @@ class TestLLMTest:
         runtime.get_provider = MagicMock(return_value=provider)
 
         with patch("drevalis.services.llm.LLMService", return_value=runtime):
-            await llm_test_endpoint(
-                uuid4(), payload=None, svc=svc, settings=_settings()
-            )
+            await llm_test_endpoint(uuid4(), payload=None, svc=svc, settings=_settings())
 
         # Default prompt used.
         called_user_prompt = provider.generate.call_args.kwargs["user_prompt"]
@@ -271,9 +263,7 @@ class TestLLMTest:
         runtime.get_provider = MagicMock(return_value=provider)
 
         with patch("drevalis.services.llm.LLMService", return_value=runtime):
-            out = await llm_test_endpoint(
-                uuid4(), payload=None, svc=svc, settings=_settings()
-            )
+            out = await llm_test_endpoint(uuid4(), payload=None, svc=svc, settings=_settings())
 
         assert out.success is False
         assert out.response_text is None

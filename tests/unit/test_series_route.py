@@ -143,9 +143,11 @@ class TestGenerateAsync:
         arq = MagicMock()
         arq.enqueue_job = AsyncMock()
 
-        with patch("drevalis.api.routes.series.Redis", return_value=redis), patch(
-            "drevalis.api.routes.series.get_pool", return_value=MagicMock()
-        ), patch("drevalis.api.routes.series.get_arq_pool", return_value=arq):
+        with (
+            patch("drevalis.api.routes.series.Redis", return_value=redis),
+            patch("drevalis.api.routes.series.get_pool", return_value=MagicMock()),
+            patch("drevalis.api.routes.series.get_arq_pool", return_value=arq),
+        ):
             out = await generate_series(
                 payload=SeriesGenerateRequest(
                     idea="A series about retro gaming history",
@@ -177,13 +179,13 @@ class TestGenerateAsync:
         arq = MagicMock()
         arq.enqueue_job = AsyncMock(side_effect=ConnectionError("redis pool out"))
 
-        with patch("drevalis.api.routes.series.Redis", return_value=redis), patch(
-            "drevalis.api.routes.series.get_pool", return_value=MagicMock()
-        ), patch("drevalis.api.routes.series.get_arq_pool", return_value=arq):
+        with (
+            patch("drevalis.api.routes.series.Redis", return_value=redis),
+            patch("drevalis.api.routes.series.get_pool", return_value=MagicMock()),
+            patch("drevalis.api.routes.series.get_arq_pool", return_value=arq),
+        ):
             with pytest.raises(ConnectionError):
-                await generate_series(
-                    payload=SeriesGenerateRequest(idea="bla bla bla bla bla")
-                )
+                await generate_series(payload=SeriesGenerateRequest(idea="bla bla bla bla bla"))
         # Cleanup MUST run even if enqueue raised.
         redis.aclose.assert_awaited_once()
 
@@ -196,8 +198,9 @@ class TestGetJobStatus:
         redis = AsyncMock()
         redis.get = AsyncMock(return_value=None)
         redis.aclose = AsyncMock()
-        with patch("drevalis.api.routes.series.Redis", return_value=redis), patch(
-            "drevalis.api.routes.series.get_pool", return_value=MagicMock()
+        with (
+            patch("drevalis.api.routes.series.Redis", return_value=redis),
+            patch("drevalis.api.routes.series.get_pool", return_value=MagicMock()),
         ):
             with pytest.raises(HTTPException) as exc:
                 await get_series_generate_job("missing-job-id")
@@ -220,8 +223,9 @@ class TestGetJobStatus:
         }
         redis.get = AsyncMock(side_effect=[b"done", json.dumps(result_payload).encode()])
         redis.aclose = AsyncMock()
-        with patch("drevalis.api.routes.series.Redis", return_value=redis), patch(
-            "drevalis.api.routes.series.get_pool", return_value=MagicMock()
+        with (
+            patch("drevalis.api.routes.series.Redis", return_value=redis),
+            patch("drevalis.api.routes.series.get_pool", return_value=MagicMock()),
         ):
             out = await get_series_generate_job("abc")
         assert out.status == "done"
@@ -232,8 +236,9 @@ class TestGetJobStatus:
         redis = AsyncMock()
         redis.get = AsyncMock(side_effect=[b"failed", b"LLM upstream timeout"])
         redis.aclose = AsyncMock()
-        with patch("drevalis.api.routes.series.Redis", return_value=redis), patch(
-            "drevalis.api.routes.series.get_pool", return_value=MagicMock()
+        with (
+            patch("drevalis.api.routes.series.Redis", return_value=redis),
+            patch("drevalis.api.routes.series.get_pool", return_value=MagicMock()),
         ):
             out = await get_series_generate_job("abc")
         assert out.status == "failed"
@@ -245,8 +250,9 @@ class TestGetJobStatus:
         redis = AsyncMock()
         redis.get = AsyncMock(return_value="generating")
         redis.aclose = AsyncMock()
-        with patch("drevalis.api.routes.series.Redis", return_value=redis), patch(
-            "drevalis.api.routes.series.get_pool", return_value=MagicMock()
+        with (
+            patch("drevalis.api.routes.series.Redis", return_value=redis),
+            patch("drevalis.api.routes.series.get_pool", return_value=MagicMock()),
         ):
             out = await get_series_generate_job("abc")
         assert out.status == "generating"
@@ -261,8 +267,9 @@ class TestCancelJob:
         redis = AsyncMock()
         redis.get = AsyncMock(return_value=None)
         redis.aclose = AsyncMock()
-        with patch("drevalis.api.routes.series.Redis", return_value=redis), patch(
-            "drevalis.api.routes.series.get_pool", return_value=MagicMock()
+        with (
+            patch("drevalis.api.routes.series.Redis", return_value=redis),
+            patch("drevalis.api.routes.series.get_pool", return_value=MagicMock()),
         ):
             with pytest.raises(HTTPException) as exc:
                 await cancel_series_generate_job("nope")
@@ -273,8 +280,9 @@ class TestCancelJob:
         redis.get = AsyncMock(return_value=b"generating")
         redis.set = AsyncMock()
         redis.aclose = AsyncMock()
-        with patch("drevalis.api.routes.series.Redis", return_value=redis), patch(
-            "drevalis.api.routes.series.get_pool", return_value=MagicMock()
+        with (
+            patch("drevalis.api.routes.series.Redis", return_value=redis),
+            patch("drevalis.api.routes.series.get_pool", return_value=MagicMock()),
         ):
             out = await cancel_series_generate_job("abc")
         assert out["message"] == "Cancelled"
@@ -296,9 +304,7 @@ class TestGenerateSync:
             return_value=(s, [_make_episode("E1", "atari"), _make_episode("E2", None)])
         )
         out = await generate_series_sync(
-            payload=SeriesGenerateRequest(
-                idea="A retro gaming series, please ten episodes"
-            ),
+            payload=SeriesGenerateRequest(idea="A retro gaming series, please ten episodes"),
             svc=svc,
         )
         assert out.episode_count == 2
@@ -307,9 +313,7 @@ class TestGenerateSync:
 
     async def test_not_found_maps_to_404(self) -> None:
         svc = MagicMock()
-        svc.generate_series_sync = AsyncMock(
-            side_effect=NotFoundError("llm_config", uuid4())
-        )
+        svc.generate_series_sync = AsyncMock(side_effect=NotFoundError("llm_config", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await generate_series_sync(
                 payload=SeriesGenerateRequest(idea="long enough idea string"),
@@ -386,9 +390,7 @@ class TestUpdateSeries:
         svc = MagicMock()
         s = _make_series(name="renamed")
         svc.update = AsyncMock(return_value=s)
-        out = await update_series(
-            s.id, SeriesUpdate(name="renamed"), svc=svc
-        )
+        out = await update_series(s.id, SeriesUpdate(name="renamed"), svc=svc)
         assert out.name == "renamed"
         # exclude_unset semantics: only `name` reaches the service.
         kwargs = svc.update.call_args.args[1]
@@ -421,9 +423,7 @@ class TestUpdateSeries:
             )
         )
         with pytest.raises(HTTPException) as exc:
-            await update_series(
-                uuid4(), SeriesUpdate(name="x"), svc=svc
-            )
+            await update_series(uuid4(), SeriesUpdate(name="x"), svc=svc)
         assert exc.value.status_code == 409
         detail = exc.value.detail
         assert detail["error"] == "series_field_locked"
@@ -438,20 +438,14 @@ class TestAddEpisodesAI:
     async def test_success(self) -> None:
         svc = MagicMock()
         ids = [uuid4(), uuid4()]
-        svc.add_episodes_ai = AsyncMock(
-            return_value=(ids, [{"title": "E1"}, {"title": "E2"}])
-        )
-        out = await add_episodes_ai(
-            uuid4(), AddEpisodesRequest(count=2), svc=svc
-        )
+        svc.add_episodes_ai = AsyncMock(return_value=(ids, [{"title": "E1"}, {"title": "E2"}]))
+        out = await add_episodes_ai(uuid4(), AddEpisodesRequest(count=2), svc=svc)
         assert "Created 2" in out["message"]
         assert out["episode_ids"] == ids
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.add_episodes_ai = AsyncMock(
-            side_effect=NotFoundError("series", uuid4())
-        )
+        svc.add_episodes_ai = AsyncMock(side_effect=NotFoundError("series", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await add_episodes_ai(uuid4(), AddEpisodesRequest(count=2), svc=svc)
         assert exc.value.status_code == 404
@@ -459,9 +453,7 @@ class TestAddEpisodesAI:
     async def test_validation_error_502(self) -> None:
         # LLM upstream returned junk — 502 Bad Gateway, not 400.
         svc = MagicMock()
-        svc.add_episodes_ai = AsyncMock(
-            side_effect=ValidationError("LLM returned malformed JSON")
-        )
+        svc.add_episodes_ai = AsyncMock(side_effect=ValidationError("LLM returned malformed JSON"))
         with pytest.raises(HTTPException) as exc:
             await add_episodes_ai(uuid4(), AddEpisodesRequest(count=2), svc=svc)
         assert exc.value.status_code == 502
@@ -474,18 +466,14 @@ class TestTrendingTopics:
     async def test_success(self) -> None:
         svc = MagicMock()
         sid = uuid4()
-        svc.suggest_trending_topics = AsyncMock(
-            return_value=["Topic A", "Topic B"]
-        )
+        svc.suggest_trending_topics = AsyncMock(return_value=["Topic A", "Topic B"])
         out = await suggest_trending_topics(sid, svc=svc)
         assert out["series_id"] == str(sid)
         assert out["topics"] == ["Topic A", "Topic B"]
 
     async def test_not_found_404(self) -> None:
         svc = MagicMock()
-        svc.suggest_trending_topics = AsyncMock(
-            side_effect=NotFoundError("series", uuid4())
-        )
+        svc.suggest_trending_topics = AsyncMock(side_effect=NotFoundError("series", uuid4()))
         with pytest.raises(HTTPException) as exc:
             await suggest_trending_topics(uuid4(), svc=svc)
         assert exc.value.status_code == 404

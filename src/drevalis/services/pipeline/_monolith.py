@@ -819,9 +819,7 @@ class PipelineOrchestrator:
         voice profile is set yet — narration_tts stays unset and the TTS
         step falls back to ``narration``.
         """
-        voice_profile = (
-            getattr(episode, "override_voice_profile", None) or series.voice_profile
-        )
+        voice_profile = getattr(episode, "override_voice_profile", None) or series.voice_profile
         if voice_profile is None:
             return None
         provider = getattr(voice_profile, "provider", None)

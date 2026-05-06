@@ -107,18 +107,23 @@ class TestAnalyzeVideoIngestSafetyBranches:
         asset_repo = MagicMock()
         llm_repo = MagicMock()
 
-        with patch(
-            "drevalis.repositories.asset.VideoIngestJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.asset.AssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(tmp_path),
+        with (
+            patch(
+                "drevalis.repositories.asset.VideoIngestJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.asset.AssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(tmp_path),
+            ),
         ):
             out = await analyze_video_ingest(
                 _ctx_with_session(session),
@@ -138,34 +143,33 @@ class TestAnalyzeVideoIngestSafetyBranches:
         asset_repo.get_by_id = AsyncMock(return_value=None)
         llm_repo = MagicMock()
 
-        with patch(
-            "drevalis.repositories.asset.VideoIngestJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.asset.AssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(tmp_path),
+        with (
+            patch(
+                "drevalis.repositories.asset.VideoIngestJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.asset.AssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(tmp_path),
+            ),
         ):
-            out = await analyze_video_ingest(
-                _ctx_with_session(session), str(job.id)
-            )
+            out = await analyze_video_ingest(_ctx_with_session(session), str(job.id))
         assert out == {"status": "failed", "error": "source_asset_missing"}
         # _fail was invoked → update with status=failed.
         update_calls = [
-            c
-            for c in job_repo.update.await_args_list
-            if c.kwargs.get("status") == "failed"
+            c for c in job_repo.update.await_args_list if c.kwargs.get("status") == "failed"
         ]
         assert update_calls
 
-    async def test_wrong_asset_kind_marks_failed(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_wrong_asset_kind_marks_failed(self, tmp_path: Path) -> None:
         session = AsyncMock()
         session.commit = AsyncMock()
 
@@ -178,28 +182,29 @@ class TestAnalyzeVideoIngestSafetyBranches:
         asset_repo.get_by_id = AsyncMock(return_value=asset)
         llm_repo = MagicMock()
 
-        with patch(
-            "drevalis.repositories.asset.VideoIngestJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.asset.AssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(tmp_path),
+        with (
+            patch(
+                "drevalis.repositories.asset.VideoIngestJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.asset.AssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(tmp_path),
+            ),
         ):
-            out = await analyze_video_ingest(
-                _ctx_with_session(session), str(job.id)
-            )
+            out = await analyze_video_ingest(_ctx_with_session(session), str(job.id))
         assert out["status"] == "failed"
         assert out["error"] == "source_asset_missing"
 
-    async def test_source_file_missing_on_disk_marks_failed(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_source_file_missing_on_disk_marks_failed(self, tmp_path: Path) -> None:
         session = AsyncMock()
         session.commit = AsyncMock()
 
@@ -213,27 +218,28 @@ class TestAnalyzeVideoIngestSafetyBranches:
         asset_repo.get_by_id = AsyncMock(return_value=asset)
         llm_repo = MagicMock()
 
-        with patch(
-            "drevalis.repositories.asset.VideoIngestJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.asset.AssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(tmp_path),
+        with (
+            patch(
+                "drevalis.repositories.asset.VideoIngestJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.asset.AssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(tmp_path),
+            ),
         ):
-            out = await analyze_video_ingest(
-                _ctx_with_session(session), str(job.id)
-            )
+            out = await analyze_video_ingest(_ctx_with_session(session), str(job.id))
         assert out["error"] == "source_file_missing"
 
-    async def test_ffmpeg_extract_failure_marks_failed(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_ffmpeg_extract_failure_marks_failed(self, tmp_path: Path) -> None:
         # Stage a real source file so we get past the file-existence
         # guard and reach the ffmpeg extraction.
         src = tmp_path / "v.mp4"
@@ -257,32 +263,34 @@ class TestAnalyzeVideoIngestSafetyBranches:
         async def _fake_extract(*_args: Any) -> int:
             return 1
 
-        with patch(
-            "drevalis.repositories.asset.VideoIngestJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.asset.AssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(tmp_path),
-        ), patch(
-            "drevalis.workers.jobs.video_ingest._ffmpeg_extract_audio",
-            _fake_extract,
+        with (
+            patch(
+                "drevalis.repositories.asset.VideoIngestJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.asset.AssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(tmp_path),
+            ),
+            patch(
+                "drevalis.workers.jobs.video_ingest._ffmpeg_extract_audio",
+                _fake_extract,
+            ),
         ):
-            out = await analyze_video_ingest(
-                _ctx_with_session(session), str(job.id)
-            )
+            out = await analyze_video_ingest(_ctx_with_session(session), str(job.id))
         assert out["error"] == "ffmpeg_failed"
 
 
 class TestAnalyzeVideoIngestHappyPath:
-    async def test_no_llm_configured_falls_back_to_naive(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_no_llm_configured_falls_back_to_naive(self, tmp_path: Path) -> None:
         # Real source file + ffmpeg "succeeds" + the .whisper.wav file
         # gets created → caption_svc transcribes → naive_candidates
         # picks (no LLM configured).
@@ -307,25 +315,29 @@ class TestAnalyzeVideoIngestHappyPath:
             dst.write_bytes(b"\x00")
             return 0
 
-        with patch(
-            "drevalis.repositories.asset.VideoIngestJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.asset.AssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(tmp_path),
-        ), patch(
-            "drevalis.workers.jobs.video_ingest._ffmpeg_extract_audio",
-            _fake_extract,
+        with (
+            patch(
+                "drevalis.repositories.asset.VideoIngestJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.asset.AssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(tmp_path),
+            ),
+            patch(
+                "drevalis.workers.jobs.video_ingest._ffmpeg_extract_audio",
+                _fake_extract,
+            ),
         ):
-            out = await analyze_video_ingest(
-                _ctx_with_session(session), str(job.id)
-            )
+            out = await analyze_video_ingest(_ctx_with_session(session), str(job.id))
         assert out["status"] == "done"
         # The final update marks done + populates candidate_clips.
         final_call = job_repo.update.await_args_list[-1]
@@ -368,28 +380,33 @@ class TestAnalyzeVideoIngestHappyPath:
                 }
             ]
 
-        with patch(
-            "drevalis.repositories.asset.VideoIngestJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.asset.AssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.llm_config.LLMConfigRepository",
-            return_value=llm_repo,
-        ), patch(
-            "drevalis.core.deps.get_settings",
-            return_value=_settings(tmp_path),
-        ), patch(
-            "drevalis.workers.jobs.video_ingest._ffmpeg_extract_audio",
-            _fake_extract,
-        ), patch(
-            "drevalis.workers.jobs.video_ingest._llm_pick",
-            _fake_pick,
+        with (
+            patch(
+                "drevalis.repositories.asset.VideoIngestJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.asset.AssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.llm_config.LLMConfigRepository",
+                return_value=llm_repo,
+            ),
+            patch(
+                "drevalis.core.deps.get_settings",
+                return_value=_settings(tmp_path),
+            ),
+            patch(
+                "drevalis.workers.jobs.video_ingest._ffmpeg_extract_audio",
+                _fake_extract,
+            ),
+            patch(
+                "drevalis.workers.jobs.video_ingest._llm_pick",
+                _fake_pick,
+            ),
         ):
-            out = await analyze_video_ingest(
-                _ctx_with_session(session), str(job.id)
-            )
+            out = await analyze_video_ingest(_ctx_with_session(session), str(job.id))
         assert out["status"] == "done"
         assert out["candidates"] == 1
         final_call = job_repo.update.await_args_list[-1]
@@ -419,9 +436,7 @@ class TestCommitVideoIngestClip:
             return_value=job_repo,
         ):
             with pytest.raises(ValueError, match="not ready"):
-                await commit_video_ingest_clip(
-                    ctx, str(job.id), 0, str(uuid4())
-                )
+                await commit_video_ingest_clip(ctx, str(job.id), 0, str(uuid4()))
 
     async def test_clip_index_out_of_range_raises(self) -> None:
         session = AsyncMock()
@@ -446,9 +461,7 @@ class TestCommitVideoIngestClip:
             return_value=job_repo,
         ):
             with pytest.raises(ValueError, match="out of range"):
-                await commit_video_ingest_clip(
-                    ctx, str(job.id), 99, str(uuid4())
-                )
+                await commit_video_ingest_clip(ctx, str(job.id), 99, str(uuid4()))
 
     async def test_negative_clip_index_raises(self) -> None:
         session = AsyncMock()
@@ -473,9 +486,7 @@ class TestCommitVideoIngestClip:
             return_value=job_repo,
         ):
             with pytest.raises(ValueError, match="out of range"):
-                await commit_video_ingest_clip(
-                    ctx, str(job.id), -1, str(uuid4())
-                )
+                await commit_video_ingest_clip(ctx, str(job.id), -1, str(uuid4()))
 
     async def test_asset_disappeared_raises(self) -> None:
         session = AsyncMock()
@@ -497,17 +508,18 @@ class TestCommitVideoIngestClip:
         asset_repo = MagicMock()
         asset_repo.get_by_id = AsyncMock(return_value=None)
 
-        with patch(
-            "drevalis.repositories.asset.VideoIngestJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.asset.AssetRepository",
-            return_value=asset_repo,
+        with (
+            patch(
+                "drevalis.repositories.asset.VideoIngestJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.asset.AssetRepository",
+                return_value=asset_repo,
+            ),
         ):
             with pytest.raises(ValueError, match="asset disappeared"):
-                await commit_video_ingest_clip(
-                    ctx, str(job.id), 0, str(uuid4())
-                )
+                await commit_video_ingest_clip(ctx, str(job.id), 0, str(uuid4()))
 
     async def test_happy_path_creates_episode_and_updates_job(self) -> None:
         session = AsyncMock()
@@ -543,19 +555,21 @@ class TestCommitVideoIngestClip:
         ep_repo.create = AsyncMock(return_value=new_ep)
 
         sid = str(uuid4())
-        with patch(
-            "drevalis.repositories.asset.VideoIngestJobRepository",
-            return_value=job_repo,
-        ), patch(
-            "drevalis.repositories.asset.AssetRepository",
-            return_value=asset_repo,
-        ), patch(
-            "drevalis.repositories.episode.EpisodeRepository",
-            return_value=ep_repo,
+        with (
+            patch(
+                "drevalis.repositories.asset.VideoIngestJobRepository",
+                return_value=job_repo,
+            ),
+            patch(
+                "drevalis.repositories.asset.AssetRepository",
+                return_value=asset_repo,
+            ),
+            patch(
+                "drevalis.repositories.episode.EpisodeRepository",
+                return_value=ep_repo,
+            ),
         ):
-            out = await commit_video_ingest_clip(
-                ctx, str(job.id), 0, sid
-            )
+            out = await commit_video_ingest_clip(ctx, str(job.id), 0, sid)
         assert out["episode_id"] == str(new_ep.id)
         # Episode created with single-scene script windowed to clip.
         ep_repo.create.assert_awaited_once()

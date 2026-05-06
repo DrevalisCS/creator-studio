@@ -78,7 +78,9 @@ def _normalise_ellipsis(text: str) -> str:
 # ── Number / acronym helpers ─────────────────────────────────────────
 
 
-_MONEY_RE = re.compile(r"\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(million|billion|trillion|m|b|t)?\b", re.IGNORECASE)
+_MONEY_RE = re.compile(
+    r"\$(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s*(million|billion|trillion|m|b|t)?\b", re.IGNORECASE
+)
 _DOLLAR_PLAIN_RE = re.compile(r"\$(\d+(?:\.\d+)?)\b")
 _PCT_RE = re.compile(r"(\d+(?:\.\d+)?)\s*%")
 

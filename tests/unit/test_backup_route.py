@@ -60,7 +60,9 @@ def _settings(tmp_path: Path) -> Any:
 def _upload(content: bytes, filename: str = "x.tar.gz") -> Any:
     f = MagicMock(spec=UploadFile)
     f.filename = filename
-    chunks = [content[i : i + 4 * 1024 * 1024] for i in range(0, len(content), 4 * 1024 * 1024)] + [b""]
+    chunks = [content[i : i + 4 * 1024 * 1024] for i in range(0, len(content), 4 * 1024 * 1024)] + [
+        b""
+    ]
 
     async def _read(_size: int = 0) -> bytes:
         return chunks.pop(0) if chunks else b""
@@ -124,8 +126,10 @@ class TestSeedRestoreStatus:
         redis = AsyncMock()
         redis.set = AsyncMock()
         redis.aclose = AsyncMock()
-        with patch("drevalis.core.redis.get_pool", return_value=MagicMock()), \
-             patch("redis.asyncio.Redis", return_value=redis):
+        with (
+            patch("drevalis.core.redis.get_pool", return_value=MagicMock()),
+            patch("redis.asyncio.Redis", return_value=redis),
+        ):
             await _seed_restore_status("job-123")
 
         redis.set.assert_awaited_once()
@@ -149,12 +153,15 @@ class TestListBackups:
     async def test_returns_archives_and_settings_meta(self, tmp_path: Path) -> None:
         s = _settings(tmp_path)
         s.backup_directory.mkdir(parents=True)
-        with patch(
-            "drevalis.api.routes.backup._service",
-            return_value=MagicMock(list_backups=MagicMock(return_value=[{"name": "a.tar.gz"}])),
-        ), patch(
-            "drevalis.api.routes.backup._detect_host_source",
-            return_value="/srv/storage/backups",
+        with (
+            patch(
+                "drevalis.api.routes.backup._service",
+                return_value=MagicMock(list_backups=MagicMock(return_value=[{"name": "a.tar.gz"}])),
+            ),
+            patch(
+                "drevalis.api.routes.backup._detect_host_source",
+                return_value="/srv/storage/backups",
+            ),
         ):
             out = await list_backups(settings=s)
         assert out["retention"] == 7
@@ -167,9 +174,7 @@ class TestListBackups:
 
 
 class TestCreateBackup:
-    async def test_success_returns_metadata_and_prunes(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_success_returns_metadata_and_prunes(self, tmp_path: Path) -> None:
         s = _settings(tmp_path)
         s.backup_directory.mkdir(parents=True)
         archive = s.backup_directory / "backup.tar.gz"
@@ -179,9 +184,7 @@ class TestCreateBackup:
         svc.create_backup = AsyncMock(return_value=archive)
         svc.prune = MagicMock(return_value=2)
         with patch("drevalis.api.routes.backup._service", return_value=svc):
-            out = await create_backup(
-                db=AsyncMock(), settings=s, include_media=True
-            )
+            out = await create_backup(db=AsyncMock(), settings=s, include_media=True)
         assert out["filename"] == "backup.tar.gz"
         assert out["size_bytes"] > 0
         assert out["pruned"] == 2
@@ -195,9 +198,7 @@ class TestCreateBackup:
         svc.create_backup = AsyncMock(side_effect=RuntimeError("disk full"))
         with patch("drevalis.api.routes.backup._service", return_value=svc):
             with pytest.raises(HTTPException) as exc:
-                await create_backup(
-                    db=AsyncMock(), settings=s, include_media=True
-                )
+                await create_backup(db=AsyncMock(), settings=s, include_media=True)
         assert exc.value.status_code == 500
         assert "disk full" in exc.value.detail
 
@@ -303,17 +304,14 @@ class TestRestoreBackup:
             )
         assert exc.value.status_code == 400
 
-    async def test_success_writes_archive_and_enqueues(
-        self, tmp_path: Path
-    ) -> None:
+    async def test_success_writes_archive_and_enqueues(self, tmp_path: Path) -> None:
         s = _settings(tmp_path)
         arq = MagicMock()
         arq.enqueue_job = AsyncMock()
 
-        with patch(
-            "drevalis.api.routes.backup._seed_restore_status", AsyncMock()
-        ), patch(
-            "drevalis.core.redis.get_arq_pool", return_value=arq
+        with (
+            patch("drevalis.api.routes.backup._seed_restore_status", AsyncMock()),
+            patch("drevalis.core.redis.get_arq_pool", return_value=arq),
         ):
             out = await restore_backup(
                 file=_upload(b"\x1f\x8b" + b"fake-tar-gz", filename="x.tar.gz"),
@@ -394,10 +392,9 @@ class TestRestoreFromExisting:
 
         arq = MagicMock()
         arq.enqueue_job = AsyncMock()
-        with patch(
-            "drevalis.api.routes.backup._seed_restore_status", AsyncMock()
-        ), patch(
-            "drevalis.core.redis.get_arq_pool", return_value=arq
+        with (
+            patch("drevalis.api.routes.backup._seed_restore_status", AsyncMock()),
+            patch("drevalis.core.redis.get_arq_pool", return_value=arq),
         ):
             out = await restore_from_existing(
                 filename="exists.tar.gz",
@@ -423,8 +420,10 @@ class TestGetRestoreStatus:
         redis = AsyncMock()
         redis.get = AsyncMock(return_value=None)
         redis.aclose = AsyncMock()
-        with patch("drevalis.core.redis.get_pool", return_value=MagicMock()), \
-             patch("redis.asyncio.Redis", return_value=redis):
+        with (
+            patch("drevalis.core.redis.get_pool", return_value=MagicMock()),
+            patch("redis.asyncio.Redis", return_value=redis),
+        ):
             out = await get_restore_status("missing-job")
         assert out["status"] == "unknown"
         assert out["job_id"] == "missing-job"
@@ -439,8 +438,10 @@ class TestGetRestoreStatus:
         redis = AsyncMock()
         redis.get = AsyncMock(return_value=json.dumps(payload).encode())
         redis.aclose = AsyncMock()
-        with patch("drevalis.core.redis.get_pool", return_value=MagicMock()), \
-             patch("redis.asyncio.Redis", return_value=redis):
+        with (
+            patch("drevalis.core.redis.get_pool", return_value=MagicMock()),
+            patch("redis.asyncio.Redis", return_value=redis),
+        ):
             out = await get_restore_status("abc")
         assert out["status"] == "running"
         assert out["progress_pct"] == 42
@@ -452,8 +453,10 @@ class TestGetRestoreStatus:
         redis = AsyncMock()
         redis.get = AsyncMock(return_value=json.dumps(payload))
         redis.aclose = AsyncMock()
-        with patch("drevalis.core.redis.get_pool", return_value=MagicMock()), \
-             patch("redis.asyncio.Redis", return_value=redis):
+        with (
+            patch("drevalis.core.redis.get_pool", return_value=MagicMock()),
+            patch("redis.asyncio.Redis", return_value=redis),
+        ):
             out = await get_restore_status("abc")
         assert out["status"] == "done"
 
@@ -473,9 +476,7 @@ class TestDetectHelpers:
         with patch.object(Path, "read_text", _fake):
             assert _detect_mount_fs(tmp_path) is None
 
-    def test_host_source_unreadable_returns_none(
-        self, tmp_path: Path
-    ) -> None:
+    def test_host_source_unreadable_returns_none(self, tmp_path: Path) -> None:
         original_read_text = Path.read_text
 
         def _fake(self: Path, *args: Any, **kwargs: Any) -> str:
@@ -532,9 +533,7 @@ class TestRepairMedia:
             "drevalis.api.routes.backup.repair_media_links",
             AsyncMock(return_value=report),
         ):
-            out = await repair_media(
-                db=AsyncMock(), settings=_settings(tmp_path), redis=redis
-            )
+            out = await repair_media(db=AsyncMock(), settings=_settings(tmp_path), redis=redis)
         assert out == {"updated": 5, "still_missing": 0}
 
     async def test_failure_maps_to_500(self, tmp_path: Path) -> None:
@@ -545,9 +544,7 @@ class TestRepairMedia:
             AsyncMock(side_effect=RuntimeError("boom")),
         ):
             with pytest.raises(HTTPException) as exc:
-                await repair_media(
-                    db=AsyncMock(), settings=_settings(tmp_path), redis=redis
-                )
+                await repair_media(db=AsyncMock(), settings=_settings(tmp_path), redis=redis)
         assert exc.value.status_code == 500
         assert "boom" in exc.value.detail
         # Cache bust must NOT run on the failure path — storage state is
@@ -569,9 +566,7 @@ class TestRepairMedia:
             "drevalis.api.routes.backup.repair_media_links",
             AsyncMock(return_value=report),
         ):
-            await repair_media(
-                db=AsyncMock(), settings=_settings(tmp_path), redis=redis
-            )
+            await repair_media(db=AsyncMock(), settings=_settings(tmp_path), redis=redis)
         redis.delete.assert_awaited_once_with(STORAGE_PROBE_CACHE_KEY)
 
     async def test_redis_failure_on_bust_does_not_500(self, tmp_path: Path) -> None:
@@ -587,9 +582,7 @@ class TestRepairMedia:
             AsyncMock(return_value=report),
         ):
             # Must not raise — Redis failure on bust path is swallowed.
-            out = await repair_media(
-                db=AsyncMock(), settings=_settings(tmp_path), redis=redis
-            )
+            out = await repair_media(db=AsyncMock(), settings=_settings(tmp_path), redis=redis)
         assert out == {"relinked": 1}
 
 

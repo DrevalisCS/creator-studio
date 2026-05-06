@@ -149,13 +149,9 @@ class TestActivateLicense:
 
     async def test_validation_error_maps_to_400(self) -> None:
         svc = MagicMock()
-        svc.activate = AsyncMock(
-            side_effect=ValidationError("server URL not configured")
-        )
+        svc.activate = AsyncMock(side_effect=ValidationError("server URL not configured"))
         with pytest.raises(HTTPException) as exc:
-            await activate_license(
-                ActivateRequest(license_jwt="key-uuid-1234"), svc=svc
-            )
+            await activate_license(ActivateRequest(license_jwt="key-uuid-1234"), svc=svc)
         assert exc.value.status_code == 400
         assert exc.value.detail["error"] == "license_server_not_configured"
 
@@ -180,9 +176,7 @@ class TestActivateLicense:
 
     async def test_verification_error_maps_to_400(self) -> None:
         svc = MagicMock()
-        svc.activate = AsyncMock(
-            side_effect=LicenseVerificationError("bad signature")
-        )
+        svc.activate = AsyncMock(side_effect=LicenseVerificationError("bad signature"))
         with pytest.raises(HTTPException) as exc:
             await activate_license(ActivateRequest(license_jwt="abc.def.ghi"), svc=svc)
         assert exc.value.status_code == 400
@@ -193,9 +187,7 @@ class TestActivateLicense:
         from drevalis.services.license import LicenseStatus  # noqa: PLC0415
 
         svc = MagicMock()
-        svc.activate = AsyncMock(
-            side_effect=LicenseNotActiveError(LicenseStatus.EXPIRED)
-        )
+        svc.activate = AsyncMock(side_effect=LicenseNotActiveError(LicenseStatus.EXPIRED))
         with pytest.raises(HTTPException) as exc:
             await activate_license(ActivateRequest(license_jwt="abc.def.ghi"), svc=svc)
         assert exc.value.status_code == 400
@@ -274,20 +266,14 @@ class TestListActivationsByKey:
         svc = MagicMock()
         svc.list_activations_by_key = AsyncMock(side_effect=LicenseConfigError())
         with pytest.raises(HTTPException) as exc:
-            await list_activations_by_key(
-                ActivationsByKeyRequest(license_key="key-1234"), svc=svc
-            )
+            await list_activations_by_key(ActivationsByKeyRequest(license_key="key-1234"), svc=svc)
         assert exc.value.status_code == 400
 
     async def test_network_error_maps_to_503(self) -> None:
         svc = MagicMock()
-        svc.list_activations_by_key = AsyncMock(
-            side_effect=ActivationNetworkError("dns")
-        )
+        svc.list_activations_by_key = AsyncMock(side_effect=ActivationNetworkError("dns"))
         with pytest.raises(HTTPException) as exc:
-            await list_activations_by_key(
-                ActivationsByKeyRequest(license_key="key-1234"), svc=svc
-            )
+            await list_activations_by_key(ActivationsByKeyRequest(license_key="key-1234"), svc=svc)
         assert exc.value.status_code == 503
 
     async def test_activation_error_propagates(self) -> None:
@@ -296,9 +282,7 @@ class TestListActivationsByKey:
             side_effect=ActivationError(status_code=404, error="no_such_key", detail={})
         )
         with pytest.raises(HTTPException) as exc:
-            await list_activations_by_key(
-                ActivationsByKeyRequest(license_key="key-1234"), svc=svc
-            )
+            await list_activations_by_key(ActivationsByKeyRequest(license_key="key-1234"), svc=svc)
         assert exc.value.status_code == 404
 
 
@@ -326,9 +310,7 @@ class TestDeactivateMachineByKey:
 
     async def test_network_error_maps_to_503(self) -> None:
         svc = MagicMock()
-        svc.deactivate_machine_by_key = AsyncMock(
-            side_effect=ActivationNetworkError("dns")
-        )
+        svc.deactivate_machine_by_key = AsyncMock(side_effect=ActivationNetworkError("dns"))
         with pytest.raises(HTTPException) as exc:
             await deactivate_machine_by_key(
                 DeactivateByKeyRequest(license_key="key-1234", machine_id="m1xx"),
@@ -339,9 +321,7 @@ class TestDeactivateMachineByKey:
     async def test_activation_error_propagates(self) -> None:
         svc = MagicMock()
         svc.deactivate_machine_by_key = AsyncMock(
-            side_effect=ActivationError(
-                status_code=404, error="machine_not_registered", detail={}
-            )
+            side_effect=ActivationError(status_code=404, error="machine_not_registered", detail={})
         )
         with pytest.raises(HTTPException) as exc:
             await deactivate_machine_by_key(
@@ -432,9 +412,7 @@ class TestPortal:
     async def test_portal_upstream_error_with_dict_detail(self) -> None:
         svc = MagicMock()
         svc.billing_portal = AsyncMock(
-            side_effect=LicensePortalUpstreamError(
-                status_code=502, detail={"error": "stripe_down"}
-            )
+            side_effect=LicensePortalUpstreamError(status_code=502, detail={"error": "stripe_down"})
         )
         with pytest.raises(HTTPException) as exc:
             await open_billing_portal(svc=svc)
@@ -446,9 +424,7 @@ class TestPortal:
         # router must still produce a dict-shaped detail for the frontend.
         svc = MagicMock()
         svc.billing_portal = AsyncMock(
-            side_effect=LicensePortalUpstreamError(
-                status_code=500, detail="raw error text"
-            )
+            side_effect=LicensePortalUpstreamError(status_code=500, detail="raw error text")
         )
         with pytest.raises(HTTPException) as exc:
             await open_billing_portal(svc=svc)
