@@ -1,44 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { Activity, ChevronDown, LogOut, User as UserIcon, Search, Command } from 'lucide-react';
 import { useAuth } from '@/lib/useAuth';
 import { auth } from '@/lib/api';
-
-// ---------------------------------------------------------------------------
-// Route -> Title mapping
-// ---------------------------------------------------------------------------
-
-function getPageTitle(pathname: string): string {
-  if (pathname === '/') return 'Dashboard';
-  if (pathname === '/series') return 'Series';
-  if (pathname.startsWith('/series/')) return 'Series Detail';
-  if (pathname === '/episodes') return 'Episodes';
-  if (pathname.startsWith('/episodes/')) return 'Episode Detail';
-  if (pathname === '/audiobooks') return 'Text to Voice';
-  if (pathname.startsWith('/audiobooks/')) return 'Audiobook Detail';
-  if (pathname === '/assets') return 'Assets';
-  if (pathname === '/youtube') return 'YouTube';
-  if (pathname.startsWith('/social/')) {
-    // Show the platform name in the banner (e.g. "TikTok") so the
-    // header matches the page contents instead of a generic "Social".
-    const slug = pathname.split('/')[2] ?? '';
-    const map: Record<string, string> = {
-      tiktok: 'TikTok',
-      instagram: 'Instagram',
-      facebook: 'Facebook',
-      x: 'X',
-    };
-    return map[slug] ?? 'Social';
-  }
-  if (pathname === '/calendar') return 'Calendar';
-  if (pathname === '/jobs') return 'Jobs';
-  if (pathname === '/usage') return 'Usage & Compute';
-  if (pathname === '/cloud-gpu') return 'Cloud GPU';
-  if (pathname === '/logs') return 'Event Log';
-  if (pathname === '/settings') return 'Settings';
-  if (pathname === '/help') return 'Help';
-  return 'Drevalis Creator Studio';
-}
+import { useCommandPalette } from '@/components/layout/Layout';
+import { getRouteTitle } from '@/routes/routeMeta';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -55,8 +21,9 @@ interface HeaderProps {
 
 function Header({ activeJobCount, sidebarCollapsed }: HeaderProps) {
   const location = useLocation();
-  const title = getPageTitle(location.pathname);
+  const title = getRouteTitle(location.pathname);
   const { user } = useAuth();
+  const { setOpen: setPaletteOpen } = useCommandPalette();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -96,22 +63,11 @@ function Header({ activeJobCount, sidebarCollapsed }: HeaderProps) {
 
       {/* Right actions */}
       <div className="flex items-center gap-3">
-        {/* ⌘K hint — fires the global keydown handler in Layout via
-            a synthesized keyboard event so users who don't know the
-            shortcut have a discoverable affordance. */}
+        {/* ⌘K hint — opens the palette via the CommandPaletteContext
+            provided by Layout. */}
         <button
           type="button"
-          onClick={() => {
-            // Dispatch a Ctrl+K keydown so the global handler in
-            // Layout.tsx opens the palette. Avoids prop-drilling
-            // setPaletteOpen through Header just for this button.
-            const ev = new KeyboardEvent('keydown', {
-              key: 'k',
-              ctrlKey: true,
-              bubbles: true,
-            });
-            window.dispatchEvent(ev);
-          }}
+          onClick={() => setPaletteOpen(true)}
           className="hidden md:inline-flex items-center gap-2 px-2.5 py-1 rounded-md border border-white/[0.06] text-xs text-txt-tertiary hover:text-txt-primary hover:border-white/[0.12] transition-colors"
           aria-label="Open command palette (Ctrl+K)"
           title="Command palette — Ctrl+K"
@@ -124,10 +80,11 @@ function Header({ activeJobCount, sidebarCollapsed }: HeaderProps) {
           </span>
         </button>
 
-        {/* Active jobs indicator */}
+        {/* Active jobs indicator — Link, not <a>, so we don't trigger
+            a full-page reload that wipes the SPA state on click. */}
         {activeJobCount > 0 && (
-          <a
-            href="/"
+          <Link
+            to="/"
             className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-accent bg-accent/[0.08] border border-accent/20 hover:bg-accent/[0.12] transition-all duration-normal"
             title="Active generation jobs"
           >
@@ -136,7 +93,7 @@ function Header({ activeJobCount, sidebarCollapsed }: HeaderProps) {
             <span className="text-xs text-accent/70">
               {activeJobCount === 1 ? 'job' : 'jobs'}
             </span>
-          </a>
+          </Link>
         )}
 
         {/* User dropdown — only rendered in team mode (signed-in user) */}

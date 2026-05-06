@@ -58,6 +58,11 @@ const config: Config = {
           primary: 'var(--color-text-primary)',
           secondary: 'var(--color-text-secondary)',
           tertiary: 'var(--color-text-tertiary)',
+          // ``muted`` is currently an alias for ``tertiary``. Tracked
+          // through a dedicated CSS var so theme presets that want to
+          // dial them apart can override one without touching the other.
+          // See ``design-tokens.ts`` header for the convention.
+          muted: 'var(--color-text-muted)',
           inverse: 'var(--color-text-inverse)',
           onAccent: 'var(--color-text-on-accent)',
         },

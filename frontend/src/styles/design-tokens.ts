@@ -4,6 +4,17 @@
 // Dark-mode-first professional tool aesthetic.
 // All text colors verified against WCAG AA contrast ratios on their intended
 // background surfaces. Accent: teal/cyan — professional video-tool feel.
+//
+// ── Text-hierarchy naming convention ─────────────────────────────────────────
+//   primary    EDEDEF  15.9:1   headings, body
+//   secondary  9898A0   7.1:1   labels, descriptions
+//   tertiary   717179   4.61:1  hints, placeholders (WCAG AA)
+//   muted      ALIAS    same as ``tertiary`` — kept as a separate token name
+//                       so component code can express *intent* ("this text is
+//                       quiet") without committing to a particular contrast
+//                       step. If we ever add a "very quiet" tier between
+//                       tertiary and the placeholder colour, ``muted`` becomes
+//                       its own value; until then it tracks ``tertiary`` 1:1.
 // =============================================================================
 
 // ---------------------------------------------------------------------------
@@ -26,6 +37,7 @@ export const colors = {
     primary: '#EDEDEF',     // 15.9:1 — headings, body text
     secondary: '#9898A0',   // 7.1:1  — labels, descriptions
     tertiary: '#717179',    // 4.61:1 — hints, placeholders (WCAG AA)
+    muted: '#717179',       // Alias of tertiary — see file header for rationale
     inverse: '#0A0A0B',     // For text on light / accent backgrounds
     onAccent: '#021F18',    // High-contrast text on accent backgrounds
   },

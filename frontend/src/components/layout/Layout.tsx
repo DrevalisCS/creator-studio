@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, createContext, useContext, useMemo } from 'react';
 import { Outlet } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
@@ -10,6 +10,34 @@ import { CommandPalette } from '@/components/CommandPalette';
 import { useAuthMode } from '@/lib/useAuth';
 import { jobs as jobsApi } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
+import { useRouteDocumentTitle } from '@/hooks/useDocumentTitle';
+
+// ---------------------------------------------------------------------------
+// Command Palette context
+// ---------------------------------------------------------------------------
+//
+// Replaces the previous Header → Layout coupling that fired a synthetic
+// ``KeyboardEvent`` on the window object to nudge the global Cmd+K
+// listener. Any descendant of ``Layout`` can now open / close the
+// palette by calling ``useCommandPalette().setOpen(true)``. The Cmd+K
+// keystroke is owned by Layout exclusively — pages should not bind it
+// themselves (Help previously had its own listener which double-fired).
+
+interface CommandPaletteContextValue {
+  open: boolean;
+  setOpen: (next: boolean) => void;
+  toggle: () => void;
+}
+
+const CommandPaletteContext = createContext<CommandPaletteContextValue | null>(null);
+
+function useCommandPalette(): CommandPaletteContextValue {
+  const ctx = useContext(CommandPaletteContext);
+  if (ctx === null) {
+    throw new Error('useCommandPalette must be used inside <Layout>');
+  }
+  return ctx;
+}
 
 // ---------------------------------------------------------------------------
 // Component
@@ -21,6 +49,10 @@ function Layout() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { demoMode } = useAuthMode();
   const { activityDock } = useTheme();
+
+  // Drive document.title from the current route's routeMeta entry.
+  // Pages can still override per-instance via ``useDocumentTitle``.
+  useRouteDocumentTitle();
 
   // Global ⌘K / Ctrl+K — opens the command palette from anywhere in
   // the app shell. Help has its own content-scoped palette; this one
@@ -77,9 +109,21 @@ function Layout() {
     };
   }, []);
 
+  // Memoise the context value so descendants don't re-render on every
+  // sibling state change in Layout.
+  const paletteContextValue = useMemo<CommandPaletteContextValue>(
+    () => ({
+      open: paletteOpen,
+      setOpen: setPaletteOpen,
+      toggle: () => setPaletteOpen((v) => !v),
+    }),
+    [paletteOpen],
+  );
+
   return (
+    <CommandPaletteContext.Provider value={paletteContextValue}>
     <div
-      className="min-h-screen bg-bg-base noise-overlay"
+      className="min-h-[100dvh] bg-bg-base noise-overlay"
       style={demoMode ? { paddingTop: 32 } : undefined}
     >
       <DemoBanner />
@@ -99,7 +143,7 @@ function Layout() {
           Desktop: expanded (240px) or collapsed (56px) sidebar width */}
       <main
         className={[
-          'pt-12 min-h-screen transition-all duration-normal',
+          'pt-12 min-h-[100dvh] transition-all duration-normal',
           // Mobile: no sidebar offset, leave room for mobile nav + floating pill
           'pl-0 pb-[76px]',
           // Tablet: collapsed sidebar always shown at md+
@@ -129,7 +173,9 @@ function Layout() {
       {/* Global command palette — ⌘K / Ctrl+K from anywhere */}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </div>
+    </CommandPaletteContext.Provider>
   );
 }
 
-export { Layout };
+export { Layout, useCommandPalette, CommandPaletteContext };
+export type { CommandPaletteContextValue };

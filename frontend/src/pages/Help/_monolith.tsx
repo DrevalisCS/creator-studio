@@ -555,27 +555,12 @@ function Help() {
     }
   };
 
-  // Global shortcut: Cmd/Ctrl+K opens the palette. The '/' shortcut
-  // also opens unless the user is typing in an input / textarea.
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      const inField =
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        (e.target as HTMLElement)?.isContentEditable;
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        setPaletteOpen(true);
-      } else if (e.key === '/' && !inField) {
-        e.preventDefault();
-        setPaletteOpen(true);
-      } else if (e.key === 'Escape' && paletteOpen) {
-        setPaletteOpen(false);
-      }
-    };
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [paletteOpen]);
+  // Cmd+K and the global keystroke owners are Layout's
+  // CommandPaletteContext now (Phase 1.5/1.6). The Help-local palette
+  // state and IndexPalette component are kept for non-keystroke openers
+  // (e.g. UI buttons inside the guide), so the keystroke opens exactly
+  // ONE palette instead of double-firing the way the previous local
+  // listener did.
 
   return (
     <div className="flex flex-col h-full">

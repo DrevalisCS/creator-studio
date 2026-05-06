@@ -13,7 +13,7 @@ export function DemoBanner() {
   if (!ready || !demoMode) return null;
 
   return (
-    <div className="fixed top-0 left-0 right-0 h-8 z-[60] flex items-center justify-center gap-3 text-xs font-medium bg-gradient-to-r from-accent/30 via-accent-glow/30 to-accent/30 text-txt-primary border-b border-accent/40 backdrop-blur-sm">
+    <div className="fixed top-0 left-0 right-0 h-8 z-[60] flex items-center justify-center gap-3 text-xs font-medium bg-gradient-to-r from-accent/30 via-accent/40 to-accent/30 text-txt-primary border-b border-accent/40 backdrop-blur-sm">
       <Sparkles size={14} className="text-accent" />
       <span>
         <strong>Live demo</strong> — feel free to click around. Data resets nightly. Generations are
@@ -23,7 +23,7 @@ export function DemoBanner() {
         href="https://drevalis.com/pricing"
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center gap-1 text-accent hover:text-accent-glow transition-colors"
+        className="inline-flex items-center gap-1 text-accent hover:text-accent-hover transition-colors"
       >
         Buy the real thing
         <ArrowRight size={12} />

@@ -59,11 +59,25 @@ function formatTimestamp(ts: string | null): string {
   return d.toLocaleDateString();
 }
 
+// Display cap (seconds) for the elapsed-time renderer. Anything beyond
+// this is more usefully rendered as the absolute timestamp — orphan or
+// stuck jobs that never set ``completed_at`` would otherwise show silly
+// values like ``2017m 47s``.
+const ELAPSED_DISPLAY_CAP_S = 60 * 60; // 1h
+
 function getElapsedStr(startedAt: string | null, completedAt: string | null): string {
   if (!startedAt) return '';
   const start = new Date(startedAt).getTime();
   const end = completedAt ? new Date(completedAt).getTime() : Date.now();
   const elapsed = Math.max(0, Math.floor((end - start) / 1000));
+  if (elapsed > ELAPSED_DISPLAY_CAP_S) {
+    // Fall back to a short absolute timestamp ("started 14:32") so the
+    // operator can compare with logs / `docker logs` timestamps.
+    return `started ${new Date(startedAt).toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+    })}`;
+  }
   const min = Math.floor(elapsed / 60);
   const sec = elapsed % 60;
   if (min === 0) return `${sec}s`;

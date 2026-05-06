@@ -39,7 +39,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-bg-base p-6">
+    <div className="min-h-[100dvh] flex items-center justify-center bg-bg-base p-6">
       <div className="w-full max-w-sm bg-bg-elevated/80 border border-white/[0.06] rounded-lg p-8 shadow-lg backdrop-blur-sm">
         <div className="flex items-center justify-center w-12 h-12 rounded-full bg-accent/15 border border-accent/30 mx-auto mb-4">
           <Lock className="text-accent" size={20} />
@@ -83,7 +83,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full rounded-md bg-gradient-to-r from-accent to-accent-glow text-bg-base font-semibold py-2.5 text-sm disabled:opacity-50"
+            className="w-full rounded-md bg-gradient-to-r from-accent to-accent-hover text-bg-base font-semibold py-2.5 text-sm disabled:opacity-50"
           >
             {submitting ? 'Signing in…' : 'Sign in'}
           </button>

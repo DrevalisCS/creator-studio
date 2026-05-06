@@ -28,6 +28,7 @@
   --color-text-primary:   #EDEDEF;
   --color-text-secondary: #9898A0;
   --color-text-tertiary:  #717179;  /* 4.61:1 WCAG AA */
+  --color-text-muted:     var(--color-text-tertiary);  /* alias — see design-tokens.ts header */
   --color-text-inverse:   #0A0A0B;
   --color-text-on-accent: #021F18;
 
@@ -115,6 +116,7 @@ html.light {
   --color-text-primary:   #1A1A2E;
   --color-text-secondary: #5C5C70;
   --color-text-tertiary:  #8E8E9A;
+  --color-text-muted:     var(--color-text-tertiary);  /* alias */
   --color-text-inverse:   #FFFFFF;
   --color-text-on-accent: #FFFFFF;
 

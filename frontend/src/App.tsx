@@ -4,11 +4,13 @@ import { Layout } from '@/components/layout/Layout';
 import { EditorLayout } from '@/components/layout/EditorLayout';
 import { LicenseGate } from '@/components/LicenseGate';
 import { LoginGate } from '@/components/LoginGate';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { ToastProvider } from '@/components/ui/Toast';
 import { TooltipProvider } from '@/components/ui/Tooltip';
 import { ThemeProvider } from '@/lib/theme';
 import { ProgressProvider } from '@/lib/progress-context';
 import { Spinner } from '@/components/ui/Spinner';
+import NotFound from '@/pages/NotFound';
 
 // ---------------------------------------------------------------------------
 // Lazy-loaded pages (code splitting)
@@ -79,6 +81,7 @@ function App() {
     <TooltipProvider delayDuration={300}>
     <ProgressProvider>
     <LicenseGate>
+    <ErrorBoundary>
     <Suspense fallback={<PageLoadingFallback />}>
     <Routes>
       <Route path="/login" element={<Login />} />
@@ -120,9 +123,12 @@ function App() {
         <Route path="/cloud-gpu" element={<CloudGPU />} />
         <Route path="/assets" element={<Assets />} />
         <Route path="/youtube/callback" element={<YouTubeCallback />} />
+        {/* Catch-all 404 — renders inside Layout so the chrome stays. */}
+        <Route path="*" element={<NotFound />} />
       </Route>
     </Routes>
     </Suspense>
+    </ErrorBoundary>
     </LicenseGate>
     </ProgressProvider>
     </TooltipProvider>
