@@ -55,12 +55,28 @@ class TestFeatureSet:
         assert _features._current_feature_set() == frozenset()
         assert _features.has_feature("basic_generation") is False
 
-    def test_explicit_features_claim_wins(self) -> None:
-        # JWT carries ``features=["custom1"]``; the tier fallback is ignored.
+    def test_explicit_features_claim_unions_with_tier_default(self) -> None:
+        # JWT carries an explicit ``features=["custom1"]`` claim. The
+        # gate UNIONS that with the canonical TIER_FEATURES["creator"]
+        # set so a license can never grant LESS than its tier's
+        # currently-documented features (the tier set may have grown
+        # since the JWT was minted), and the explicit claim can still
+        # add extra features (upsell / grandfathered feature).
         _set("creator", features=["custom1"])
-        assert _features._current_feature_set() == frozenset({"custom1"})
+        result = _features._current_feature_set()
+        assert "custom1" in result  # explicit add survives
+        assert "basic_generation" in result  # tier default also granted
         assert _features.has_feature("custom1") is True
-        assert _features.has_feature("basic_generation") is False  # tier default skipped
+        assert _features.has_feature("basic_generation") is True
+
+    def test_stale_claim_still_gets_new_tier_features(self) -> None:
+        # Regression: licenses minted before a feature joined the tier
+        # used to 402 on the new feature forever. With the union, a
+        # stale claim that omits ``seo_preflight`` still grants it as
+        # long as the tier currently includes it.
+        _set("studio", features=["basic_generation", "runpod"])  # stale, missing seo_preflight
+        assert _features.has_feature("seo_preflight") is True
+        assert _features.has_feature("audiobooks") is True
 
     def test_empty_features_claim_falls_back_to_tier_default(self) -> None:
         _set("pro", features=[])

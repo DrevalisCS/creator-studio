@@ -135,10 +135,18 @@ def _current_feature_set() -> frozenset[str]:
     if not state.is_usable or state.claims is None:
         return frozenset()
     tier = state.claims.tier
-    # Prefer explicit features claim; fall back to tier default.
-    if state.claims.features:
-        return frozenset(state.claims.features)
-    return TIER_FEATURES.get(tier, frozenset())
+    # Union the JWT's explicit ``features`` claim with the canonical
+    # ``TIER_FEATURES`` set for the same tier. The license server
+    # snapshots tier features into the JWT at mint time; if a new
+    # feature later joins that tier server-side, every previously
+    # minted license would otherwise 402 on it forever (since JWTs
+    # are not reissued automatically). Unioning means: a license can
+    # never grant LESS than its own tier's currently-documented
+    # feature set, and an explicit claim can still grant MORE (e.g.
+    # an upsell add-on or grandfathered feature on a lower tier).
+    tier_features = TIER_FEATURES.get(tier, frozenset())
+    claim_features = frozenset(state.claims.features) if state.claims.features else frozenset()
+    return tier_features | claim_features
 
 
 def has_feature(feature: str) -> bool:
