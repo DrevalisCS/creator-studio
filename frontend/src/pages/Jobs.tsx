@@ -18,6 +18,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { jobs as jobsApi } from '@/lib/api';
 import type { GenerationJobExtended } from '@/types';
+import { STEP_BG, isKnownStep } from '@/lib/stepColors';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -33,14 +34,14 @@ const FILTER_OPTIONS: { key: FilterStatus; label: string; icon: typeof ListCheck
   { key: 'failed', label: 'Failed', icon: XCircle },
 ];
 
-const STEP_COLORS: Record<string, string> = {
-  script: 'bg-indigo-500',
-  voice: 'bg-pink-500',
-  scenes: 'bg-teal-500',
-  captions: 'bg-amber-500',
-  assembly: 'bg-blue-500',
-  thumbnail: 'bg-purple-500',
-};
+// Step colour palette is owned by ``lib/stepColors.ts``. We import
+// ``STEP_BG`` and the ``isKnownStep`` type-guard above so the bar
+// follows the active theme preset (cyber / warm / brutalist / …) and
+// any new step can't silently render as a default-accent bar.
+
+function stepBg(step: string): string {
+  return isKnownStep(step) ? STEP_BG[step] : 'bg-accent';
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -342,7 +343,7 @@ function Jobs() {
                             <div
                               className={[
                                 'h-full rounded-full transition-all duration-500',
-                                STEP_COLORS[job.step] || 'bg-accent',
+                                stepBg(job.step),
                               ].join(' ')}
                               style={{
                                 width: `${job.progress_pct}%`,

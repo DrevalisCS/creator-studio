@@ -198,6 +198,39 @@ export interface GenerationJobBrief {
   created_at: string;
 }
 
+/**
+ * Subset of ``episode.metadata_['seo']`` written by the SEO generation
+ * job (``services/youtube_admin.py:get_or_generate_seo`` and the
+ * background ``workers/jobs/seo.py:generate_seo_async``). Both call
+ * sites populate the same shape; this interface mirrors the union.
+ *
+ * TODO(backend): emit a Pydantic ``SEOMetadata`` schema and replace
+ * this mirror with the OpenAPI-generated type in Phase 6.
+ */
+export interface SEOMetadata {
+  title?: string;
+  description?: string;
+  hashtags?: string[];
+  tags?: string[];
+  /** Background job only; absent on the inline upload-time call. */
+  hook?: string;
+  /** Background job only. 1-10 score. */
+  virality_score?: number;
+  virality_reasoning?: string;
+}
+
+/**
+ * Free-form metadata bag. Known keys carry typed values; unknown keys
+ * fall back to ``unknown`` so casts are forced at the use site (rather
+ * than silently turning into ``any``).
+ */
+export interface EpisodeMetadata {
+  seo?: SEOMetadata;
+  /** Per-episode TTS overrides written by the regenerate-voice flow. */
+  tts_overrides?: { speed?: number; pitch?: number };
+  [key: string]: unknown;
+}
+
 export interface Episode {
   id: string;
   series_id: string;
@@ -207,7 +240,7 @@ export interface Episode {
   script: Record<string, unknown> | null;
   base_path: string | null;
   generation_log: Record<string, unknown> | null;
-  metadata_: Record<string, unknown> | null;
+  metadata_: EpisodeMetadata | null;
   override_voice_profile_id: string | null;
   override_llm_config_id: string | null;
   override_caption_style: string | null;
@@ -223,7 +256,7 @@ export interface EpisodeListItem {
   title: string;
   topic: string | null;
   status: EpisodeStatus;
-  metadata_: Record<string, unknown> | null;
+  metadata_: EpisodeMetadata | null;
   created_at: string;
   updated_at: string;
 }

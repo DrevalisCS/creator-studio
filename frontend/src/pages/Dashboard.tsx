@@ -21,6 +21,7 @@ import { EpisodeCard } from '@/components/episodes/EpisodeCard';
 import { JobProgressBar } from '@/components/jobs/JobProgressBar';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { StatCard } from '@/components/ui/StatCard';
+import { QuickActionTile } from '@/components/ui/QuickActionTile';
 import { useToast } from '@/components/ui/Toast';
 import {
   episodes as episodesApi,
@@ -250,18 +251,19 @@ function Dashboard() {
           Quick Actions
         </h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <button
+          <QuickActionTile
+            icon={<Plus size={18} />}
+            label="New Series"
+            hint="Create a new series"
+            accent="accent"
             onClick={() => navigate('/series')}
-            className="flex flex-col items-center gap-2 p-4 bg-bg-surface/60 backdrop-blur-sm border border-white/[0.04] rounded-xl text-center transition-all duration-normal hover:bg-bg-surface/80 hover:border-white/[0.08] hover:shadow-card-hover group"
-            aria-label="Create New Series"
-          >
-            <div className="w-10 h-10 rounded-xl bg-accent/[0.08] flex items-center justify-center icon-hover">
-              <Plus size={18} className="text-accent" />
-            </div>
-            <span className="text-sm font-display font-medium text-txt-primary">New Series</span>
-            <span className="text-xs text-txt-tertiary">Create a new series</span>
-          </button>
-          <button
+            ariaLabel="Create New Series"
+          />
+          <QuickActionTile
+            icon={<TrendingUp size={18} />}
+            label="Trending Topics"
+            hint="Discover viral ideas"
+            accent="success"
             onClick={() => {
               const firstSeries = seriesList[0];
               if (firstSeries) {
@@ -270,37 +272,24 @@ function Dashboard() {
                 navigate('/series');
               }
             }}
-            className="flex flex-col items-center gap-2 p-4 bg-bg-surface/60 backdrop-blur-sm border border-white/[0.04] rounded-xl text-center transition-all duration-normal hover:bg-bg-surface/80 hover:border-white/[0.08] hover:shadow-card-hover group"
-            aria-label="Generate Trending Topics"
-          >
-            <div className="w-10 h-10 rounded-xl bg-success/[0.08] flex items-center justify-center icon-hover">
-              <TrendingUp size={18} className="text-success" />
-            </div>
-            <span className="text-sm font-display font-medium text-txt-primary">Trending Topics</span>
-            <span className="text-xs text-txt-tertiary">Discover viral ideas</span>
-          </button>
-          <button
+            ariaLabel="Generate Trending Topics"
+          />
+          <QuickActionTile
+            icon={<CalendarDays size={18} />}
+            label="Calendar"
+            hint="Schedule content"
+            accent="info"
             onClick={() => navigate('/calendar')}
-            className="flex flex-col items-center gap-2 p-4 bg-bg-surface/60 backdrop-blur-sm border border-white/[0.04] rounded-xl text-center transition-all duration-normal hover:bg-bg-surface/80 hover:border-white/[0.08] hover:shadow-card-hover group"
-            aria-label="View Content Calendar"
-          >
-            <div className="w-10 h-10 rounded-xl bg-info/[0.08] flex items-center justify-center icon-hover">
-              <CalendarDays size={18} className="text-info" />
-            </div>
-            <span className="text-sm font-display font-medium text-txt-primary">Calendar</span>
-            <span className="text-xs text-txt-tertiary">Schedule content</span>
-          </button>
-          <button
+            ariaLabel="View Content Calendar"
+          />
+          <QuickActionTile
+            icon={<Clapperboard size={18} />}
+            label="New from video"
+            hint="Upload → pick clip → edit"
+            accent="warning"
             onClick={() => navigate('/assets?ingest=1')}
-            className="flex flex-col items-center gap-2 p-4 bg-bg-surface/60 backdrop-blur-sm border border-white/[0.04] rounded-xl text-center transition-all duration-normal hover:bg-bg-surface/80 hover:border-white/[0.08] hover:shadow-card-hover group"
-            aria-label="Create Short from uploaded video"
-          >
-            <div className="w-10 h-10 rounded-xl bg-warning/[0.08] flex items-center justify-center icon-hover">
-              <Clapperboard size={18} className="text-warning" />
-            </div>
-            <span className="text-sm font-display font-medium text-txt-primary">New from video</span>
-            <span className="text-xs text-txt-tertiary">Upload → pick clip → edit</span>
-          </button>
+            ariaLabel="Create Short from uploaded video"
+          />
         </div>
       </div>
 

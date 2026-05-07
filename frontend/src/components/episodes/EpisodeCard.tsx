@@ -97,20 +97,19 @@ function EpisodeCard({
             {episode.title}
           </h4>
           <div className="flex items-center gap-1 shrink-0">
-            {typeof (episode.metadata_?.seo as Record<string, unknown> | undefined)?.virality_score === 'number' && (
-              <Badge
-                variant={
-                  ((episode.metadata_!.seo as Record<string, unknown>).virality_score as number) >= 7
-                    ? 'success'
-                    : ((episode.metadata_!.seo as Record<string, unknown>).virality_score as number) >= 5
-                      ? 'warning'
-                      : 'neutral'
-                }
-                aria-label={`Virality score: ${(episode.metadata_!.seo as Record<string, unknown>).virality_score} out of 10`}
-              >
-                {((episode.metadata_!.seo as Record<string, unknown>).virality_score as number)}/10
-              </Badge>
-            )}
+            {(() => {
+              const score = episode.metadata_?.seo?.virality_score;
+              if (typeof score !== 'number') return null;
+              const variant = score >= 7 ? 'success' : score >= 5 ? 'warning' : 'neutral';
+              return (
+                <Badge
+                  variant={variant}
+                  aria-label={`Virality score: ${score} out of 10`}
+                >
+                  {score}/10
+                </Badge>
+              );
+            })()}
             {!isGenerating && (
               <Badge variant={episode.status} dot>
                 {episode.status}

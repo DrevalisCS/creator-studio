@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Badge } from '@/components/ui/Badge';
-import { jobs as jobsApi, social as socialApi, youtube as youtubeApi } from '@/lib/api';
+import { jobs as jobsApi } from '@/lib/api';
+import { useConnectedPlatforms } from '@/lib/useConnectedPlatforms';
 import {
   LayoutDashboard,
   Layers,
@@ -138,8 +139,10 @@ function Sidebar({ collapsed, onToggle }: SidebarProps) {
   // frequency navigation; color preferences belong in a dedicated
   // settings surface where they're configured once and left alone.
   const [genCount, setGenCount] = useState(0);
-  const [connectedSocials, setConnectedSocials] = useState<string[]>([]);
-  const [youtubeConnected, setYoutubeConnected] = useState(false);
+  // Connected-platforms state is owned by the shared hook (Phase 2.3).
+  // Polling is centralised at 60s in ``lib/useConnectedPlatforms.ts``;
+  // mounting this hook in any sibling joins the same poll loop.
+  const { socials: connectedSocials, youtubeConnected } = useConnectedPlatforms();
 
   useEffect(() => {
     const poll = () => {
@@ -150,32 +153,6 @@ function Sidebar({ collapsed, onToggle }: SidebarProps) {
     };
     poll();
     const interval = setInterval(poll, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Poll the connected-accounts list every 60s so freshly-added
-  // platforms show up in the nav without a full page refresh. Errors
-  // here are silent — an empty/unreachable social API just means no
-  // platform links render, which is correct fail-closed behavior.
-  useEffect(() => {
-    const loadSocials = async () => {
-      try {
-        const platforms = await socialApi.listPlatforms();
-        setConnectedSocials(
-          platforms.filter((p) => p.is_active).map((p) => p.platform),
-        );
-      } catch {
-        /* social API unavailable — leave list empty */
-      }
-      try {
-        const status = await youtubeApi.getStatus();
-        setYoutubeConnected(Boolean(status.connected));
-      } catch {
-        /* same — fail silently */
-      }
-    };
-    void loadSocials();
-    const interval = setInterval(() => void loadSocials(), 60_000);
     return () => clearInterval(interval);
   }, []);
 

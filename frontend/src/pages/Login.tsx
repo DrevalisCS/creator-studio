@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Lock } from 'lucide-react';
 import { auth, formatError } from '@/lib/api';
+import { Input } from '@/components/ui/Input';
 
 /**
  * Team-mode login screen.
@@ -52,30 +53,26 @@ export default function LoginPage() {
         </p>
 
         <form onSubmit={submit} className="space-y-4">
-          <div>
-            <label className="text-xs text-txt-secondary block mb-1">Email</label>
-            <input
-              type="email"
-              required
-              autoFocus
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3 py-2 bg-bg-base border border-white/[0.08] rounded-md text-sm text-txt-primary focus:outline-none focus:border-accent/40"
-            />
-          </div>
-          <div>
-            <label className="text-xs text-txt-secondary block mb-1">Password</label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3 py-2 bg-bg-base border border-white/[0.08] rounded-md text-sm text-txt-primary focus:outline-none focus:border-accent/40"
-            />
-          </div>
+          <Input
+            label="Email"
+            type="email"
+            autoComplete="email"
+            required
+            autoFocus
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <Input
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
 
           {error && (
-            <div className="p-2 rounded border border-error/30 bg-error/10 text-xs text-error">
+            <div className="p-2 rounded border border-error/30 bg-error/10 text-xs text-error" role="alert">
               {error}
             </div>
           )}

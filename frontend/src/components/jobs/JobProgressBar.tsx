@@ -1,19 +1,16 @@
 import { useEffect, useRef } from 'react';
 import type { PipelineStep, ProgressMessage } from '@/types';
 import { useNow } from '@/lib/use-now';
+import { STEP_BG, STEP_MUTED, STEP_ORDER } from '@/lib/stepColors';
 
 // ---------------------------------------------------------------------------
 // Constants
 // ---------------------------------------------------------------------------
 
-const PIPELINE_STEPS: PipelineStep[] = [
-  'script',
-  'voice',
-  'scenes',
-  'captions',
-  'assembly',
-  'thumbnail',
-];
+// Step ordering + labels for THIS bar. Colours come from
+// ``lib/stepColors.ts`` so a theme-preset switch (cyber / warm /
+// brutalist) automatically restyles every step badge in the app.
+const PIPELINE_STEPS: readonly PipelineStep[] = STEP_ORDER;
 
 const STEP_LABELS: Record<PipelineStep, string> = {
   script: 'Script',
@@ -22,24 +19,6 @@ const STEP_LABELS: Record<PipelineStep, string> = {
   captions: 'Captions',
   assembly: 'Assembly',
   thumbnail: 'Thumbnail',
-};
-
-const STEP_COLORS: Record<PipelineStep, string> = {
-  script: '#818CF8',
-  voice: '#F472B6',
-  scenes: '#34D399',
-  captions: '#FBBF24',
-  assembly: '#60A5FA',
-  thumbnail: '#A78BFA',
-};
-
-const STEP_MUTED_COLORS: Record<PipelineStep, string> = {
-  script: 'rgba(129,140,248,0.1)',
-  voice: 'rgba(244,114,182,0.1)',
-  scenes: 'rgba(52,211,153,0.1)',
-  captions: 'rgba(251,191,36,0.1)',
-  assembly: 'rgba(96,165,250,0.1)',
-  thumbnail: 'rgba(167,139,250,0.1)',
 };
 
 /** Stale threshold in ms -- if progress hasn't changed for this long, show pulse */
@@ -153,22 +132,15 @@ function JobProgressBar({
             return (
               <div
                 key={step}
-                className="flex-1 relative"
-                style={{
-                  backgroundColor: STEP_MUTED_COLORS[step],
-                }}
+                className={`flex-1 relative ${STEP_MUTED[step]}`}
               >
                 <div
                   className={[
                     'absolute inset-y-0 left-0 transition-all duration-slow',
                     isRunning ? 'progress-stripe' : '',
+                    isFailed ? 'bg-error' : STEP_BG[step],
                   ].join(' ')}
-                  style={{
-                    width: isDone ? '100%' : `${pct}%`,
-                    backgroundColor: isFailed
-                      ? '#F87171'
-                      : STEP_COLORS[step],
-                  }}
+                  style={{ width: isDone ? '100%' : `${pct}%` }}
                 />
               </div>
             );
@@ -197,19 +169,16 @@ function JobProgressBar({
           return (
             <div
               key={step}
-              className="flex-1 relative rounded-sm overflow-hidden"
-              style={{ backgroundColor: STEP_MUTED_COLORS[step] }}
+              className={`flex-1 relative rounded-sm overflow-hidden ${STEP_MUTED[step]}`}
               title={`${STEP_LABELS[step]}: ${isDone ? '100' : pct}%`}
             >
               <div
                 className={[
                   'absolute inset-y-0 left-0 rounded-sm transition-all duration-slow',
                   isRunning ? 'progress-stripe' : '',
+                  isFailed ? 'bg-error' : STEP_BG[step],
                 ].join(' ')}
-                style={{
-                  width: isDone ? '100%' : `${pct}%`,
-                  backgroundColor: isFailed ? '#F87171' : STEP_COLORS[step],
-                }}
+                style={{ width: isDone ? '100%' : `${pct}%` }}
               />
             </div>
           );
@@ -251,12 +220,12 @@ function JobProgressBar({
       </div>
 
       {/* Active step message + sub-step info */}
-      {activeMsg && (
+      {activeMsg && activeStep && (
         <div className="mt-2 flex items-center justify-between">
           <div className="flex-1 min-w-0">
             <span className="text-xs text-txt-secondary">
               {activeMsg.message ||
-                `${STEP_LABELS[activeStep!]} in progress...`}
+                `${STEP_LABELS[activeStep]} in progress...`}
             </span>
             {/* Sub-step detail from progress message detail field */}
             {activeMsg.detail &&
@@ -281,5 +250,5 @@ function JobProgressBar({
   );
 }
 
-export { JobProgressBar, PIPELINE_STEPS, STEP_LABELS, STEP_COLORS };
+export { JobProgressBar, PIPELINE_STEPS, STEP_LABELS };
 export type { JobProgressBarProps };

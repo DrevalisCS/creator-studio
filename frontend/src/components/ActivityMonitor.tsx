@@ -21,6 +21,7 @@ import { useToast } from '@/components/ui/Toast';
 import { jobs as jobsApi, episodes as episodesApi } from '@/lib/api';
 import { useActiveJobsProgress } from '@/lib/websocket';
 import { useTheme } from '@/lib/theme';
+import { STEP_BG, STEP_TEXT, isKnownStep, type StepName } from '@/lib/stepColors';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,27 +65,27 @@ const PRIORITY_STORAGE_KEY = 'sf_job_priority';
 // Constants
 // ---------------------------------------------------------------------------
 
-const STEP_COLORS: Record<string, string> = {
-  script: 'bg-indigo-500',
-  voice: 'bg-pink-500',
-  scenes: 'bg-teal-500',
-  captions: 'bg-amber-500',
-  assembly: 'bg-blue-500',
-  thumbnail: 'bg-purple-500',
-  tts: 'bg-pink-500',
-  llm: 'bg-indigo-500',
+// Step palette is owned by ``lib/stepColors.ts`` (canonical theme-aware
+// classes). Background-task ``step`` strings can also be the worker
+// aliases ``tts`` (audiobook voice) and ``llm`` (script) which aren't
+// in the canonical six — we map them to their pipeline equivalent so
+// they pick up the same theme colour.
+const STEP_ALIASES: Record<string, StepName> = {
+  tts: 'voice',
+  llm: 'script',
 };
 
-const STEP_TEXT_COLORS: Record<string, string> = {
-  script: 'text-indigo-400',
-  voice: 'text-pink-400',
-  scenes: 'text-teal-400',
-  captions: 'text-amber-400',
-  assembly: 'text-blue-400',
-  thumbnail: 'text-purple-400',
-  tts: 'text-pink-400',
-  llm: 'text-indigo-400',
-};
+function stepBg(step: string): string {
+  if (isKnownStep(step)) return STEP_BG[step];
+  const aliased = STEP_ALIASES[step];
+  return aliased ? STEP_BG[aliased] : 'bg-accent';
+}
+
+function stepText(step: string): string {
+  if (isKnownStep(step)) return STEP_TEXT[step];
+  const aliased = STEP_ALIASES[step];
+  return aliased ? STEP_TEXT[aliased] : 'text-txt-secondary';
+}
 
 const TASK_ICONS: Record<string, typeof Play> = {
   episode_generation: Play,
@@ -347,7 +348,7 @@ export function ActivityMonitor() {
 
                           <Badge
                             variant="neutral"
-                            className={`text-[9px] flex-shrink-0 ${STEP_TEXT_COLORS[task.step] ?? 'text-txt-secondary'}`}
+                            className={`text-[9px] flex-shrink-0 ${stepText(task.step)}`}
                           >
                             {task.step}
                           </Badge>
@@ -357,11 +358,11 @@ export function ActivityMonitor() {
                             <div className="h-1.5 bg-bg-elevated rounded-full overflow-hidden">
                               {isIndeterminate ? (
                                 <div
-                                  className={`h-full rounded-full animate-pulse w-1/2 ${STEP_COLORS[task.step] || 'bg-accent'}`}
+                                  className={`h-full rounded-full animate-pulse w-1/2 ${stepBg(task.step)}`}
                                 />
                               ) : (
                                 <div
-                                  className={`h-full rounded-full transition-all duration-500 ${STEP_COLORS[task.step] || 'bg-accent'}`}
+                                  className={`h-full rounded-full transition-all duration-500 ${stepBg(task.step)}`}
                                   style={{ width: `${task.progress}%` }}
                                 />
                               )}
@@ -633,7 +634,7 @@ export function ActivityMonitor() {
                   {tasks.slice(0, 3).map((task) => (
                     <div key={task.id} className="flex items-center gap-1">
                       <div
-                        className={`w-1.5 h-1.5 rounded-full ${STEP_COLORS[task.step] || 'bg-accent'}`}
+                        className={`w-1.5 h-1.5 rounded-full ${stepBg(task.step)}`}
                       />
                       <span className="text-[10px] text-txt-secondary truncate max-w-[120px]">
                         {task.title.length > 20
