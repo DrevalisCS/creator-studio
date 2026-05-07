@@ -7,6 +7,206 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Audiobook service partial extraction.**
+  `services/audiobook/_monolith.py` drops 5283 → 4841 LOC by moving
+  three pure-text concerns into their own modules: `chaptering.py`
+  (chapter-pattern detection + scoring + filters + `_parse_chapters`),
+  `script_tags.py` (`[Speaker]` voice-block parser + `[SFX:]` modifier
+  parser), `chunking.py` (`CHUNK_LIMITS` + `_split_text` +
+  `_split_long_sentence` + `_repair_bracket_splits`). Class-level
+  delegation shims preserve the existing `AudiobookService` API. Pure
+  refactor — no behavior change. Seven of the original twelve modules
+  in the docstring roadmap remain (the closure / async-heavy executor
+  blocks).
+
+## [0.34.1] - 2026-05-07
+
+### Added
+
+- **CloudGPU page renders `TierGatePlaceholder` on 402.** Same UX as
+  the Audiobooks page: a Creator-tier user opening `/cloud-gpu` now
+  sees an "Upgrade to Pro" card instead of a silent error. The page
+  bypasses the normal API client (raw `fetch`) so it builds a
+  synthetic `ApiError` from the failed response to feed the
+  placeholder its tier / current_tier detail.
+
+- **`core.license.usage.log_feature_usage(name)` helper.** Emits a
+  single structlog `feature_usage` event tagged with the current
+  license tier and whether the tier nominally has the feature. No
+  behavior change — pure telemetry. Wired into the three endpoints
+  the marketing pricing matrix sells as Pro+ but which we deliberately
+  did **not** hard-gate (continuity check, publish-all, voice
+  cloning) because cutting them mid-flight without a deprecation
+  cycle would break existing users. After a release of data the team
+  can plan the deprecation comms (Sunset header → email → hard gate)
+  on real numbers instead of audit-driven assumptions.
+
+### Changed
+
+- `frontend/openapi.json` + `src/types/api.d.ts` regenerated to cover
+  the diagnostics endpoint shipped in v0.34.0. CI's `api-types` job
+  was passing on the previous lag (snapshot + types stayed mutually
+  consistent) but the snapshot was one endpoint behind the live
+  backend.
+
+## [0.34.0] - 2026-05-07
+
+### Added
+
+- **`GET /api/v1/diagnostics/bundle` endpoint** for customer-support
+  triage. Owner-only. Returns a ZIP with: `MANIFEST.txt` (version + git
+  SHA + bundle UTC), `version.json`, redacted `config.json`,
+  `health.json` (DB + FFmpeg + Piper subset — Redis and LM Studio
+  intentionally skipped to keep the route fast and side-effect-free),
+  `recent_logs.txt` (last 1000 lines of the structlog JSON log),
+  `system.json` (Python version + OS + ffmpeg presence + free disk),
+  `db_revision.txt` (current Alembic head). Five compiled regex
+  patterns auto-detect `*_key` / `*_secret` / `*_token` / `*_password`
+  field names; `database_url` keeps its scheme + host + port + db name
+  but strips the `user:password@` portion. Pydantic `PrivateAttr`
+  fields (e.g. the versioned `_encryption_keys` dict) are excluded by
+  `model_dump()` defaults. 10 unit tests cover redaction edge cases
+  and bundle shape.
+
+- **Settings → System → "Diagnostics" section** with a single
+  "Download diagnostics" button. Standard
+  `URL.createObjectURL` + anchor-click flow, filename
+  `drevalis-diagnostics-YYYY-MM-DD.zip`. Same gate as the rest of
+  Settings — owner-only.
+
+- **`TierGatePlaceholder` component** renders an upgrade card when the
+  API returns 402 `feature_not_in_tier`. Pulls feature + tier +
+  current_tier from the error's `detailRaw` and shows a primary CTA
+  to the License section. Wired into the Audiobooks page so a
+  Creator-tier user opening `/audiobooks` sees a Pro upgrade card
+  instead of a generic "Failed to load" toast.
+
+### Removed
+
+- **Three over-eager tier gates** added in `901b4dd` were rolled back
+  forward-only (commit `31eb879`). The marketing matrix sells
+  continuity-check / publish-all / voice-cloning as Pro+ features
+  but a hard cut without a deprecation period would have broken
+  existing Creator-tier workflows. Soft instrumentation lands in
+  v0.34.1.
+
+## [0.33.0] - 2026-05-07
+
+Frontend optimization sweep — seven phases shipped across the same
+day. No backend behavior changes.
+
+### Added
+
+- **`React.lazy` page splits** for the four largest route pages —
+  shells stay slim, sections download on demand:
+  - `pages/Settings/`: 3504 → 202 LOC shell + 11 lazy-loaded sections
+    (`HealthSection`, `ComfyUISection`, `VoiceSection`, `LLMSection`,
+    `StorageSection`, `FFmpegSection`, `YouTubeSection`,
+    `SocialSection`, `ApiKeysSection`, `TemplatesSection` + the shared
+    `PlatformCard`).
+  - `pages/Help/`: 3115 → 1406 LOC shell + 19 lazy-loaded category
+    files + a `_shared.tsx` for the primitives (`Tip`, `Warning`,
+    `InfoBox`, `CodeBlock`, `Kbd`, …).
+  - `pages/EpisodeDetail/`: 2997 → 1346 LOC shell + 5 lazy tabs
+    (`ScriptTab`, `ScenesTab`, `CaptionsTab`, `MusicTab`,
+    `MetadataTab`) + a shared `helpers.ts`.
+  - `pages/EpisodeEditor/`: 2601 → 1030 LOC shell + 4 grouped
+    `parts/` files (`ToolsRail`, `RightPanel`, `Timeline`,
+    `Inspectors`) + a `constants.ts` for shared drag MIME types.
+
+- **EpisodeDetail action-state reducer.** Twelve mutually-exclusive
+  boolean flags (`generating`, `retrying`, `reassembling`,
+  `revoicing`, `duplicating`, `resetting`, `cancelling`, `deleting`,
+  `uploading`, `scheduling`, `publishAllLoading`, `seoLoading`)
+  collapsed into a single `ActionState` discriminated union. 42
+  callsites updated. Each handler uses
+  `try { … } finally { setAction({ kind: 'idle' }); }`.
+
+- **Dynamic `document.title`** on detail pages. EpisodeDetail /
+  SeriesDetail / AudiobookDetail set the browser tab from the
+  loaded resource name (`useDocumentTitle(episode?.title || …)`)
+  instead of the static routeMeta fallback.
+
+- **Global `?` shortcut overlay.** Layout-level keystroke opens a
+  keyboard-shortcut cheat sheet (`ShortcutOverlay`). Suppressed in
+  form fields and on the EpisodeEditor route which has its own
+  context-specific overlay bound to the same key.
+
+- **`aria-live` regions** for status updates that previously fired
+  silently: `JobProgressBar` announces step transitions (not every
+  percentage tick) and the ActivityMonitor worker pill announces
+  status changes.
+
+- **Toast deduplication** — identical (variant, title, description)
+  toasts within a 2-second window collapse to a single visible
+  toast. Stops chained errors from stacking five-deep on a single
+  underlying failure.
+
+- **`SystemHealthCard` widget** on the Dashboard. Polls
+  `settings/health` every 60s and renders only when overall ≠ ok —
+  zero footprint when the stack is healthy, immediate visibility
+  when it isn't. Each degraded service shows with its message and
+  an "Investigate" button that deep-links to Settings → Health.
+
+- **Generated API types** via `openapi-typescript@7.13.0`.
+  `npm run gen:api` curls the running backend's `/openapi.json` and
+  writes `src/types/api.d.ts`. The snapshot is committed at
+  `frontend/openapi.json` so CI can verify the types match without
+  booting the backend. New `api-types` CI job fails on drift.
+
+### Changed
+
+- **TanStack Query data layer** (Phase 3). Per-page `useState(true) +
+  useEffect` fetch dances replaced with named query hooks
+  (`useEpisodes`, `useSeries`, `useActiveJobs`, `useHealth`, …)
+  registered through a key registry at `lib/queries/keys.ts`.
+  Conditional `refetchInterval` — jobs poll at 5s only when WS
+  reports active work; everywhere else, queries refetch on focus
+  + invalidation. Removed redundant `setInterval` from Sidebar /
+  MobileNav / Layout / ActivityMonitor in favor of shared cache.
+
+- **Step-color consolidation** (Phase 2). Pipeline-step palette
+  canonicalized in `lib/stepColors.ts` with theme-aware Tailwind
+  classes (`bg-step-script`, `text-step-voice`, …). Three previous
+  hardcoded color maps in JobProgressBar, ActivityMonitor, and the
+  Dashboard merge into one source of truth.
+
+- **`AuthContext`** is now the single owner of `auth.me()`. Multiple
+  module-scope cached hooks that each fetched `/auth/me`
+  independently consolidated through context.
+
+- **`useConnectedPlatforms`** shared hook with a 60s shared-poll
+  loop and subscriber set. Sidebar / MobileNav / Settings all read
+  from one cache entry instead of each polling
+  `/api/v1/social/platforms` independently.
+
+- **Bundle Budget docs** in CLAUDE.md. Soft / hard caps for vendor
+  chunk (120 / 160 kB gzip), per-route page (25 / 50 kB gzip), and
+  per-section chunk (8 / 15 kB gzip). Convention for when a route
+  page should split into `pages/X/{_monolith.tsx, index.tsx,
+  sections/}`.
+
+- **Generated API types** workflow documented in CLAUDE.md → Frontend.
+
+### Fixed
+
+- **`ErrorBoundary`** at the route boundary catches per-page render
+  errors, shows a friendly fallback with a Reload button, and
+  doesn't take down the rest of the app shell.
+
+- **`NotFound` page** rendered inside `Layout` (chrome stays
+  visible) instead of replacing the whole tree.
+
+- **Help page Cmd+K duplicate listener removed.** The Layout owns
+  the global Cmd+K binding; Help previously had its own which
+  double-fired the palette.
+
+- **Toast `formatError`** never returns `[object Object]` —
+  catches all the value shapes consumers throw at it (ApiError,
+  Error, string, plain object) and produces a sensible message.
+
 ## [0.32.0] - 2026-05-06
 
 ### Added
