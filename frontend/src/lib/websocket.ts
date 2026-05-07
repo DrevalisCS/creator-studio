@@ -16,12 +16,20 @@ interface WSOptions {
   onError?: (err: Event) => void;
   reconnectInterval?: number;
   maxRetries?: number;
+  /** Keepalive ping interval in ms. 0 disables. Defaults to 30s — short
+   * enough to beat the typical 60s idle timeout on Nginx Proxy Manager
+   * and Cloudflare while still being cheap. The server's
+   * ``/ws/progress/*`` handlers respond to ``ping`` text frames with
+   * ``{type: "pong"}``; the response itself doesn't matter, but the
+   * write keeps the connection from being marked idle. */
+  keepaliveInterval?: number;
 }
 
 export class ProgressWebSocket {
   private ws: WebSocket | null = null;
   private retryCount = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
+  private keepaliveTimer: ReturnType<typeof setInterval> | null = null;
   private closed = false;
   // Tracks whether we've ever successfully reached the server. When we
   // never have, we cap at a much lower retry budget — a 403 handshake
@@ -45,12 +53,18 @@ export class ProgressWebSocket {
       this.ws.onopen = () => {
         this.retryCount = 0;
         this.everConnected = true;
+        this.startKeepalive();
         this.options.onOpen?.();
       };
 
       this.ws.onmessage = (event) => {
+        const raw = event.data as string;
+        // Server pong frames are bookkeeping, not progress data — drop
+        // them before parsing as ProgressMessage. Both ``{"type":"pong"}``
+        // and bare ``"pong"`` are tolerated.
+        if (raw === 'pong' || raw === '{"type":"pong"}') return;
         try {
-          const data = JSON.parse(event.data as string) as ProgressMessage;
+          const data = JSON.parse(raw) as ProgressMessage;
           this.options.onMessage(data);
         } catch {
           // Ignore malformed messages
@@ -58,6 +72,7 @@ export class ProgressWebSocket {
       };
 
       this.ws.onclose = (event) => {
+        this.stopKeepalive();
         this.options.onClose?.();
         // Permanent auth/policy failures (4001=Unauthorized, 4003=Forbidden,
         // 1008=Policy violation) — never retry. Browser console is already
@@ -75,6 +90,29 @@ export class ProgressWebSocket {
       };
     } catch {
       this.scheduleReconnect();
+    }
+  }
+
+  private startKeepalive() {
+    this.stopKeepalive();
+    const interval = this.options.keepaliveInterval ?? 30_000;
+    if (interval <= 0) return;
+    this.keepaliveTimer = setInterval(() => {
+      if (this.ws?.readyState === WebSocket.OPEN) {
+        try {
+          this.ws.send('ping');
+        } catch {
+          // Send failure means the socket is closing — onclose will fire
+          // and the reconnect path takes it from there.
+        }
+      }
+    }, interval);
+  }
+
+  private stopKeepalive() {
+    if (this.keepaliveTimer !== null) {
+      clearInterval(this.keepaliveTimer);
+      this.keepaliveTimer = null;
     }
   }
 
@@ -102,6 +140,7 @@ export class ProgressWebSocket {
 
   close() {
     this.closed = true;
+    this.stopKeepalive();
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }
