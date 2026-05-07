@@ -86,6 +86,17 @@ from drevalis.services.audiobook.chunking import (
     _split_long_sentence,
     _split_text,
 )
+from drevalis.services.audiobook.image_gen import (
+    _generate_chapter_images,
+    _generate_title_card,
+)
+from drevalis.services.audiobook.metadata import _apply_lame_priming_and_tag
+from drevalis.services.audiobook.music_gen import (
+    _resolve_music_service,
+)
+from drevalis.services.audiobook.music_gen import (
+    render_music_preview as _render_music_preview_fn,
+)
 from drevalis.services.audiobook.render_plan import RenderPlan
 from drevalis.services.audiobook.script_tags import _parse_voice_blocks
 from drevalis.services.audiobook.versions import AUDIO_PIPELINE_VERSION
@@ -1540,8 +1551,6 @@ class AudiobookService:
             # Google Play Books) use these tags to show titles, cover
             # art, and chapter navigation.
             try:
-                from drevalis.services.audiobook.id3 import write_audiobook_id3
-
                 await self._dag_global("id3_tags", "in_progress")
                 mp3_abs = final_audio.with_suffix(".mp3")
                 cover_abs: Path | None = None
@@ -1550,47 +1559,17 @@ class AudiobookService:
                     if maybe_cover.exists():
                         cover_abs = maybe_cover
 
-                # Task 13: LAME priming offset. The encoder prepends
-                # ~26 ms of silence to the MP3 stream; CHAP frames
-                # written without compensation drift relative to the
-                # audible audio by that amount. Probe both files,
-                # take the difference, shift the plan's chapter
-                # timestamps by it. Within ±5 ms of audible
-                # boundaries instead of ±50 ms.
-                priming_offset_ms = 0
-                try:
-                    wav_dur = await self.ffmpeg.get_duration(final_audio)
-                    mp3_dur = await self.ffmpeg.get_duration(mp3_abs)
-                    if wav_dur > 0 and mp3_dur > 0:
-                        priming_offset_ms = int(round((mp3_dur - wav_dur) * 1000))
-                except Exception:
-                    priming_offset_ms = 0
-
-                shifted_plan = self._render_plan.apply_priming_offset(priming_offset_ms)
-                # Build chapter dicts in the shape ``write_audiobook_id3``
-                # expects (start_seconds / end_seconds / title), but
-                # source the timestamps from the priming-adjusted plan.
-                id3_chapters: list[dict[str, Any]] = []
-                for marker in shifted_plan.chapters:
-                    id3_chapters.append(
-                        {
-                            "title": marker.title,
-                            "start_seconds": marker.start_ms / 1000.0,
-                            "end_seconds": marker.end_ms / 1000.0,
-                        }
-                    )
-
-                await write_audiobook_id3(
-                    mp3_abs,
+                # Delegation: LAME priming offset computation + ID3
+                # tagging lives in metadata._apply_lame_priming_and_tag.
+                await _apply_lame_priming_and_tag(
+                    final_audio=final_audio,
+                    mp3_abs=mp3_abs,
+                    ffmpeg=self.ffmpeg,
+                    render_plan=self._render_plan,
                     title=title,
-                    album=title,
-                    chapters=id3_chapters or (chapters if isinstance(chapters, list) else None),
-                    cover_path=cover_abs,
-                )
-                log.info(
-                    "audiobook.generate.id3_tagged",
-                    audiobook_id=str(audiobook_id),
-                    priming_offset_ms=priming_offset_ms,
+                    chapters=chapters,
+                    cover_abs=cover_abs,
+                    audiobook_id=audiobook_id,
                 )
                 await self._dag_global("id3_tags", "done")
             except Exception as id3_exc:
@@ -3546,7 +3525,7 @@ class AudiobookService:
         return timings
 
     # ══════════════════════════════════════════════════════════════════════
-    # Per-chapter image generation
+    # Per-chapter image generation  (logic lives in image_gen.py)
     # ══════════════════════════════════════════════════════════════════════
 
     async def _generate_chapter_images(
@@ -3558,206 +3537,26 @@ class AudiobookService:
         video_height: int,
         chapter_indices: list[int] | None = None,
     ) -> list[Path]:
-        """Generate an image for each chapter via ComfyUI.
-
-        Uses the qwen_image_2512 workflow. Chapters that already have an
-        ``image_path`` are skipped. Generation is parallelised with a
-        concurrency semaphore of 3.
-
-        Parameters
-        ----------
-        chapters:
-            List of chapter dicts.
-        chapter_indices:
-            Optional explicit indices to use when naming output files
-            (``ch{idx:03d}.png``). When ``None``, indices are derived
-            from ``enumerate(chapters)``. Pass explicit indices when
-            re-generating a single chapter so its existing image at
-            the right index is overwritten rather than writing to
-            ``ch000.png``.
-        """
-        if not self.comfyui_service:
-            log.warning("audiobook.images.no_comfyui_service")
-            return []
-
-        images_dir = output_dir / "images"
-        images_dir.mkdir(parents=True, exist_ok=True)
-
-        sem = asyncio.Semaphore(3)
-
-        async def _gen_one(ch_idx: int, chapter: dict[str, Any]) -> Path | None:
-            async with sem:
-                # Task 10: cancel poll before each ComfyUI submit.
-                await self._cancel()
-                img_path = images_dir / f"ch{ch_idx:03d}.png"
-
-                # Skip if already exists (user-uploaded or previous run)
-                if img_path.exists():
-                    return img_path
-
-                # Build visual prompt from chapter content
-                visual_prompt = chapter.get("visual_prompt")
-                if not visual_prompt:
-                    title = chapter.get("title", "Scene")
-                    text_preview = chapter.get("text", "")[:200].replace("\n", " ")
-                    mood = chapter.get("music_mood", "cinematic")
-                    visual_prompt = (
-                        f"Cinematic illustration, {title}, {mood} atmosphere, "
-                        f"{text_preview}, masterpiece, ultra detailed, "
-                        f"professional digital art"
-                    )
-
-                try:
-                    # Use ComfyUI pool to generate image. Audiobooks
-                    # without a configured ComfyUI server have no way
-                    # to render chapter art — fall back to title cards
-                    # rather than crash with AttributeError.
-                    if self.comfyui_service is None:
-                        log.info(
-                            "audiobook.image_generation_skipped_no_comfyui",
-                            chapter=ch_idx,
-                        )
-                        return None
-                    workflow = await self.comfyui_service._load_workflow(
-                        "workflows/qwen_image_2512.json"
-                    )
-
-                    # Inject prompt into the workflow
-                    if "238:227" in workflow:
-                        workflow["238:227"]["inputs"]["text"] = visual_prompt
-                    if "238:232" in workflow:
-                        workflow["238:232"]["inputs"]["width"] = video_width
-                        workflow["238:232"]["inputs"]["height"] = video_height
-                    # Drop sampler steps from the template's 20 → 10
-                    # by default. Qwen-Image-2512 with the Auraflow
-                    # shift produces production-quality output at 10
-                    # steps; 20 was safety-padded and roughly doubled
-                    # generation time. ``AUDIOBOOK_QWEN_STEPS`` env
-                    # var lets power users dial it back up.
-                    import os as _os
-
-                    qwen_steps = int(_os.environ.get("AUDIOBOOK_QWEN_STEPS", "10"))
-                    if "238:230" in workflow:
-                        workflow["238:230"]["inputs"]["steps"] = qwen_steps
-
-                    async with self.comfyui_service._pool.acquire() as (_, client):
-                        prompt_id = await client.queue_prompt(workflow)
-                        history = await self.comfyui_service._poll_until_complete(client, prompt_id)
-
-                        output_images = self.comfyui_service._extract_output_images(
-                            history, "60", "images"
-                        )
-                        if output_images:
-                            img_data = await client.download_image(
-                                output_images[0]["filename"],
-                                output_images[0].get("subfolder", ""),
-                                output_images[0].get("type", "output"),
-                            )
-                            img_path.write_bytes(img_data)
-                            log.info(
-                                "audiobook.images.chapter_done",
-                                chapter_index=ch_idx,
-                                path=str(img_path),
-                            )
-                            return img_path
-
-                except Exception as exc:
-                    log.warning(
-                        "audiobook.images.chapter_failed",
-                        chapter_index=ch_idx,
-                        error=str(exc),
-                    )
-
-                # Fallback: generate a title card
-                return await self._generate_title_card(
-                    images_dir,
-                    chapter.get("title", f"Chapter {ch_idx + 1}"),
-                    width=video_width,
-                    height=video_height,
-                )
-
-        # Use explicit indices when given (single-chapter regen case)
-        # so the output filename targets the correct slot.
-        effective_indices = (
-            chapter_indices if chapter_indices is not None else list(range(len(chapters)))
+        """Delegation shim — see ``image_gen._generate_chapter_images``."""
+        return await _generate_chapter_images(
+            comfyui_service=self.comfyui_service,
+            cancel_fn=self._cancel,
+            title_card_fn=self._generate_title_card,
+            chapters=chapters,
+            output_dir=output_dir,
+            audiobook_id=audiobook_id,
+            video_width=video_width,
+            video_height=video_height,
+            chapter_indices=chapter_indices,
         )
-        tasks = [_gen_one(idx, ch) for idx, ch in zip(effective_indices, chapters, strict=True)]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        image_paths: list[Path] = []
-        for i, result in enumerate(results):
-            chapter_idx = effective_indices[i]
-            if isinstance(result, Path) and result.exists():
-                image_paths.append(result)
-            elif isinstance(result, Exception):
-                log.warning(
-                    "audiobook.images.chapter_exception",
-                    chapter_index=chapter_idx,
-                    error=str(result),
-                )
-                # Generate title card as fallback
-                fallback = await self._generate_title_card(
-                    images_dir,
-                    chapters[i].get("title", f"Chapter {chapter_idx + 1}"),
-                    width=video_width,
-                    height=video_height,
-                )
-                image_paths.append(fallback)
-            else:
-                fallback = await self._generate_title_card(
-                    images_dir,
-                    chapters[i].get("title", f"Chapter {i + 1}"),
-                    width=video_width,
-                    height=video_height,
-                )
-                image_paths.append(fallback)
-
-        return image_paths
 
     # ══════════════════════════════════════════════════════════════════════
     # Background music
     # ══════════════════════════════════════════════════════════════════════
 
     def _resolve_music_service(self) -> Any | None:
-        """Construct a MusicService that can ALSO call AceStep via ComfyUI.
-
-        Earlier versions instantiated MusicService without
-        ``comfyui_base_url`` / ``comfyui_api_key``, so AceStep
-        generation never ran for audiobooks — every request fell
-        straight through to the curated library, which could be
-        empty for moods we hadn't pre-stocked. The first registered
-        ComfyUI server on the pool is used; the music backend is
-        cheap to run alongside image / TTS workloads.
-        """
-        from drevalis.services.music import MusicService
-
-        storage_base = getattr(self.storage, "base_path", None)
-        if storage_base is None:
-            log.warning("audiobook.music.no_storage_base")
-            return None
-
-        comfyui_url: str | None = None
-        comfyui_key: str | None = None
-        if self.comfyui_service is not None:
-            try:
-                servers = getattr(self.comfyui_service._pool, "_servers", {})
-                if servers:
-                    first_id = next(iter(servers))
-                    client = servers[first_id][0]
-                    comfyui_url = getattr(client, "base_url", None)
-                    comfyui_key = getattr(client, "api_key", None)
-            except Exception as exc:
-                log.warning(
-                    "audiobook.music.comfyui_url_resolve_failed",
-                    error=str(exc)[:120],
-                )
-
-        return MusicService(
-            storage_base_path=storage_base,
-            ffmpeg_path="ffmpeg",
-            comfyui_base_url=comfyui_url,
-            comfyui_api_key=comfyui_key,
-        )
+        """Delegation shim — see ``music_gen._resolve_music_service``."""
+        return _resolve_music_service(self.storage, self.comfyui_service)
 
     async def _add_music(
         self,
@@ -3907,92 +3706,15 @@ class AudiobookService:
         volume_db: float = -14.0,
         seconds: float = 30.0,
     ) -> Path:
-        """Render a short mixed preview so users can sanity-check music
-        before committing to a full generation run.
-
-        Mixes the resolved music track (from the library or AceStep)
-        under the audiobook's existing voiceover when one exists, or
-        under a synthesised silent track otherwise. Output:
-        ``audiobooks/{id}/music_preview.wav``. Always overwrites.
-        """
-        rel_dir = f"audiobooks/{audiobook_id}"
-        abs_dir = self.storage.resolve_path(rel_dir)
-        abs_dir.mkdir(parents=True, exist_ok=True)
-        preview_path = abs_dir / "music_preview.wav"
-
-        existing_voice = abs_dir / "audiobook.wav"
-        if existing_voice.exists():
-            voice_input: Path = existing_voice
-            trim_voice = True
-        else:
-            # No voice yet — synthesise a silent ``seconds`` baseline
-            # so the preview still demonstrates loudness + ducking
-            # behaviour against silence.
-            voice_input = abs_dir / "_preview_silence.wav"
-            silence_cmd = [
-                "ffmpeg",
-                "-y",
-                "-f",
-                "lavfi",
-                "-i",
-                "anullsrc=r=24000:cl=mono",
-                "-t",
-                f"{seconds:.1f}",
-                "-c:a",
-                "pcm_s16le",
-                str(voice_input),
-            ]
-            sproc = await asyncio.create_subprocess_exec(
-                *silence_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            await sproc.communicate()
-            trim_voice = False
-
-        # Trim voice to ``seconds`` if it exists; otherwise we already
-        # produced exactly ``seconds`` of silence above.
-        clip_voice = abs_dir / "_preview_voice_clip.wav"
-        if trim_voice:
-            trim_cmd = [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(voice_input),
-                "-t",
-                f"{seconds:.1f}",
-                "-c:a",
-                "pcm_s16le",
-                str(clip_voice),
-            ]
-            tproc = await asyncio.create_subprocess_exec(
-                *trim_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            await tproc.communicate()
-        else:
-            # Voice IS the silence file — just rename our reference.
-            clip_voice = voice_input
-
-        await self._add_music(
-            audio_path=clip_voice,
-            output_path=preview_path,
+        """Delegation shim — see ``music_gen.render_music_preview``."""
+        return await _render_music_preview_fn(
+            audiobook_id=audiobook_id,
             mood=mood,
+            storage=self.storage,
+            add_music_fn=self._add_music,
             volume_db=volume_db,
-            duration=seconds,
+            seconds=seconds,
         )
-
-        # Best-effort cleanup of the intermediate silence file.
-        try:
-            if not trim_voice and voice_input.exists():
-                voice_input.unlink()
-            if trim_voice and clip_voice.exists():
-                clip_voice.unlink()
-        except Exception:
-            pass
-
-        return preview_path
 
     async def _add_chapter_music(
         self,
@@ -4535,112 +4257,8 @@ class AudiobookService:
         width: int = 1920,
         height: int = 1080,
     ) -> Path:
-        """Generate a simple title card image using FFmpeg.
-
-        The previous version returned the output path even when
-        ffmpeg's drawtext filter rejected the title (titles with
-        ``:``, ``\\``, ``%`` or other drawtext-meta characters
-        crashed the filter). The path then got passed into the
-        Ken-Burns assembler which choked on the missing input file:
-
-            Error opening input file .../title_card.jpg
-
-        The new flow:
-
-          1. Properly escape drawtext-meta in the title (``\\``,
-             ``:`` and ``'``).
-          2. Try drawtext first; if ffmpeg returns non-zero OR the
-             output file isn't on disk, fall back to a plain
-             solid-color image so the assembler always has a real
-             input.
-          3. Defensive ``mkdir(parents=True)`` so a missing parent
-             directory can never be the cause again.
-          4. The first call writes ``title_card.jpg`` (preserved as
-             the legacy filename) but subsequent calls get a unique
-             slug-suffixed filename so concurrent fallbacks for
-             different chapters don't race-overwrite each other.
-        """
-        output_dir.mkdir(parents=True, exist_ok=True)
-
-        # Make the output filename unique per title so chapter-N's
-        # fallback doesn't clobber chapter-(N-1)'s. Hash keeps it
-        # deterministic for the "regenerate same chapter" retry case.
-        import hashlib
-
-        slug = hashlib.sha1(
-            title.encode("utf-8", errors="replace"),
-            usedforsecurity=False,
-        ).hexdigest()[:8]
-        card_path = output_dir / f"title_card_{slug}.jpg"
-
-        # Drawtext escaping rules: backslash escapes itself; the
-        # filter argument is single-quoted so single quotes inside
-        # have to be replaced (drawtext can't escape quotes inside a
-        # quoted value); ``:`` is the parameter separator and must
-        # be escaped; ``%`` triggers expansion and must be doubled.
-        # Truncate AFTER escaping so we don't cut a half-escape.
-        safe_title = (
-            title.replace("\\", "\\\\")
-            .replace("'", "")
-            .replace('"', "")
-            .replace(":", "\\:")
-            .replace("%", "%%")
-        )[:50] or "Audiobook"
-
-        async def _run(cmd: list[str]) -> tuple[int, bytes]:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, err = await proc.communicate()
-            return proc.returncode or 0, err
-
-        primary_cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            f"color=c=0x0f0f1a:s={width}x{height}:d=1",
-            "-vf",
-            f"drawtext=text='{safe_title}':fontsize=64:fontcolor=white"
-            f":x=(w-text_w)/2:y=(h-text_h)/2:borderw=3:bordercolor=black",
-            "-frames:v",
-            "1",
-            str(card_path),
-        ]
-        rc, err = await _run(primary_cmd)
-        if rc == 0 and card_path.exists() and card_path.stat().st_size > 0:
-            return card_path
-
-        log.warning(
-            "audiobook.title_card.drawtext_failed",
-            title=title[:80],
-            rc=rc,
-            stderr=err.decode("utf-8", errors="replace")[:400],
-        )
-
-        # Fallback: solid-color frame with no text. Always succeeds
-        # as long as ffmpeg is on PATH and the disk has space.
-        fallback_cmd = [
-            "ffmpeg",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            f"color=c=0x0f0f1a:s={width}x{height}:d=1",
-            "-frames:v",
-            "1",
-            str(card_path),
-        ]
-        rc, err = await _run(fallback_cmd)
-        if rc != 0 or not card_path.exists():
-            raise RuntimeError(
-                "Title card generation failed even with the no-text fallback. "
-                f"ffmpeg rc={rc}; stderr={err.decode('utf-8', errors='replace')[:200]}"
-            )
-        return card_path
+        """Delegation shim — see ``image_gen._generate_title_card``."""
+        return await _generate_title_card(output_dir, title, width=width, height=height)
 
     async def _create_chapter_aware_video(
         self,
