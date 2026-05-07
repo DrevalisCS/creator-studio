@@ -19,6 +19,8 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { TierGatePlaceholder } from '@/components/TierGatePlaceholder';
+import { ApiError } from '@/lib/api';
 
 interface ProviderStatus {
   name: string;
@@ -80,6 +82,9 @@ export default function CloudGPUPage() {
   const [newDisk, setNewDisk] = useState(40);
   const [launching, setLaunching] = useState(false);
   const [actionOn, setActionOn] = useState<string | null>(null);
+  // Synthetic ApiError captured when the gated /cloud-gpu/* routes
+  // 402. Renders the upgrade card in place of the page body.
+  const [tierError, setTierError] = useState<ApiError | null>(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -88,6 +93,21 @@ export default function CloudGPUPage() {
         fetch('/api/v1/cloud-gpu/providers'),
         fetch('/api/v1/cloud-gpu/pods'),
       ]);
+      // Both endpoints share the same ``runpod`` feature gate; one 402
+      // is enough to know the whole page should render the upgrade
+      // card. Build a synthetic ApiError carrying the body so the
+      // placeholder can pull tier / current_tier from detailRaw.
+      const gatedResp = provResp.status === 402
+        ? provResp
+        : podsResp.status === 402
+          ? podsResp
+          : null;
+      if (gatedResp) {
+        const body = await gatedResp.json().catch(() => ({}));
+        setTierError(new ApiError(402, gatedResp.statusText, undefined, body?.detail ?? body));
+        return;
+      }
+      setTierError(null);
       if (provResp.ok) setProviders(await provResp.json());
       if (podsResp.ok) setPods(await podsResp.json());
     } catch (err) {
@@ -172,6 +192,14 @@ export default function CloudGPUPage() {
       setActionOn(null);
     }
   };
+
+  if (tierError) {
+    return (
+      <div className="max-w-2xl mx-auto py-8">
+        <TierGatePlaceholder error={tierError} featureLabel="Cloud GPU" />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-5">

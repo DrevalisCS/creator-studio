@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
 from drevalis.core.exceptions import NotFoundError, ValidationError
+from drevalis.core.license.usage import log_feature_usage
 from drevalis.schemas.voice_profile import (
     CloneVoiceRequest,
     CloneVoiceResponse,
@@ -254,6 +255,7 @@ async def clone_voice(
     ``pending_training`` since those engines need offline model
     fine-tuning which isn't automated yet.
     """
+    log_feature_usage("elevenlabs")
     try:
         return await svc.clone(body)
     except NotFoundError as exc:
