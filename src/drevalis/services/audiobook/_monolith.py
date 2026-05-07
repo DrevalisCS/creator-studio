@@ -61,12 +61,15 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import structlog
 
 from drevalis.schemas.audiobook import AudiobookSettings
 from drevalis.services.audiobook import job_state as _js
+from drevalis.services.audiobook.captions import (
+    run_captions_phase as _cap_run_captions_phase,
+)
 from drevalis.services.audiobook.chaptering import (
     _CHAPTER_PATTERN_ALLCAPS,
     _CHAPTER_PATTERN_MARKDOWN,
@@ -81,16 +84,52 @@ from drevalis.services.audiobook.chaptering import (
 )
 from drevalis.services.audiobook.chunking import (
     CHUNK_LIMITS,  # noqa: F401 — re-exported; tests import from _monolith
-    _chunk_limit,
+    _chunk_limit,  # noqa: F401 — used via shims in tts_render.py
     _repair_bracket_splits,
     _split_long_sentence,
     _split_text,
+)
+from drevalis.services.audiobook.concat_executor import (
+    concatenate_with_context as _concat_concatenate_with_context,
+)
+from drevalis.services.audiobook.concat_executor import (
+    is_overlay_sfx as _concat_is_overlay_sfx,
+)
+from drevalis.services.audiobook.concat_executor import (
+    probe_audio_format as _concat_probe_audio_format,
 )
 from drevalis.services.audiobook.image_gen import (
     _generate_chapter_images,
     _generate_title_card,
 )
 from drevalis.services.audiobook.metadata import _apply_lame_priming_and_tag
+from drevalis.services.audiobook.mix_executor import (
+    DEFAULT_DUCKING_PRESET,  # noqa: F401 — re-exported; tests/callers import from _monolith
+    DUCKING_PRESETS,  # noqa: F401 — re-exported; tests/callers import from _monolith
+    MASTER_LIMITER_CEILING_DB,  # noqa: F401 — re-exported
+    SFX_DUCKING,  # noqa: F401 — re-exported; tests/callers import from _monolith
+)
+from drevalis.services.audiobook.mix_executor import (
+    add_chapter_music as _mix_add_chapter_music,
+)
+from drevalis.services.audiobook.mix_executor import (
+    add_music as _mix_add_music,
+)
+from drevalis.services.audiobook.mix_executor import (
+    apply_master_loudnorm as _mix_apply_master_loudnorm,
+)
+from drevalis.services.audiobook.mix_executor import (
+    build_music_mix_graph as _mix_build_music_mix_graph,
+)
+from drevalis.services.audiobook.mix_executor import (
+    compute_chapter_timings as _mix_compute_chapter_timings,
+)
+from drevalis.services.audiobook.mix_executor import (
+    mix_overlay_sfx as _mix_mix_overlay_sfx,
+)
+from drevalis.services.audiobook.mix_executor import (
+    parse_loudnorm_json as _mix_parse_loudnorm_json,
+)
 from drevalis.services.audiobook.music_gen import (
     _resolve_music_service,
 )
@@ -99,7 +138,36 @@ from drevalis.services.audiobook.music_gen import (
 )
 from drevalis.services.audiobook.render_plan import RenderPlan
 from drevalis.services.audiobook.script_tags import _parse_voice_blocks
+from drevalis.services.audiobook.tts_render import (
+    _PROVIDER_SEMAPHORES,  # noqa: F401 — re-exported; tests import from _monolith
+    PROVIDER_CONCURRENCY,  # noqa: F401 — re-exported; tests import from _monolith
+    _provider_concurrency,  # noqa: F401 — re-exported; tests import from _monolith
+)
+from drevalis.services.audiobook.tts_render import (
+    _provider_semaphore as _get_provider_semaphore,  # noqa: F401 — re-exported alias
+)
+from drevalis.services.audiobook.tts_render import (
+    generate_multi_voice as _tts_generate_multi_voice,
+)
+from drevalis.services.audiobook.tts_render import (
+    generate_silence as _tts_generate_silence,
+)
+from drevalis.services.audiobook.tts_render import (
+    generate_single_voice as _tts_generate_single_voice,
+)
+from drevalis.services.audiobook.tts_render import (
+    safety_filter_chunk as _tts_safety_filter_chunk,
+)
+from drevalis.services.audiobook.tts_render import (
+    synthesize_chunk_with_retry as _tts_synthesize_chunk_with_retry,
+)
 from drevalis.services.audiobook.versions import AUDIO_PIPELINE_VERSION
+from drevalis.services.audiobook.video_render import (
+    create_audiobook_video as _vr_create_audiobook_video,
+)
+from drevalis.services.audiobook.video_render import (
+    create_chapter_aware_video as _vr_create_chapter_aware_video,
+)
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -153,74 +221,9 @@ TRUE_PEAK_DBFS = -2.0
 LOUDNESS_LRA = 14.0
 
 # ── Music-bed ducking presets (Task 6) ───────────────────────────────────────
-# Pre-Task-6 the sidechain compressor ran with hardcoded
-# ``threshold=0.05:ratio=10:attack=20:release=400`` numerics, which ducked on
-# every breath and pumped audibly between sentences. The new defaults give:
-#
-#   * ``static``    — no sidechain. Music sits at a fixed -22 dB under voice.
-#                     Default for narrative audiobooks; predictable, no pumping.
-#   * ``subtle``    — gentle sidechain, slow release. Best for ambient beds.
-#   * ``normal``    — moderate ducking; the new podcast default.
-#   * ``strong``    — heavier ducking; voice clearly above music at all times.
-#   * ``cinematic`` — film-mix style, fast attack, deep duck.
-#
-# Task 9 will wire this through the settings object so it's per-audiobook.
-DUCKING_PRESETS: dict[str, dict[str, Any]] = {
-    "static": {
-        "mode": "static",
-        "music_db": -22.0,
-    },
-    "subtle": {
-        "mode": "sidechain",
-        "music_db": -20.0,
-        "threshold": 0.125,
-        "ratio": 3,
-        "attack": 15,
-        "release": 800,
-    },
-    "normal": {
-        "mode": "sidechain",
-        "music_db": -18.0,
-        "threshold": 0.1,
-        "ratio": 4,
-        "attack": 10,
-        "release": 600,
-    },
-    "strong": {
-        "mode": "sidechain",
-        "music_db": -15.0,
-        "threshold": 0.1,
-        "ratio": 6,
-        "attack": 8,
-        "release": 400,
-    },
-    "cinematic": {
-        "mode": "sidechain",
-        "music_db": -12.0,
-        "threshold": 0.08,
-        "ratio": 8,
-        "attack": 5,
-        "release": 350,
-    },
-}
-DEFAULT_DUCKING_PRESET = "static"
-
-# SFX overlay ducking — separate from the music-bed presets above. SFX overlays
-# need a slightly different feel: faster attack to cut through dialogue, faster
-# release so the voice doesn't push the SFX way down for half a second after a
-# breath. These numerics are softer than the pre-Task-6 hardcoded
-# ``threshold=0.05:ratio=8:attack=50:release=300``.
-SFX_DUCKING: dict[str, float | int] = {
-    "threshold": 0.1,
-    "ratio": 5,
-    "attack": 8,
-    "release": 250,
-}
-
-# Master pre-loudnorm limiter ceiling. Lower than the per-mix stage (which uses
-# the same value here) so loudnorm has headroom to apply gain reduction without
-# intersample peaking. Format string with the ffmpeg-5+ ``dB`` suffix.
-MASTER_LIMITER_CEILING_DB = -1.0
+# DUCKING_PRESETS, DEFAULT_DUCKING_PRESET, SFX_DUCKING, MASTER_LIMITER_CEILING_DB
+# now live in mix_executor.py and are re-imported above (with noqa: F401 so
+# existing callers that do ``from _monolith import DUCKING_PRESETS`` still work).
 
 
 def _build_music_mix_graph(
@@ -230,38 +233,12 @@ def _build_music_mix_graph(
     music_volume_db: float,
     music_pad_ms: int,
 ) -> str:
-    """Build the filter_complex graph for the voice + music master mix.
-
-    ``preset`` is one of the ``DUCKING_PRESETS`` values. ``static`` mode
-    skips sidechain compression entirely; sidechain modes apply
-    threshold / ratio / attack / release from the preset.
-
-    The chain ends with ``alimiter`` at ``MASTER_LIMITER_CEILING_DB`` to
-    catch intersample peaks before the master loudnorm pass picks up
-    the WAV in ``_apply_master_loudnorm``.
-    """
-    voice_branch = f"[0:a]volume={voice_gain_db:+.1f}dB[voice]"
-    bgm_branch = f"[1:a]apad=whole_dur={music_pad_ms}ms,volume={music_volume_db}dB[bgm]"
-    if preset.get("mode") == "static":
-        # No sidechain — straight amix at fixed gains.
-        return (
-            f"{voice_branch};"
-            f"{bgm_branch};"
-            "[voice][bgm]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[mixed];"
-            f"[mixed]alimiter=limit={MASTER_LIMITER_CEILING_DB}dB[out]"
-        )
-    # Sidechain mode.
-    threshold = preset["threshold"]
-    ratio = preset["ratio"]
-    attack = preset["attack"]
-    release = preset["release"]
-    return (
-        f"{voice_branch};"
-        f"{bgm_branch};"
-        f"[bgm][voice]sidechaincompress=threshold={threshold}:ratio={ratio}"
-        f":attack={attack}:release={release}[ducked];"
-        "[voice][ducked]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0[mixed];"
-        f"[mixed]alimiter=limit={MASTER_LIMITER_CEILING_DB}dB[out]"
+    """Delegation shim — see ``mix_executor.build_music_mix_graph``."""
+    return _mix_build_music_mix_graph(
+        preset=preset,
+        voice_gain_db=voice_gain_db,
+        music_volume_db=music_volume_db,
+        music_pad_ms=music_pad_ms,
     )
 
 
@@ -304,36 +281,12 @@ def _resolve_ducking_preset(name: str | None) -> dict[str, Any]:
     return DUCKING_PRESETS[DEFAULT_DUCKING_PRESET]
 
 
-# ── Per-provider TTS concurrency (Task 4) ────────────────────────────────────
-# Within-chapter chunks used to render strictly sequentially even though most
-# providers happily handle parallel requests. This map sets the per-provider
-# in-flight cap; ElevenLabs is intentionally conservative (Creator plan = 2
-# concurrent), Edge / Kokoro can take more, ComfyUI-routed SFX is serialised
-# because the underlying ComfyUI pool already manages concurrency. Unknown
-# providers default to 2 — safe for any cloud TTS.
-#
-# ELEVENLABS_CONCURRENCY env var overrides the ElevenLabs cap at lookup time
-# so operators on Pro/Scale plans don't need a code change.
-_DEFAULT_ELEVENLABS_CONCURRENCY = 2
-
 # ── Per-provider chunk size (Task 12) ────────────────────────────────────────
 # CHUNK_LIMITS and _chunk_limit now live in chunking.py; imported above.
-
-# Substring → concurrency. Keys are matched case-insensitively against the
-# provider's class name (or its ``name`` / ``provider_name`` attribute).
-_PROVIDER_CONCURRENCY: dict[str, int] = {
-    "piper": 2,
-    "kokoro": 4,
-    "edge": 6,
-    # ElevenLabs entries — the substring lookup picks the longest matching
-    # key, so ``comfyui_elevenlabs`` resolves before plain ``elevenlabs``.
-    "comfyui_elevenlabs": 1,
-    "elevenlabs": _DEFAULT_ELEVENLABS_CONCURRENCY,
-}
-
-# Module-level semaphore registry. Created lazily on first lookup so importing
-# this module doesn't require a running event loop.
-_PROVIDER_SEMAPHORES: dict[str, asyncio.Semaphore] = {}
+# _PROVIDER_CONCURRENCY, _PROVIDER_SEMAPHORES, _provider_concurrency, and
+# _get_provider_semaphore now live in tts_render.py (imported above).
+# _PROVIDER_CONCURRENCY is re-exported from tts_render as PROVIDER_CONCURRENCY;
+# _PROVIDER_SEMAPHORES and _get_provider_semaphore are re-imported above.
 
 
 class CancelChecker:
@@ -372,50 +325,6 @@ class CancelChecker:
             return
         if flag:
             raise asyncio.CancelledError(f"audiobook cancelled by user (key={self._key})")
-
-
-def _provider_concurrency(provider_name: str) -> int:
-    """Return the in-flight cap for *provider_name* (case-insensitive).
-
-    Substring match, longest-key-wins so ``ComfyUIElevenLabsProvider``
-    binds to the ComfyUI cap rather than the plain ElevenLabs cap.
-    Underscores are stripped on both sides because provider class
-    names don't contain them but the keys are written for readability.
-    Unknown providers fall back to 2 — safe for any cloud TTS.
-    """
-    name = provider_name.lower().replace("_", "")
-    best: tuple[int, int] | None = None  # (key length, concurrency)
-    for key, cap in _PROVIDER_CONCURRENCY.items():
-        normalised_key = key.replace("_", "")
-        if normalised_key in name and (best is None or len(normalised_key) > best[0]):
-            best = (len(normalised_key), cap)
-    if best is not None:
-        cap = best[1]
-        # Env override applies only to the ElevenLabs cap.
-        if "elevenlabs" in name and "comfyui" not in name:
-            import os as _os
-
-            override = _os.environ.get("ELEVENLABS_CONCURRENCY")
-            if override and override.isdigit() and int(override) > 0:
-                return int(override)
-        return cap
-    return 2
-
-
-def _get_provider_semaphore(provider_name: str) -> asyncio.Semaphore:
-    """Singleton ``asyncio.Semaphore`` for the provider's in-flight cap.
-
-    Multiple ``AudiobookService`` instances share one rate budget per
-    provider — the worker process is single-threaded async, so a
-    process-wide semaphore is the natural unit for "ElevenLabs is at
-    its rate limit" coordination.
-    """
-    name = provider_name.lower()
-    sem = _PROVIDER_SEMAPHORES.get(name)
-    if sem is None:
-        sem = asyncio.Semaphore(_provider_concurrency(name))
-        _PROVIDER_SEMAPHORES[name] = sem
-    return sem
 
 
 @dataclass
@@ -938,7 +847,7 @@ class AudiobookService:
         pitch: float,
         max_attempts: int = 3,
     ) -> bool:
-        """Run ``provider.synthesize`` with bounded retry + post-loudnorm.
+        """Delegation shim — see ``tts_render.synthesize_chunk_with_retry``.
 
         Per-chunk retry isolates a single transient failure (cloud
         TTS 5xx, ComfyUI queue eviction, brief network blip) from
@@ -957,120 +866,20 @@ class AudiobookService:
         exhausted retries (caller is expected to fall back to
         ``_generate_silence`` so the timing structure stays intact).
         """
-        last_exc: Exception | None = None
-        # Task 4 + 10: poll the cancel flag inside the retry loop. The
-        # debounced ``_cancel`` checker caps Redis traffic to ~1 GET/s
-        # even when 30+ chunks are racing through their first attempt,
-        # while still letting Cancel propagate within 5 seconds (Task
-        # 10 acceptance).
-        for attempt in range(1, max_attempts + 1):
-            await self._cancel()
-            try:
-                await provider.synthesize(
-                    text,
-                    voice_id,
-                    chunk_path,
-                    speed=speed,
-                    pitch=pitch,
-                )
-                if chunk_path.exists() and chunk_path.stat().st_size > 100:
-                    await self._safety_filter_chunk(chunk_path)
-                    if attempt > 1:
-                        log.info(
-                            "audiobook.tts.chunk_recovered",
-                            attempt=attempt,
-                            chunk_path=str(chunk_path),
-                        )
-                    return True
-                # Provider returned without raising but produced no
-                # usable file — treat as a soft failure.
-                last_exc = RuntimeError("Provider returned but no audio file was written")
-            except Exception as exc:  # noqa: BLE001
-                last_exc = exc
-            if attempt < max_attempts:
-                # Exponential backoff capped at 5s. Small first wait
-                # so a single jitter doesn't add a second per chunk.
-                delay = min(0.5 * (2 ** (attempt - 1)), 5.0)
-                log.warning(
-                    "audiobook.tts.chunk_retry",
-                    attempt=attempt,
-                    next_delay=delay,
-                    error=f"{type(last_exc).__name__}: {str(last_exc)[:160]}",
-                )
-                await asyncio.sleep(delay)
-
-        log.error(
-            "audiobook.tts.chunk_exhausted",
+        return await _tts_synthesize_chunk_with_retry(
+            provider,
+            text,
+            voice_id,
+            chunk_path,
+            speed=speed,
+            pitch=pitch,
             max_attempts=max_attempts,
-            chunk_path=str(chunk_path),
-            error=f"{type(last_exc).__name__}: {str(last_exc)[:200]}" if last_exc else "unknown",
+            cancel_fn=self._cancel,
         )
-        return False
 
     async def _safety_filter_chunk(self, chunk_path: Path) -> None:
-        """Run lightweight peak-safety filtering on the chunk, in place.
-
-        Replaces the previous per-chunk EBU R128 loudnorm pass. Running
-        integrated-loudness on a single sentence (typically <2 s of
-        audio) doesn't actually converge — the LUFS measurement window
-        is 3 s by default — so the per-chunk pass produced unstable
-        results that then got compounded by the post-concat loudnorm
-        and the MP3-export loudnorm, audibly pumping inter-sentence
-        levels.
-
-        The new pass does only what's safe to apply at the chunk level:
-
-          * ``aresample=24000`` — canonical 24 kHz mono PCM so concat
-            doesn't have to re-encode (Task 7 will skip re-encode when
-            inputs are uniform).
-          * ``highpass=f=60`` — kills the sub-60 Hz rumble most TTS
-            providers leak (especially Edge), which would otherwise
-            eat headroom from the master loudnorm pass.
-          * ``alimiter=limit=0.95`` — clamps any inter-sample peaks
-            below ~-0.4 dBFS so downstream stages have headroom to
-            work with.
-
-        Failure here is non-fatal — the un-filtered chunk is better
-        than no chunk. We log + move on.
-        """
-        tmp = chunk_path.with_suffix(".norm.wav")
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(chunk_path),
-            "-af",
-            "aresample=24000,highpass=f=60,alimiter=limit=0.95",
-            "-ar",
-            "24000",
-            "-ac",
-            "1",
-            "-c:a",
-            "pcm_s16le",
-            str(tmp),
-        ]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, err = await proc.communicate()
-        if proc.returncode == 0 and tmp.exists() and tmp.stat().st_size > 100:
-            try:
-                tmp.replace(chunk_path)
-            except OSError as exc:
-                log.warning(
-                    "audiobook.tts.safety_replace_failed",
-                    error=str(exc)[:120],
-                )
-                tmp.unlink(missing_ok=True)
-        else:
-            log.warning(
-                "audiobook.tts.safety_filter_failed",
-                rc=proc.returncode,
-                stderr=err.decode("utf-8", errors="replace")[:200],
-            )
-            tmp.unlink(missing_ok=True)
+        """Delegation shim — see ``tts_render.safety_filter_chunk``."""
+        await _tts_safety_filter_chunk(chunk_path)
 
     # ══════════════════════════════════════════════════════════════════════
     # Sound effects ([SFX: ...] tag handling)
@@ -1598,97 +1407,18 @@ class AudiobookService:
         video_width: int,
         video_height: int,
     ) -> tuple[Path | None, str | None, str | None]:
-        """Generate ASS + SRT captions from the mastered audio.
-
-        Returns ``(ass_path, ass_rel, srt_rel)``. The .ass path is an
-        absolute filesystem path used downstream by the video assembly
-        step; the rel paths are storage-relative for API responses.
-
-        Three terminal states distinguished:
-
-        - **success**: full captions written, DAG ``captions`` → done.
-        - **skipped**: faster-whisper not installed (optional dep);
-          DAG ``captions`` → skipped, all return values ``None`` so
-          downstream video creation falls through to the no-captions
-          path.
-        - **failed**: any other exception during ASR; logged at
-          ERROR with full traceback, DAG ``captions`` → failed,
-          return values ``None`` (audiobook still completes).
-
-        The CaptionStyle is built with the YouTube-highlight defaults
-        — Impact 60pt, gold highlight, white text, black 5px outline,
-        bottom-positioned, 4 words/line, uppercase. The
-        ``caption_style_preset`` arg overrides only the preset name
-        (the per-field defaults stay constant so a future preset
-        addition doesn't silently change every other field).
-
-        Pulled out of ``generate`` (F-CQ-01 step 10).
-        """
-        await self._check_cancelled(audiobook_id)
-        await self._broadcast_progress(audiobook_id, "captions", 85, "Generating captions...")
-        await self._dag_global("captions", "in_progress")
-
-        captions_ass_path: Path | None = None
-        captions_ass_rel: str | None = None
-        captions_srt_rel: str | None = None
-
-        try:
-            from drevalis.services.captions import CaptionService, CaptionStyle
-
-            caption_service = CaptionService()
-            caption_dir = abs_dir / "captions"
-            caption_dir.mkdir(parents=True, exist_ok=True)
-
-            effective_preset = caption_style_preset or "youtube_highlight"
-            caption_style = CaptionStyle(
-                preset=effective_preset,
-                font_name="Impact",
-                font_size=60,
-                primary_color="#FFFFFF",
-                highlight_color="#FFD700",
-                outline_color="#000000",
-                outline_width=5,
-                position="bottom",
-                margin_v=100,
-                words_per_line=4,
-                uppercase=True,
-                play_res_x=video_width,
-                play_res_y=video_height,
-            )
-
-            caption_result = await caption_service.generate_from_audio(
-                audio_path=final_audio,
-                output_dir=caption_dir,
-                language="en",
-                style=caption_style,
-            )
-            captions_ass_path = Path(caption_result.ass_path)
-            captions_ass_rel = f"audiobooks/{audiobook_id}/captions/captions.ass"
-            captions_srt_rel = f"audiobooks/{audiobook_id}/captions/captions.srt"
-
-            log.info(
-                "audiobook.generate.captions_done",
-                audiobook_id=str(audiobook_id),
-                caption_count=len(caption_result.captions),
-            )
-            await self._dag_global("captions", "done")
-        except ImportError:
-            log.warning(
-                "audiobook.generate.captions_skipped",
-                audiobook_id=str(audiobook_id),
-                reason="faster-whisper not installed",
-            )
-            await self._dag_global("captions", "skipped")
-        except Exception as exc:
-            log.error(
-                "audiobook.generate.captions_failed",
-                audiobook_id=str(audiobook_id),
-                error=str(exc),
-                exc_info=True,
-            )
-            await self._dag_global("captions", "failed")
-
-        return captions_ass_path, captions_ass_rel, captions_srt_rel
+        """Delegation shim — see ``captions.run_captions_phase``."""
+        return await _cap_run_captions_phase(
+            audiobook_id=audiobook_id,
+            abs_dir=abs_dir,
+            final_audio=final_audio,
+            caption_style_preset=caption_style_preset,
+            video_width=video_width,
+            video_height=video_height,
+            check_cancelled_fn=self._check_cancelled,
+            broadcast_progress_fn=self._broadcast_progress,
+            dag_global_fn=self._dag_global,
+        )
 
     async def _run_master_mix_phase(
         self,
@@ -2543,21 +2273,8 @@ class AudiobookService:
     # ══════════════════════════════════════════════════════════════════════
 
     async def _generate_silence(self, output_path: Path, duration: float = 0.5) -> None:
-        """Generate a short silence WAV file as a TTS fallback."""
-        proc = await asyncio.create_subprocess_exec(
-            "ffmpeg",
-            "-y",
-            "-f",
-            "lavfi",
-            "-i",
-            "anullsrc=r=24000:cl=mono",
-            "-t",
-            str(duration),
-            str(output_path),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        await proc.communicate()
+        """Delegation shim — see ``tts_render.generate_silence``."""
+        await _tts_generate_silence(output_path, duration)
 
     async def _generate_single_voice(
         self,
@@ -2571,93 +2288,19 @@ class AudiobookService:
         """Generate TTS for a single voice, splitting text into chunks.
 
         Task 4: chunks render concurrently up to the per-provider cap
-        from ``_PROVIDER_CONCURRENCY``. Cache hits short-circuit before
+        from ``PROVIDER_CONCURRENCY``. Cache hits short-circuit before
         the semaphore so they don't burn a slot.
         """
-        provider = self.tts.get_provider(voice_profile)
-        voice_id = self.tts._voice_id_for(voice_profile)
-        provider_name, model_name = _provider_identity(provider, voice_profile)
-        voice_profile_id = str(getattr(voice_profile, "id", "") or "")
-        sem = _get_provider_semaphore(provider_name)
-        max_chars = _chunk_limit(provider_name)  # Task 12
-
-        chunks = self._split_text(text, max_chars=max_chars)
-
-        async def _render_chunk(i: int, text_chunk: str) -> AudioChunk | None:
-            stripped = text_chunk.strip()
-            if not stripped or len(stripped) < 2:
-                return None
-
-            chunk_hash = _chunk_cache_hash(
-                text=text_chunk,
-                speaker_id="Narrator",
-                voice_profile_id=voice_profile_id,
-                provider=provider_name,
-                model=model_name,
-                speed=speed,
-                pitch=pitch,
-                sample_rate=24000,
-            )
-            chunk_path = output_dir / f"ch{chapter_index:03d}_chunk_{i:04d}_{chunk_hash}.wav"
-            if chunk_path.exists() and chunk_path.stat().st_size > 100:
-                log.debug(
-                    "audiobook.generate.chunk_cached",
-                    chapter_index=chapter_index,
-                    chunk_index=i,
-                )
-            else:
-                async with sem:
-                    ok = await self._synthesize_chunk_with_retry(
-                        provider,
-                        text_chunk,
-                        voice_id,
-                        chunk_path,
-                        speed=speed,
-                        pitch=pitch,
-                    )
-                if not ok:
-                    log.warning(
-                        "audiobook.generate.tts_chunk_failed",
-                        chapter_index=chapter_index,
-                        chunk_index=i,
-                        chunk_length=len(text_chunk),
-                    )
-                    await self._generate_silence(chunk_path)
-
-            if not chunk_path.exists():
-                return None
-            return AudioChunk(
-                path=chunk_path,
-                chapter_index=chapter_index,
-                speaker="Narrator",
-                block_index=0,
-                chunk_index=i,
-            )
-
-        outcomes = await asyncio.gather(
-            *(_render_chunk(i, c) for i, c in enumerate(chunks)),
-            return_exceptions=True,
+        return await _tts_generate_single_voice(
+            tts_service=self.tts,
+            text=text,
+            voice_profile=voice_profile,
+            output_dir=output_dir,
+            chapter_index=chapter_index,
+            speed=speed,
+            pitch=pitch,
+            cancel_fn=self._cancel,
         )
-
-        # Re-raise the first cancellation so the worker job marks the
-        # audiobook as cancelled rather than failed.
-        for outcome in outcomes:
-            if isinstance(outcome, asyncio.CancelledError):
-                raise outcome
-
-        result: list[AudioChunk] = []
-        for outcome in outcomes:
-            if isinstance(outcome, AudioChunk):
-                result.append(outcome)
-            elif isinstance(outcome, Exception):
-                log.warning(
-                    "audiobook.generate.chunk_exception",
-                    chapter_index=chapter_index,
-                    error=f"{type(outcome).__name__}: {str(outcome)[:160]}",
-                )
-        # Stable order regardless of provider completion order.
-        result.sort(key=lambda c: c.chunk_index)
-        return result
 
     async def _generate_multi_voice(
         self,
@@ -2674,165 +2317,19 @@ class AudiobookService:
         Falls back to the default voice profile for speakers not in the
         casting map.
         """
-        result: list[AudioChunk] = []
-
-        def _normalise_speaker(name: str) -> str:
-            """Lower-case + strip + drop non-alphanumerics.
-
-            This is what a human reader would think of as "the same name
-            without punctuation" — it lets ``Narrator``, ``narrator.``
-            and ``NARRATOR`` match each other, but does **not** match
-            ``Narrator`` to ``Nate`` (the old substring fallback did).
-            """
-            import re as _re
-
-            return _re.sub(r"[^a-z0-9]+", "", name.strip().lower())
-
-        # Pre-compute the normalised casting keys so we're not doing
-        # this inside the block loop.
-        normalised_cast: dict[str, str] = {
-            _normalise_speaker(k): v for k, v in voice_casting.items() if k
-        }
-
-        for i, block in enumerate(blocks):
-            # SFX block — generate via the dedicated provider and
-            # splice the resulting WAV in at this position so its
-            # placement in the script is preserved exactly.
-            if block.get("kind") == "sfx":
-                sfx_chunk = await self._generate_sfx_chunk(
-                    block=block,
-                    output_dir=output_dir,
-                    chapter_index=chapter_index,
-                    block_index=i,
-                )
-                if sfx_chunk is not None:
-                    result.append(sfx_chunk)
-                continue
-
-            speaker = block["speaker"]
-            voice_profile_id = (
-                voice_casting.get(speaker)
-                or voice_casting.get(speaker.strip())
-                or normalised_cast.get(_normalise_speaker(speaker))
-            )
-
-            if voice_profile_id:
-                voice_profile = await self._get_voice_profile(voice_profile_id)
-                if voice_profile is None:
-                    log.warning(
-                        "audiobook.generate.voice_profile_not_found",
-                        speaker=speaker,
-                        voice_profile_id=voice_profile_id,
-                        detail="Falling back to default voice profile",
-                    )
-                    voice_profile = default_voice_profile
-            else:
-                voice_profile = default_voice_profile
-
-            provider = self.tts.get_provider(voice_profile)
-            voice_id = self.tts._voice_id_for(voice_profile)
-            provider_name, model_name = _provider_identity(provider, voice_profile)
-            voice_profile_id_str = str(getattr(voice_profile, "id", "") or "")
-            sem = _get_provider_semaphore(provider_name)
-            max_chars = _chunk_limit(provider_name)  # Task 12
-
-            text_chunks = self._split_text(block["text"], max_chars=max_chars)
-
-            async def _render_block_chunk(
-                j: int,
-                text_chunk: str,
-                # Bind closure-captured loop vars into defaults so each
-                # gathered coroutine sees its own block / speaker /
-                # provider rather than the last-seen iteration values.
-                _block_index: int = i,
-                _speaker: str = speaker,
-                _provider: Any = provider,
-                _voice_id: str = voice_id,
-                _provider_name: str = provider_name,
-                _model_name: str = model_name,
-                _voice_profile_id_str: str = voice_profile_id_str,
-                _sem: asyncio.Semaphore = sem,
-            ) -> AudioChunk | None:
-                stripped = text_chunk.strip()
-                if not stripped or len(stripped) < 2:
-                    return None
-
-                chunk_hash = _chunk_cache_hash(
-                    text=text_chunk,
-                    speaker_id=_speaker,
-                    voice_profile_id=_voice_profile_id_str,
-                    provider=_provider_name,
-                    model=_model_name,
-                    speed=speed,
-                    pitch=pitch,
-                    sample_rate=24000,
-                )
-                chunk_path = (
-                    output_dir / f"ch{chapter_index:03d}_block_{_block_index:04d}"
-                    f"_chunk_{j:04d}_{chunk_hash}.wav"
-                )
-                if chunk_path.exists() and chunk_path.stat().st_size > 100:
-                    log.debug(
-                        "audiobook.generate.chunk_cached",
-                        chapter_index=chapter_index,
-                        block_index=_block_index,
-                        chunk_index=j,
-                    )
-                else:
-                    async with _sem:
-                        ok = await self._synthesize_chunk_with_retry(
-                            _provider,
-                            text_chunk,
-                            _voice_id,
-                            chunk_path,
-                            speed=speed,
-                            pitch=pitch,
-                        )
-                    if not ok:
-                        log.warning(
-                            "audiobook.generate.tts_chunk_failed",
-                            chapter_index=chapter_index,
-                            block_index=_block_index,
-                            speaker=_speaker,
-                            chunk_index=j,
-                            chunk_length=len(text_chunk),
-                        )
-                        await self._generate_silence(chunk_path)
-
-                if not chunk_path.exists():
-                    return None
-                return AudioChunk(
-                    path=chunk_path,
-                    chapter_index=chapter_index,
-                    speaker=_speaker,
-                    block_index=_block_index,
-                    chunk_index=j,
-                )
-
-            block_outcomes = await asyncio.gather(
-                *(_render_block_chunk(j, c) for j, c in enumerate(text_chunks)),
-                return_exceptions=True,
-            )
-
-            for outcome in block_outcomes:
-                if isinstance(outcome, asyncio.CancelledError):
-                    raise outcome
-
-            block_chunks: list[AudioChunk] = []
-            for outcome in block_outcomes:
-                if isinstance(outcome, AudioChunk):
-                    block_chunks.append(outcome)
-                elif isinstance(outcome, Exception):
-                    log.warning(
-                        "audiobook.generate.chunk_exception",
-                        chapter_index=chapter_index,
-                        block_index=i,
-                        error=f"{type(outcome).__name__}: {str(outcome)[:160]}",
-                    )
-            block_chunks.sort(key=lambda c: c.chunk_index)
-            result.extend(block_chunks)
-
-        return result
+        return await _tts_generate_multi_voice(
+            tts_service=self.tts,
+            blocks=blocks,
+            voice_casting=voice_casting,
+            default_voice_profile=default_voice_profile,
+            output_dir=output_dir,
+            chapter_index=chapter_index,
+            speed=speed,
+            pitch=pitch,
+            cancel_fn=self._cancel,
+            get_voice_profile_fn=self._get_voice_profile,
+            generate_sfx_chunk_fn=self._generate_sfx_chunk,
+        )
 
     async def _get_voice_profile(self, voice_profile_id: str) -> VoiceProfile | None:
         """Load a voice profile by ID from the database."""
@@ -2884,49 +2381,10 @@ class AudiobookService:
     # path produces the same audio in a fraction of the I/O cost.
 
     @staticmethod
+    @staticmethod
     async def _probe_audio_format(path: Path) -> tuple[int, int, str, str] | None:
-        """Return ``(sample_rate, channels, codec_name, sample_fmt)`` or None.
-
-        ``None`` on ffprobe failure / missing audio stream / unparseable
-        JSON. Callers treat any ``None`` as "not uniform" and fall back
-        to the re-encode concat path.
-        """
-        cmd = [
-            "ffprobe",
-            "-v",
-            "error",
-            "-select_streams",
-            "a:0",
-            "-show_entries",
-            "stream=sample_rate,channels,codec_name,sample_fmt",
-            "-of",
-            "json",
-            str(path),
-        ]
-        try:
-            proc = await asyncio.create_subprocess_exec(
-                *cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            out, _ = await proc.communicate()
-            if proc.returncode != 0:
-                return None
-            data = json.loads(out.decode("utf-8", errors="replace"))
-        except (FileNotFoundError, json.JSONDecodeError, ValueError):
-            return None
-        streams = data.get("streams") or []
-        if not streams:
-            return None
-        s = streams[0]
-        try:
-            sample_rate = int(s["sample_rate"])
-            channels = int(s["channels"])
-            codec_name = str(s["codec_name"])
-            sample_fmt = str(s.get("sample_fmt") or "")
-        except (KeyError, ValueError, TypeError):
-            return None
-        return sample_rate, channels, codec_name, sample_fmt
+        """Delegation shim — see ``concat_executor.probe_audio_format``."""
+        return await _concat_probe_audio_format(path)
 
     def _pauses(self) -> tuple[float, float, float]:
         """Return ``(within_speaker, between_speakers, between_chapters)``
@@ -2943,9 +2401,8 @@ class AudiobookService:
         )
 
     def _is_overlay_sfx(self, chunk: AudioChunk) -> bool:
-        return chunk.speaker == "__SFX__" and (
-            chunk.overlay_voice_blocks is not None or chunk.overlay_seconds is not None
-        )
+        """Delegation shim — see ``concat_executor.is_overlay_sfx``."""
+        return _concat_is_overlay_sfx(chunk)
 
     async def _concatenate_with_context(
         self, chunks: list[AudioChunk], output: Path
@@ -2964,296 +2421,24 @@ class AudiobookService:
 
         Returns chapter timing metadata.
         """
-        if not chunks:
-            raise RuntimeError("No audio chunks to concatenate")
-
-        # Partition: inline vs overlay-SFX. For each overlay, remember
-        # its position in the original list so we can compute its
-        # start offset against the inline timeline below.
-        inline_chunks: list[AudioChunk] = []
-        overlays: list[tuple[int, AudioChunk]] = []
-        for orig_idx, chunk in enumerate(chunks):
-            if self._is_overlay_sfx(chunk):
-                overlays.append((orig_idx, chunk))
-            else:
-                inline_chunks.append(chunk)
-
-        if not inline_chunks:
-            # All chunks were overlay SFX with no voice — fall back
-            # to treating them as inline so we still produce audio.
-            inline_chunks = list(chunks)
-            overlays = []
-
-        concat_list = output.parent / "_concat_list.txt"
-
-        # Task 9: silence durations from settings, fall back to constants.
-        pause_within, pause_speaker, pause_chapter = self._pauses()
-
-        # Pre-generate silence files for each duration
-        silence_files: dict[float, Path] = {}
-        for dur in (pause_within, pause_speaker, pause_chapter):
-            sil_path = output.parent / f"_silence_{int(dur * 1000)}ms.wav"
-            proc = await asyncio.create_subprocess_exec(
-                "ffmpeg",
-                "-y",
-                "-f",
-                "lavfi",
-                "-i",
-                "anullsrc=r=24000:cl=mono",
-                "-t",
-                str(dur),
-                str(sil_path),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await proc.communicate()
-            if proc.returncode != 0:
-                stderr_text = stderr.decode("utf-8", errors="replace")
-                raise RuntimeError(f"Failed to generate silence: {stderr_text[:300]}")
-            silence_files[dur] = sil_path
-
-        # Per-clip overrides from ``track_mix.clips`` (v0.25.0). The
-        # editor writes ``{clip_id: {gain_db, mute}}`` entries; we
-        # apply them here by either skipping the clip (mute) or
-        # writing a gain-adjusted copy and substituting the path.
-        clip_overrides: dict[str, dict[str, Any]] = {}
+        clip_overrides: dict[str, Any] = {}
         try:
             mix = getattr(self, "_track_mix_full", None) or {}
             clip_overrides = dict(mix.get("clips") or {})
         except Exception:
             clip_overrides = {}
 
-        adjusted_dir = output.parent / "_adjusted"
-        if clip_overrides:
-            adjusted_dir.mkdir(parents=True, exist_ok=True)
-
-        async def _apply_clip_override(chunk: AudioChunk) -> Path | None:
-            # Editor stores overrides keyed by the hash-stripped stem
-            # (``ch003_chunk_0007``) so per-clip mixes survive a
-            # voice-profile / speed change that re-hashes the file.
-            stable_id = _strip_chunk_hash(chunk.path.stem)
-            override = clip_overrides.get(stable_id)
-            if not override:
-                return chunk.path
-            if override.get("mute"):
-                # Substitute a silence file the length of this chunk so
-                # downstream timing stays exact.
-                try:
-                    dur = await self.ffmpeg.get_duration(chunk.path)
-                except Exception:
-                    dur = 0.0
-                if dur <= 0:
-                    return None
-                sil = adjusted_dir / f"{stable_id}_muted.wav"
-                proc = await asyncio.create_subprocess_exec(
-                    "ffmpeg",
-                    "-y",
-                    "-f",
-                    "lavfi",
-                    "-i",
-                    "anullsrc=r=24000:cl=mono",
-                    "-t",
-                    f"{dur:.3f}",
-                    "-c:a",
-                    "pcm_s16le",
-                    str(sil),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await proc.communicate()
-                return sil if sil.exists() else chunk.path
-            gain_db = float(override.get("gain_db", 0.0) or 0.0)
-            if abs(gain_db) < 0.01:
-                return chunk.path
-            adjusted = adjusted_dir / f"{stable_id}_g{int(gain_db * 10):+d}.wav"
-            if not adjusted.exists():
-                proc = await asyncio.create_subprocess_exec(
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(chunk.path),
-                    "-af",
-                    f"volume={gain_db:+.2f}dB",
-                    "-c:a",
-                    "pcm_s16le",
-                    str(adjusted),
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                _, err = await proc.communicate()
-                if proc.returncode != 0:
-                    log.warning(
-                        "audiobook.clip_override.failed",
-                        clip_id=chunk.path.stem,
-                        gain_db=gain_db,
-                        stderr=err.decode("utf-8", errors="replace")[:200],
-                    )
-                    return chunk.path
-            return adjusted
-
-        # Build concat list with context-aware silence. Collect the
-        # effective paths once so both the concat-list file and the
-        # uniformity probe (Task 7) can reuse them without re-running
-        # ``_apply_clip_override``.
-        ordered_paths: list[Path] = []
-        for i, chunk in enumerate(inline_chunks):
-            effective_path = await _apply_clip_override(chunk)
-            if effective_path is None:
-                continue
-            ordered_paths.append(effective_path)
-
-            if i < len(inline_chunks) - 1:
-                next_chunk = inline_chunks[i + 1]
-                if chunk.chapter_index != next_chunk.chapter_index:
-                    pause = pause_chapter
-                elif chunk.speaker != next_chunk.speaker:
-                    pause = pause_speaker
-                else:
-                    pause = pause_within
-                ordered_paths.append(silence_files[pause])
-
-        lines = [f"file '{str(p).replace(chr(92), '/')}'" for p in ordered_paths]
-        concat_list.write_text("\n".join(lines), encoding="utf-8")
-
-        # Task 7: probe every input that will go through the concat
-        # demuxer. If they share ``(sample_rate, channels, codec,
-        # sample_fmt)`` we can use ``-c copy`` and skip the full
-        # decode/encode round-trip. Mixed-provider chapters (Piper
-        # 24 kHz mono next to ElevenLabs 44.1 kHz stereo) trip the
-        # fallback path, which re-encodes to the canonical 44.1 kHz
-        # stereo s16le stream — the pre-Task-7 default behaviour,
-        # preserved as the safe fallback.
-        formats = await asyncio.gather(
-            *(self._probe_audio_format(p) for p in ordered_paths),
-            return_exceptions=False,
+        return await _concat_concatenate_with_context(
+            chunks,
+            output,
+            pauses=self._pauses(),
+            clip_overrides=clip_overrides,
+            ffmpeg_get_duration=self.ffmpeg.get_duration,
+            strip_hash_fn=_strip_chunk_hash,
+            compute_chapter_timings_fn=self._compute_chapter_timings,
+            mix_overlay_sfx_fn=self._mix_overlay_sfx,
+            dag_global_fn=self._dag_global,
         )
-        uniform = (
-            len(formats) > 0
-            and all(f is not None for f in formats)
-            and len({f for f in formats}) == 1
-        )
-
-        if uniform:
-            log.info(
-                "audiobook.concat.stream_copy",
-                chunk_count=len(ordered_paths),
-                format=formats[0],
-            )
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(concat_list),
-                "-c",
-                "copy",
-                str(output),
-            ]
-        else:
-            mixed_summary = sorted({f for f in formats if f is not None})
-            log.info(
-                "audiobook.concat.reencode",
-                chunk_count=len(ordered_paths),
-                distinct_formats=len(mixed_summary),
-                formats=mixed_summary,
-            )
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(concat_list),
-                "-ar",
-                "44100",
-                "-ac",
-                "2",
-                "-sample_fmt",
-                "s16",
-                "-c:a",
-                "pcm_s16le",
-                str(output),
-            ]
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-        if proc.returncode != 0 and uniform:
-            # Stream-copy failed (rare WAV header mismatch). Retry as
-            # re-encode in place rather than losing the audiobook.
-            log.warning(
-                "audiobook.concat.stream_copy_failed_retrying_reencode",
-                stderr=stderr.decode("utf-8", errors="replace")[:200],
-            )
-            proc = await asyncio.create_subprocess_exec(
-                "ffmpeg",
-                "-y",
-                "-f",
-                "concat",
-                "-safe",
-                "0",
-                "-i",
-                str(concat_list),
-                "-ar",
-                "44100",
-                "-ac",
-                "2",
-                "-sample_fmt",
-                "s16",
-                "-c:a",
-                "pcm_s16le",
-                str(output),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            stderr_text = stderr.decode("utf-8", errors="replace")
-            raise RuntimeError(f"Failed to concatenate chunks: {stderr_text[:300]}")
-
-        # Compute chapter timings by summing chunk durations.
-        # Overlay SFX don't influence the timeline so timings come
-        # from the inline list only.
-        chapter_timings = await self._compute_chapter_timings(inline_chunks)
-
-        # ── Overlay SFX pass ────────────────────────────────────
-        # Mix overlay SFX onto the inline base with a sidechain
-        # ducker so the SFX rides under the next voice block(s).
-        if overlays:
-            await self._dag_global("overlay_sfx", "in_progress")
-            try:
-                await self._mix_overlay_sfx(
-                    base_path=output,
-                    chunks_in_order=chunks,
-                    inline_chunks=inline_chunks,
-                    overlays=overlays,
-                )
-                await self._dag_global("overlay_sfx", "done")
-            except Exception as exc:  # noqa: BLE001
-                # Never lose the audiobook because an overlay mix
-                # failed — log and continue with the bare inline.
-                log.warning(
-                    "audiobook.overlay_sfx.mix_failed",
-                    error=f"{type(exc).__name__}: {str(exc)[:200]}",
-                )
-                await self._dag_global("overlay_sfx", "failed")
-        else:
-            await self._dag_global("overlay_sfx", "skipped")
-
-        # Cleanup temp files
-        concat_list.unlink(missing_ok=True)
-        for sil in silence_files.values():
-            sil.unlink(missing_ok=True)
-
-        return chapter_timings
 
     async def _mix_overlay_sfx(
         self,
@@ -3262,267 +2447,24 @@ class AudiobookService:
         inline_chunks: list[AudioChunk],
         overlays: list[tuple[int, AudioChunk]],
     ) -> None:
-        """Mix overlay SFX onto the inline audiobook base.
-
-        For each overlay, computes its start offset in the inline
-        timeline (= cumulative duration of all inline chunks +
-        between-chunk silences up to and including the gap that
-        precedes the next inline chunk after the overlay's script
-        position), then sidechain-ducks it and amix-es onto the
-        running track.
-        """
-        await self._cancel()  # Task 10: cancel before the single-pass mix.
-        # Build position lookup: original_index -> position in inline
-        # list. Overlays themselves are not in inline; we use the
-        # next inline chunk after the overlay as the start anchor.
-        orig_to_inline: dict[int, int] = {}
-        inline_set: set[int] = set()
-        running_inline_idx = 0
-        for orig_idx, chunk in enumerate(chunks_in_order):
-            if chunk in inline_chunks[running_inline_idx : running_inline_idx + 1]:
-                orig_to_inline[orig_idx] = running_inline_idx
-                inline_set.add(orig_idx)
-                running_inline_idx += 1
-                if running_inline_idx >= len(inline_chunks):
-                    break
-        # Re-walk to be safe (above loop assumes inline_chunks
-        # appears in same relative order — which it does, but
-        # guarding against future refactor).
-        if len(orig_to_inline) != len(inline_chunks):
-            orig_to_inline = {}
-            inline_set = set()
-            j = 0
-            for orig_idx, chunk in enumerate(chunks_in_order):
-                if j < len(inline_chunks) and chunk is inline_chunks[j]:
-                    orig_to_inline[orig_idx] = j
-                    inline_set.add(orig_idx)
-                    j += 1
-
-        # Task 9: silence durations from settings.
-        pause_within, pause_speaker, pause_chapter = self._pauses()
-
-        # Pre-compute durations + cumulative inline starts.
-        inline_durations: list[float] = []
-        for c in inline_chunks:
-            inline_durations.append(await self.ffmpeg.get_duration(c.path))
-
-        # Position-on-disk of inline chunk i (in seconds) =
-        # sum(inline_durations[:i]) + sum(silences before each
-        # boundary up to i). Compute on demand.
-        def inline_start(i: int) -> float:
-            t = 0.0
-            for k in range(i):
-                t += inline_durations[k]
-                # Add silence between chunks k and k+1 (already
-                # written to disk between the chunks during concat).
-                a, b = inline_chunks[k], inline_chunks[k + 1]
-                if a.chapter_index != b.chapter_index:
-                    t += pause_chapter
-                elif a.speaker != b.speaker:
-                    t += pause_speaker
-                else:
-                    t += pause_within
-            return t
-
-        # For each overlay, find the next inline chunk after its
-        # original position; that's our start anchor.
-        overlay_plans: list[tuple[Path, float, float, float]] = []
-        for orig_idx, sfx_chunk in overlays:
-            # Find next inline orig_idx > this one.
-            next_inline_orig: int | None = None
-            for j in range(orig_idx + 1, len(chunks_in_order)):
-                if j in inline_set:
-                    next_inline_orig = j
-                    break
-            if next_inline_orig is None:
-                # Overlay was after every voice chunk — start at
-                # end of last inline chunk.
-                start = sum(inline_durations) + sum(
-                    pause_chapter
-                    if inline_chunks[k].chapter_index != inline_chunks[k + 1].chapter_index
-                    else (
-                        pause_speaker
-                        if inline_chunks[k].speaker != inline_chunks[k + 1].speaker
-                        else pause_within
-                    )
-                    for k in range(len(inline_chunks) - 1)
-                )
-            else:
-                start = inline_start(orig_to_inline[next_inline_orig])
-
-            sfx_dur = await self.ffmpeg.get_duration(sfx_chunk.path)
-            overlay_plans.append((sfx_chunk.path, start, sfx_dur, float(sfx_chunk.overlay_duck_db)))
-
-        if not overlay_plans:
-            return
-
-        # Task 5: single ``filter_complex`` for ALL overlays. The previous
-        # implementation ran one ffmpeg invocation per overlay, each
-        # decoding + re-encoding the entire audiobook — for 10 overlays
-        # on a 1h audiobook that's ~10× the I/O cost of the one-pass
-        # graph below. The new chain prepares each SFX in its own branch
-        # (adelay → apad → atrim → volume), bus-mixes them with amix,
-        # ducks the COMBINED bus against the voice, and amix-es the
-        # ducked bus back onto the original voice in a single pass.
-        #
-        # Note on ducking scope: the sidechain compressor here ducks the
-        # SFX bus globally — wherever voice is louder than threshold
-        # over the whole audiobook. A targeted "duck only the voice
-        # region overlapping each SFX" graph would need an asplit + N
-        # concat segments per overlay, which is gnarly enough to make
-        # debugging painful. The chapter-wide ducker is the documented
-        # trade-off (Task 5 brief).
-        #
-        # Filter ordering invariant for SFX prep: ``apad`` MUST come
-        # before ``atrim``. ``adelay`` adds the lead silence; ``apad``
-        # makes the stream long enough to be trimmed cleanly; ``atrim``
-        # cuts to the exact end timestamp. Reversing apad/atrim
-        # produces hard cuts at the SFX tail.
-        tmp_dir = base_path.parent
-        mixed = tmp_dir / "_overlay_pass.wav"
-
-        # Per-overlay branches.
-        sfx_branches: list[str] = []
-        for i, (_path, start_sec, sfx_dur, duck_db) in enumerate(overlay_plans):
-            start_ms = max(0, int(start_sec * 1000))
-            end_sec = start_sec + sfx_dur
-            input_idx = i + 1  # input 0 is the base; SFX inputs start at 1
-            sfx_branches.append(
-                f"[{input_idx}:a]adelay={start_ms}|{start_ms},apad,"
-                f"atrim=0:{end_sec:.2f},"
-                f"volume={duck_db:.1f}dB[sfx{i}]"
-            )
-
-        # Bus-mix all SFX branches.
-        if len(overlay_plans) == 1:
-            bus_label = "[sfx0]"
-            bus_step = ""
-        else:
-            sfx_inputs = "".join(f"[sfx{i}]" for i in range(len(overlay_plans)))
-            bus_step = (
-                f";{sfx_inputs}amix=inputs={len(overlay_plans)}:"
-                "duration=longest:dropout_transition=0[sfxbus]"
-            )
-            bus_label = "[sfxbus]"
-
-        # Sidechain duck the SFX bus against the voice, then amix the
-        # ducked bus back over the voice.
-        # Task 6: parameters live in ``SFX_DUCKING`` instead of inline
-        # constants. Dialogue-friendly defaults (faster attack, faster
-        # release, gentler ratio) than the pre-Task-6 numerics.
-        sfx_threshold = SFX_DUCKING["threshold"]
-        sfx_ratio = SFX_DUCKING["ratio"]
-        sfx_attack = SFX_DUCKING["attack"]
-        sfx_release = SFX_DUCKING["release"]
-        graph = (
-            ";".join(sfx_branches)
-            + bus_step
-            + f";{bus_label}[0:a]sidechaincompress=threshold={sfx_threshold}"
-            f":ratio={sfx_ratio}:attack={sfx_attack}:release={sfx_release}[ducked]"
-            + ";[0:a][ducked]amix=inputs=2:duration=longest:"
-            "dropout_transition=0[out]"
-        )
-
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(base_path),
-        ]
-        for path, _start_sec, _sfx_dur, _duck_db in overlay_plans:
-            cmd.extend(["-i", str(path)])
-        cmd.extend(
-            [
-                "-filter_complex",
-                graph,
-                "-map",
-                "[out]",
-                "-ar",
-                "44100",
-                "-ac",
-                "2",
-                "-c:a",
-                "pcm_s16le",
-                str(mixed),
-            ]
-        )
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, err = await proc.communicate()
-        if proc.returncode != 0 or not mixed.exists():
-            log.warning(
-                "audiobook.overlay_sfx.single_pass_failed",
-                overlay_count=len(overlay_plans),
-                rc=proc.returncode,
-                stderr=err.decode("utf-8", errors="replace")[:300],
-            )
-            mixed.unlink(missing_ok=True)
-            return
-
-        mixed.replace(base_path)
-        log.info(
-            "audiobook.overlay_sfx.mixed_single_pass",
-            overlay_count=len(overlay_plans),
-            duck_db=[round(p[3], 1) for p in overlay_plans],
+        """Delegation shim — see ``mix_executor.mix_overlay_sfx``."""
+        await _mix_mix_overlay_sfx(
+            base_path,
+            chunks_in_order,
+            inline_chunks,
+            overlays,
+            pauses=self._pauses(),
+            ffmpeg_get_duration=self.ffmpeg.get_duration,
+            cancel_fn=self._cancel,
         )
 
     async def _compute_chapter_timings(self, chunks: list[AudioChunk]) -> list[ChapterTiming]:
-        """Compute chapter start/end times from chunk audio durations."""
-        # Task 9: silence durations from settings.
-        pause_within, pause_speaker, pause_chapter = self._pauses()
-
-        # Get duration of each chunk
-        chunk_durations: list[float] = []
-        for chunk in chunks:
-            dur = await self.ffmpeg.get_duration(chunk.path)
-            chunk_durations.append(dur)
-
-        timings: list[ChapterTiming] = []
-        current_time = 0.0
-        current_chapter = chunks[0].chapter_index if chunks else 0
-        chapter_start = 0.0
-
-        for i, (chunk, dur) in enumerate(zip(chunks, chunk_durations, strict=False)):
-            if chunk.chapter_index != current_chapter:
-                # Close previous chapter
-                timings.append(
-                    ChapterTiming(
-                        chapter_index=current_chapter,
-                        start_seconds=chapter_start,
-                        end_seconds=current_time,
-                        duration_seconds=current_time - chapter_start,
-                    )
-                )
-                chapter_start = current_time + pause_chapter
-                current_chapter = chunk.chapter_index
-
-            current_time += dur
-
-            # Add pause duration
-            if i < len(chunks) - 1:
-                next_chunk = chunks[i + 1]
-                if chunk.chapter_index != next_chunk.chapter_index:
-                    current_time += pause_chapter
-                elif chunk.speaker != next_chunk.speaker:
-                    current_time += pause_speaker
-                else:
-                    current_time += pause_within
-
-        # Close final chapter
-        timings.append(
-            ChapterTiming(
-                chapter_index=current_chapter,
-                start_seconds=chapter_start,
-                end_seconds=current_time,
-                duration_seconds=current_time - chapter_start,
-            )
+        """Delegation shim — see ``mix_executor.compute_chapter_timings``."""
+        return await _mix_compute_chapter_timings(
+            chunks,
+            pauses=self._pauses(),
+            ffmpeg_get_duration=self.ffmpeg.get_duration,
         )
-
-        return timings
 
     # ══════════════════════════════════════════════════════════════════════
     # Per-chapter image generation  (logic lives in image_gen.py)
@@ -3566,138 +2508,19 @@ class AudiobookService:
         volume_db: float,
         duration: float,
     ) -> Path:
-        """Mix a single background music track under the voiceover.
-
-        Uses sidechain compression so the music ducks under speech.
-        Returns the path to the mixed file, or *audio_path* unchanged
-        if no music is available.
-        """
-        await self._cancel()  # Task 10: cancel before music gen + ffmpeg.
-        log.info(
-            "audiobook.music.requested",
-            mood=mood,
-            duration_seconds=duration,
-            volume_db=volume_db,
-        )
-        music_svc = self._resolve_music_service()
-        if music_svc is None:
-            return audio_path
-
-        music_path = await music_svc.get_music_for_episode(
-            mood=mood,
-            target_duration=duration,
-            episode_id=uuid4(),
-        )
-        if not music_path:
-            log.warning(
-                "audiobook.music.no_track_resolved",
-                mood=mood,
-                duration_seconds=duration,
-                hint=(
-                    "MusicService returned no track. Either the mood is missing "
-                    "from the curated library AND no ComfyUI server is registered "
-                    "for AceStep generation, or the requested duration was 0. "
-                    "Check Settings → ComfyUI Servers."
-                ),
-            )
-            return audio_path
-
-        log.info(
-            "audiobook.music.track_resolved",
-            music_path=str(music_path),
+        """Delegation shim — see ``mix_executor.add_music``."""
+        return await _mix_add_music(
+            audio_path,
+            output_path,
             mood=mood,
             volume_db=volume_db,
+            duration=duration,
+            resolve_music_service_fn=self._resolve_music_service,
+            ffmpeg_get_duration=self.ffmpeg.get_duration,
+            voice_gain_db=float(getattr(self, "_voice_gain_db", 0.0) or 0.0),
+            ducking_preset=getattr(self, "_ducking_preset", None),
+            cancel_fn=self._cancel,
         )
-
-        # Mix chain rebuilt for v0.24.0 — previously voice ended up
-        # ~6 dB quieter than music because:
-        #   1. ``amix`` defaults to ``normalize=1`` which scales each
-        #      input by 1/N. With 2 inputs voice was halved.
-        #   2. The ``volume_db`` arg was applied to BGM but voice got
-        #      no boost, so the implicit -6 dB from amix-normalize
-        #      dragged voice well below intelligibility.
-        # New chain:
-        #   - Voice: optional user gain (default 0 dB), then loudnorm
-        #     pre-mix to -16 LUFS for consistent broadcast level.
-        #   - Music: user volume_db (default -14 dB) then sidechain
-        #     ducked under voice with a more aggressive ducker
-        #     (threshold lower, ratio higher) so it actually gets out
-        #     of the way during dialogue.
-        #   - amix: normalize=0 preserves original gains; voice goes
-        #     through unchanged at -16 LUFS, music sits below.
-        #   - Final loudnorm sets the master to broadcast standard so
-        #     listeners don't have to ride the volume knob.
-        # Task 3: per-track and master loudnorm passes were stripped from
-        # this filter graph. The single audible loudnorm runs once at the
-        # master stage (``_apply_master_loudnorm``) AFTER music + SFX are
-        # mixed in, so chained loudnorm passes can't compound into
-        # inter-sentence pumping. ``alimiter=0.95`` keeps inter-sample
-        # peaks safe through the mix.
-        voice_gain_db = float(getattr(self, "_voice_gain_db", 0.0) or 0.0)
-        sfx_gain_db = float(getattr(self, "_sfx_gain_db", 0.0) or 0.0)  # noqa: F841 (reserved)
-
-        # Task 5: pad music to at least voice duration so it never dries
-        # up before the voiceover ends. Without this, ``amix`` (with
-        # ``duration=longest``) would output silence under the tail of
-        # any chapter where the resolved music track was shorter than
-        # the voice. ``apad`` pads with silence at the end — preferable
-        # to ``aloop``, which would seam-loop the music and audibly
-        # restart at the worst possible moment.
-        try:
-            voice_dur_seconds = await self.ffmpeg.get_duration(audio_path)
-        except Exception:
-            voice_dur_seconds = duration  # fall back to caller-provided
-        voice_pad_ms = max(0, int(voice_dur_seconds * 1000))
-
-        # Task 6: ducking parameters come from the resolved preset.
-        # ``static`` mode skips sidechain entirely — music sits at a
-        # fixed volume under voice, no pumping. Sidechain modes apply
-        # threshold/ratio/attack/release from the preset dict.
-        preset = getattr(self, "_ducking_preset", None) or DUCKING_PRESETS[DEFAULT_DUCKING_PRESET]
-        graph = _build_music_mix_graph(
-            preset=preset,
-            voice_gain_db=voice_gain_db,
-            music_volume_db=volume_db,
-            music_pad_ms=voice_pad_ms,
-        )
-
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(audio_path),
-            "-i",
-            str(music_path),
-            "-filter_complex",
-            graph,
-            "-map",
-            "[out]",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            "-c:a",
-            "pcm_s16le",
-            str(output_path),
-        ]
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            stderr_text = stderr.decode("utf-8", errors="replace")
-            raise RuntimeError(f"Failed to mix background music: {stderr_text[:300]}")
-
-        log.info(
-            "audiobook.music.mix_done",
-            output=str(output_path),
-            duration_seconds=duration,
-            mood=mood,
-        )
-        return output_path
 
     async def render_music_preview(
         self,
@@ -3727,189 +2550,22 @@ class AudiobookService:
         audiobook_id: UUID,
         crossfade_duration: float = 2.0,
     ) -> Path:
-        """Generate per-chapter music with crossfades, then mix under voiceover.
-
-        For each chapter, generates music using the chapter's mood (or global
-        fallback), trims to chapter duration, crossfades between chapters,
-        and mixes the resulting continuous music track under the voiceover.
-        """
-        await self._cancel()  # Task 10: cancel before per-chapter music gen.
-        music_svc = self._resolve_music_service()
-        if music_svc is None:
-            return audio_path
-
-        music_dir = audio_path.parent / "music"
-        music_dir.mkdir(parents=True, exist_ok=True)
-
-        # Generate music for each chapter
-        chapter_music_paths: list[Path | None] = []
-        for i, timing in enumerate(chapter_timings):
-            await self._cancel()  # Task 10: poll between per-chapter music calls.
-            mood = global_mood
-            if i < len(chapters):
-                mood = chapters[i].get("music_mood") or global_mood
-
-            target_dur = timing.duration_seconds + crossfade_duration
-            music_path = await music_svc.get_music_for_episode(
-                mood=mood,
-                target_duration=target_dur,
-                episode_id=uuid4(),
-            )
-            if music_path:
-                # Trim to exact chapter duration + crossfade
-                trimmed = music_dir / f"ch{i:03d}_music.wav"
-                trim_cmd = [
-                    "ffmpeg",
-                    "-y",
-                    "-i",
-                    str(music_path),
-                    "-t",
-                    str(target_dur),
-                    "-af",
-                    f"afade=t=out:st={max(0, target_dur - crossfade_duration):.2f}:d={crossfade_duration:.2f}",
-                    "-c:a",
-                    "pcm_s16le",
-                    str(trimmed),
-                ]
-                proc = await asyncio.create_subprocess_exec(
-                    *trim_cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                await proc.communicate()
-                chapter_music_paths.append(trimmed if trimmed.exists() else None)
-
-                # Store music path in chapter metadata
-                if i < len(chapters):
-                    chapters[i]["music_path"] = (
-                        f"audiobooks/{audiobook_id}/music/ch{i:03d}_music.wav"
-                    )
-            else:
-                chapter_music_paths.append(None)
-
-            log.debug(
-                "audiobook.chapter_music.generated",
-                chapter_index=i,
-                mood=mood,
-                duration=target_dur,
-                available=music_path is not None,
-            )
-
-        # Filter to chapters that have music
-        valid_music = [(i, p) for i, p in enumerate(chapter_music_paths) if p]
-        if not valid_music:
-            log.info("audiobook.chapter_music.no_music_available")
-            return audio_path
-
-        # Join chapter-music tracks with a real ``acrossfade`` chain
-        # between successive tracks. Previously the code concat-demuxed
-        # pre-faded tracks — each clip had its own fade-out, but the
-        # tracks just touched end-to-end with no overlap, so the mix
-        # dipped to silence briefly at every boundary instead of the
-        # advertised crossfade.
-        if len(valid_music) == 1:
-            combined_music = valid_music[0][1]
-        else:
-            combined_music = music_dir / "combined_music.wav"
-            inputs: list[str] = []
-            for _, mp in valid_music:
-                inputs.extend(["-i", str(mp)])
-
-            # Filter graph: chain acrossfade between each pair.
-            # For N inputs we need N-1 acrossfade steps.
-            xfd = max(0.05, float(crossfade_duration))
-            filter_parts: list[str] = []
-            prev = "[0:a]"
-            for idx in range(1, len(valid_music)):
-                out_label = f"[x{idx}]" if idx < len(valid_music) - 1 else "[out]"
-                filter_parts.append(
-                    f"{prev}[{idx}:a]acrossfade=d={xfd:.3f}:c1=tri:c2=tri{out_label}"
-                )
-                prev = out_label
-            filter_graph = ";".join(filter_parts)
-
-            proc = await asyncio.create_subprocess_exec(
-                "ffmpeg",
-                "-y",
-                *inputs,
-                "-filter_complex",
-                filter_graph,
-                "-map",
-                "[out]",
-                "-c:a",
-                "pcm_s16le",
-                str(combined_music),
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-            _, stderr_b = await proc.communicate()
-            if not combined_music.exists() or proc.returncode != 0:
-                log.warning(
-                    "audiobook.chapter_music.crossfade_failed",
-                    error=stderr_b.decode("utf-8", errors="replace")[:200],
-                )
-                return audio_path
-
-        # Mix combined music under voiceover. See ``_add_music`` for
-        # the rationale behind the filter chain — same gain-staging
-        # approach (per-track loudnorm + sidechain ducker + amix
-        # normalize=0 + master loudnorm) so the chapter-music path
-        # produces the same broadcast-level output as the global
-        # music path. Voice gain pulled from instance attribute when
-        # set by an explicit remix call.
-        voice_gain_db = float(getattr(self, "_voice_gain_db", 0.0) or 0.0)
-        # Task 3: same gain-staging change as ``_add_music`` — no per-track
-        # or master loudnorm here. Single audible pass runs in
-        # ``_apply_master_loudnorm`` after this mix completes.
-        # Task 5: pad the chapter-music track to voice duration so the
-        # acrossfaded music chain doesn't dry up before the voiceover
-        # ends. See ``_add_music`` for the rationale.
-        try:
-            voice_dur_seconds = await self.ffmpeg.get_duration(audio_path)
-        except Exception:
-            voice_dur_seconds = sum(t.duration_seconds for t in chapter_timings)
-        voice_pad_ms = max(0, int(voice_dur_seconds * 1000))
-
-        preset = getattr(self, "_ducking_preset", None) or DUCKING_PRESETS[DEFAULT_DUCKING_PRESET]
-        graph = _build_music_mix_graph(
-            preset=preset,
-            voice_gain_db=voice_gain_db,
-            music_volume_db=volume_db,
-            music_pad_ms=voice_pad_ms,
+        """Delegation shim — see ``mix_executor.add_chapter_music``."""
+        return await _mix_add_chapter_music(
+            audio_path,
+            output_path,
+            chapter_timings=chapter_timings,
+            chapters=chapters,
+            global_mood=global_mood,
+            volume_db=volume_db,
+            audiobook_id=audiobook_id,
+            crossfade_duration=crossfade_duration,
+            resolve_music_service_fn=self._resolve_music_service,
+            ffmpeg_get_duration=self.ffmpeg.get_duration,
+            voice_gain_db=float(getattr(self, "_voice_gain_db", 0.0) or 0.0),
+            ducking_preset=getattr(self, "_ducking_preset", None),
+            cancel_fn=self._cancel,
         )
-
-        cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(audio_path),
-            "-i",
-            str(combined_music),
-            "-filter_complex",
-            graph,
-            "-map",
-            "[out]",
-            "-ar",
-            "44100",
-            "-ac",
-            "2",
-            "-c:a",
-            "pcm_s16le",
-            str(output_path),
-        ]
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, stderr = await proc.communicate()
-        if proc.returncode != 0:
-            stderr_text = stderr.decode("utf-8", errors="replace")
-            raise RuntimeError(f"Failed to mix chapter music: {stderr_text[:300]}")
-
-        log.info("audiobook.chapter_music.mix_done", output=str(output_path))
-        return output_path
 
     # ══════════════════════════════════════════════════════════════════════
     # Optional leading/trailing silence trim (Task 2)
@@ -4057,149 +2713,21 @@ class AudiobookService:
     # single-pass loudnorm — within ~±1 LUFS instead of ±0.5, but still
     # produces a usable mastered file rather than failing the audiobook.
 
-    # Loudnorm prints a summary banner before the JSON block when
-    # ``print_format=json`` is set. The block always carries an
-    # ``input_i`` key, so we anchor the search there.
-    _LOUDNORM_JSON_RE = re.compile(
-        r"(\{[^{}]*\"input_i\"[^{}]*\})",
-        re.DOTALL,
-    )
-
     @classmethod
     def _parse_loudnorm_json(cls, stderr_text: str) -> dict[str, str] | None:
-        """Extract loudnorm pass-1 measurements from ffmpeg stderr.
-
-        Returns ``None`` if the JSON block can't be located or is
-        missing any required field. Required fields are the five values
-        pass 2 needs: ``input_i``, ``input_tp``, ``input_lra``,
-        ``input_thresh``, ``target_offset``.
-        """
-        match = cls._LOUDNORM_JSON_RE.search(stderr_text)
-        if not match:
-            return None
-        try:
-            data = json.loads(match.group(1))
-        except (json.JSONDecodeError, ValueError):
-            return None
-        required = {
-            "input_i",
-            "input_tp",
-            "input_lra",
-            "input_thresh",
-            "target_offset",
-        }
-        if not required.issubset(data.keys()):
-            return None
-        return {k: str(data[k]) for k in required}
+        """Delegation shim — see ``mix_executor.parse_loudnorm_json``."""
+        return _mix_parse_loudnorm_json(stderr_text)
 
     async def _apply_master_loudnorm(self, wav_path: Path) -> None:
-        """Master loudnorm pass on *wav_path*. Replaces in place.
-
-        Two-pass when possible (±0.5 LUFS); single-pass fallback when
-        pass 1 measurements can't be parsed (~±1 LUFS).
-        """
-        await self._cancel()  # Task 10: cancel before each major ffmpeg pass.
-        # Task 9: targets come from ``self._settings`` so platform
-        # presets (narrative / podcast / streaming / acx) reach the
-        # actual ffmpeg invocation. Pre-Task-9 callers without a
-        # service-level settings object get the narrative defaults.
+        """Delegation shim — see ``mix_executor.apply_master_loudnorm``."""
         settings = getattr(self, "_settings", None) or AudiobookSettings()
-        target_i = settings.loudness_target_lufs
-        target_tp = settings.true_peak_dbfs
-        target_lra = settings.loudness_lra
-        export_sample_rate = settings.sample_rate
-
-        # Pass 1: measure only. ``-f null -`` discards the audio output;
-        # we only care about stderr.
-        measure_cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(wav_path),
-            "-af",
-            (f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:print_format=json"),
-            "-f",
-            "null",
-            "-",
-        ]
-        proc = await asyncio.create_subprocess_exec(
-            *measure_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, err = await proc.communicate()
-        measurements: dict[str, str] | None = None
-        if proc.returncode == 0:
-            measurements = self._parse_loudnorm_json(err.decode("utf-8", errors="replace"))
-
-        out_tmp = wav_path.with_suffix(".master.wav")
-        if measurements is not None:
-            # Pass 2: apply with measured values + ``linear=true`` for
-            # single-pass corrected gain.
-            af = (
-                f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}"
-                f":measured_I={measurements['input_i']}"
-                f":measured_TP={measurements['input_tp']}"
-                f":measured_LRA={measurements['input_lra']}"
-                f":measured_thresh={measurements['input_thresh']}"
-                f":offset={measurements['target_offset']}"
-                ":linear=true"
-                ":print_format=summary"
-            )
-        else:
-            # Fallback: single-pass loudnorm. Less accurate, still safe.
-            log.warning(
-                "audiobook.master_loudnorm.measure_failed_falling_back_to_single_pass",
-                rc=proc.returncode,
-            )
-            af = f"loudnorm=I={target_i}:TP={target_tp}:LRA={target_lra}:print_format=summary"
-
-        apply_cmd = [
-            "ffmpeg",
-            "-y",
-            "-i",
-            str(wav_path),
-            "-af",
-            af,
-            "-ar",
-            str(export_sample_rate),
-            "-ac",
-            "2",
-            "-c:a",
-            "pcm_s16le",
-            str(out_tmp),
-        ]
-        proc2 = await asyncio.create_subprocess_exec(
-            *apply_cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        _, err2 = await proc2.communicate()
-        if proc2.returncode != 0 or not out_tmp.exists() or out_tmp.stat().st_size < 1024:
-            log.warning(
-                "audiobook.master_loudnorm.apply_failed",
-                rc=proc2.returncode,
-                stderr=err2.decode("utf-8", errors="replace")[:200],
-            )
-            out_tmp.unlink(missing_ok=True)
-            return
-
-        try:
-            out_tmp.replace(wav_path)
-        except OSError as exc:
-            log.warning(
-                "audiobook.master_loudnorm.replace_failed",
-                error=str(exc)[:120],
-            )
-            out_tmp.unlink(missing_ok=True)
-            return
-
-        log.info(
-            "audiobook.master_loudnorm.applied",
-            target_i=target_i,
-            target_tp=target_tp,
-            target_lra=target_lra,
-            two_pass=measurements is not None,
+        await _mix_apply_master_loudnorm(
+            wav_path,
+            target_i=settings.loudness_target_lufs,
+            target_tp=settings.true_peak_dbfs,
+            target_lra=settings.loudness_lra,
+            export_sample_rate=settings.sample_rate,
+            cancel_fn=self._cancel,
         )
 
     # ══════════════════════════════════════════════════════════════════════
@@ -4272,64 +2800,19 @@ class AudiobookService:
         background_music_path: Path | None = None,
         audiobook_id: UUID | None = None,
     ) -> None:
-        """Create a video with Ken Burns transitions between chapter images.
-
-        Reuses ``FFmpegService.assemble_video()`` which already handles
-        zoompan, xfade, audio mastering, and subtitle burn-in.
-        """
-        from drevalis.services.ffmpeg import (
-            AssemblyConfig,
-            AudioMixConfig,
-            SceneInput,
-        )
-
-        scenes = [
-            SceneInput(
-                image_path=img_path,
-                duration_seconds=timing.duration_seconds,
-            )
-            for img_path, timing in zip(chapter_image_paths, chapter_timings, strict=False)
-        ]
-
-        config = AssemblyConfig(
+        """Delegation shim — see ``video_render.create_chapter_aware_video``."""
+        await _vr_create_chapter_aware_video(
+            audio_path,
+            output_path,
+            chapter_timings=chapter_timings,
+            chapter_image_paths=chapter_image_paths,
+            captions_path=captions_path,
             width=width,
             height=height,
-            fps=25,
-            ken_burns_enabled=True,
-            transition_duration=1.0,
-        )
-
-        audio_config = AudioMixConfig(
-            voice_normalize=False,  # already mixed
-            voice_compressor=False,
-            voice_eq=False,
-        )
-
-        async def _on_encode_progress(pct: float) -> None:
-            if audiobook_id:
-                encode_pct = 90 + int(pct * 0.09)  # map 0-100% to 90-99%
-                await self._broadcast_progress(
-                    audiobook_id,
-                    "assembly",
-                    encode_pct,
-                    f"Encoding video... {int(pct)}%",
-                )
-
-        await self.ffmpeg.assemble_video(
-            scenes=scenes,
-            voiceover_path=audio_path,
-            output_path=output_path,
-            captions_path=captions_path,
             background_music_path=background_music_path,
-            audio_config=audio_config,
-            config=config,
-            on_progress=_on_encode_progress,
-        )
-
-        log.info(
-            "audiobook.chapter_video.done",
-            output=str(output_path),
-            chapters=len(scenes),
+            audiobook_id=audiobook_id,
+            ffmpeg_assemble_video=self.ffmpeg.assemble_video,
+            broadcast_progress_fn=self._broadcast_progress,
         )
 
     async def _create_audiobook_video(
@@ -4344,116 +2827,18 @@ class AudiobookService:
         audiobook_id: UUID | None = None,
         height: int = 1080,
     ) -> None:
-        """Create a single-image audiobook video (fallback when no chapter images).
-
-        Features:
-        - Cover image with slow Ken Burns zoom (or a dark background if no image).
-        - Optional waveform overlay at the bottom of the frame.
-        - Optional burned-in captions from an ASS subtitle file.
-        """
-        await self._cancel()  # Task 10: cancel before x264/x265 encode.
-        PIPE = asyncio.subprocess.PIPE
-        filter_parts: list[str] = []
-
-        has_cover = bool(cover_image_path and Path(cover_image_path).exists())
-        audio_input_idx = 1 if has_cover else 0
-
-        if has_cover:
-            frames = max(1, int(duration * 25))
-            filter_parts.append(
-                f"[0:v]scale={width}:{height}:force_original_aspect_ratio=increase,"
-                f"crop={width}:{height},"
-                f"zoompan=z='1.0+0.0003*on':d={frames}:s={width}x{height}:fps=25,"
-                "format=yuv420p[bg]"
-            )
-        else:
-            filter_parts.append(
-                f"color=c=0x0f0f1a:s={width}x{height}:d={duration}:r=25,format=yuv420p[bg]"
-            )
-
-        if with_waveform:
-            waveform_h = max(80, round(height * 0.14 / 2) * 2)
-            waveform_margin = round(waveform_h * 0.2)
-            filter_parts.append(
-                f"[{audio_input_idx}:a]showwaves=s={width}x{waveform_h}:mode=cline"
-                f":colors=white@0.3:rate=25[waves]"
-            )
-            filter_parts.append(f"[bg][waves]overlay=0:H-{waveform_h + waveform_margin}[v]")
-            video_label = "v"
-        else:
-            video_label = "bg"
-
-        if captions_path and captions_path.exists():
-            escaped = str(captions_path).replace("\\", "/").replace(":", "\\:")
-            filter_parts.append(f"[{video_label}]subtitles='{escaped}'[vout]")
-            output_label = "vout"
-        else:
-            output_label = video_label
-
-        input_args: list[str] = ["-y"]
-        if has_cover:
-            input_args.extend(["-loop", "1", "-i", str(cover_image_path)])
-        input_args.extend(["-i", str(audio_path)])
-
-        # Task 9: video codec / CRF / preset from settings.
-        settings = getattr(self, "_settings", None) or AudiobookSettings()
-        cmd = [
-            "ffmpeg",
-            *input_args,
-            "-filter_complex",
-            ";".join(filter_parts),
-            "-map",
-            f"[{output_label}]",
-            "-map",
-            f"{audio_input_idx}:a",
-            "-c:v",
-            settings.video_codec,
-            "-crf",
-            str(settings.video_crf),
-            "-preset",
-            settings.video_preset,
-            "-pix_fmt",
-            "yuv420p",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-t",
-            str(duration),
-            "-movflags",
-            "+faststart",
-            str(output_path),
-        ]
-
-        proc = await asyncio.create_subprocess_exec(*cmd, stdout=PIPE, stderr=PIPE)
-
-        # Stream stderr for progress tracking
-        stderr_lines: list[str] = []
-        last_pct = -1
-        assert proc.stderr is not None  # PIPE'd above; mypy can't narrow
-        while True:
-            line = await proc.stderr.readline()
-            if not line:
-                break
-            text = line.decode("utf-8", errors="replace").strip()
-            stderr_lines.append(text)
-            if audiobook_id and duration > 10:
-                import re as _re
-
-                m = _re.search(r"time=(\d+):(\d+):(\d+\.\d+)", text)
-                if m:
-                    t = int(m.group(1)) * 3600 + int(m.group(2)) * 60 + float(m.group(3))
-                    pct = min(99, int(t / duration * 100))
-                    if pct > last_pct + 2:
-                        last_pct = pct
-                        await self._broadcast_progress(
-                            audiobook_id,
-                            "assembly",
-                            90 + int(pct * 0.09),
-                            f"Encoding video... {pct}%",
-                        )
-
-        await proc.wait()
-        if proc.returncode != 0:
-            stderr_text = "\n".join(stderr_lines)
-            raise RuntimeError(f"Failed to create audiobook video: {stderr_text[-300:]}")
+        """Delegation shim — see ``video_render.create_audiobook_video``."""
+        await _vr_create_audiobook_video(
+            audio_path,
+            output_path,
+            cover_image_path=cover_image_path,
+            duration=duration,
+            captions_path=captions_path,
+            with_waveform=with_waveform,
+            width=width,
+            height=height,
+            audiobook_id=audiobook_id,
+            settings=getattr(self, "_settings", None),
+            cancel_fn=self._cancel,
+            broadcast_progress_fn=self._broadcast_progress,
+        )
