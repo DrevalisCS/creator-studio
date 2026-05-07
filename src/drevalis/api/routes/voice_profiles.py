@@ -15,7 +15,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
 from drevalis.core.exceptions import NotFoundError, ValidationError
-from drevalis.core.license.features import fastapi_dep_require_feature
 from drevalis.schemas.voice_profile import (
     CloneVoiceRequest,
     CloneVoiceResponse,
@@ -237,7 +236,6 @@ async def test_voice_profile(
     response_model=CloneVoiceResponse,
     status_code=status.HTTP_201_CREATED,
     summary="Create a VoiceProfile from an uploaded voice sample",
-    dependencies=[Depends(fastapi_dep_require_feature("elevenlabs"))],
 )
 async def clone_voice(
     body: CloneVoiceRequest,

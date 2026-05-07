@@ -21,7 +21,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from drevalis.core.concurrency import effective_max_concurrent_generations
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_redis, get_settings
-from drevalis.core.license.features import fastapi_dep_require_feature
 from drevalis.core.redis import get_arq_pool
 from drevalis.models.episode import Episode
 from drevalis.schemas.episode import (
@@ -2278,7 +2277,6 @@ class PublishAllResponse(BaseModel):
     response_model=PublishAllResponse,
     summary="Publish the finished episode to YouTube + connected social platforms in one shot",
     tags=["publishing"],
-    dependencies=[Depends(fastapi_dep_require_feature("cross_platform_bulk"))],
 )
 async def publish_all(
     episode_id: UUID,
@@ -2706,7 +2704,6 @@ class ContinuityResponse(BaseModel):
     response_model=ContinuityResponse,
     tags=["scenes"],
     summary="Flag jarring transitions in the script before generation",
-    dependencies=[Depends(fastapi_dep_require_feature("continuity_check"))],
 )
 async def check_script_continuity(
     episode_id: UUID,
