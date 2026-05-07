@@ -1195,6 +1195,24 @@ export const schedule = {
       dry_run?: boolean;
     },
   ) => post<any>(`/api/v1/schedule/series/${seriesId}/auto-schedule`, body),
+
+  // Next free slot for a single platform — UI uses this to populate
+  // "next available" without making the user pick a date that may
+  // clash with an existing pending post.
+  nextSlot: (params: {
+    platform: 'youtube' | 'tiktok' | 'instagram' | 'facebook' | 'x';
+    channelId?: string;
+    excludeWindowMinutes?: number;
+  }) => {
+    const qs = new URLSearchParams({ platform: params.platform });
+    if (params.channelId) qs.set('channel_id', params.channelId);
+    if (params.excludeWindowMinutes !== undefined) {
+      qs.set('exclude_window_minutes', String(params.excludeWindowMinutes));
+    }
+    return get<{ platform: string; scheduled_at: string }>(
+      `/api/v1/schedule/next-slot?${qs.toString()}`,
+    );
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1427,12 +1445,27 @@ export interface UserUpdate {
   password?: string;
 }
 
+// A.2 — login event row returned by /auth/login-history
+export interface LoginEvent {
+  id: string;
+  timestamp: string;
+  ip: string;
+  user_agent: string | null;
+  success: boolean;
+  failure_reason: string | null;
+}
+
 export const auth = {
   login: (email: string, password: string) =>
     post<LoginResponse>('/api/v1/auth/login', { email, password }),
   logout: () => post<{ message: string }>('/api/v1/auth/logout'),
+  // A.3 — invalidate all sessions for the current user on all devices.
+  logoutEverywhere: () => post<{ message: string }>('/api/v1/auth/logout-everywhere'),
   me: () => get<AuthUser | null>('/api/v1/auth/me'),
   mode: () => get<{ team_mode: boolean; demo_mode?: boolean }>('/api/v1/auth/mode'),
+  // A.2 — recent login events for the current user.
+  loginHistory: (limit = 20) =>
+    get<LoginEvent[]>(`/api/v1/auth/login-history?limit=${limit}`),
 };
 
 export const users = {
@@ -1441,6 +1474,9 @@ export const users = {
   update: (id: string, data: UserUpdate) =>
     put<AuthUser>(`/api/v1/users/${id}`, data),
   delete: (id: string) => del(`/api/v1/users/${id}`),
+  // A.2 — owner can fetch login history for any user.
+  loginHistory: (userId: string, limit = 20) =>
+    get<LoginEvent[]>(`/api/v1/users/${userId}/login-history?limit=${limit}`),
 };
 
 // ---------------------------------------------------------------------------

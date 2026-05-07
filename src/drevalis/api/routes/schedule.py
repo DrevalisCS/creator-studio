@@ -28,6 +28,7 @@ from drevalis.schemas.schedule import (
     ScheduleUpdate,
 )
 from drevalis.services.schedule import ScheduleService, to_response
+from drevalis.services.schedule_slot import find_next_free_slot
 
 logger = structlog.get_logger(__name__)
 
@@ -195,6 +196,60 @@ async def get_diagnostics(
         overdue_scheduled_posts=overdue,
         summary=summary,
     )
+
+
+@router.get(
+    "/next-slot",
+    status_code=status.HTTP_200_OK,
+    summary="Find the next free posting slot for a platform",
+)
+async def next_slot(
+    platform: str = Query(
+        ...,
+        pattern="^(youtube|tiktok|instagram|facebook|x)$",
+        description="Target social platform.",
+    ),
+    channel_id: UUID | None = Query(
+        default=None,
+        description=(
+            "YouTube channel id — required-ish for ``platform=youtube`` to "
+            "honour that channel's ``upload_days`` / ``upload_time``. "
+            "Other platforms ignore it."
+        ),
+    ),
+    exclude_window_minutes: int = Query(
+        default=60,
+        ge=0,
+        le=1440,
+        description=(
+            "Slots within this many minutes of an existing pending post on "
+            "the same platform are skipped. 0 disables the de-conflict step."
+        ),
+    ),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Returns the next allowed, non-conflicting posting slot.
+
+    Uses ``youtube_channels.upload_days`` + ``upload_time`` for YouTube
+    and a sensible weekday-09:00-UTC default elsewhere. The frontend
+    Calendar dialog calls this to populate "Next available slot"
+    instead of asking the user to pick a date and hope it doesn't
+    clash with an existing scheduled post.
+    """
+    from datetime import UTC as _UTC
+    from datetime import datetime as _datetime
+
+    try:
+        slot = await find_next_free_slot(
+            platform=platform,
+            channel_id=channel_id,
+            after_utc=_datetime.now(tz=_UTC),
+            exclude_window_minutes=exclude_window_minutes,
+            db=db,
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    return {"platform": platform, "scheduled_at": slot.isoformat()}
 
 
 @router.post(

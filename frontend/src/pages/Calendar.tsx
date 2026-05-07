@@ -215,6 +215,7 @@ function ScheduleDialog({
   const [privacy, setPrivacy] = useState('public');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [findingSlot, setFindingSlot] = useState(false);
 
   useEffect(() => {
     if (open) {
@@ -293,12 +294,43 @@ function ScheduleDialog({
           onChange={(e) => setPlatform(e.target.value)}
           options={PLATFORM_OPTIONS}
         />
-        <Input
-          label="Scheduled date & time"
-          type="datetime-local"
-          value={scheduledAt}
-          onChange={(e) => setScheduledAt(e.target.value)}
-        />
+        <div>
+          <Input
+            label="Scheduled date & time"
+            type="datetime-local"
+            value={scheduledAt}
+            onChange={(e) => setScheduledAt(e.target.value)}
+          />
+          <button
+            type="button"
+            className="mt-1.5 text-xs text-accent hover:underline disabled:opacity-50 disabled:no-underline"
+            disabled={findingSlot}
+            onClick={async () => {
+              setFindingSlot(true);
+              try {
+                const platformParam = platform as
+                  | 'youtube'
+                  | 'tiktok'
+                  | 'instagram'
+                  | 'facebook'
+                  | 'x';
+                const res = await scheduleApi.nextSlot({ platform: platformParam });
+                // datetime-local input wants "YYYY-MM-DDTHH:MM" in the
+                // user's local time. Convert from the UTC ISO the API
+                // returns.
+                const local = new Date(res.scheduled_at);
+                const tz = local.getTimezoneOffset() * 60_000;
+                setScheduledAt(new Date(local.getTime() - tz).toISOString().slice(0, 16));
+              } catch (err) {
+                toast.error('No free slot found', { description: String(err) });
+              } finally {
+                setFindingSlot(false);
+              }
+            }}
+          >
+            {findingSlot ? 'Finding…' : 'Find next free slot for this platform'}
+          </button>
+        </div>
         <Input
           label="Title"
           value={title}
