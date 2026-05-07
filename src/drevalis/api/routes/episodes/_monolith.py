@@ -21,7 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from drevalis.core.concurrency import effective_max_concurrent_generations
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_redis, get_settings
-from drevalis.core.license.usage import log_feature_usage
+from drevalis.core.license.deprecation import apply_deprecation_headers
 from drevalis.core.redis import get_arq_pool
 from drevalis.models.episode import Episode
 from drevalis.schemas.episode import (
@@ -2282,6 +2282,7 @@ class PublishAllResponse(BaseModel):
 async def publish_all(
     episode_id: UUID,
     body: PublishAllRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     svc: EpisodeService = Depends(_episode_service),
 ) -> PublishAllResponse:
@@ -2299,7 +2300,7 @@ async def publish_all(
     tier gate, etc.) is returned in ``skipped`` with a human-readable
     reason rather than aborting the whole request.
     """
-    log_feature_usage("cross_platform_bulk")
+    apply_deprecation_headers(response, "cross_platform_bulk")
     from drevalis.models.social_platform import SocialPlatform, SocialUpload
     from drevalis.models.youtube_channel import YouTubeUpload
 
@@ -2709,6 +2710,7 @@ class ContinuityResponse(BaseModel):
 )
 async def check_script_continuity(
     episode_id: UUID,
+    response: Response,
     db: AsyncSession = Depends(get_db),
     settings: Settings = Depends(get_settings),
     svc: EpisodeService = Depends(_episode_service),
@@ -2718,7 +2720,7 @@ async def check_script_continuity(
     No-op (returns issues=[]) when no LLM config exists. Non-destructive —
     the caller decides whether to act on the warnings.
     """
-    log_feature_usage("continuity_check")
+    apply_deprecation_headers(response, "continuity_check")
     from drevalis.services.continuity import check_continuity
     from drevalis.services.llm import LLMService
     from drevalis.services.llm_config import LLMConfigService

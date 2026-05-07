@@ -9,13 +9,13 @@ from __future__ import annotations
 from uuid import UUID
 
 import structlog
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from drevalis.core.config import Settings
 from drevalis.core.deps import get_db, get_settings
 from drevalis.core.exceptions import NotFoundError, ValidationError
-from drevalis.core.license.usage import log_feature_usage
+from drevalis.core.license.deprecation import apply_deprecation_headers
 from drevalis.schemas.voice_profile import (
     CloneVoiceRequest,
     CloneVoiceResponse,
@@ -240,6 +240,7 @@ async def test_voice_profile(
 )
 async def clone_voice(
     body: CloneVoiceRequest,
+    response: Response,
     svc: VoiceProfileService = Depends(_service),
 ) -> CloneVoiceResponse:
     """Clone a voice from an existing asset.
@@ -255,7 +256,7 @@ async def clone_voice(
     ``pending_training`` since those engines need offline model
     fine-tuning which isn't automated yet.
     """
-    log_feature_usage("elevenlabs")
+    apply_deprecation_headers(response, "elevenlabs")
     try:
         return await svc.clone(body)
     except NotFoundError as exc:
