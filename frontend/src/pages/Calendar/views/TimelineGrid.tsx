@@ -7,6 +7,14 @@
 //   Columns are laid out with flex; each column is also position:relative
 //   so post cards can be absolutely positioned within them.
 //   A fixed left gutter shows hour labels.
+//
+// Overlap handling (Google-Calendar style):
+//   Posts at the same time used to render literally on top of each other.
+//   The ``layoutPosts`` helper now groups overlapping posts and assigns
+//   each one a ``lane`` + ``groupTotal``. Two posts overlap when their
+//   visual slots (each treated as a 30-min block) intersect. Each lane
+//   gets ``100 / groupTotal`` percent of the column width — up to N
+//   concurrent posts render side-by-side.
 // ---------------------------------------------------------------------------
 
 import { useEffect, useRef } from 'react';
@@ -18,12 +26,28 @@ export const HOUR_HEIGHT_PX = 60;
 const TOTAL_HEIGHT_PX = HOUR_HEIGHT_PX * 24;
 const GUTTER_WIDTH = 56; // px
 
+// Each scheduled post is treated as a 30-minute visual slot for overlap
+// detection. Posts that fall within 30 min of each other lane out
+// side-by-side; posts farther apart stack vertically without lane split.
+const POST_SLOT_MINUTES = 30;
+const POST_HEIGHT_PX = (POST_SLOT_MINUTES / 60) * HOUR_HEIGHT_PX;
+
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 
 interface TimelineGridProps {
   columns: Date[];
   posts: ScheduledPost[];
   onCancel: (id: string) => void;
+}
+
+interface LaidOutPost {
+  post: ScheduledPost;
+  topPx: number;
+  heightPx: number;
+  lane: number;
+  groupTotal: number;
+  startMin: number;
+  endMin: number;
 }
 
 function minuteToTopPx(minuteOfDay: number): number {
@@ -36,6 +60,63 @@ function toMinuteOfDay(d: Date): number {
 
 function postsForColumn(posts: ScheduledPost[], col: Date): ScheduledPost[] {
   return posts.filter((p) => isSameDay(new Date(p.scheduled_at), col));
+}
+
+/**
+ * Assign each post a lane within its overlap group so concurrent
+ * events render side-by-side instead of stacked on top of each other.
+ *
+ * Algorithm: walk posts in start-time order, accumulating an active
+ * "group" of overlapping events. A post overlaps the group when its
+ * start time falls before any active member's end time. The lane it
+ * lands in is the lowest non-occupied integer.
+ */
+function layoutPosts(posts: ScheduledPost[]): LaidOutPost[] {
+  const sorted = [...posts].sort(
+    (a, b) =>
+      new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime(),
+  );
+
+  const result: LaidOutPost[] = [];
+  let active: LaidOutPost[] = [];
+
+  const finalize = () => {
+    if (active.length === 0) return;
+    const total = active.reduce((m, p) => Math.max(m, p.lane + 1), 1);
+    for (const p of active) p.groupTotal = total;
+    active = [];
+  };
+
+  for (const post of sorted) {
+    const startMin = toMinuteOfDay(new Date(post.scheduled_at));
+    const endMin = startMin + POST_SLOT_MINUTES;
+
+    // Drop any active members that ended before this post starts —
+    // they're no longer part of the running overlap group.
+    active = active.filter((p) => p.endMin > startMin);
+    if (active.length === 0) {
+      finalize();
+    }
+
+    // Pick the lowest-index lane not currently occupied.
+    const occupied = new Set(active.map((p) => p.lane));
+    let lane = 0;
+    while (occupied.has(lane)) lane += 1;
+
+    const laidOut: LaidOutPost = {
+      post,
+      topPx: minuteToTopPx(startMin),
+      heightPx: POST_HEIGHT_PX,
+      lane,
+      groupTotal: 1,
+      startMin,
+      endMin,
+    };
+    active.push(laidOut);
+    result.push(laidOut);
+  }
+  finalize();
+  return result;
 }
 
 export function TimelineGrid({ columns, posts, onCancel }: TimelineGridProps) {
@@ -148,6 +229,7 @@ export function TimelineGrid({ columns, posts, onCancel }: TimelineGridProps) {
           <div className="flex flex-1 min-w-0">
             {columns.map((col) => {
               const colPosts = postsForColumn(posts, col);
+              const laidOut = layoutPosts(colPosts);
               return (
                 <div
                   key={col.toISOString()}
@@ -159,16 +241,22 @@ export function TimelineGrid({ columns, posts, onCancel }: TimelineGridProps) {
                     day: 'numeric',
                   })}
                 >
-                  {colPosts.map((post) => {
-                    const topPx = minuteToTopPx(toMinuteOfDay(new Date(post.scheduled_at)));
+                  {laidOut.map((entry) => {
+                    const widthPct = 100 / entry.groupTotal;
+                    const leftPct = entry.lane * widthPct;
                     return (
                       <div
-                        key={post.id}
-                        className="absolute left-1 right-1 z-20"
-                        style={{ top: `${topPx}px` }}
+                        key={entry.post.id}
+                        className="absolute z-20"
+                        style={{
+                          top: `${entry.topPx}px`,
+                          height: `${entry.heightPx}px`,
+                          left: `calc(${leftPct}% + 2px)`,
+                          width: `calc(${widthPct}% - 4px)`,
+                        }}
                       >
                         <PostChip
-                          post={post}
+                          post={entry.post}
                           variant="full"
                           onCancel={onCancel}
                         />

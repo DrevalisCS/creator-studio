@@ -30,6 +30,7 @@ export {
   assets,
   videoIngest,
   editor,
+  characterPacks,
   ApiError,
   formatError,
 } from './_monolith';

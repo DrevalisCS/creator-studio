@@ -48,6 +48,8 @@ import type {
   YouTubeUploadRequest,
   YouTubePlaylist,
   YouTubeVideoStats,
+  CharacterPack,
+  CharacterPackCreate,
 } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -1730,4 +1732,23 @@ export const editor = {
     put<{ words: CaptionWord[] }>(`/api/v1/episodes/${episodeId}/editor/captions`, { words }),
   waveformUrl: (episodeId: string, track: 'voice' | 'music') =>
     `/api/v1/episodes/${episodeId}/editor/waveform?track=${track}`,
+};
+
+// ---------------------------------------------------------------------------
+// Character Packs
+// ---------------------------------------------------------------------------
+
+export const characterPacks = {
+  list: () => get<CharacterPack[]>('/api/v1/character-packs'),
+
+  create: (data: CharacterPackCreate) =>
+    post<CharacterPack>('/api/v1/character-packs', data),
+
+  delete: (id: string) => del(`/api/v1/character-packs/${id}`),
+
+  apply: (packId: string, seriesId: string) =>
+    post<Record<string, unknown>>(
+      `/api/v1/character-packs/${packId}/apply`,
+      { series_id: seriesId },
+    ),
 };

@@ -715,6 +715,26 @@ export interface YouTubeVideoStats {
   published_at: string | null;
 }
 
+// ── Character Packs ──────────────────────────────────────────────────────
+
+export interface CharacterPack {
+  id: string;
+  name: string;
+  description: string | null;
+  thumbnail_asset_id: string | null;
+  character_lock: Record<string, unknown> | null;
+  style_lock: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface CharacterPackCreate {
+  name: string;
+  description?: string | null;
+  thumbnail_asset_id?: string | null;
+  character_lock?: Record<string, unknown> | null;
+  style_lock?: Record<string, unknown> | null;
+}
+
 // ── Video editing ────────────────────────────────────────────────────────
 
 export interface BorderConfig {

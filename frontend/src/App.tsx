@@ -40,6 +40,7 @@ const ShotList = lazy(() => import('@/pages/ShotList'));
 const Login = lazy(() => import('@/pages/Login'));
 const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
 const SocialPlatform = lazy(() => import('@/pages/SocialPlatform'));
+const CharacterPacks = lazy(() => import('@/pages/CharacterPacks'));
 
 // ---------------------------------------------------------------------------
 // Loading fallback
@@ -160,6 +161,7 @@ function App() {
         <Route path="/usage" element={<Usage />} />
         <Route path="/cloud-gpu" element={<CloudGPU />} />
         <Route path="/assets" element={<Assets />} />
+        <Route path="/character-packs" element={<CharacterPacks />} />
         <Route path="/youtube/callback" element={<YouTubeCallback />} />
         {/* Catch-all 404 — renders inside Layout so the chrome stays. */}
         <Route path="*" element={<NotFound />} />

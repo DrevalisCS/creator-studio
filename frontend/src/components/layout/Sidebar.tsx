@@ -25,6 +25,7 @@ import {
   Instagram,
   Facebook,
   Twitter,
+  Users,
 } from 'lucide-react';
 
 // Social-platform ↔ icon ↔ label map. Only platforms that have an
@@ -57,6 +58,7 @@ const NAV_CONTENT_STUDIO = [
   { to: '/series', icon: Layers, label: 'Series' },
   { to: '/audiobooks', icon: Mic, label: 'Text to Voice' },
   { to: '/assets', icon: FolderOpen, label: 'Assets' },
+  { to: '/character-packs', icon: Users, label: 'Character Packs' },
 ] as const;
 
 // Publish — Calendar always visible. Platform-specific pages (YouTube,
