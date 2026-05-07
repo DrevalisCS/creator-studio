@@ -5,6 +5,8 @@ import { useAuth } from '@/lib/useAuth';
 import { auth } from '@/lib/api';
 import { useCommandPalette } from '@/components/layout/Layout';
 import { getRouteTitle } from '@/routes/routeMeta';
+import { useActiveJobsProgress } from '@/lib/websocket';
+import { Tooltip } from '@/components/ui/Tooltip';
 
 // ---------------------------------------------------------------------------
 // Props
@@ -24,6 +26,7 @@ function Header({ activeJobCount, sidebarCollapsed }: HeaderProps) {
   const title = getRouteTitle(location.pathname);
   const { user } = useAuth();
   const { setOpen: setPaletteOpen } = useCommandPalette();
+  const { connected: wsConnected } = useActiveJobsProgress();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -63,6 +66,34 @@ function Header({ activeJobCount, sidebarCollapsed }: HeaderProps) {
 
       {/* Right actions */}
       <div className="flex items-center gap-3">
+        {/* WebSocket connection indicator (Phase 3.5). Tiny dot:
+            green when the live progress channel is connected, amber
+            when reconnecting / disconnected. Tooltip explains why
+            users see stale progress when offline. */}
+        <Tooltip
+          content={
+            wsConnected
+              ? 'Live progress channel connected'
+              : 'Live progress channel disconnected — reconnecting…'
+          }
+        >
+          <span
+            className="inline-flex items-center"
+            aria-label={
+              wsConnected
+                ? 'Live progress channel connected'
+                : 'Live progress channel disconnected'
+            }
+            role="status"
+          >
+            <span
+              className={[
+                'w-1.5 h-1.5 rounded-full transition-colors',
+                wsConnected ? 'bg-success' : 'bg-warning animate-pulse',
+              ].join(' ')}
+            />
+          </span>
+        </Tooltip>
         {/* ⌘K hint — opens the palette via the CommandPaletteContext
             provided by Layout. */}
         <button

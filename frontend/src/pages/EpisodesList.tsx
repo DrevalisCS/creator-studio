@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+﻿import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Plus,
@@ -22,10 +22,9 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { EpisodeCard } from '@/components/episodes/EpisodeCard';
 import { useActiveJobsProgress } from '@/lib/websocket';
 import { useToast } from '@/components/ui/Toast';
-import {
-  episodes as episodesApi,
-  series as seriesApi,
-} from '@/lib/api';
+import { episodes as episodesApi } from '@/lib/api';
+import { useEpisodes, useSeries, queryKeys } from '@/lib/queries';
+import { useQueryClient } from '@tanstack/react-query';
 import type {
   EpisodeListItem,
   SeriesListItem,
@@ -60,9 +59,10 @@ function EpisodesList() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
-  const [episodesList, setEpisodesList] = useState<EpisodeListItem[]>([]);
-  const [seriesList, setSeriesList] = useState<SeriesListItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Query-driven loading (Phase 3.3). Mutations elsewhere call
+  // ``invalidateQueries`` on the same keys so this list refreshes
+  // automatically when an episode is created / deleted / generated.
+  const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState('');
   const [seriesFilter, setSeriesFilter] = useState('');
   const [search, setSearch] = useState('');
@@ -102,27 +102,29 @@ function EpisodesList() {
   // WebSocket progress
   const { latestByEpisode } = useActiveJobsProgress();
 
-  const fetchData = useCallback(async () => {
-    try {
-      const [eps, ser] = await Promise.all([
-        episodesApi.list({
-          series_id: seriesFilter || undefined,
-          status: statusFilter || undefined,
-        }),
-        seriesApi.list(),
-      ]);
-      setEpisodesList(eps);
-      setSeriesList(ser);
-    } catch (err) {
-      toast.error('Failed to load episodes', { description: String(err) });
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, seriesFilter]);
+  const episodesQ = useEpisodes({
+    series_id: seriesFilter || undefined,
+    status: statusFilter || undefined,
+  });
+  const seriesQ = useSeries();
+  const episodesList: EpisodeListItem[] = episodesQ.data ?? [];
+  const seriesList: SeriesListItem[] = seriesQ.data ?? [];
+  const loading = episodesQ.isPending || seriesQ.isPending;
+
+  // Refetch helper used by mutations declared inline (create / generate
+  // / delete). All of them target ``episodes`` so a single invalidation
+  // covers everything; the cache key includes the active filters so
+  // changing them re-fetches naturally.
+  const refetch = useCallback(() => {
+    void qc.invalidateQueries({ queryKey: queryKeys.episodes.all });
+    void qc.invalidateQueries({ queryKey: queryKeys.series.all });
+  }, [qc]);
 
   useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
+    if (episodesQ.error) {
+      toast.error('Failed to load episodes', { description: String(episodesQ.error) });
+    }
+  }, [episodesQ.error, toast]);
 
   useEffect(() => {
     if (showCreate) setCreateDialogOpen(true);
@@ -157,7 +159,7 @@ function EpisodesList() {
   const handleCancelEpisode = async (episodeId: string) => {
     try {
       await episodesApi.cancel(episodeId);
-      void fetchData();
+      refetch();
     } catch (err) {
       toast.error('Failed to cancel episode', { description: String(err) });
     }
@@ -167,7 +169,7 @@ function EpisodesList() {
     try {
       await episodesApi.generate(episodeId);
       toast.success('Episode generation started');
-      void fetchData();
+      refetch();
     } catch (err) {
       toast.error('Failed to start generation', { description: String(err) });
     }
@@ -193,7 +195,7 @@ function EpisodesList() {
       setDeleteDialogOpen(false);
       setDeletingEpisodeId(null);
       toast.success('Episode deleted');
-      void fetchData();
+      refetch();
     } catch (err) {
       toast.error('Failed to delete episode', { description: String(err) });
     } finally {
@@ -208,7 +210,7 @@ function EpisodesList() {
     try {
       await Promise.all(drafts.map((ep) => episodesApi.generate(ep.id)));
       toast.success('Episode generation started', { description: `${drafts.length} draft${drafts.length === 1 ? '' : 's'} queued` });
-      void fetchData();
+      refetch();
     } catch (err) {
       toast.error('Failed to generate all drafts', { description: String(err) });
     } finally {
@@ -324,7 +326,7 @@ function EpisodesList() {
         description: `${eligible.length} of ${ids.length} selected enqueued`,
       });
       exitSelectMode();
-      void fetchData();
+      refetch();
     } catch (err) {
       toast.error('Bulk generate failed', { description: String(err) });
     } finally {
@@ -341,7 +343,7 @@ function EpisodesList() {
       toast.success('Episodes deleted', { description: `${ids.length} removed` });
       setBulkDeleteOpen(false);
       exitSelectMode();
-      void fetchData();
+      refetch();
     } catch (err) {
       toast.error('Bulk delete failed', { description: String(err) });
     } finally {

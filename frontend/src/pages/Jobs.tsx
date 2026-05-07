@@ -17,6 +17,8 @@ import { Card } from '@/components/ui/Card';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { jobs as jobsApi } from '@/lib/api';
+import { useAllJobs, queryKeys } from '@/lib/queries';
+import { useQueryClient } from '@tanstack/react-query';
 import type { GenerationJobExtended } from '@/types';
 import { STEP_BG, isKnownStep } from '@/lib/stepColors';
 
@@ -93,42 +95,31 @@ function Jobs() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const [allJobs, setAllJobs] = useState<GenerationJobExtended[]>([]);
   const [filter, setFilter] = useState<FilterStatus>('all');
-  const [loading, setLoading] = useState(true);
   const [cancelling, setCancelling] = useState<Set<string>>(new Set());
   const [cancellingAll, setCancellingAll] = useState(false);
+  const qc = useQueryClient();
 
   // Tick counter for elapsed time updates
   const [, setTick] = useState(0);
 
-  // Fetch jobs
+  // Phase 3.3: jobs history via React Query. ``useAllJobs`` polls
+  // every 5s ONLY while a job is in-flight (running / queued) and
+  // pauses on hidden tabs (``refetchIntervalInBackground: false``).
+  // The previous code polled every 5s unconditionally.
+  const allJobsQ = useAllJobs();
+  const allJobs: GenerationJobExtended[] = allJobsQ.data ?? [];
+  const loading = allJobsQ.isPending;
+
   useEffect(() => {
-    let mounted = true;
+    if (allJobsQ.error) {
+      toast.error('Failed to load jobs', { description: String(allJobsQ.error) });
+    }
+  }, [allJobsQ.error, toast]);
 
-    const fetchJobs = async () => {
-      try {
-        // Always fetch all jobs so we can compute counts for all filters.
-        const data = await jobsApi.all({ limit: 200 });
-        if (!mounted) return;
-        setAllJobs(data);
-      } catch (err) {
-        if (mounted) {
-          toast.error('Failed to load jobs', { description: String(err) });
-        }
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
-    void fetchJobs();
-    const interval = setInterval(() => void fetchJobs(), 5000);
-
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
+  const refetchJobs = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.jobs.all });
+  };
 
   // Tick for elapsed time in running jobs
   useEffect(() => {
@@ -157,6 +148,7 @@ function Jobs() {
     try {
       await jobsApi.cancelJob(jobId);
       toast.success('Job cancelled');
+      refetchJobs();
     } catch (err) {
       toast.error('Failed to cancel job', { description: String(err) });
     } finally {
@@ -173,6 +165,7 @@ function Jobs() {
     try {
       await jobsApi.cancelAll();
       toast.success('All active jobs cancelled');
+      refetchJobs();
     } catch (err) {
       toast.error('Failed to cancel all jobs', { description: String(err) });
     } finally {

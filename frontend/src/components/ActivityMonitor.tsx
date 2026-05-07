@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity,
@@ -22,6 +22,8 @@ import { jobs as jobsApi, episodes as episodesApi } from '@/lib/api';
 import { useActiveJobsProgress } from '@/lib/websocket';
 import { useTheme } from '@/lib/theme';
 import { STEP_BG, STEP_TEXT, isKnownStep, type StepName } from '@/lib/stepColors';
+import { useActiveTasks, useJobsStatus, useWorkerHealth, queryKeys } from '@/lib/queries';
+import { useQueryClient } from '@tanstack/react-query';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -124,10 +126,7 @@ export function ActivityMonitor() {
   });
   const expanded = userExpanded;
   const setExpanded = (v: boolean) => setUserExpanded(v);
-  const [tasks, setTasks] = useState<BackgroundTask[]>([]);
-  const [queueStatus, setQueueStatus] = useState<QueueStatus | null>(null);
   const [cancelling, setCancelling] = useState<Set<string>>(new Set());
-  const [workerHealth, setWorkerHealth] = useState<WorkerHealth | null>(null);
   const [restartingWorker, setRestartingWorker] = useState(false);
   const [priority, setPriority] = useState<PriorityMode>(() => {
     const stored = localStorage.getItem(PRIORITY_STORAGE_KEY);
@@ -139,58 +138,63 @@ export function ActivityMonitor() {
   // progress with no hint that reconnection is in flight.
   const { latestByEpisode, connected: wsConnected } = useActiveJobsProgress();
 
-  // Poll unified tasks endpoint + queue status every 3s
-  useEffect(() => {
-    let mounted = true;
+  // Phase 3.3 + 3.4: tasks list + queue status migrated to React Query.
+  // Polling is conditional on the WebSocket reporting active jobs:
+  // the rail polls at 5s while jobs are running, drops to no-poll
+  // when idle, and pauses entirely when the tab is hidden.
+  const hasActive = Object.keys(latestByEpisode).length > 0;
+  const tasksQ = useActiveTasks({ hasActive });
+  const statusQ = useJobsStatus({ hasActive });
+  const workerHealthQ = useWorkerHealth();
+  const qc = useQueryClient();
 
-    const poll = async () => {
-      try {
-        const [tasksRes, statusData] = await Promise.all([
-          jobsApi.tasksActive(),
-          jobsApi.status(),
-        ]);
-        if (!mounted) return;
+  // Tasks come from the API as a partial shape; merge with the WS
+  // ``latestByEpisode`` map so progress + step come from whichever
+  // source is fresher (WS for running jobs, API for queued).
+  const tasks: BackgroundTask[] = useMemo(() => {
+    const apiTasks = tasksQ.data?.tasks ?? [];
+    return apiTasks.map((t: { type?: string; id: string; title?: string; step?: string; status?: string; progress?: number; url?: string }) => {
+      const ws = latestByEpisode[t.id];
+      const wsProgress = ws
+        ? Object.values(ws).reduce(
+            (best, msg) =>
+              msg.progress_pct > (best?.progress_pct ?? -1) ? msg : best,
+            Object.values(ws)[0],
+          )
+        : null;
+      return {
+        type: (t.type as BackgroundTask['type']) ?? 'episode_generation',
+        id: t.id,
+        title: t.title ?? 'Untitled',
+        step: wsProgress?.step ?? t.step ?? 'script',
+        status: t.status ?? 'running',
+        progress: wsProgress?.progress_pct ?? t.progress ?? -1,
+        url: t.url ?? `/episodes/${t.id}`,
+      };
+    });
+  }, [tasksQ.data, latestByEpisode]);
 
-        const mapped: BackgroundTask[] = (tasksRes.tasks ?? []).map((t: any) => {
-          const ws = latestByEpisode[t.id];
-          const wsProgress = ws
-            ? Object.values(ws).reduce(
-                (best, msg) =>
-                  msg.progress_pct > (best?.progress_pct ?? -1) ? msg : best,
-                Object.values(ws)[0],
-              )
-            : null;
-          return {
-            type: t.type ?? 'episode_generation',
-            id: t.id,
-            title: t.title ?? 'Untitled',
-            step: wsProgress?.step ?? t.step ?? 'script',
-            status: t.status ?? 'running',
-            progress: wsProgress?.progress_pct ?? t.progress ?? -1,
-            url: t.url ?? `/episodes/${t.id}`,
-          };
-        });
-
-        setTasks(mapped);
-        setQueueStatus({
-          active: statusData.generating_episodes ?? 0,
-          queued: statusData.queued ?? 0,
-          max_concurrent: statusData.max_concurrent ?? 4,
-          slots_available: statusData.slots_available ?? 0,
-          total_failed_episodes: statusData.total_failed_episodes ?? 0,
-        });
-      } catch {
-        // ignore
-      }
+  const queueStatus: QueueStatus | null = useMemo(() => {
+    const s = statusQ.data;
+    if (!s) return null;
+    return {
+      active: s.generating_episodes ?? 0,
+      queued: s.queued ?? 0,
+      max_concurrent: s.max_concurrent ?? 4,
+      slots_available: s.slots_available ?? 0,
+      total_failed_episodes: s.total_failed_episodes ?? 0,
     };
+  }, [statusQ.data]);
 
-    void poll();
-    const interval = setInterval(() => void poll(), 3000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, [latestByEpisode]);
+  const workerHealth: WorkerHealth | null = workerHealthQ.data
+    ? workerHealthQ.data
+    : workerHealthQ.isError
+      ? { alive: false, last_heartbeat: null, generating_count: 0 }
+      : null;
+
+  const refetchAll = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.jobs.all });
+  };
 
   // Load priority from backend on mount
   useEffect(() => {
@@ -203,21 +207,6 @@ export function ActivityMonitor() {
         }
       })
       .catch(() => {});
-  }, []);
-
-  // Poll worker health every 30s
-  useEffect(() => {
-    const poll = () => {
-      jobsApi
-        .workerHealth()
-        .then(setWorkerHealth)
-        .catch(() =>
-          setWorkerHealth({ alive: false, last_heartbeat: null, generating_count: 0 }),
-        );
-    };
-    poll();
-    const interval = setInterval(poll, 30000);
-    return () => clearInterval(interval);
   }, []);
 
   // ── Handlers ───────────────────────────────────────────────────────
@@ -243,13 +232,11 @@ export function ActivityMonitor() {
     try {
       await jobsApi.restartWorker();
       toast.info('Worker restart signal sent');
+      // Re-poll worker health after the restart settles. ``refetchAll``
+      // also covers tasks + status, which the next interval tick would
+      // pick up anyway, but invalidating now feels snappier.
       setTimeout(() => {
-        void jobsApi
-          .workerHealth()
-          .then(setWorkerHealth)
-          .catch(() =>
-            setWorkerHealth({ alive: false, last_heartbeat: null, generating_count: 0 }),
-          );
+        refetchAll();
       }, 3000);
     } catch (err) {
       toast.error('Failed to restart worker', { description: String(err) });

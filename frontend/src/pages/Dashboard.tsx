@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Film,
@@ -23,19 +23,15 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { StatCard } from '@/components/ui/StatCard';
 import { QuickActionTile } from '@/components/ui/QuickActionTile';
 import { useToast } from '@/components/ui/Toast';
-import {
-  episodes as episodesApi,
-  series as seriesApi,
-  jobs as jobsApi,
-  ApiError,
-  formatError,
-} from '@/lib/api';
+import { ApiError, formatError } from '@/lib/api';
 import { useActiveJobsProgress } from '@/lib/websocket';
-import type {
-  EpisodeListItem,
-  SeriesListItem,
-  GenerationJobListItem,
-} from '@/types';
+import {
+  useActiveJobs,
+  useEpisodes,
+  useRecentEpisodes,
+  useSeries,
+} from '@/lib/queries';
+import type { EpisodeListItem, GenerationJobListItem } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -115,73 +111,61 @@ function Dashboard() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  // --- Data state ---
-  const [recentEpisodes, setRecentEpisodes] = useState<EpisodeListItem[]>([]);
-  const [activityEpisodes, setActivityEpisodes] = useState<EpisodeListItem[]>([]);
-  const [seriesList, setSeriesList] = useState<SeriesListItem[]>([]);
-  const [activeJobs, setActiveJobs] = useState<GenerationJobListItem[]>([]);
-  const [allEpisodes, setAllEpisodes] = useState<EpisodeListItem[]>([]);
-  const [loading, setLoading] = useState(true);
-
   // --- WebSocket progress ---
   const { latestByEpisode } = useActiveJobsProgress();
 
-  // --- Fetch data ---
-  const fetchData = useCallback(async () => {
-    try {
-      const [recentRes, seriesRes, jobsRes, allEpsRes, activityRes] = await Promise.all([
-        episodesApi.recent(8),
-        seriesApi.list(),
-        jobsApi.active(),
-        episodesApi.list(),
-        episodesApi.recent(10),
-      ]);
-      setRecentEpisodes(recentRes);
-      setActivityEpisodes(activityRes);
-      setSeriesList(seriesRes);
-      setActiveJobs(jobsRes);
-      setAllEpisodes(allEpsRes);
-    } catch (err) {
-      // 402 means the license gate rejected us — LicenseGate handles UI
-      // flip to the activation wizard; no need to spam a toast for that.
-      if (err instanceof ApiError && err.status === 402) {
-        return;
-      }
-      toast.error('Failed to load dashboard data', { description: formatError(err) });
-    } finally {
-      setLoading(false);
+  // --- Data via React Query (Phase 3.3) ---
+  // Each hook owns its own snapshot cache + invalidation. Mutations
+  // elsewhere (delete episode, generate, etc.) call ``invalidateQueries``
+  // which triggers a refetch here automatically. ``activeJobs`` toggles
+  // its 5s refetchInterval based on whether the WS reports any active
+  // job (R6: list snapshots from Query, in-flight progress from WS).
+  const recentQ = useRecentEpisodes(8);
+  const activityQ = useRecentEpisodes(10);
+  const seriesQ = useSeries();
+  const allEpsQ = useEpisodes();
+  const hasActive = Object.keys(latestByEpisode).length > 0;
+  const activeJobsQ = useActiveJobs({ hasActive });
+
+  const recentEpisodes: EpisodeListItem[] = recentQ.data ?? [];
+  const activityEpisodes = activityQ.data ?? [];
+  const seriesList = seriesQ.data ?? [];
+  const activeJobs = activeJobsQ.data ?? [];
+  const allEpisodes = allEpsQ.data ?? [];
+  const loading =
+    recentQ.isPending ||
+    activityQ.isPending ||
+    seriesQ.isPending ||
+    allEpsQ.isPending;
+
+  // Surface non-license fetch errors as a single toast burst — Query
+  // gives us the error per hook; we collapse to one toast and reset
+  // when the error clears, mirroring the previous "lastErrShown" gate.
+  const lastErrShown = useRef(false);
+  useEffect(() => {
+    const err =
+      recentQ.error ||
+      activityQ.error ||
+      seriesQ.error ||
+      allEpsQ.error ||
+      activeJobsQ.error;
+    if (!err) {
+      lastErrShown.current = false;
+      return;
     }
-  }, [toast]);
-
-  useEffect(() => {
-    void fetchData();
-  }, [fetchData]);
-
-  // Refresh active jobs periodically
-  useEffect(() => {
-    // Suppress duplicate toasts during extended outages — single toast
-    // per failure burst, reset once a poll succeeds again.
-    let lastErrShown = false;
-    const interval = setInterval(async () => {
-      try {
-        const res = await jobsApi.active();
-        setActiveJobs(res);
-        lastErrShown = false;
-      } catch (err) {
-        // Silent on 402 — LicenseGate owns that state.
-        if (err instanceof ApiError && err.status === 402) {
-          return;
-        }
-        if (!lastErrShown) {
-          toast.error('Failed to refresh active jobs', {
-            description: formatError(err),
-          });
-          lastErrShown = true;
-        }
-      }
-    }, 10000);
-    return () => clearInterval(interval);
-  }, [toast]);
+    if (err instanceof ApiError && err.status === 402) return;
+    if (!lastErrShown.current) {
+      toast.error('Failed to load dashboard data', { description: formatError(err) });
+      lastErrShown.current = true;
+    }
+  }, [
+    recentQ.error,
+    activityQ.error,
+    seriesQ.error,
+    allEpsQ.error,
+    activeJobsQ.error,
+    toast,
+  ]);
 
   // --- Stats --- (memoised: WS messages re-render Dashboard at the
   // pipeline-progress cadence; without these the .filter walks the

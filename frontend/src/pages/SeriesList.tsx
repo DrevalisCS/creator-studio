@@ -1,6 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Layers, Sparkles } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
 import { Input, Textarea } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -9,8 +10,9 @@ import { Spinner } from '@/components/ui/Spinner';
 import { SeriesCard } from '@/components/series/SeriesCard';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { useToast } from '@/components/ui/Toast';
-import { series as seriesApi, voiceProfiles as voiceProfilesApi } from '@/lib/api';
-import type { SeriesListItem, SeriesCreate, SeriesGenerateResponse, VoiceProfile } from '@/types';
+import { series as seriesApi } from '@/lib/api';
+import { useSeries, useVoiceProfiles, queryKeys } from '@/lib/queries';
+import type { SeriesCreate, SeriesGenerateResponse } from '@/types';
 
 // ---------------------------------------------------------------------------
 // Series List Page
@@ -19,8 +21,7 @@ import type { SeriesListItem, SeriesCreate, SeriesGenerateResponse, VoiceProfile
 function SeriesList() {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [seriesList, setSeriesList] = useState<SeriesListItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
   const [dialogOpen, setDialogOpen] = useState(false);
   const [creating, setCreating] = useState(false);
 
@@ -39,33 +40,26 @@ function SeriesList() {
   const [aiError, setAiError] = useState('');
   const [aiResult, setAiResult] = useState<SeriesGenerateResponse | null>(null);
 
-  // Voice profiles for AI dialog selector
-  const [voiceProfiles, setVoiceProfiles] = useState<VoiceProfile[]>([]);
+  // Phase 3.3: Query-driven loading. Mutations call ``invalidateQueries``
+  // on the same keys so this list refreshes automatically.
+  const seriesQ = useSeries();
+  const voiceProfilesQ = useVoiceProfiles();
+  const seriesList = seriesQ.data ?? [];
+  const voiceProfiles = voiceProfilesQ.data ?? [];
+  const loading = seriesQ.isPending;
 
-  const fetchSeries = useCallback(async () => {
-    try {
-      const res = await seriesApi.list();
-      setSeriesList(res);
-    } catch (err) {
-      toast.error('Failed to load series', { description: String(err) });
-    } finally {
-      setLoading(false);
-    }
-  }, [toast]);
-
-  const fetchVoiceProfiles = useCallback(async () => {
-    try {
-      const res = await voiceProfilesApi.list();
-      setVoiceProfiles(res);
-    } catch (err) {
-      toast.error('Failed to load voice profiles', { description: String(err) });
-    }
-  }, [toast]);
+  const refetchSeries = () => {
+    void qc.invalidateQueries({ queryKey: queryKeys.series.all });
+  };
 
   useEffect(() => {
-    void fetchSeries();
-    void fetchVoiceProfiles();
-  }, [fetchSeries, fetchVoiceProfiles]);
+    if (seriesQ.error) {
+      toast.error('Failed to load series', { description: String(seriesQ.error) });
+    }
+    if (voiceProfilesQ.error) {
+      toast.error('Failed to load voice profiles', { description: String(voiceProfilesQ.error) });
+    }
+  }, [seriesQ.error, voiceProfilesQ.error, toast]);
 
   const handleCreate = async () => {
     if (!formName.trim()) return;
@@ -82,7 +76,7 @@ function SeriesList() {
       setFormDescription('');
       setFormDuration('30');
       toast.success('Series created');
-      void fetchSeries();
+      refetchSeries();
     } catch (err) {
       toast.error('Failed to create series', { description: String(err) });
     } finally {
@@ -384,7 +378,7 @@ function SeriesList() {
           open={!!aiResult}
           onClose={() => {
             setAiResult(null);
-            void fetchSeries();
+            refetchSeries();
           }}
           title="Series Created!"
           maxWidth="lg"
@@ -414,7 +408,7 @@ function SeriesList() {
               variant="ghost"
               onClick={() => {
                 setAiResult(null);
-                void fetchSeries();
+                refetchSeries();
               }}
             >
               Close
@@ -424,7 +418,7 @@ function SeriesList() {
               onClick={() => {
                 const seriesId = aiResult.series_id;
                 setAiResult(null);
-                void fetchSeries();
+                refetchSeries();
                 navigate(`/series/${seriesId}`);
               }}
             >

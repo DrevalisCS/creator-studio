@@ -13,7 +13,8 @@ import {
   HelpCircle,
   Youtube,
 } from 'lucide-react';
-import { jobs as jobsApi } from '@/lib/api';
+import { useJobsStatus } from '@/lib/queries';
+import { useActiveJobsProgress } from '@/lib/websocket';
 
 // ---------------------------------------------------------------------------
 // Tab definitions — 5 most-used items visible, everything else under "More"
@@ -41,30 +42,16 @@ const MORE_ITEMS = [
 
 function MobileNav() {
   const navigate = useNavigate();
-  const [genCount, setGenCount] = useState(0);
   const [moreOpen, setMoreOpen] = useState(false);
   const moreRef = useRef<HTMLDivElement | null>(null);
-
-  // Poll generating count every 10s — mirrors Sidebar polling
-  useEffect(() => {
-    let mounted = true;
-
-    const poll = () => {
-      jobsApi
-        .status()
-        .then((d) => {
-          if (mounted) setGenCount(d.generating_episodes ?? 0);
-        })
-        .catch(() => {});
-    };
-
-    poll();
-    const interval = setInterval(poll, 10000);
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
+  // Phase 3.4: shared cache with Sidebar / Layout via React Query.
+  // The hook polls only while WS reports active jobs; mounting it
+  // here just joins the same cache entry, no additional network
+  // traffic.
+  const { latestByEpisode } = useActiveJobsProgress();
+  const hasActive = Object.keys(latestByEpisode).length > 0;
+  const statusQ = useJobsStatus({ hasActive });
+  const genCount = statusQ.data?.generating_episodes ?? 0;
 
   // Close the More sheet when the route changes or an outside click happens
   useEffect(() => {

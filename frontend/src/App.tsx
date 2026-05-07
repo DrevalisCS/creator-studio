@@ -1,5 +1,6 @@
-import { lazy, Suspense, useEffect } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, useNavigate } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Layout } from '@/components/layout/Layout';
 import { EditorLayout } from '@/components/layout/EditorLayout';
 import { LicenseGate } from '@/components/LicenseGate';
@@ -75,8 +76,40 @@ function YouTubeCallback() {
 // App
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// React Query client (Phase 3.1)
+// ---------------------------------------------------------------------------
+//
+// Resource lists (episodes, series, jobs history, settings, license,
+// health) flow through React Query for snapshot + invalidation +
+// refetch-on-focus. The WebSocket via ``useActiveJobsProgress()`` keeps
+// owning *in-flight* job state — Query layer doesn't replace WS-driven
+// progress (R6 boundary).
+//
+// staleTime 30s — the dashboard and list pages all want "looks fresh
+// when I come back" without firing a request on every render.
+// refetchOnWindowFocus true — coming back from a tab that was open
+// for hours should re-validate.
+
 function App() {
+  // Client lives in component state so HMR doesn't recreate it on every
+  // module reload (recreating wipes the cache + cancels every in-flight
+  // request, which is jarring during dev).
+  const [queryClient] = useState(
+    () =>
+      new QueryClient({
+        defaultOptions: {
+          queries: {
+            staleTime: 30_000,
+            refetchOnWindowFocus: true,
+            retry: 1,
+          },
+        },
+      }),
+  );
+
   return (
+    <QueryClientProvider client={queryClient}>
     <ThemeProvider>
     <ToastProvider>
     <TooltipProvider delayDuration={300}>
@@ -137,6 +170,7 @@ function App() {
     </TooltipProvider>
     </ToastProvider>
     </ThemeProvider>
+    </QueryClientProvider>
   );
 }
 

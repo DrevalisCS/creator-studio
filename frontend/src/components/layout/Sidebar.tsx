@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Badge } from '@/components/ui/Badge';
-import { jobs as jobsApi } from '@/lib/api';
 import { useConnectedPlatforms } from '@/lib/useConnectedPlatforms';
+import { useJobsStatus } from '@/lib/queries';
+import { useActiveJobsProgress } from '@/lib/websocket';
 import {
   LayoutDashboard,
   Layers,
@@ -138,23 +138,16 @@ function Sidebar({ collapsed, onToggle }: SidebarProps) {
   // Theme controls moved to Settings → Appearance. Sidebar is workflow-
   // frequency navigation; color preferences belong in a dedicated
   // settings surface where they're configured once and left alone.
-  const [genCount, setGenCount] = useState(0);
   // Connected-platforms state is owned by the shared hook (Phase 2.3).
-  // Polling is centralised at 60s in ``lib/useConnectedPlatforms.ts``;
-  // mounting this hook in any sibling joins the same poll loop.
   const { socials: connectedSocials, youtubeConnected } = useConnectedPlatforms();
-
-  useEffect(() => {
-    const poll = () => {
-      jobsApi
-        .status()
-        .then((d) => setGenCount(d.generating_episodes ?? 0))
-        .catch(() => {});
-    };
-    poll();
-    const interval = setInterval(poll, 10000);
-    return () => clearInterval(interval);
-  }, []);
+  // Phase 3.4: gen-count → React Query. The query polls at 5s ONLY
+  // while WS reports active jobs and pauses on hidden tabs. The
+  // previous setInterval polled every 10s unconditionally, even on
+  // empty queues, even when the tab was hidden.
+  const { latestByEpisode } = useActiveJobsProgress();
+  const hasActive = Object.keys(latestByEpisode).length > 0;
+  const statusQ = useJobsStatus({ hasActive });
+  const genCount = statusQ.data?.generating_episodes ?? 0;
 
   return (
     <aside

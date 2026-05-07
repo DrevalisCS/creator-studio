@@ -8,9 +8,9 @@ import { OnboardingGate } from '@/components/onboarding/OnboardingGate';
 import { DemoBanner } from '@/components/DemoBanner';
 import { CommandPalette } from '@/components/CommandPalette';
 import { useAuthMode } from '@/lib/useAuth';
-import { jobs as jobsApi } from '@/lib/api';
 import { useTheme } from '@/lib/theme';
 import { useRouteDocumentTitle } from '@/hooks/useDocumentTitle';
+import { useActiveJobsProgress } from '@/lib/websocket';
 
 // ---------------------------------------------------------------------------
 // Command Palette context
@@ -45,10 +45,15 @@ function useCommandPalette(): CommandPaletteContextValue {
 
 function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [activeJobCount, setActiveJobCount] = useState(0);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { demoMode } = useAuthMode();
   const { activityDock } = useTheme();
+  // Phase 3.4: active-jobs count comes from the WebSocket directly.
+  // The previous setInterval against ``jobs.active`` polled every 10s
+  // even on idle; the WS already streams every status change in
+  // realtime, so we just count the keys on the live progress map.
+  const { latestByEpisode } = useActiveJobsProgress();
+  const activeJobCount = Object.keys(latestByEpisode).length;
 
   // Drive document.title from the current route's routeMeta entry.
   // Pages can still override per-instance via ``useDocumentTitle``.
@@ -86,28 +91,6 @@ function Layout() {
         : '';
   const bottomPadClass = activityDock === 'bottom' ? 'md:pb-[48px]' : 'md:pb-0';
   const topPadClass = activityDock === 'top' ? 'md:pt-[60px]' : '';
-
-  // Poll active jobs count every 10 seconds
-  useEffect(() => {
-    let mounted = true;
-
-    const fetchCount = async () => {
-      try {
-        const active = await jobsApi.active();
-        if (mounted) setActiveJobCount(active.length);
-      } catch {
-        // Silently ignore - backend might not be running
-      }
-    };
-
-    void fetchCount();
-    const interval = setInterval(() => void fetchCount(), 10000);
-
-    return () => {
-      mounted = false;
-      clearInterval(interval);
-    };
-  }, []);
 
   // Memoise the context value so descendants don't re-render on every
   // sibling state change in Layout.
