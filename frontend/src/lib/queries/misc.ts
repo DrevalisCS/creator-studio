@@ -17,6 +17,20 @@ export function useHealth() {
   });
 }
 
+// Detailed system-health: per-service status (ComfyUI, LLM, voices,
+// FFmpeg, ...). Polls every 60s — much slower than the basic ``/health``
+// liveness probe because the per-service check can hammer external
+// servers. Used by the Dashboard's ``SystemHealthCard`` to surface
+// degraded services without forcing the user into Settings.
+export function useSystemHealth() {
+  return useQuery({
+    queryKey: ['settings', 'health'] as const,
+    queryFn: () => settings.health(),
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+  });
+}
+
 export function useStorage() {
   return useQuery({
     queryKey: keys.storage.overall(),

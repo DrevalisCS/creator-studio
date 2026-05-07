@@ -20,6 +20,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { EpisodeCard } from '@/components/episodes/EpisodeCard';
 import { JobProgressBar } from '@/components/jobs/JobProgressBar';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { SystemHealthCard } from '@/components/SystemHealthCard';
 import { StatCard } from '@/components/ui/StatCard';
 import { QuickActionTile } from '@/components/ui/QuickActionTile';
 import { useToast } from '@/components/ui/Toast';
@@ -200,6 +201,11 @@ function Dashboard() {
     <div className="space-y-6">
       {/* Onboarding checklist (self-hides when complete / dismissed) */}
       <SetupChecklist />
+
+      {/* Runtime health pulse — only renders when something is degraded
+          or unreachable, so it doesn't burn dashboard real estate when
+          everything is fine. */}
+      <SystemHealthCard />
 
       {/* Top row: 4 stat cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
