@@ -20,6 +20,7 @@ import {
   Share2,
   Percent,
   ImageOff,
+  Copy,
 } from 'lucide-react';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { StatCard } from '@/components/ui/StatCard';
@@ -661,9 +662,212 @@ interface UploadsTabProps {
   uploads: YouTubeUpload[];
   loading: boolean;
   channelMap?: Record<string, string>;
+  onUploadsChanged?: () => void;
 }
 
-function UploadsTab({ uploads, loading, channelMap }: UploadsTabProps) {
+// ── Duplicate detection panel ────────────────────────────────────────────
+//
+// Surfaces (episode, channel) pairs with more than one ``done`` upload row
+// and offers a one-click cleanup. The earliest row is kept; the rest are
+// marked ``failed`` with an audit reason and (when ``deleteOnYoutube`` is
+// on) deleted from YouTube via the Data API.
+
+interface DuplicateGroup {
+  episode_id: string;
+  channel_id: string;
+  keep: { upload_id: string; video_id: string | null };
+  duplicates: Array<{
+    upload_id: string;
+    video_id: string | null;
+    created_at: string | null;
+  }>;
+}
+
+function DuplicatesPanel({
+  uploads,
+  channelMap,
+  onAfterDedupe,
+}: {
+  uploads: YouTubeUpload[];
+  channelMap?: Record<string, string>;
+  onAfterDedupe: () => void;
+}) {
+  const { toast } = useToast();
+  const [groups, setGroups] = useState<DuplicateGroup[] | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleteOnYouTube, setDeleteOnYouTube] = useState(true);
+  const [running, setRunning] = useState(false);
+
+  const fetch = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await youtubeApi.listDuplicateUploads();
+      setGroups(res.groups);
+    } catch (err) {
+      toast.error('Failed to scan for duplicates', { description: String(err) });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  useEffect(() => {
+    void fetch();
+  }, [fetch]);
+
+  // Re-scan whenever the upload list changes — newly-completed uploads
+  // can introduce new duplicates we want to surface.
+  useEffect(() => {
+    if (!loading && groups !== null) void fetch();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uploads.length]);
+
+  const uploadById = useMemo(
+    () => new Map(uploads.map((u) => [u.id, u])),
+    [uploads],
+  );
+
+  const handleDedupe = async () => {
+    setRunning(true);
+    try {
+      const res = await youtubeApi.dedupeUploads(deleteOnYouTube);
+      const removedCount = res.rows_marked_failed;
+      const ytCount = res.videos_deleted;
+      toast.success(
+        `Removed ${removedCount} duplicate row${removedCount === 1 ? '' : 's'}`,
+        {
+          description: deleteOnYouTube
+            ? `${ytCount} video${ytCount === 1 ? '' : 's'} deleted from YouTube`
+            : 'Database rows marked failed; videos remain on YouTube',
+        },
+      );
+      if (res.delete_errors.length > 0) {
+        toast.warning('Some YouTube deletes failed', {
+          description: res.delete_errors.slice(0, 2).join('; '),
+        });
+      }
+      setConfirmOpen(false);
+      setReviewOpen(false);
+      setGroups([]);
+      onAfterDedupe();
+    } catch (err) {
+      toast.error('Dedup failed', { description: String(err) });
+    } finally {
+      setRunning(false);
+    }
+  };
+
+  if (loading || groups === null || groups.length === 0) return null;
+
+  const totalDuplicates = groups.reduce((acc, g) => acc + g.duplicates.length, 0);
+
+  return (
+    <>
+      <Card padding="md" className="border-warning/30 bg-warning/[0.05]">
+        <div className="flex items-start gap-3">
+          <Copy size={18} className="shrink-0 mt-0.5 text-warning" aria-hidden="true" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-display font-semibold text-txt-primary">
+              {groups.length} duplicate group{groups.length === 1 ? '' : 's'} found ·{' '}
+              {totalDuplicates} extra upload{totalDuplicates === 1 ? '' : 's'}
+            </p>
+            <p className="text-xs text-txt-secondary mt-1">
+              The earliest upload per (episode, channel) is the canonical one.
+              Reviewing lets you remove the rest from the database — and from
+              YouTube itself, if you want.
+            </p>
+          </div>
+          <Button variant="secondary" size="sm" onClick={() => setReviewOpen(true)}>
+            Review
+          </Button>
+        </div>
+      </Card>
+
+      <Dialog
+        open={reviewOpen}
+        onClose={() => setReviewOpen(false)}
+        title="Duplicate uploads"
+        maxWidth="lg"
+      >
+        <div className="space-y-3 max-h-[50vh] overflow-y-auto">
+          {groups.map((g) => {
+            const channel = channelMap?.[g.channel_id] ?? g.channel_id.slice(0, 8);
+            const keepRow = uploadById.get(g.keep.upload_id);
+            return (
+              <Card key={`${g.episode_id}-${g.channel_id}`} padding="sm">
+                <p className="text-xs font-medium text-txt-primary mb-2">
+                  {keepRow?.title ?? '(unknown episode)'} ·{' '}
+                  <span className="text-accent">{channel}</span>
+                </p>
+                <p className="text-[11px] text-txt-tertiary mb-1">
+                  Keeping: <span className="font-mono">{g.keep.video_id ?? g.keep.upload_id.slice(0, 8)}</span>
+                </p>
+                <p className="text-[11px] text-txt-tertiary">
+                  Removing {g.duplicates.length}:{' '}
+                  {g.duplicates.map((d, i) => (
+                    <span key={d.upload_id}>
+                      {i > 0 && ', '}
+                      <span className="font-mono">{d.video_id ?? d.upload_id.slice(0, 8)}</span>
+                    </span>
+                  ))}
+                </p>
+              </Card>
+            );
+          })}
+        </div>
+        <label className="flex items-center gap-2 mt-3 text-xs text-txt-secondary">
+          <input
+            type="checkbox"
+            checked={deleteOnYouTube}
+            onChange={(e) => setDeleteOnYouTube(e.target.checked)}
+          />
+          Also delete the duplicate videos from YouTube (irreversible)
+        </label>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setReviewOpen(false)}>
+            Cancel
+          </Button>
+          <Button variant="destructive" onClick={() => setConfirmOpen(true)}>
+            Remove duplicates
+          </Button>
+        </DialogFooter>
+      </Dialog>
+
+      <Dialog
+        open={confirmOpen}
+        onClose={() => setConfirmOpen(false)}
+        title="Confirm dedup"
+        maxWidth="sm"
+      >
+        <p className="text-sm text-txt-secondary">
+          {deleteOnYouTube ? (
+            <>
+              This will mark {totalDuplicates} database row{totalDuplicates === 1 ? '' : 's'} as
+              failed AND <strong className="text-error">permanently delete the videos
+              from YouTube</strong>. This cannot be undone.
+            </>
+          ) : (
+            <>
+              This will mark {totalDuplicates} database row{totalDuplicates === 1 ? '' : 's'} as
+              failed. The videos themselves will stay on YouTube.
+            </>
+          )}
+        </p>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => setConfirmOpen(false)} disabled={running}>
+            Cancel
+          </Button>
+          <Button variant="destructive" loading={running} onClick={() => void handleDedupe()}>
+            Confirm
+          </Button>
+        </DialogFooter>
+      </Dialog>
+    </>
+  );
+}
+
+function UploadsTab({ uploads, loading, channelMap, onUploadsChanged }: UploadsTabProps) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -690,6 +894,11 @@ function UploadsTab({ uploads, loading, channelMap }: UploadsTabProps) {
 
   return (
     <div className="space-y-3">
+      <DuplicatesPanel
+        uploads={uploads}
+        channelMap={channelMap}
+        onAfterDedupe={() => onUploadsChanged?.()}
+      />
       {sorted.map((upload) => {
         const channelName = channelMap?.[(upload as any).channel_id] ?? null;
         return (
@@ -2146,6 +2355,7 @@ function YouTubePage() {
                     uploads={filteredUploads}
                     loading={uploadsLoading}
                     channelMap={channelMap}
+                    onUploadsChanged={() => void fetchUploads()}
                   />
                 )}
                 {activeTab === 'playlists' && (
