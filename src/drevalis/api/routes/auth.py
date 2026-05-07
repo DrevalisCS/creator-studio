@@ -55,7 +55,7 @@ import json
 import os
 import secrets
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from uuid import UUID
 
 import structlog
@@ -737,6 +737,56 @@ async def logout_everywhere(
 @router.get("/api/v1/auth/me", response_model=UserResponse | None)
 async def whoami(user: User | None = Depends(_current_user)) -> UserResponse | None:
     return UserResponse.from_orm(user) if user else None
+
+
+# ── Per-user preferences (dashboard layout, theme, etc.) ─────────────
+
+
+class PreferencesUpdate(BaseModel):
+    """Partial preferences update — keys present here are merged into
+    the existing ``users.preferences`` JSON. Keys NOT in the request
+    are left untouched.
+
+    No schema validation on the values themselves — clients write what
+    they need and the backend stores it as-is. Top-level keys SHOULD be
+    namespaced by feature (``dashboard_layout``, ``theme``,
+    ``calendar_view``, …) so removals can target a single feature
+    without colliding with others.
+    """
+
+    model_config = ConfigDict(extra="allow")
+
+
+@router.get("/api/v1/auth/preferences")
+async def get_preferences(user: User = Depends(require_user)) -> dict[str, Any]:
+    """Return the current user's preferences blob.
+
+    Empty for users that have never set anything. Always a dict.
+    """
+    return dict(user.preferences or {})
+
+
+@router.put("/api/v1/auth/preferences")
+async def update_preferences(
+    body: dict[str, Any],
+    user: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict[str, Any]:
+    """Shallow-merge *body* into the user's preferences and persist.
+
+    ``null`` values delete that top-level key (so the client can
+    explicitly reset a feature's prefs). Other values are written as-is.
+    Returns the new full preferences blob.
+    """
+    current = dict(user.preferences or {})
+    for key, value in body.items():
+        if value is None:
+            current.pop(key, None)
+        else:
+            current[key] = value
+    user.preferences = current
+    await db.commit()
+    return current
 
 
 @router.get("/api/v1/auth/mode")

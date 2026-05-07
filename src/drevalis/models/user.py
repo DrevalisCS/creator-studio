@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
-from sqlalchemy import BOOLEAN, INTEGER, TEXT, TIMESTAMP, CheckConstraint, Index
+from sqlalchemy import BOOLEAN, INTEGER, TEXT, TIMESTAMP, CheckConstraint, Index, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -64,3 +66,14 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         TIMESTAMP(timezone=True), nullable=True
     )
     totp_recovery_codes_encrypted: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+
+    # ── Per-user UI preferences (migration 047) ────────────────────────
+    # Free-form JSON object for client-side preferences that should
+    # persist across browsers/devices. Top-level keys are namespaced by
+    # feature (e.g. ``dashboard_layout``, ``theme``, ``calendar_view``).
+    # The backend doesn't validate the shape — clients write what they
+    # need and tolerate missing keys. Server default ``'{}'::jsonb`` so
+    # legacy rows behave as "no preferences set".
+    preferences: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, nullable=False, server_default=text("'{}'::jsonb"), default=dict
+    )

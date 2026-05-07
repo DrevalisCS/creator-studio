@@ -1494,6 +1494,13 @@ export const auth = {
   // A.2 — recent login events for the current user.
   loginHistory: (limit = 20) =>
     get<LoginEvent[]>(`/api/v1/auth/login-history?limit=${limit}`),
+  // Per-user UI preferences (dashboard layout, theme, calendar view, …).
+  // PUT does a shallow merge: top-level keys present in the body
+  // overwrite, ``null`` deletes, omitted keys are left as-is.
+  getPreferences: () =>
+    get<Record<string, unknown>>('/api/v1/auth/preferences'),
+  updatePreferences: (patch: Record<string, unknown>) =>
+    put<Record<string, unknown>>('/api/v1/auth/preferences', patch),
   // ── TOTP 2FA ────────────────────────────────────────────────────────
   /** Generate secret + recovery codes. Shows recovery codes once. */
   enrollTotp: () => post<TotpEnrollResponse>('/api/v1/auth/2fa/enroll'),
