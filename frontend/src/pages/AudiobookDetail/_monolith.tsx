@@ -34,6 +34,7 @@ import { Select } from '@/components/ui/Select';
 import { Breadcrumb } from '@/components/ui/Breadcrumb';
 import { audiobooks as audiobooksApi, voiceProfiles as voiceProfilesApi, youtube as youtubeApi } from '@/lib/api';
 import { useUnsavedWarning } from '@/hooks/useUnsavedWarning';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import type { VoiceProfile } from '@/types';
 import type { Audiobook } from '@/types';
 
@@ -139,6 +140,8 @@ function AudiobookDetail() {
   const [audiobook, setAudiobook] = useState<Audiobook | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  useDocumentTitle(audiobook?.title || 'Audiobook Detail');
 
   // Audio player state
   const audioRef = useRef<HTMLAudioElement>(null);

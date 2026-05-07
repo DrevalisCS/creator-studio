@@ -60,13 +60,31 @@ const variantConfig: Record<
 // ToastProvider — wraps the app, holds state, exposes imperative API
 // ---------------------------------------------------------------------------
 
+// Suppression window: identical (variant, title, description) toasts
+// fired within this many ms are dropped. Keeps chained errors from
+// stacking five-deep when one underlying failure trips multiple
+// retries.
+const DEDUP_WINDOW_MS = 2000;
+
 function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   // Stable counter for generating unique ids without React re-render cost
   const counter = useRef(0);
+  // Recent-toast cache: key → expiry timestamp. We never grow it
+  // unboundedly because old entries are cheap to leave (next call to
+  // addToast that misses the window simply overwrites the entry).
+  const recent = useRef<Map<string, number>>(new Map());
 
   const addToast = useCallback(
     (variant: ToastVariant, title: string, options?: ToastOptions) => {
+      const key = `${variant}|${title}|${options?.description ?? ''}`;
+      const now = Date.now();
+      const expiry = recent.current.get(key);
+      if (expiry !== undefined && expiry > now) {
+        return;
+      }
+      recent.current.set(key, now + DEDUP_WINDOW_MS);
+
       counter.current += 1;
       const id = `toast-${counter.current}`;
       const { defaultDuration } = variantConfig[variant];

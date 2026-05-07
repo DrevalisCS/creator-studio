@@ -1,5 +1,5 @@
 import { useState, useEffect, createContext, useContext, useMemo } from 'react';
-import { Outlet } from 'react-router-dom';
+import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { MobileNav } from './MobileNav';
@@ -7,6 +7,7 @@ import { ActivityMonitor } from '@/components/ActivityMonitor';
 import { OnboardingGate } from '@/components/onboarding/OnboardingGate';
 import { DemoBanner } from '@/components/DemoBanner';
 import { CommandPalette } from '@/components/CommandPalette';
+import { ShortcutOverlay } from '@/components/ShortcutOverlay';
 import { useAuthMode } from '@/lib/useAuth';
 import { useTheme } from '@/lib/theme';
 import { useRouteDocumentTitle } from '@/hooks/useDocumentTitle';
@@ -46,6 +47,8 @@ function useCommandPalette(): CommandPaletteContextValue {
 function Layout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const { pathname } = useLocation();
   const { demoMode } = useAuthMode();
   const { activityDock } = useTheme();
   // Phase 3.4: active-jobs count comes from the WebSocket directly.
@@ -63,18 +66,36 @@ function Layout() {
   // the app shell. Help has its own content-scoped palette; this one
   // jumps between routes + actions. The "/" shortcut is reserved for
   // page-local search inputs, so we don't bind it globally here.
+  //
+  // Global ``?`` — opens the keyboard-shortcut cheat sheet. Suppressed
+  // on /episodes/:id/edit because the Editor has its own context-
+  // specific overlay bound to the same key.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
         e.preventDefault();
         setPaletteOpen((v) => !v);
-      } else if (e.key === 'Escape' && paletteOpen) {
+        return;
+      }
+      if (e.key === 'Escape' && paletteOpen) {
         setPaletteOpen(false);
+        return;
+      }
+      // Global "?" overlay. Skip when typing into a form field, when
+      // the editor route owns the key, or when another modal already
+      // captured Esc-to-close.
+      if (e.key === '?' || (e.shiftKey && e.key === '/')) {
+        const target = e.target as HTMLElement | null;
+        const tag = target?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || target?.isContentEditable) return;
+        if (pathname.includes('/edit')) return;
+        e.preventDefault();
+        setShortcutsOpen((v) => !v);
       }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [paletteOpen]);
+  }, [paletteOpen, pathname]);
 
   // Padding the <main> needs so the Activity Monitor doesn't cover
   // content. The rail widths are CSS-driven (ActivityMonitor sets
@@ -155,6 +176,9 @@ function Layout() {
 
       {/* Global command palette — ⌘K / Ctrl+K from anywhere */}
       <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
+
+      {/* Global shortcut cheat sheet — ? from anywhere (outside form fields and editor) */}
+      <ShortcutOverlay open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
     </CommandPaletteContext.Provider>
   );

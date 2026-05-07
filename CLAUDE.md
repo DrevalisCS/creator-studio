@@ -283,6 +283,23 @@ React + TS + Tailwind, Vite. **Outfit** (display) + **DM Sans** (body), glass mo
 
 Docked bottom bar. Left: active task list w/ per-step progress. Right: worker health + priority selector (`shorts_first` / `longform_first` / `fifo`). Job controls (pause-all, cancel-all, retry-all-failed) live here — removed from Dashboard.
 
+### Bundle Budget
+
+Targets for `npm run build` output (Vite prints sizes on every build — read them):
+
+| Chunk | Soft cap (gzip) | Hard cap (gzip) |
+|-------|-----------------|-----------------|
+| Vendor `index-*.js` (largest) | 120 kB | 160 kB |
+| Per-route page chunk | 25 kB | 50 kB |
+| Section / part chunk (lazy inside a page) | 8 kB | 15 kB |
+| Total CSS | 20 kB | 30 kB |
+
+When a route page exceeds the hard cap, split it: page becomes `pages/X/{_monolith.tsx, index.tsx, sections/}` and inline view components move to `sections/` with `React.lazy`. Settings, Help, EpisodeDetail, and EpisodeEditor were split this way. The pattern: shell page keeps top-level chrome (tabs, TOC, dispatcher) and lazy-loads the active section.
+
+When the vendor chunk grows past the soft cap, the cause is usually a large dep added without splitting (audio libs, charting, rich-text editors). Investigate before merging — `vite-bundle-visualizer` or `npx source-map-explorer` show the offenders.
+
+Code-splitting boundaries are at the route level (`React.lazy` in `App.tsx`) and the section level (`React.lazy` inside `_monolith.tsx`). Don't split below that — the per-fetch overhead beats any saved kilobytes.
+
 ## API Routes
 
 Base: `/api/v1/`. For the full endpoint list with request/response schemas, see Swagger UI at **http://localhost:8000/docs**.

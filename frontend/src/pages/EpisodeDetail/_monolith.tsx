@@ -43,6 +43,7 @@ import { Tooltip } from '@/components/ui/Tooltip';
 import { episodes as episodesApi, youtube as youtubeApi, voiceProfiles as voiceProfilesApi, schedule as scheduleApi } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
 import { useEpisodeProgress } from '@/lib/websocket';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import type { Episode, MediaAsset, PipelineStep, YouTubeUploadRequest, VoiceProfile } from '@/types';
 import type { SceneDataExtended } from './sections/helpers';
 
@@ -109,6 +110,8 @@ function EpisodeDetail() {
 
   const [episode, setEpisode] = useState<Episode | null>(null);
   const [loading, setLoading] = useState(true);
+
+  useDocumentTitle(episode?.title || 'Episode Detail');
   const prevEpisodeStatusRef = useRef<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('script');
 

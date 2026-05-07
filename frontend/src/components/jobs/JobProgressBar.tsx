@@ -246,6 +246,15 @@ function JobProgressBar({
           </span>
         </div>
       )}
+      {/* Screen-reader announcement — fires only on step transitions, not
+          every percentage tick, so SRs aren't flooded with chatter. */}
+      <span className="sr-only" aria-live="polite">
+        {activeStep
+          ? `${STEP_LABELS[activeStep]} step in progress`
+          : completedSteps === totalSteps && totalSteps > 0
+            ? 'Generation complete'
+            : ''}
+      </span>
     </div>
   );
 }

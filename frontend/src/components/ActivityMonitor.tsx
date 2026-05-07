@@ -412,6 +412,8 @@ export function ActivityMonitor() {
                           ? 'text-green-400'
                           : 'text-red-400',
                       ].join(' ')}
+                      role="status"
+                      aria-live="polite"
                     >
                       Worker:{' '}
                       {workerAlive === null ? 'Unknown' : workerAlive ? 'Active' : 'Down'}

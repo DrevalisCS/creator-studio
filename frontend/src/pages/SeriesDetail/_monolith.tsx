@@ -38,6 +38,7 @@ import {
   videoTemplates as videoTemplatesApi,
 } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import type {
   Series,
   EpisodeListItem,
@@ -219,6 +220,8 @@ function SeriesDetail() {
   const [workflows, setWorkflows] = useState<ComfyUIWorkflow[]>([]);
   const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
+
+  useDocumentTitle(seriesData?.name || 'Series Detail');
 
   // ── Autosave state (v0.20.32) ────────────────────────────────
   // `autosaveStatus` drives the status pill in the breadcrumb row.
