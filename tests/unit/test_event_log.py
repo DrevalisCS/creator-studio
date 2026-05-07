@@ -311,6 +311,45 @@ class TestReadRecentEventsReturnShape:
         assert ev.context["episode_id"] == "abc-123"
         assert ev.context["attempt"] == 3
 
+    async def test_multi_file_merge_by_timestamp(self, tmp_path: Path) -> None:
+        """Multiple ``*.json`` files in the same directory merge by
+        timestamp newest-first. Mirrors the docker-compose layout where
+        ``app.json`` and ``worker.json`` share a bind-mount volume.
+        """
+        # App writes one event at T0, worker writes one at T1 > T0.
+        app_log = tmp_path / "app.json"
+        worker_log = tmp_path / "worker.json"
+        _write_lines(
+            app_log,
+            [
+                _json_line(
+                    level="error",
+                    event="app_event",
+                    ts="2026-05-07T10:00:00+00:00",
+                ),
+            ],
+        )
+        _write_lines(
+            worker_log,
+            [
+                _json_line(
+                    level="error",
+                    event="worker_event",
+                    ts="2026-05-07T10:30:00+00:00",
+                ),
+            ],
+        )
+        # ``LOG_FILE`` is set to one of the two — the merge picks up the
+        # sibling automatically.
+        settings = _make_settings(str(app_log))
+
+        result = await read_recent_events(settings)
+
+        assert len(result) == 2
+        # Newest-first: worker_event (10:30) before app_event (10:00).
+        assert result[0].event == "worker_event"
+        assert result[1].event == "app_event"
+
     async def test_context_excludes_structural_keys(self, tmp_path: Path) -> None:
         log_file = tmp_path / "app.json"
         _write_lines(

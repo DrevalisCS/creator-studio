@@ -16,19 +16,17 @@ Design notes
 * If the log file is not configured or does not exist the service returns
   an empty list — log viewing is best-effort; it must not cause a 500.
 
-Known limitation — Docker socket integration
---------------------------------------------
-Worker and Postgres/Redis container logs are **not** surfaced here.
-Surfacing them would require mounting ``/var/run/docker.sock`` into the
-backend container, which widens the trust boundary: any process that can
-reach the socket can control the Docker daemon (create containers, read
-secrets from other containers, escalate to host root).  That is a
-deliberate security boundary change and needs explicit operator approval
-before it is implemented.
-
-Follow-up: add a ``LOG_FILE_WORKER`` settings field that accepts a host-
-mapped path to the worker container's log file.  This lets the operator
-bind-mount a shared log directory without requiring the Docker socket.
+Multi-source merge
+------------------
+When ``LOG_FILE`` resolves to a path inside a directory and that
+directory contains other ``*.json`` files, all of them are read and
+merged by timestamp before applying the level filter and the tail
+limit. The Docker compose stack writes ``/var/log/drevalis/app.json``
+and ``/var/log/drevalis/worker.json`` into the same shared bind-mount
+volume; this merge surfaces both streams without ever giving the
+backend container access to ``/var/run/docker.sock``. Postgres / Redis
+container logs stay in their own stdouts (use ``docker logs`` for
+those) — the trust boundary stays tight.
 """
 
 from __future__ import annotations
@@ -195,37 +193,60 @@ async def read_recent_events(
     if log_path is None:
         return []
 
-    if not log_path.exists():
+    paths = _resolve_log_paths(log_path)
+    if not paths:
         return []
 
-    try:
-        async with aiofiles.open(log_path, encoding="utf-8", errors="replace") as fh:
-            raw_text = await fh.read()
-    except OSError as exc:
-        logger.warning("event_log.read_failed", path=str(log_path), error=str(exc))
-        return []
-
-    lines = raw_text.splitlines()
-    # Work from the tail; cap scan to avoid excessive memory on large files.
-    tail = lines[-_SCAN_LIMIT:] if len(lines) > _SCAN_LIMIT else lines
-
-    results: list[LogEvent] = []
-    # Iterate in reverse so newest events are appended first.
-    for line in reversed(tail):
-        if len(results) >= limit:
-            break
-
-        record = _parse_line(line)
-        if record is None:
+    # Read every source file, parse each line into a ``LogEvent``, then
+    # merge by timestamp before applying the limit. Sorting up front
+    # gives a deterministic newest-first result regardless of which
+    # source is bigger.
+    candidates: list[LogEvent] = []
+    for path in paths:
+        try:
+            async with aiofiles.open(path, encoding="utf-8", errors="replace") as fh:
+                raw_text = await fh.read()
+        except OSError as exc:
+            logger.warning("event_log.read_failed", path=str(path), error=str(exc))
             continue
 
-        raw_level = record.get("level", record.get("log_level", ""))
-        level_int = _LEVEL_INTS.get(_normalise_level(str(raw_level)), -1)
-        if level_int < min_int:
-            continue
+        lines = raw_text.splitlines()
+        # Cap scan per file so a single massive log doesn't dominate.
+        tail = lines[-_SCAN_LIMIT:] if len(lines) > _SCAN_LIMIT else lines
 
-        event = _to_log_event(record)
-        if event is not None:
-            results.append(event)
+        for line in tail:
+            record = _parse_line(line)
+            if record is None:
+                continue
+            raw_level = record.get("level", record.get("log_level", ""))
+            level_int = _LEVEL_INTS.get(_normalise_level(str(raw_level)), -1)
+            if level_int < min_int:
+                continue
+            event = _to_log_event(record)
+            if event is not None:
+                candidates.append(event)
 
-    return results
+    # Newest first.
+    candidates.sort(key=lambda e: e.timestamp, reverse=True)
+    return candidates[:limit]
+
+
+def _resolve_log_paths(primary: Path) -> list[Path]:
+    """Return every JSON log file to merge for the events feed.
+
+    When ``primary`` lives in a directory that holds other ``*.json``
+    files (the docker-compose layout writes ``app.json`` and
+    ``worker.json`` into the same shared bind-mount volume), all of
+    them are merged. Otherwise just ``primary`` if it exists.
+
+    The merge is opt-in by directory shape — single-file installs
+    still work unchanged.
+    """
+    if primary.exists() and primary.is_file():
+        parent = primary.parent
+        if parent.is_dir():
+            siblings = sorted(parent.glob("*.json"))
+            if len(siblings) > 1:
+                return [p for p in siblings if p.is_file()]
+        return [primary]
+    return []

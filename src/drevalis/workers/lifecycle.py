@@ -14,6 +14,7 @@ from typing import Any
 import structlog
 
 from drevalis.core.config import Settings
+from drevalis.core.logging import setup_logging
 
 logger: structlog.stdlib.BoundLogger = structlog.get_logger(__name__)
 
@@ -36,10 +37,17 @@ async def startup(ctx: dict[str, Any]) -> None:
     )
 
     settings = Settings()
+    # Pipe worker structlog into the same shared file the FastAPI process
+    # writes to (via the ``LOG_FILE`` env var, set per-container in
+    # docker-compose). The Event Log endpoint glob-merges every JSON
+    # file in the directory so worker errors show up alongside app
+    # errors without giving the backend Docker-socket access.
+    setup_logging(debug=settings.debug, log_file=settings.log_file)
     logger.info(
         "worker_startup",
         database_url=settings.database_url[:30] + "...",
         redis_url=settings.redis_url,
+        log_file=settings.log_file,
     )
 
     # ── Database engine & session factory ──────────────────────────────

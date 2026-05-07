@@ -82,10 +82,16 @@ services:
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app/src
       UV_THREADPOOL_SIZE: "16"
+      # Shared structlog file — both app and worker write here so the
+      # /api/v1/events endpoint can render a unified feed without
+      # Docker-socket access. Both files live on the ``drevalis_logs``
+      # named volume mounted below.
+      LOG_FILE: /var/log/drevalis/app.json
     volumes:
       - ./storage:/app/storage
       - ./src:/app/src
       - updater_shared:/shared
+      - drevalis_logs:/var/log/drevalis
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,9 +138,16 @@ services:
       DATABASE_URL: postgresql+asyncpg://drevalis:drevalis@postgres:5432/drevalis
       REDIS_URL: redis://redis:6379/0
       PYTHONPATH: /app/src
+      # Worker writes its structlog stream into the shared volume so
+      # the /api/v1/events endpoint can render worker errors alongside
+      # the app's. Reading file is the same backend code; only the
+      # path differs. See LOG_FILE on the app service for the matching
+      # half of the mount.
+      LOG_FILE: /var/log/drevalis/worker.json
     volumes:
       - ./storage:/app/storage
       - ./src:/app/src
+      - drevalis_logs:/var/log/drevalis
     depends_on:
       postgres:
         condition: service_healthy
@@ -246,3 +259,8 @@ x-hardening-defaults: &hardening-defaults
 volumes:
   postgres_data:
   updater_shared:
+  # Shared structlog stream for the /api/v1/events endpoint. Both ``app``
+  # and ``worker`` mount this at /var/log/drevalis and write app.json /
+  # worker.json respectively. The Event Log reader globs the directory
+  # and merges by timestamp.
+  drevalis_logs:
