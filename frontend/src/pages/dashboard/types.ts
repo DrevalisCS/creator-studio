@@ -9,7 +9,10 @@ export type WidgetId =
   | 'quick-actions'
   | 'recent-episodes'
   | 'activity-timeline'
-  | 'active-jobs';
+  | 'active-jobs'
+  | 'upcoming-posts'
+  | 'top-series'
+  | 'quota-usage';
 
 export interface DashboardLayout {
   version: 1;
@@ -27,6 +30,9 @@ export const ALL_WIDGET_IDS: readonly WidgetId[] = [
   'recent-episodes',
   'activity-timeline',
   'active-jobs',
+  'upcoming-posts',
+  'top-series',
+  'quota-usage',
 ] as const;
 
 export const WIDGET_LABELS: Record<WidgetId, string> = {
@@ -37,6 +43,9 @@ export const WIDGET_LABELS: Record<WidgetId, string> = {
   'recent-episodes': 'Recent Episodes',
   'activity-timeline': 'Activity Timeline',
   'active-jobs': 'Active Jobs',
+  'upcoming-posts': 'Upcoming Posts',
+  'top-series': 'Top Series',
+  'quota-usage': 'Today’s Generations',
 };
 
 export const DEFAULT_LAYOUT: DashboardLayout = {
@@ -49,5 +58,7 @@ export const DEFAULT_LAYOUT: DashboardLayout = {
     'recent-episodes',
     'activity-timeline',
   ],
-  hidden: ['active-jobs'],
+  // Off by default so the existing dashboard still renders the same on
+  // first paint. Users discover the new widgets via "Customize → Add".
+  hidden: ['active-jobs', 'upcoming-posts', 'top-series', 'quota-usage'],
 };

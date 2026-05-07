@@ -1255,6 +1255,11 @@ export interface ActivationsResponse {
 
 export const license = {
   status: () => get<LicenseStatus>('/api/v1/license/status'),
+  // Today's episode-generation usage against the tier's daily cap.
+  // ``limit`` is null for unlimited tiers; the Dashboard's QuotaWidget
+  // renders the "∞" symbol in that case.
+  quota: () =>
+    get<{ used: number; limit: number | null }>('/api/v1/license/quota'),
   activate: (license_jwt: string) =>
     post<LicenseStatus>('/api/v1/license/activate', { license_jwt }),
   deactivate: () => post<LicenseStatus>('/api/v1/license/deactivate'),

@@ -7,19 +7,169 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Three new Dashboard widgets** in the customization catalog:
+  - `upcoming-posts` — next 5 scheduled posts in the 30-day window with
+    platform icon + relative time. Empty-state CTA → `/calendar`.
+  - `top-series` — series ranked by completed episode count (client-side
+    aggregation over the existing episodes/series queries; no extra
+    request).
+  - `quota-usage` — today's episode-generation count vs the tier's daily
+    cap. Renders ∞ for unlimited tiers; warning colour at ≥80 %; error
+    colour at the cap.
+- **`GET /api/v1/license/quota`** exposes `get_daily_episode_usage`
+  (Redis-backed) so the dashboard widget can render without a heavier
+  full-license query.
+
+All three widgets are off by default — discoverable via
+"Customize → Add to dashboard" so existing users don't get a surprise
+layout change.
+
+## [0.36.0] - 2026-05-07
+
+UI overhauls release. Every page the user flagged as "cluttered" or
+"hard to navigate" rebuilt around a clearer information hierarchy.
+Per-user `users.preferences` JSONB powers the persistent state.
+
+### Added
+
+- **`users.preferences` JSONB column** (migration 047) +
+  `GET / PUT /api/v1/auth/preferences` shallow-merge endpoints. Backed by
+  a new `lib/usePreferences.ts` hook with `staleTime: Infinity` so focus
+  events don't reset drag-drop UI state mid-edit.
+
+- **Dashboard customization** — drag-and-drop widget reorder, hide /
+  show, persist via `preferences.dashboard_layout`. Native HTML5 DnD,
+  no library — bundle stays flat. Mobile dialog fallback with up/down
+  arrows + show/hide toggles (touch DnD is finicky).
+
+- **EpisodeDetail two-column layout** on `lg+`: sticky banner with
+  primary action (varies by status: Generate / Stop / Regenerate
+  dropdown) + `⋮` overflow menu. Sidebar with thumbnail / status /
+  metrics / CTAs. Publish row visible only in publish-eligible statuses
+  (Schedule / Upload / Publish All / SEO / Edit thumbnail). Shell drops
+  1349 → 1224 LOC.
+
+- **SeriesDetail three-tab layout**: Episodes (default) / Setup /
+  Analytics under the sticky hero card. Active tab persists via
+  `preferences.series_detail_tab` AND mirrors to `?tab=` URL param so
+  deep links land on the right view. Shell drops 1620 → 545 LOC. The
+  primary task (episodes) is front-and-centre on first visit instead
+  of behind a wall of settings.
+
+- **Calendar Day / Week / Month view toggle** + per-platform tabs (All
+  / YouTube / TikTok / Instagram / Facebook / X). Upload time visible
+  on every chip / card. Day view default on mobile (week + month grids
+  don't fit). Drag-to-reschedule preserved on the month grid; day +
+  week are inspection-only (v1).
+
+- **Activity Monitor visual redesign**: `HeaderStrip` / `JobCard` /
+  `BulkActions` package split. Cleaner hierarchy, fewer borders,
+  icon-only cancel with tooltip. Bulk-action strip hides when there's
+  nothing to act on. All Phase 5 `aria-live` regions preserved.
+
 ### Changed
 
-- **Audiobook service partial extraction.**
-  `services/audiobook/_monolith.py` drops 5283 → 4841 LOC by moving
-  three pure-text concerns into their own modules: `chaptering.py`
-  (chapter-pattern detection + scoring + filters + `_parse_chapters`),
-  `script_tags.py` (`[Speaker]` voice-block parser + `[SFX:]` modifier
-  parser), `chunking.py` (`CHUNK_LIMITS` + `_split_text` +
-  `_split_long_sentence` + `_repair_bracket_splits`). Class-level
-  delegation shims preserve the existing `AudiobookService` API. Pure
-  refactor — no behavior change. Seven of the original twelve modules
-  in the docstring roadmap remain (the closure / async-heavy executor
-  blocks).
+- The flat `pages/Calendar.tsx` (~925 LOC) becomes a `pages/Calendar/`
+  package matching the `EpisodeDetail` / `Settings` convention.
+- The flat `pages/Dashboard.tsx` (~460 LOC) becomes a `pages/dashboard/`
+  package with widget files extracted under `dashboard/widgets/`.
+- The flat `components/ActivityMonitor.tsx` (~665 LOC) becomes a
+  `components/ActivityMonitor/` package with a 6-line back-compat shim
+  at the old path.
+
+### Tests
+
+- Frontend test count: 82 → 160. Fourteen new test files across the
+  five page overhauls + the dashboard customization machinery.
+
+## [0.35.0] - 2026-05-07
+
+Auth hardening (Packages A + B + C) plus user-visible bug fixes.
+
+### Added
+
+- **Auth Package A — constant-time login + audit log + logout-everywhere.**
+  `_DUMMY_HASH` always called on the failure path so wire-level timing
+  is uniform regardless of email existence (CWE-204). New
+  `login_events` table (migration 044) records every login attempt
+  (success + four failure modes) via `asyncio.create_task`; users see
+  their own recent logins in Settings. `users.session_version` + `sv`
+  claim revoke all of a user's sessions in one click via
+  `POST /api/v1/auth/logout-everywhere`.
+
+- **Auth Package B — TOTP 2FA.** Stdlib-only RFC 6238 implementation
+  (no `pyotp` dep, no `qrcode` dep). `users.totp_*` columns (migration
+  045) — Fernet-encrypted secret + recovery codes, `totp_confirmed_at`
+  gate. Two-stage login flow with 5-minute Fernet-TTL challenge tokens,
+  Redis replay protection, constant-time HMAC verify (CWE-208).
+  Settings → Two-factor section for enrollment + disable.
+
+- **Auth Package C — password reset via email.** SHA256-hashed tokens
+  in `password_reset_tokens` (migration 046) — DB never stores the
+  live token. Stdlib `smtplib` via `asyncio.to_thread`, no new dep.
+  Timing-uniform unknown-email handling. Per-IP rate limit.
+  60-min TTL, cap of 3 unused tokens per user. Two-stage when 2FA is
+  enabled. New `/reset-password` public route in the frontend.
+
+- **Calendar slot-finder.** New `services/schedule_slot.py` walks
+  per-platform `upload_days` / `upload_time` preferences forward,
+  skipping any candidate within `exclude_window_minutes` of an existing
+  pending post. `GET /api/v1/schedule/next-slot` exposes it. The
+  ScheduleDialog gains a "Find next free slot for this platform"
+  button.
+
+- **YouTube duplicate-cleanup UI.** The backend `find_duplicate_uploads`
+  + `dedupe_uploads` endpoints (already shipped) now have a frontend:
+  `DuplicatesPanel` at the top of the Uploads tab auto-runs on mount,
+  surfaces every (episode, channel) pair with multiple `done` rows,
+  and offers a one-click cleanup with optional YouTube-side delete.
+
+- **App events log section.** `services/event_log.py` reads the
+  configured `LOG_FILE` JSON stream in reverse, filters by severity,
+  returns warning+ events. `GET /api/v1/events` (owner-gated) + a new
+  "App events" section on the `/logs` page. Docker-socket integration
+  explicitly NOT shipped — it's a trust-boundary change documented as
+  a known follow-up.
+
+### Fixed
+
+- **Activity Monitor "reconnecting…" pill flapping every ~60s.** The
+  WebSocket sat idle when the queue was empty and Nginx Proxy Manager
+  closed it at the default `proxy_read_timeout`. Added client-side
+  keepalive ping every 30 seconds (server already handled it).
+
+## [0.34.3] - 2026-05-07
+
+### Changed
+
+- **Security audit pass.** `npm audit` clean (vitest 2 → 4 closed two
+  dev-server CVEs in `esbuild` + `vite`, lockfile shrinks ~800 lines).
+  `pip-audit` actionable findings pinned forward in `pyproject.toml`:
+  `python-multipart >= 0.0.27`, `pytest >= 9.0.3`. `bandit -r src/`:
+  70 findings, all LOW severity, all false positives (random for
+  backoff jitter / image seeds / OAuth scope strings).
+
+## [0.34.2] - 2026-05-07
+
+Pure refactor + coverage release. No behavior change.
+
+### Changed
+
+- `services/audiobook/_monolith.py` drops 5283 → 4459 LOC across two
+  extraction rounds (-824 cumulative). Six new modules: `chaptering`,
+  `script_tags`, `chunking`, `image_gen`, `music_gen`, `metadata`.
+  Five modules remain on the docstring roadmap (the closure /
+  async-coordinator blocks).
+
+### Added
+
+- 5 new unit tests for the soft-instrumentation helper
+  (`core/license/usage.log_feature_usage`).
+- 19 new frontend component tests for `TierGatePlaceholder`,
+  `SystemHealthCard`, `ShortcutOverlay` (the new shared components
+  shipped in v0.34.0 / v0.34.1). Frontend suite at 63 → 72.
 
 ## [0.34.1] - 2026-05-07
 

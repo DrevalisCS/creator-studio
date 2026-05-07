@@ -135,6 +135,22 @@ async def get_license_status(
     return LicenseStatusResponse(**await svc.get_status())
 
 
+@router.get("/quota")
+async def get_quota(
+    redis: Redis = Depends(get_redis),
+) -> dict[str, int | None]:
+    """Today's episode-generation usage against the tier's daily cap.
+
+    Returns ``{used, limit}``. ``limit`` is ``None`` for unlimited tiers
+    (Creator+, with the post-rebrand pricing). Unactivated installs
+    return ``{used: 0, limit: 0}`` rather than raising — the dashboard
+    widget can render a calm "0 / 0" instead of an error pill.
+    """
+    from drevalis.core.license.quota import get_daily_episode_usage
+
+    return await get_daily_episode_usage(redis)
+
+
 # ── Activate / Deactivate ────────────────────────────────────────────────
 
 

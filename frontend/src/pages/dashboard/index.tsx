@@ -23,6 +23,9 @@ import { QuickActionsWidget } from './widgets/QuickActionsWidget';
 import { ActivityTimelineWidget } from './widgets/ActivityTimelineWidget';
 import { RecentEpisodesWidget } from './widgets/RecentEpisodesWidget';
 import { ActiveJobsWidget } from './widgets/ActiveJobsWidget';
+import { UpcomingPostsWidget } from './widgets/UpcomingPostsWidget';
+import { TopSeriesWidget } from './widgets/TopSeriesWidget';
+import { QuotaUsageWidget } from './widgets/QuotaUsageWidget';
 import { WIDGET_LABELS, type WidgetId } from './types';
 
 // =============================================================================
@@ -71,6 +74,10 @@ const WIDGET_REGISTRY: Record<WidgetId, WidgetRenderer> = {
   'active-jobs': ({ activeJobs, latestByEpisode }) => (
     <ActiveJobsWidget activeJobs={activeJobs} latestByEpisode={latestByEpisode} />
   ),
+  // Self-contained widgets — fetch their own data, no shared deps.
+  'upcoming-posts': () => <UpcomingPostsWidget />,
+  'top-series': () => <TopSeriesWidget />,
+  'quota-usage': () => <QuotaUsageWidget />,
 };
 
 // ---------------------------------------------------------------------------
