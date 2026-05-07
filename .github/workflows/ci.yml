@@ -118,6 +118,35 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+  api-types:
+    name: API types ↔ OpenAPI snapshot
+    runs-on: ubuntu-latest
+    # Catches "I edited api.d.ts by hand" or "I updated openapi.json but
+    # forgot to regenerate the types" — both produce a non-empty diff
+    # against the committed file. Does NOT verify the snapshot matches
+    # the live backend; that drift is enforced by the frontend job's
+    # ``tsc --noEmit`` (broken contracts surface as call-site type
+    # errors). Devs run ``npm run gen:api`` from frontend/ when they
+    # change response shapes.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install frontend deps
+        working-directory: frontend
+        run: npm install --no-audit --no-fund
+      - name: Regenerate types from committed openapi.json
+        working-directory: frontend
+        run: npx openapi-typescript openapi.json -o /tmp/api.d.ts
+      - name: Check committed types match the snapshot
+        run: |
+          if ! diff -q frontend/src/types/api.d.ts /tmp/api.d.ts; then
+            echo "::error::frontend/src/types/api.d.ts is out of sync with openapi.json. Run 'npm run gen:api' from frontend/ and commit the result."
+            diff frontend/src/types/api.d.ts /tmp/api.d.ts | head -40
+            exit 1
+          fi
+
   # ─────────────────────────── Docker ───────────────────────────
 
   docker-build:

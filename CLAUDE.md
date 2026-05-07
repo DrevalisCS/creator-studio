@@ -283,6 +283,20 @@ React + TS + Tailwind, Vite. **Outfit** (display) + **DM Sans** (body), glass mo
 
 Docked bottom bar. Left: active task list w/ per-step progress. Right: worker health + priority selector (`shorts_first` / `longform_first` / `fifo`). Job controls (pause-all, cancel-all, retry-all-failed) live here — removed from Dashboard.
 
+### Generated API Types
+
+`frontend/src/types/api.d.ts` is generated from the FastAPI OpenAPI spec via [`openapi-typescript`](https://openapi-ts.dev). When backend response shapes change:
+
+```bash
+# from frontend/, with the backend running on :8000
+npm run gen:api          # curls /openapi.json + regenerates api.d.ts
+git add openapi.json src/types/api.d.ts
+```
+
+The script also commits `frontend/openapi.json` — the snapshot input — so CI can verify the generated types match the spec without booting the backend.
+
+CI's `api-types` job re-runs `openapi-typescript` against the committed `openapi.json` and fails if the result differs from the committed `api.d.ts`. It does **not** verify the snapshot matches the live backend — that drift surfaces as call-site type errors when consumers of `api.d.ts` start using new fields. Hand-rolled types in `types/index.ts` still exist; migration to `api.d.ts` is opt-in per call site.
+
 ### Bundle Budget
 
 Targets for `npm run build` output (Vite prints sizes on every build — read them):
