@@ -11,7 +11,11 @@
 # This file pins line endings on the formats where CRLF is fatal.
 
 # ── Auto detection ───────────────────────────────────────────────────────
-* text=auto
+# ``eol=lf`` on the catch-all forces every text file to LF in BOTH the
+# index AND the working copy regardless of the host's ``core.autocrlf`` /
+# ``core.eol`` settings. The PowerShell / CMD overrides below still win
+# because per-pattern attributes override the catch-all.
+* text=auto eol=lf
 
 # ── Force LF on Linux/cross-platform formats ─────────────────────────────
 *.sh         text eol=lf
