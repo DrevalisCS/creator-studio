@@ -32,7 +32,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Dialog, DialogFooter } from '@/components/ui/Dialog';
-import { audiobooks as audiobooksApi, voiceProfiles as voiceProfilesApi } from '@/lib/api';
+import { audiobooks as audiobooksApi, voiceProfiles as voiceProfilesApi, ApiError } from '@/lib/api';
+import { TierGatePlaceholder } from '@/components/TierGatePlaceholder';
 import type { Audiobook, AudiobookCreate, VoiceProfile } from '@/types';
 
 // ---------------------------------------------------------------------------
@@ -63,6 +64,10 @@ function Audiobooks() {
   const [audiobookList, setAudiobookList] = useState<Audiobook[]>([]);
   const [voiceProfileList, setVoiceProfileList] = useState<VoiceProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  // Captures the initial-fetch error so we can render the tier-gate
+  // upgrade placeholder instead of a generic toast when the API
+  // returns 402 (audiobooks is a Pro+ feature).
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [creating, setCreating] = useState(false);
   const [showCreator, setShowCreator] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
@@ -134,8 +139,15 @@ function Audiobooks() {
     try {
       const res = await audiobooksApi.list();
       setAudiobookList(res);
+      setLoadError(null);
       return res;
     } catch (err) {
+      // 402 is owned by the tier-gate placeholder render branch — don't
+      // toast over it (the user gets a richer upgrade card instead).
+      if (err instanceof ApiError && err.status === 402) {
+        setLoadError(err);
+        return [];
+      }
       toast.error('Failed to load audiobooks', { description: String(err) });
       return [];
     }
@@ -498,6 +510,16 @@ function Audiobooks() {
     return (
       <div className="flex items-center justify-center h-[60vh]">
         <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  // Tier gate: if /audiobooks 402'd, render the upgrade card in place
+  // of the rest of the page. Other errors fell through to the toast.
+  if (loadError instanceof ApiError && loadError.status === 402) {
+    return (
+      <div className="max-w-2xl mx-auto py-8">
+        <TierGatePlaceholder error={loadError} featureLabel="Text to Voice" />
       </div>
     );
   }
