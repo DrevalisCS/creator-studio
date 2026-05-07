@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     # ── Storage ───────────────────────────────────────────────────────────
     storage_base_path: Path = Path("./storage")
 
+    # ── Logging ───────────────────────────────────────────────────────────
+    # Optional path to a JSON-lines structlog file.  When set, the
+    # ``GET /api/v1/events`` endpoint reads recent warning/error/critical
+    # events from this file and surfaces them in the Logs page.
+    # Leave unset (or empty) to disable file-based event log access.
+    # The worker writes to the same log file when LOG_FILE is set via the
+    # shared .env / environment.
+    log_file: str | None = None
+
     # ── Encryption (Fernet) ───────────────────────────────────────────────
     encryption_key: str  # Required — no default
 

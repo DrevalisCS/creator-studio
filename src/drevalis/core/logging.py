@@ -40,7 +40,7 @@ def _add_exc_info_flag(
     return event_dict
 
 
-def setup_logging(*, debug: bool = False) -> None:
+def setup_logging(*, debug: bool = False, log_file: str | None = None) -> None:
     """Configure structlog and stdlib logging.
 
     This should be called **once** during application startup (in the
@@ -48,6 +48,11 @@ def setup_logging(*, debug: bool = False) -> None:
 
     Args:
         debug: When ``True``, use coloured console rendering instead of JSON.
+        log_file: Optional path to a JSON-lines log file.  When provided,
+            all INFO+ log events are also written as JSON lines to this file
+            (regardless of the *debug* flag).  The ``GET /api/v1/events``
+            endpoint reads from this file.  The parent directory is created
+            automatically.
     """
 
     # ── Shared processors (applied to both structlog and stdlib events) ───
@@ -83,7 +88,15 @@ def setup_logging(*, debug: bool = False) -> None:
     )
 
     # ── Route stdlib logging through structlog ────────────────────────────
-    formatter = structlog.stdlib.ProcessorFormatter(
+    json_formatter = structlog.stdlib.ProcessorFormatter(
+        processors=[
+            structlog.stdlib.ProcessorFormatter.remove_processors_meta,
+            structlog.processors.JSONRenderer(),
+        ],
+        foreign_pre_chain=shared_processors,
+    )
+
+    console_formatter = structlog.stdlib.ProcessorFormatter(
         processors=[
             structlog.stdlib.ProcessorFormatter.remove_processors_meta,
             renderer,
@@ -91,12 +104,26 @@ def setup_logging(*, debug: bool = False) -> None:
         foreign_pre_chain=shared_processors,
     )
 
-    handler = logging.StreamHandler(sys.stdout)
-    handler.setFormatter(formatter)
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(console_formatter)
 
     root_logger = logging.getLogger()
     root_logger.handlers.clear()
-    root_logger.addHandler(handler)
+    root_logger.addHandler(console_handler)
+
+    # ── Optional JSON file handler ────────────────────────────────────────
+    if log_file:
+        from pathlib import Path as _Path
+
+        log_path = _Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(str(log_path), encoding="utf-8")
+        file_handler.setFormatter(json_formatter)
+        # File always writes at INFO+ — debug flag only affects verbosity
+        # of the console stream, not what ends up in the parseable file.
+        file_handler.setLevel(logging.INFO)
+        root_logger.addHandler(file_handler)
+
     root_logger.setLevel(logging.DEBUG if debug else logging.INFO)
 
     # Quieten noisy third-party loggers

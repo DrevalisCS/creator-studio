@@ -17,6 +17,7 @@ from drevalis.api.routes.comfyui import router as comfyui_router
 from drevalis.api.routes.diagnostics import router as diagnostics_router
 from drevalis.api.routes.editor import router as editor_router
 from drevalis.api.routes.episodes import router as episodes_router
+from drevalis.api.routes.events import router as events_router
 from drevalis.api.routes.jobs import router as jobs_router
 from drevalis.api.routes.license import router as license_router
 from drevalis.api.routes.llm import router as llm_router
@@ -87,3 +88,4 @@ router.include_router(video_ingest_router)
 router.include_router(editor_router)
 router.include_router(character_packs_router)
 router.include_router(diagnostics_router)
+router.include_router(events_router)

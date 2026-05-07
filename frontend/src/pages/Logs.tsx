@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Terminal, RefreshCw, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Terminal, RefreshCw, CheckCircle2, XCircle, Clock, AlertTriangle, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Spinner } from '@/components/ui/Spinner';
@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { StatCard } from '@/components/ui/StatCard';
-import { metricsApi } from '@/lib/api';
+import { metricsApi, eventsApi } from '@/lib/api';
+import type { AppLogEvent, AppEventLevel } from '@/lib/api';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -26,6 +27,179 @@ interface PipelineEvent {
 // ---------------------------------------------------------------------------
 
 const POLL_INTERVAL = 5000;
+
+// ---------------------------------------------------------------------------
+// Level badge colours (warning=yellow, error=red, critical=darker red)
+// ---------------------------------------------------------------------------
+
+function LevelBadge({ level }: { level: AppEventLevel }) {
+  // Maps directly to the semantic Badge variants already in the design system.
+  const variant = level === 'critical' ? 'error' : level; // warning | error
+  const label = level.toUpperCase();
+
+  // For critical we want a slightly different visual weight — add a darker
+  // ring using a className override since the design system doesn't have a
+  // dedicated "critical" variant.
+  const extra = level === 'critical' ? 'ring-1 ring-red-700/60' : '';
+
+  return (
+    <Badge variant={variant} className={extra}>
+      {label}
+    </Badge>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Expandable context blob
+// ---------------------------------------------------------------------------
+
+function ContextBlob({ context }: { context: Record<string, unknown> }) {
+  const [open, setOpen] = useState(false);
+  const keys = Object.keys(context);
+
+  if (keys.length === 0) return null;
+
+  return (
+    <div className="mt-1">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex items-center gap-1 text-[10px] text-txt-tertiary hover:text-txt-secondary transition-colors"
+      >
+        {open ? <ChevronDown size={10} /> : <ChevronRight size={10} />}
+        {open ? 'hide context' : `${keys.length} field${keys.length === 1 ? '' : 's'}`}
+      </button>
+
+      {open && (
+        <pre className="mt-1 p-2 rounded bg-bg-secondary text-[10px] text-txt-secondary overflow-x-auto whitespace-pre-wrap break-all">
+          {JSON.stringify(context, null, 2)}
+        </pre>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// App Events section
+// ---------------------------------------------------------------------------
+
+const LEVEL_OPTIONS: { value: AppEventLevel; label: string }[] = [
+  { value: 'warning', label: 'Warning+' },
+  { value: 'error', label: 'Error+' },
+  { value: 'critical', label: 'Critical only' },
+];
+
+function AppEventsSection({ autoRefresh }: { autoRefresh: boolean }) {
+  const [appEvents, setAppEvents] = useState<AppLogEvent[]>([]);
+  const [minLevel, setMinLevel] = useState<AppEventLevel>('warning');
+  const [loading, setLoading] = useState(true);
+  // null = not configured (empty list from server), false = fetch failed
+  const [available, setAvailable] = useState<boolean | null>(null);
+
+  const fetchAppEvents = useCallback(async () => {
+    try {
+      const data = await eventsApi.list(200, minLevel);
+      setAppEvents(data.events);
+      setAvailable(true);
+    } catch {
+      // 401/403 = no team mode or not owner — treat as not available.
+      // Other errors — keep last data, don't flash an error state.
+      setAvailable(false);
+    }
+  }, [minLevel]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchAppEvents().finally(() => setLoading(false));
+  }, [fetchAppEvents]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => void fetchAppEvents(), POLL_INTERVAL);
+    return () => clearInterval(interval);
+  }, [autoRefresh, fetchAppEvents]);
+
+  // ── Render ──────────────────────────────────────────────────────────
+
+  return (
+    <Card padding="none" className="mb-6">
+      <div className="p-4 border-b border-border flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <AlertTriangle size={14} className="text-warning" />
+          <span className="text-sm font-medium text-txt-primary">App events</span>
+          {available && (
+            <Badge variant="neutral">{appEvents.length}</Badge>
+          )}
+        </div>
+
+        {/* Severity filter */}
+        <select
+          value={minLevel}
+          onChange={(e) => setMinLevel(e.target.value as AppEventLevel)}
+          className="text-xs bg-bg-secondary text-txt-secondary border border-border rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-accent"
+          aria-label="Minimum severity"
+        >
+          {LEVEL_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="max-h-[50vh] overflow-y-auto p-4 scrollbar-thin">
+        {loading ? (
+          <div className="flex justify-center py-6">
+            <Spinner size="sm" />
+          </div>
+        ) : available === false ? (
+          <p className="text-xs text-txt-tertiary text-center py-4">
+            App events require owner access (team mode) or{' '}
+            <code className="font-mono">LOG_FILE</code> is not configured.
+          </p>
+        ) : appEvents.length === 0 ? (
+          <EmptyState
+            icon={AlertTriangle}
+            title="No events recorded"
+            description="Warning/error events from the structured log will appear here."
+          />
+        ) : (
+          <div className="space-y-3">
+            {appEvents.map((ev, i) => (
+              <div
+                key={i}
+                className="py-2 border-b border-border/20 last:border-0"
+              >
+                <div className="flex items-start gap-2 flex-wrap">
+                  {/* Timestamp */}
+                  <span className="text-[11px] text-txt-tertiary font-mono shrink-0 mt-0.5">
+                    {new Date(ev.timestamp).toLocaleString()}
+                  </span>
+
+                  {/* Level badge */}
+                  <LevelBadge level={ev.level} />
+
+                  {/* Logger (muted, small) */}
+                  <span className="text-[10px] text-txt-tertiary font-mono mt-0.5 shrink-0">
+                    {ev.logger}
+                  </span>
+                </div>
+
+                {/* Event name (semibold) */}
+                <p className="mt-1 text-xs font-semibold text-txt-primary font-mono">
+                  {ev.event}
+                </p>
+
+                {/* Expandable context */}
+                <ContextBlob context={ev.context} />
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // Logs Page
@@ -105,6 +279,9 @@ function Logs() {
         }
       />
 
+      {/* ── App events (structured log file) ─────────────────────────── */}
+      <AppEventsSection autoRefresh={autoRefresh} />
+
       {/* Stats summary — uses the shared StatCard so the visual
           treatment matches the Dashboard tiles. */}
       {events.length > 0 && (() => {
@@ -143,12 +320,12 @@ function Logs() {
         );
       })()}
 
-      {/* Event log */}
+      {/* Pipeline events */}
       <Card padding="none">
         <div className="p-4 border-b border-border flex items-center justify-between">
           <div className="flex items-center gap-2">
             <Terminal size={14} className="text-txt-tertiary" />
-            <span className="text-sm font-medium text-txt-primary">Pipeline Events</span>
+            <span className="text-sm font-medium text-txt-primary">Pipeline events</span>
             <Badge variant="neutral">{events.length}</Badge>
           </div>
         </div>
@@ -174,7 +351,7 @@ function Logs() {
                     {new Date(e.timestamp).toLocaleTimeString()}
                   </span>
                   <span className={e.success ? 'text-success' : 'text-error'}>
-                    {e.success ? '\u2713' : '\u2717'}
+                    {e.success ? '✓' : '✗'}
                   </span>
                   <span className={`w-20 shrink-0 ${getStepColor(e.step)}`}>{e.step}</span>
                   <span className="text-txt-tertiary w-16 shrink-0 text-right">

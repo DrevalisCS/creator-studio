@@ -837,6 +837,31 @@ export const metricsApi = {
 };
 
 // ---------------------------------------------------------------------------
+// App Events (structured log file reader)
+// ---------------------------------------------------------------------------
+
+export type AppEventLevel = 'warning' | 'error' | 'critical';
+
+export interface AppLogEvent {
+  timestamp: string;
+  level: AppEventLevel;
+  logger: string;
+  event: string;
+  context: Record<string, unknown>;
+}
+
+export interface AppEventsResponse {
+  events: AppLogEvent[];
+}
+
+export const eventsApi = {
+  list: (limit = 200, minLevel: AppEventLevel = 'warning') =>
+    get<AppEventsResponse>(
+      `/api/v1/events?limit=${limit}&min_level=${minLevel}`,
+    ),
+};
+
+// ---------------------------------------------------------------------------
 // Settings
 // ---------------------------------------------------------------------------
 

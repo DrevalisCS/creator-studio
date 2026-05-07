@@ -13,6 +13,7 @@ export {
   jobs,
   audiobooks,
   metricsApi,
+  eventsApi,
   settings,
   apiKeys,
   runpod,
@@ -65,4 +66,7 @@ export type {
   EditTimelineClip,
   CaptionWord,
   AudiobookClip,
+  AppLogEvent,
+  AppEventLevel,
+  AppEventsResponse,
 } from './_monolith';

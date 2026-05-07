@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     settings = Settings()
 
     # ── Startup ───────────────────────────────────────────────────────────
-    setup_logging(debug=settings.debug)
+    setup_logging(debug=settings.debug, log_file=settings.log_file)
     log.info("starting_up", app=settings.app_name, debug=settings.debug)
 
     # Validate encryption key at startup (M1)
