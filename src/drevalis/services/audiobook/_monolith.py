@@ -67,7 +67,27 @@ import structlog
 
 from drevalis.schemas.audiobook import AudiobookSettings
 from drevalis.services.audiobook import job_state as _js
+from drevalis.services.audiobook.chaptering import (
+    _CHAPTER_PATTERN_ALLCAPS,
+    _CHAPTER_PATTERN_MARKDOWN,
+    _CHAPTER_PATTERN_PROSE,
+    _CHAPTER_PATTERN_ROMAN,
+    _MIN_SEGMENT_CHARS,
+    _SCORE_THRESHOLD,
+    _filter_allcaps_matches,
+    _filter_markdown_matches,
+    _parse_chapters,
+    _score_chapter_split,
+)
+from drevalis.services.audiobook.chunking import (
+    CHUNK_LIMITS,  # noqa: F401 — re-exported; tests import from _monolith
+    _chunk_limit,
+    _repair_bracket_splits,
+    _split_long_sentence,
+    _split_text,
+)
 from drevalis.services.audiobook.render_plan import RenderPlan
+from drevalis.services.audiobook.script_tags import _parse_voice_blocks
 from drevalis.services.audiobook.versions import AUDIO_PIPELINE_VERSION
 
 if TYPE_CHECKING:
@@ -286,35 +306,7 @@ def _resolve_ducking_preset(name: str | None) -> dict[str, Any]:
 _DEFAULT_ELEVENLABS_CONCURRENCY = 2
 
 # ── Per-provider chunk size (Task 12) ────────────────────────────────────────
-# Pre-Task-12 every provider got ``max_chars=500``, which shipped ElevenLabs
-# (Creator plan ceiling 2500 chars) ~5× more requests than necessary. Larger
-# chunks also cut cache-key churn on text edits because changes touch fewer
-# chunks. ``_DEFAULT_CHUNK_LIMIT`` is the conservative fallback for any
-# provider not in the map.
-_DEFAULT_CHUNK_LIMIT = 700
-
-CHUNK_LIMITS: dict[str, int] = {
-    "piper": 700,
-    "kokoro": 900,
-    "edge": 1200,
-    # Longest-key-wins: ``comfyui_elevenlabs`` resolves before plain
-    # ``elevenlabs``. The ComfyUI route also accepts 2200 — its
-    # back-end is ElevenLabs, just a different request shape.
-    "comfyui_elevenlabs": 2200,
-    "elevenlabs": 2200,
-}
-
-
-def _chunk_limit(provider_name: str) -> int:
-    """Return the per-provider ``max_chars`` (case-insensitive)."""
-    name = provider_name.lower().replace("_", "")
-    best: tuple[int, int] | None = None  # (key length, limit)
-    for key, limit in CHUNK_LIMITS.items():
-        normalised_key = key.replace("_", "")
-        if normalised_key in name and (best is None or len(normalised_key) > best[0]):
-            best = (len(normalised_key), limit)
-    return best[1] if best is not None else _DEFAULT_CHUNK_LIMIT
-
+# CHUNK_LIMITS and _chunk_limit now live in chunking.py; imported above.
 
 # Substring → concurrency. Keys are matched case-insensitively against the
 # provider's class name (or its ``name`` / ``provider_name`` attribute).
@@ -2539,338 +2531,33 @@ class AudiobookService:
         )
 
     # ══════════════════════════════════════════════════════════════════════
-    # Chapter parsing
+    # Chapter parsing — delegated to chaptering.py
     # ══════════════════════════════════════════════════════════════════════
 
-    # Chapter heading patterns accepted by ``_parse_chapters`` (Task 8).
-    # Each pattern exposes a ``title`` named group; matches are scored by
-    # ``_score_chapter_split`` and the highest-scoring pattern above
-    # threshold wins, so the cascade is "best fit" rather than first-fit.
-    #
-    # Tightened regex notes:
-    #   * Markdown: ``\S`` after the hashes blocks bare ``## ``; the
-    #     post-filter requires a blank line above (or BOF) and below.
-    #   * Prose chapter: word-number form added (one..twelve), ``CHAP``
-    #     short form added, dollar-anchored.
-    #   * Roman: length min 2 — lone ``I`` no longer counts.
-    #   * All-caps: post-filter rejects rows ending in punctuation that
-    #     suggests dialogue / scene cue, and enforces ≥ 80% alpha ratio.
-    _CHAPTER_PATTERN_MARKDOWN = r"(?m)^##\s+(?P<title>\S[^\n]{0,80})$"
-    _CHAPTER_PATTERN_PROSE = (
-        r"(?im)^\s*(?P<title>(?:chapter|chap\.?)\s+"
-        r"(?:\d+|[IVXLCDM]+|"
-        r"one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)"
-        r"\b[^\n]{0,80})$"
-    )
-    _CHAPTER_PATTERN_ROMAN = r"(?m)^\s{0,3}(?P<title>[IVXLCDM]{2,8}\s*[.:)]?)\s*$"
-    _CHAPTER_PATTERN_ALLCAPS = r"(?m)^\s*(?P<title>[A-Z][A-Z0-9 '\-:,]{3,60})\s*$"
+    # Class-level aliases keep ``AudiobookService._CHAPTER_PATTERN_*``,
+    # ``AudiobookService._SCORE_THRESHOLD``, etc. working for any callers
+    # that reached them through the class. The canonical definitions live
+    # in ``chaptering.py``.
+    _CHAPTER_PATTERN_MARKDOWN = _CHAPTER_PATTERN_MARKDOWN
+    _CHAPTER_PATTERN_PROSE = _CHAPTER_PATTERN_PROSE
+    _CHAPTER_PATTERN_ROMAN = _CHAPTER_PATTERN_ROMAN
+    _CHAPTER_PATTERN_ALLCAPS = _CHAPTER_PATTERN_ALLCAPS
+    _SCORE_THRESHOLD = _SCORE_THRESHOLD
+    _MIN_SEGMENT_CHARS = _MIN_SEGMENT_CHARS
 
-    _SCORE_THRESHOLD = 800.0
-    _MIN_SEGMENT_CHARS = 500
-
-    @staticmethod
-    def _score_chapter_split(matches: list[re.Match[str]], text: str) -> float:
-        """Score a candidate chapter split.
-
-        Higher is better. Two splits are required at minimum; any
-        segment shorter than ``_MIN_SEGMENT_CHARS`` returns 0 (false-
-        positive guard). Otherwise the score is mean segment length
-        divided by ``1 + coefficient_of_variation`` so consistent chunk
-        sizes (real chapters) win against noisy ones (false splits).
-        """
-        if len(matches) < 2:
-            return 0.0
-        boundaries = [m.start() for m in matches] + [len(text)]
-        segs = [boundaries[i + 1] - boundaries[i] for i in range(len(boundaries) - 1)]
-        if min(segs) < AudiobookService._MIN_SEGMENT_CHARS:
-            return 0.0
-        import statistics as _stats
-
-        mean = _stats.mean(segs)
-        if mean == 0:
-            return 0.0
-        cv = _stats.stdev(segs) / mean if len(segs) > 1 else 0.0
-        return mean / (1.0 + cv)
-
-    @staticmethod
-    def _filter_markdown_matches(matches: list[re.Match[str]], text: str) -> list[re.Match[str]]:
-        """Markdown-heading post-filter: require blank line above + below.
-
-        The regex matches every ``## Foo`` line; a heading inside a
-        prose paragraph (``some sentence.\n## Note: ...``) shouldn't
-        count as a chapter break.
-        """
-        kept: list[re.Match[str]] = []
-        for m in matches:
-            start = m.start()
-            end = m.end()
-            # Above: BOF, or the previous non-newline char is preceded
-            # by a blank line.
-            above_ok = start == 0 or text[max(0, start - 2) : start] == "\n\n"
-            # Below: EOF, or the next char chain is ``\n\n`` or just ``\n``
-            # at end of text.
-            tail = text[end : end + 2]
-            below_ok = end == len(text) or tail.startswith("\n\n") or tail == "\n"
-            if above_ok and below_ok:
-                kept.append(m)
-        return kept
-
-    @staticmethod
-    def _filter_allcaps_matches(matches: list[re.Match[str]]) -> list[re.Match[str]]:
-        """All-caps post-filter: reject screenplay scene cues + low alpha ratio.
-
-        Real chapter headers (``THE FIRST ENCOUNTER``) are mostly letters.
-        Screenplay scene cues (``INT. KITCHEN — DAY``) end in a content
-        word but are short enough that the regex would still bite; the
-        ratio guard rejects them when the alpha share dips below 80%.
-        Rows ending in ``,;:`` are usually mid-sentence fragments.
-        """
-        kept: list[re.Match[str]] = []
-        for m in matches:
-            title = m.group("title").strip()
-            if not title:
-                continue
-            if title[-1] in ",;":
-                continue
-            alpha = sum(1 for c in title if c.isalpha())
-            if alpha == 0 or alpha / len(title) < 0.8:
-                continue
-            kept.append(m)
-        return kept
+    _score_chapter_split = staticmethod(_score_chapter_split)
+    _filter_markdown_matches = staticmethod(_filter_markdown_matches)
+    _filter_allcaps_matches = staticmethod(_filter_allcaps_matches)
 
     def _parse_chapters(self, text: str) -> list[dict[str, Any]]:
-        """Split text into chapters via scored heading patterns + fallbacks.
-
-        Pattern set tried (Task 8 — scoring, not first-match):
-          1. Markdown ``## Title`` headings (blank-line-anchored)
-          2. Prose ``Chapter 1`` / ``CHAPTER IV`` / ``chap. one``
-          3. Roman numerals ``II.`` (length ≥ 2 — no lone ``I``)
-          4. All-caps single-line headings (≥ 80% alpha, no trailing
-             ``,;``)
-          5. ``---`` horizontal-rule separators (unscored fallback)
-          6. Single chapter (final fallback)
-
-        Highest-scoring pattern above ``_SCORE_THRESHOLD`` wins. The
-        score is mean-segment-length / (1 + CV); shorter than 500 chars
-        per segment automatically scores 0.
-        """
-        candidates: list[tuple[float, list[re.Match[str]]]] = []
-
-        # Inlined dispatch: post-filters have different signatures
-        # (markdown wants ``(matches, text)``; all-caps wants
-        # ``(matches,)``; the others take no post-filter), so keep the
-        # call sites explicit instead of trying to unify them through a
-        # shared callable.
-        for pattern in (
-            self._CHAPTER_PATTERN_MARKDOWN,
-            self._CHAPTER_PATTERN_PROSE,
-            self._CHAPTER_PATTERN_ROMAN,
-            self._CHAPTER_PATTERN_ALLCAPS,
-        ):
-            compiled = re.compile(pattern)
-            matches = list(compiled.finditer(text))
-            if pattern is self._CHAPTER_PATTERN_MARKDOWN:
-                matches = self._filter_markdown_matches(matches, text)
-            elif pattern is self._CHAPTER_PATTERN_ALLCAPS:
-                matches = self._filter_allcaps_matches(matches)
-            score = self._score_chapter_split(matches, text)
-            if score > 0:
-                candidates.append((score, matches))
-
-        if candidates:
-            best_score, best_matches = max(candidates, key=lambda c: c[0])
-            if best_score >= self._SCORE_THRESHOLD:
-                chapters: list[dict[str, Any]] = []
-                prologue = text[: best_matches[0].start()].strip()
-                if prologue:
-                    chapters.append({"title": "Introduction", "text": prologue})
-                for i, m in enumerate(best_matches):
-                    start = m.end()
-                    end = best_matches[i + 1].start() if i + 1 < len(best_matches) else len(text)
-                    body = text[start:end].strip()
-                    if body:
-                        chapters.append(
-                            {
-                                "title": (m.group("title") or "").strip()[:120],
-                                "text": body,
-                            }
-                        )
-                if chapters:
-                    return chapters
-
-        # Horizontal-rule separators (unscored fallback — they're
-        # explicit and rarely false-positive).
-        sections = re.split(r"^---+$", text, flags=re.MULTILINE)
-        if len(sections) > 1:
-            return [
-                {"title": f"Part {i + 1}", "text": s.strip()}
-                for i, s in enumerate(sections)
-                if s.strip()
-            ]
-
-        # Single-chapter final fallback.
-        return [{"title": "Full Text", "text": text}]
+        return _parse_chapters(text)
 
     # ══════════════════════════════════════════════════════════════════════
-    # Voice block parsing
+    # Voice block parsing — delegated to script_tags.py
     # ══════════════════════════════════════════════════════════════════════
 
-    def _parse_voice_blocks(self, text: str) -> list[dict[str, str]]:
-        """Parse ``[Speaker]`` and ``[SFX: ...]`` tagged text into blocks.
-
-        Each block dict has either ``kind="voice"`` (with
-        ``speaker``/``text``) or ``kind="sfx"`` (with
-        ``description`` and optional ``duration`` /
-        ``prompt_influence`` / ``loop`` keys).
-
-        SFX tag grammar (compatible with the existing speaker tag
-        regex so unknown ``[Foo]`` doesn't get silently treated as
-        a sound effect):
-
-            [SFX: description]
-            [SFX: description | dur=5 | influence=0.4 | loop]
-            [SFX: description | dur=8 | under=next | duck=-12]
-            [SFX: description | dur=20 | under=4 | duck=-15]
-
-        Modifiers:
-            ``dur`` / ``duration``  — seconds, default 4, clamped 0.5-22
-            ``influence``           — 0.0-1.0 prompt adherence
-            ``loop``                — valueless flag
-            ``under=next``          — overlay under the next voice block
-            ``under=N``             — overlay under the next N seconds
-                                       of voice (across blocks)
-            ``duck`` / ``duck_db``  — dB to attenuate the SFX while
-                                       voice is speaking on top
-                                       (default -12, more negative =
-                                       quieter SFX during dialogue)
-
-        Without an ``under`` modifier, the SFX is *sequential* —
-        played at exactly its script position, voice resumes after.
-        With ``under``, the SFX is *overlay* — written to disk now
-        but spliced in by the concatenator on top of subsequent
-        voice chunks with sidechain ducking.
-
-        Untagged text defaults to ``[Narrator]``.
-        """
-        blocks: list[dict[str, Any]] = []
-        current_speaker = "Narrator"
-        current_text: list[str] = []
-
-        def _flush_voice() -> None:
-            if not current_text:
-                return
-            joined = "\n".join(current_text).strip()
-            if joined:
-                blocks.append({"kind": "voice", "speaker": current_speaker, "text": joined})
-
-        for raw_line in text.split("\n"):
-            line = raw_line.strip()
-            if not line:
-                if current_text:
-                    current_text.append("")
-                continue
-
-            if line.startswith("##"):
-                continue
-
-            # SFX tag — handled before generic [Speaker] match so
-            # ``SFX`` isn't accidentally treated as a speaker name.
-            sfx_m = re.match(
-                r"^\[\s*SFX\s*:\s*([^\]]+?)\s*\]\s*$",
-                line,
-                flags=re.IGNORECASE,
-            )
-            if sfx_m:
-                _flush_voice()
-                current_text = []
-                payload = sfx_m.group(1)
-                # Pipe-separated key=value modifiers after the desc.
-                parts = [p.strip() for p in payload.split("|")]
-                description = parts[0]
-                duration = 4.0
-                influence: float | None = None
-                loop = False
-                # Overlay modifiers — None means "sequential
-                # placement, no overlay". under_voice_blocks=int OR
-                # under_seconds=float describes how much subsequent
-                # voice the SFX should ride under.
-                under_voice_blocks: int | None = None
-                under_seconds: float | None = None
-                duck_db = -12.0
-                for mod in parts[1:]:
-                    if not mod:
-                        continue
-                    if mod.lower() == "loop":
-                        loop = True
-                        continue
-                    if "=" in mod:
-                        k, v = mod.split("=", 1)
-                        k = k.strip().lower()
-                        v = v.strip()
-                        try:
-                            if k in ("dur", "duration"):
-                                duration = float(v)
-                            elif k in ("influence", "prompt_influence"):
-                                influence = float(v)
-                            elif k == "loop":
-                                loop = v.lower() in ("1", "true", "yes")
-                            elif k == "under":
-                                vl = v.lower()
-                                if vl in ("next", "1"):
-                                    under_voice_blocks = 1
-                                elif vl == "all":
-                                    # "all remaining voice blocks in
-                                    # the chapter" — handled via a
-                                    # very large block count.
-                                    under_voice_blocks = 999
-                                else:
-                                    # Numeric: treat as seconds when
-                                    # >2 (a single voice block of
-                                    # duration ≤2s is unusual);
-                                    # otherwise as block count.
-                                    try:
-                                        n = float(v)
-                                        if n.is_integer() and n <= 5:
-                                            under_voice_blocks = int(n)
-                                        else:
-                                            under_seconds = n
-                                    except ValueError:
-                                        pass
-                            elif k in ("duck", "duck_db"):
-                                duck_db = float(v)
-                        except ValueError:
-                            pass
-                blocks.append(
-                    {
-                        "kind": "sfx",
-                        "description": description,
-                        "duration": duration,
-                        "loop": loop,
-                        "prompt_influence": influence,
-                        # Overlay metadata — both None for the
-                        # sequential default.
-                        "under_voice_blocks": under_voice_blocks,
-                        "under_seconds": under_seconds,
-                        "duck_db": duck_db,
-                    }
-                )
-                continue
-
-            match = re.match(r"^\[([^\]]+)\]\s*(.*)", line)
-            if match:
-                _flush_voice()
-                current_text = []
-                current_speaker = match.group(1).strip()
-                if match.group(2).strip():
-                    current_text.append(match.group(2).strip())
-            else:
-                current_text.append(line)
-
-        _flush_voice()
-
-        # Drop empty voice blocks but always keep SFX blocks (they
-        # carry their own non-text payload).
-        return [b for b in blocks if b.get("kind") == "sfx" or b.get("text")]
+    def _parse_voice_blocks(self, text: str) -> list[dict[str, Any]]:
+        return _parse_voice_blocks(text)
 
     # ══════════════════════════════════════════════════════════════════════
     # TTS generation (returns AudioChunk list)
@@ -3194,143 +2881,14 @@ class AudiobookService:
             return None
 
     # ══════════════════════════════════════════════════════════════════════
-    # Text splitting
+    # Text splitting — delegated to chunking.py
     # ══════════════════════════════════════════════════════════════════════
 
     def _split_text(self, text: str, max_chars: int) -> list[str]:
-        """Split text into chunks ≤ *max_chars*, bracket-safe (Task 12).
+        return _split_text(text, max_chars)
 
-        Priority:
-
-          1. Paragraph boundaries (``\\n\\n``) — pack whole paragraphs
-             when they fit.
-          2. Sentence boundaries (``. ! ?``) inside any oversize
-             paragraph.
-          3. Comma fallback for sentences that themselves exceed
-             ``max_chars`` (rare).
-
-        Bracket invariant: split points that fall *inside* a ``[...]``
-        group are skipped so a ``[SFX: ...]`` or ``[Speaker]`` tag
-        never lands across two chunks.
-        """
-        text = text.strip()
-        if not text:
-            return [""]
-        if len(text) <= max_chars:
-            return [text]
-
-        # 1. Paragraph split → list of paragraph strings.
-        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if p.strip()]
-        if not paragraphs:
-            paragraphs = [text]
-
-        # 2. Within each paragraph, sentence-split if too long.
-        units: list[str] = []
-        for para in paragraphs:
-            if len(para) <= max_chars:
-                units.append(para)
-                continue
-            sentences = re.split(r"(?<=[.!?])\s+", para)
-            for sent in sentences:
-                sent = sent.strip()
-                if not sent:
-                    continue
-                if len(sent) <= max_chars:
-                    units.append(sent)
-                else:
-                    # 3. Comma fallback for runaway sentences.
-                    units.extend(self._split_long_sentence(sent, max_chars))
-
-        # Greedy pack units, preferring ``\n\n`` between paragraph
-        # units that started on a paragraph boundary. We approximate
-        # that with a single space — the TTS provider doesn't see
-        # paragraph spacing as a pause cue; the audiobook's silence
-        # gaps come from the inter-chunk silence files anyway.
-        chunks: list[str] = []
-        current = ""
-        for unit in units:
-            if not unit:
-                continue
-            if current and len(current) + 1 + len(unit) > max_chars:
-                chunks.append(current)
-                current = unit
-            else:
-                current = f"{current} {unit}" if current else unit
-        if current:
-            chunks.append(current)
-
-        # Bracket invariant: shift any boundary that splits a
-        # ``[...]`` token. Walk pairwise, repair in-place.
-        chunks = self._repair_bracket_splits(chunks)
-
-        return chunks or [text]
-
-    @staticmethod
-    def _split_long_sentence(sentence: str, max_chars: int) -> list[str]:
-        """Comma-fallback for a sentence longer than *max_chars*.
-
-        Falls all the way back to a hard character split if even the
-        comma-separated pieces exceed *max_chars* on their own (e.g.
-        a URL or a long quoted block with no internal punctuation).
-        """
-        pieces = [p.strip() for p in re.split(r",\s+", sentence) if p.strip()]
-        out: list[str] = []
-        current = ""
-        for piece in pieces:
-            if len(piece) > max_chars:
-                # Hard split — no smaller boundary available.
-                if current:
-                    out.append(current)
-                    current = ""
-                for i in range(0, len(piece), max_chars):
-                    out.append(piece[i : i + max_chars])
-                continue
-            if current and len(current) + 2 + len(piece) > max_chars:
-                out.append(current)
-                current = piece
-            else:
-                current = f"{current}, {piece}" if current else piece
-        if current:
-            out.append(current)
-        return out or [sentence[:max_chars]]
-
-    @staticmethod
-    def _repair_bracket_splits(chunks: list[str]) -> list[str]:
-        """Ensure no chunk boundary splits a ``[...]`` token.
-
-        Walk pairwise. If chunk N has an unclosed ``[`` and chunk N+1
-        starts with the closing portion (contains a ``]`` before the
-        next ``[``), shift the unclosed prefix forward into chunk N+1.
-        Pathological inputs (deeply nested brackets, unmatched ``]``)
-        return unchanged — bracket safety is a best-effort guarantee.
-        """
-        if len(chunks) < 2:
-            return chunks
-        out = list(chunks)
-        i = 0
-        while i < len(out) - 1:
-            current = out[i]
-            nxt = out[i + 1]
-            # Find the last unmatched '[' in current.
-            depth = 0
-            last_open = -1
-            for k, c in enumerate(current):
-                if c == "[":
-                    depth += 1
-                    last_open = k
-                elif c == "]":
-                    depth -= 1
-            if depth > 0 and last_open >= 0 and "]" in nxt:
-                # Move the trailing ``[...`` from current into nxt.
-                tail = current[last_open:]
-                out[i] = current[:last_open].rstrip()
-                out[i + 1] = f"{tail} {nxt}".strip()
-                if not out[i]:
-                    # Current is empty after the shift — drop it.
-                    del out[i]
-                    continue
-            i += 1
-        return out
+    _split_long_sentence = staticmethod(_split_long_sentence)
+    _repair_bracket_splits = staticmethod(_repair_bracket_splits)
 
     # ══════════════════════════════════════════════════════════════════════
     # Context-aware audio concatenation
