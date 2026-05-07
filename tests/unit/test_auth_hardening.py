@@ -44,6 +44,9 @@ def _make_user(**overrides: Any) -> Any:
     u.last_login_at = overrides.get("last_login_at")
     u.password_hash = overrides.get("password_hash", "$pbkdf2$xx")
     u.session_version = overrides.get("session_version", 0)
+    # TOTP 2FA: default None (not enrolled) — keeps existing tests on the
+    # password-only login path.
+    u.totp_confirmed_at = overrides.get("totp_confirmed_at")
     return u
 
 

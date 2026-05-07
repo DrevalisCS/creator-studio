@@ -16,6 +16,7 @@ import {
   Palette,
   FileArchive,
   History,
+  ShieldCheck,
 } from 'lucide-react';
 import { LicenseSection } from '@/pages/Settings/sections/LicenseSection';
 import { UpdatesSection } from '@/pages/Settings/sections/UpdatesSection';
@@ -33,6 +34,7 @@ import { ApiKeysSection } from '@/pages/Settings/sections/ApiKeysSection';
 import { TemplatesSection } from '@/pages/Settings/sections/TemplatesSection';
 import { DiagnosticsSection } from '@/pages/Settings/sections/DiagnosticsSection';
 import { LoginHistorySection } from '@/pages/Settings/sections/LoginHistorySection';
+import { TwoFactorSection } from '@/pages/Settings/sections/TwoFactorSection';
 
 // ---------------------------------------------------------------------------
 // Settings Sections Nav
@@ -41,6 +43,7 @@ import { LoginHistorySection } from '@/pages/Settings/sections/LoginHistorySecti
 type SectionId =
   | 'license'
   | 'team'
+  | 'two-factor'
   | 'login-history'
   | 'appearance'
   | 'llm'
@@ -75,6 +78,7 @@ const SECTION_GROUPS: SectionGroupDef[] = [
     sections: [
       { id: 'license', label: 'License', icon: KeyRound },
       { id: 'team', label: 'Team', icon: Users },
+      { id: 'two-factor', label: 'Two-factor auth', icon: ShieldCheck },
       { id: 'login-history', label: 'Login history', icon: History },
     ],
   },
@@ -202,6 +206,7 @@ function Settings() {
           {activeSection === 'social' && <SocialSection />}
           {activeSection === 'apikeys' && <ApiKeysSection onNavigateToApiKeys={() => setActiveSection('apikeys')} />}
           {activeSection === 'diagnostics' && <DiagnosticsSection />}
+          {activeSection === 'two-factor' && <TwoFactorSection />}
           {activeSection === 'login-history' && <LoginHistorySection />}
         </div>
       </div>

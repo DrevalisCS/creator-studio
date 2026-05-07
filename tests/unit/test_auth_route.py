@@ -58,6 +58,9 @@ def _make_user(**overrides: Any) -> Any:
     u.created_at = overrides.get("created_at", datetime(2026, 1, 1, tzinfo=UTC))
     # A.3 — session version: default to 0 so _current_user sv check passes.
     u.session_version = overrides.get("session_version", 0)
+    # TOTP 2FA: default to None (not enrolled) so the login TOTP branch is
+    # not triggered in tests that don't exercise 2FA.
+    u.totp_confirmed_at = overrides.get("totp_confirmed_at")
     return u
 
 

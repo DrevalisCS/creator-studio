@@ -62,6 +62,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     void refresh();
   }, [refresh]);
 
+  // Listen for the custom "auth:refresh" event dispatched by TwoFactorSection
+  // after enabling / disabling 2FA so totp_enabled reflects the new state.
+  useEffect(() => {
+    const handler = () => { void refresh(); };
+    window.addEventListener('auth:refresh', handler);
+    return () => window.removeEventListener('auth:refresh', handler);
+  }, [refresh]);
+
   const value = useMemo<AuthContextValue>(
     () => ({ user, loading, ready, refresh }),
     [user, loading, ready, refresh],

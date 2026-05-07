@@ -1423,12 +1423,29 @@ export interface AuthUser {
   display_name: string | null;
   is_active: boolean;
   last_login_at: string | null;
+  /** True when TOTP 2FA has been confirmed (totp_confirmed_at IS NOT NULL). */
+  totp_enabled: boolean;
 }
 
 export interface LoginResponse {
   message: string;
   role: string;
   display_name: string;
+}
+
+/** Returned by POST /auth/login when the user has confirmed 2FA. */
+export interface TotpChallengeResponse {
+  stage: 'totp_required';
+  challenge: string;
+}
+
+/** Union of the two possible login outcomes. */
+export type LoginOrTotpResponse = LoginResponse | TotpChallengeResponse;
+
+export interface TotpEnrollResponse {
+  secret_base32: string;
+  otpauth_uri: string;
+  recovery_codes: string[];
 }
 
 export interface UserCreate {
@@ -1456,8 +1473,19 @@ export interface LoginEvent {
 }
 
 export const auth = {
+  /**
+   * Stage-1 login. Returns either:
+   * - {message, role, display_name}    — password-only success (no 2FA).
+   * - {stage: "totp_required", challenge} — 2FA required, complete via loginTotp.
+   */
   login: (email: string, password: string) =>
-    post<LoginResponse>('/api/v1/auth/login', { email, password }),
+    post<LoginOrTotpResponse>('/api/v1/auth/login', { email, password }),
+  /**
+   * Stage-2 TOTP login. Pass the challenge from stage-1 plus the 6-digit
+   * code (or 16-char recovery code). Issues the session cookie on success.
+   */
+  loginTotp: (challenge: string, code: string) =>
+    post<LoginResponse>('/api/v1/auth/login/totp', { challenge, code }),
   logout: () => post<{ message: string }>('/api/v1/auth/logout'),
   // A.3 — invalidate all sessions for the current user on all devices.
   logoutEverywhere: () => post<{ message: string }>('/api/v1/auth/logout-everywhere'),
@@ -1466,6 +1494,15 @@ export const auth = {
   // A.2 — recent login events for the current user.
   loginHistory: (limit = 20) =>
     get<LoginEvent[]>(`/api/v1/auth/login-history?limit=${limit}`),
+  // ── TOTP 2FA ────────────────────────────────────────────────────────
+  /** Generate secret + recovery codes. Shows recovery codes once. */
+  enrollTotp: () => post<TotpEnrollResponse>('/api/v1/auth/2fa/enroll'),
+  /** Verify first TOTP code from authenticator app → activates 2FA. */
+  confirmTotp: (code: string) =>
+    post<{ message: string }>('/api/v1/auth/2fa/confirm', { code }),
+  /** Disable 2FA after re-entering password. */
+  disableTotp: (password: string) =>
+    post<{ message: string }>('/api/v1/auth/2fa/disable', { password }),
 };
 
 export const users = {

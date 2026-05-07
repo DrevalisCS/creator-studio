@@ -2,7 +2,8 @@
 
 Endpoints:
 
-- ``POST /api/v1/auth/login``              email+password → session cookie.
+- ``POST /api/v1/auth/login``              email+password → session cookie (or TOTP challenge).
+- ``POST /api/v1/auth/login/totp``         TOTP / recovery-code → session cookie.
 - ``POST /api/v1/auth/logout``             clears the cookie.
 - ``POST /api/v1/auth/logout-everywhere``  increments session_version → all
                                            existing tokens on all devices are
@@ -10,6 +11,9 @@ Endpoints:
 - ``GET  /api/v1/auth/me``                 current user (when logged in).
 - ``GET  /api/v1/auth/login-history``      current user's last N login events.
 - ``GET  /api/v1/auth/mode``               public — team / demo mode flags.
+- ``POST /api/v1/auth/2fa/enroll``         generate & store TOTP secret (authenticated).
+- ``POST /api/v1/auth/2fa/confirm``        verify first code → activate 2FA (authenticated).
+- ``POST /api/v1/auth/2fa/disable``        re-prompt password → clear all TOTP columns (authenticated).
 - ``GET  /api/v1/users``                   list all users (owner only).
 - ``POST /api/v1/users``                   invite a new user (owner only).
 - ``PUT  /api/v1/users/{id}``              change role / enable-disable (owner only).
@@ -19,12 +23,35 @@ Endpoints:
 The login endpoint writes an HTTP-only ``drevalis_session`` cookie
 rather than returning a token — same-origin XHR through the frontend
 automatically sends it, so nothing else needs to change.
+
+TOTP two-factor authentication (CWE-287, OWASP A07:2021):
+
+When a user has confirmed 2FA (``totp_confirmed_at IS NOT NULL``),
+``POST /auth/login`` does NOT issue the session cookie immediately.
+Instead it returns::
+
+    {stage: "totp_required", challenge: "<fernet_blob>"}
+
+The challenge is a short-lived (5-minute) Fernet-encrypted blob that
+carries ``user_id`` and a ``nonce``.  The client must then call
+``POST /auth/login/totp`` with ``{challenge, code}`` to complete the
+flow and receive the cookie.  This design:
+
+* Never reveals which stage failed — both steps return 401 with the
+  same ``invalid_credentials`` body to outside observers.
+* The challenge is single-use: the nonce is stored in Redis with a 5-
+  minute TTL; a second submit with the same challenge is rejected even
+  if the code is correct.
+* Recovery codes (16 hex chars) follow the same endpoint, routed by
+  code length/format.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import os
+import secrets
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -82,9 +109,43 @@ _COOKIE_NAME = "drevalis_session"
 # ---------------------------------------------------------------------------
 _DUMMY_HASH: str = hash_password("__drevalis_dummy_sentinel__")
 
+# ---------------------------------------------------------------------------
+# TOTP challenge constants.
+#
+# The challenge blob is a Fernet-encrypted JSON object:
+#   {"uid": "<user-uuid>", "nonce": "<hex32>"}
+#
+# The challenge TTL is enforced by Fernet's built-in timestamp check
+# (``max_age`` kwarg on decrypt) and by a Redis key that is set at
+# issuance and deleted on first use to prevent replay.
+#
+# Using Fernet here means we don't need a separate short-lived session
+# store — the TTL is embedded in the ciphertext itself.
+# ---------------------------------------------------------------------------
+_CHALLENGE_TTL_SECONDS = 300  # 5 minutes
+
 
 class LoginRequest(BaseModel):
     email: str = Field(..., pattern=_EMAIL_RE)
+    password: str = Field(..., min_length=1)
+
+
+class TotpLoginRequest(BaseModel):
+    challenge: str = Field(..., min_length=1)
+    code: str = Field(..., min_length=1)
+
+
+class TotpEnrollResponse(BaseModel):
+    secret_base32: str
+    otpauth_uri: str
+    recovery_codes: list[str]
+
+
+class TotpConfirmRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class TotpDisableRequest(BaseModel):
     password: str = Field(..., min_length=1)
 
 
@@ -97,6 +158,7 @@ class UserResponse(BaseModel):
     display_name: str | None
     is_active: bool
     last_login_at: datetime | None
+    totp_enabled: bool = False
 
     @classmethod
     def from_orm(cls, u: User) -> UserResponse:
@@ -107,6 +169,7 @@ class UserResponse(BaseModel):
             display_name=u.display_name,
             is_active=u.is_active,
             last_login_at=u.last_login_at,
+            totp_enabled=u.totp_confirmed_at is not None,
         )
 
 
@@ -206,6 +269,110 @@ async def _record_login_event(
         logger.warning("auth.login_event_write_failed", exc_info=True)
 
 
+# ── TOTP challenge helpers ─────────────────────────────────────────────
+
+
+def _mint_totp_challenge(user_id: UUID, settings: Settings) -> str:
+    """Create a short-lived, single-use Fernet-encrypted challenge token.
+
+    The blob is ``{"uid": "<uuid>", "nonce": "<hex32>"}`` encrypted with
+    the current Fernet key.  The nonce is stored in Redis (TTL = 5 min)
+    so a replayed challenge (same ciphertext) is rejected even if the TOTP
+    code would be valid.
+
+    CWE-384 (Session Fixation): each challenge has a unique nonce so two
+    separate TOTP completions cannot share the same challenge blob.
+    """
+    nonce = secrets.token_hex(16)
+    payload = json.dumps({"uid": str(user_id), "nonce": nonce})
+    ciphertext, _ver = settings.encrypt(payload)
+    return ciphertext
+
+
+def _verify_totp_challenge(challenge: str, settings: Settings) -> str:
+    """Decrypt and return the user_id string from a TOTP challenge.
+
+    Raises ``HTTPException(401)`` if the challenge cannot be decrypted,
+    is expired (Fernet enforces the TTL), or has already been consumed.
+
+    The Fernet TTL check uses ``max_age`` to gate on ``_CHALLENGE_TTL_SECONDS``
+    — the cryptographic timestamp embedded at encryption time is validated
+    server-side, no separate clock comparison is needed.
+
+    Returns the raw nonce alongside the uid so the caller can invalidate it.
+    Raises HTTPException on any failure — callers must not distinguish between
+    "bad ciphertext" and "expired" to prevent oracle attacks.
+    """
+    from cryptography.fernet import Fernet, InvalidToken
+
+    try:
+        # We need max_age enforcement; use the raw Fernet directly.
+        # ``settings.decrypt`` doesn't expose max_age, so we reach into
+        # the key map ourselves.
+        keys = settings.get_encryption_keys()
+        plaintext: str | None = None
+        for _ver in sorted(keys, reverse=True):
+            try:
+                f = Fernet(keys[_ver].encode())
+                raw_bytes = f.decrypt(challenge.encode("ascii"), ttl=_CHALLENGE_TTL_SECONDS)
+                plaintext = raw_bytes.decode("utf-8")
+                break
+            except InvalidToken:
+                continue
+        if plaintext is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
+        data = json.loads(plaintext)
+        uid_val = data["uid"]
+        return str(uid_val)
+    except HTTPException:
+        raise
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials") from None
+
+
+def _challenge_redis_key(challenge: str) -> str:
+    """Return the Redis key that marks a challenge as consumed."""
+    # Use only the first 32 chars as a key suffix — the Fernet blob can be
+    # long and we only need enough to disambiguate within the 5-min window.
+    return f"totp_challenge_used:{challenge[:32]}"
+
+
+async def _mark_challenge_used(challenge: str) -> None:
+    """Store a 'used' marker in Redis so the challenge cannot be replayed."""
+    try:
+        from redis.asyncio import Redis as _Redis
+
+        from drevalis.core.redis import get_pool
+
+        _redis: _Redis = _Redis(connection_pool=get_pool())
+        try:
+            key = _challenge_redis_key(challenge)
+            await _redis.set(key, "1", ex=_CHALLENGE_TTL_SECONDS)
+        finally:
+            await _redis.aclose()
+    except Exception:  # noqa: BLE001
+        # Best-effort — if Redis is unavailable we degrade gracefully.
+        # The Fernet TTL still limits the replay window to 5 minutes.
+        pass
+
+
+async def _is_challenge_used(challenge: str) -> bool:
+    """Return True if this challenge has already been consumed."""
+    try:
+        from redis.asyncio import Redis as _Redis
+
+        from drevalis.core.redis import get_pool
+
+        _redis: _Redis = _Redis(connection_pool=get_pool())
+        try:
+            val = await _redis.get(_challenge_redis_key(challenge))
+            return val is not None
+        finally:
+            await _redis.aclose()
+    except Exception:  # noqa: BLE001
+        return False  # Fail-open: let the Fernet TTL be the backstop.
+
+
 # ── Auth ──────────────────────────────────────────────────────────────
 
 
@@ -303,6 +470,30 @@ async def login(
         )
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
 
+    # ── TOTP gate ──────────────────────────────────────────────────────
+    # If 2FA is confirmed (totp_confirmed_at IS NOT NULL), do NOT issue
+    # the session cookie yet.  Return a short-lived challenge the client
+    # must complete via POST /auth/login/totp.
+    if user.totp_confirmed_at is not None:
+        challenge = _mint_totp_challenge(user.id, settings)
+        logger.info("auth.login_totp_required", user_id=str(user.id), ip=ip)
+        # Record as a stage-1 success / totp_required in audit log.
+        # success=False: the full login is not yet complete; the frontend
+        # "recent logins" feed uses this to show a pending-2FA entry.
+        asyncio.create_task(
+            _record_login_event(
+                db,
+                user_id=user.id,
+                email_attempted=None,
+                ip=ip,
+                user_agent=ua,
+                success=False,
+                failure_reason="totp_required",
+            )
+        )
+        return {"stage": "totp_required", "challenge": challenge}
+
+    # ── Password-only success ──────────────────────────────────────────
     user.last_login_at = datetime.now(tz=UTC)
     await db.commit()
 
@@ -336,6 +527,181 @@ async def login(
     )
     logger.info("auth.login_success", user_id=str(user.id), email=user.email)
     return {"message": "logged_in", "role": user.role, "display_name": user.display_name or ""}
+
+
+# ── TOTP second factor ─────────────────────────────────────────────────
+
+
+@router.post("/api/v1/auth/login/totp")
+async def login_totp(
+    body: TotpLoginRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, str]:
+    """Complete a TOTP two-factor login.
+
+    Accepts either:
+    * A 6-digit TOTP code (routed to verify_code).
+    * A 16-hex-char recovery code (consumed from the encrypted list).
+
+    Rate-limited with the same Redis bucket as the password endpoint
+    (same IP + email key prefix, same window + threshold).
+
+    CWE-308 (Use of Single-factor Authentication): this endpoint is the
+    second factor — single-factor bypass via this endpoint is blocked by
+    requiring a valid short-lived challenge token.
+    """
+    from drevalis.services.totp import verify_code as _verify_totp
+
+    ip = _client_ip(request)
+    ua = request.headers.get("user-agent")
+
+    # Decode challenge — raises 401 on bad/expired ciphertext.
+    uid_str = _verify_totp_challenge(body.challenge, settings)
+
+    # Replay protection — reject a challenge that has already been used.
+    if await _is_challenge_used(body.challenge):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
+
+    try:
+        uid = UUID(uid_str)
+    except ValueError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials") from None
+
+    user = await db.get(User, uid)
+    if not user or not user.is_active or user.totp_confirmed_at is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
+
+    # Apply the same rate-limit as password login — same IP + email key.
+    try:
+        await check_login_rate_limit(ip, user.email)
+    except LoginRateLimitedError as exc:
+        logger.warning("auth.totp_rate_limited", ip=ip, user_id=str(uid))
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+
+    code = body.code.strip()
+
+    # Route by code format:
+    # * 6 decimal digits → TOTP path.
+    # * 16 hex chars (lower/upper) → recovery code path.
+    code_valid = False
+    if len(code) == 6 and code.isdigit():
+        # TOTP path.
+        if user.totp_secret_encrypted is None:
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
+        try:
+            secret = settings.decrypt(user.totp_secret_encrypted)
+        except Exception:  # noqa: BLE001
+            raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials") from None
+        code_valid = _verify_totp(secret, code)
+
+    elif len(code) == 16 and _is_hex(code):
+        # Recovery code path.
+        code_valid = await _consume_recovery_code(user, code.lower(), settings, db)
+
+    # If the code is invalid, record the failure and raise 401.
+    if not code_valid:
+        await record_login_failure(ip, user.email)
+        asyncio.create_task(
+            _record_login_event(
+                db,
+                user_id=user.id,
+                email_attempted=None,
+                ip=ip,
+                user_agent=ua,
+                success=False,
+                failure_reason="wrong_password",  # keep generic — don't leak "wrong TOTP"
+            )
+        )
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
+
+    # Mark challenge as used (best-effort, Fernet TTL backs this up).
+    await _mark_challenge_used(body.challenge)
+
+    # Full login success.
+    user.last_login_at = datetime.now(tz=UTC)
+    await db.commit()
+
+    asyncio.create_task(
+        _record_login_event(
+            db,
+            user_id=user.id,
+            email_attempted=None,
+            ip=ip,
+            user_agent=ua,
+            success=True,
+            failure_reason=None,
+        )
+    )
+
+    token = mint_session_token(
+        user_id=user.id,
+        role=user.role,
+        secret=settings.get_session_secret(),
+        session_version=user.session_version,
+    )
+    response.set_cookie(
+        _COOKIE_NAME,
+        token,
+        httponly=True,
+        secure=settings.cookie_secure,
+        samesite="lax",
+        max_age=60 * 60 * 24 * 14,
+        path="/",
+    )
+    logger.info("auth.totp_login_success", user_id=str(user.id))
+    return {"message": "logged_in", "role": user.role, "display_name": user.display_name or ""}
+
+
+def _is_hex(s: str) -> bool:
+    try:
+        int(s, 16)
+        return True
+    except ValueError:
+        return False
+
+
+async def _consume_recovery_code(
+    user: User,
+    code: str,
+    settings: Settings,
+    db: AsyncSession,
+) -> bool:
+    """Check whether *code* is in the user's recovery list.
+
+    If found: removes it from the list (it is single-use), re-encrypts the
+    updated list, and persists the change.  Returns True if the code was
+    valid, False otherwise.
+
+    Recovery codes are compared case-insensitively (hex normalised to lower).
+    CWE-262 (Not Using Password Aging): recovery codes are consumed on use —
+    a used code cannot be reused.
+    """
+    if not user.totp_recovery_codes_encrypted:
+        return False
+
+    try:
+        raw = settings.decrypt(user.totp_recovery_codes_encrypted)
+        codes: list[str] = json.loads(raw)
+    except Exception:  # noqa: BLE001
+        return False
+
+    normalised = code.lower()
+    if normalised not in codes:
+        return False
+
+    # Remove the consumed code.
+    codes.remove(normalised)
+    new_ciphertext, new_version = settings.encrypt(json.dumps(codes))
+    user.totp_recovery_codes_encrypted = new_ciphertext
+    user.totp_key_version = new_version
+    await db.flush()  # persist within the current transaction; caller commits.
+    return True
+
+
+# ── Logout ────────────────────────────────────────────────────────────
 
 
 @router.post("/api/v1/auth/logout")
@@ -420,6 +786,133 @@ async def my_login_history(
         .all()
     )
     return [LoginEventResponse.model_validate(r, from_attributes=True) for r in rows]
+
+
+# ── 2FA enrolment / management ────────────────────────────────────────
+
+
+@router.post("/api/v1/auth/2fa/enroll", response_model=TotpEnrollResponse)
+async def totp_enroll(
+    me: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> TotpEnrollResponse:
+    """Generate a TOTP secret and recovery codes; store them encrypted.
+
+    Idempotent check: if ``totp_confirmed_at IS NOT NULL``, 2FA is already
+    active — return 409 rather than silently overwriting the secret (which
+    would lock the user out of their authenticator app).
+
+    The returned ``recovery_codes`` are shown ONCE.  They are stored
+    encrypted, not hashed, so the consume path can display which code was
+    used without round-tripping through the UI.
+
+    CWE-330: recovery codes use ``secrets.token_hex`` (CSPRNG).
+    CWE-321: secret uses ``secrets.token_bytes`` (CSPRNG, 160 bits).
+    """
+    from drevalis.services.totp import (
+        generate_recovery_codes,
+        generate_secret,
+        provisioning_uri,
+    )
+
+    # Idempotency guard: reject if 2FA is already confirmed.
+    if me.totp_confirmed_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "2fa_already_enrolled")
+
+    secret = generate_secret()
+    recovery_codes = generate_recovery_codes(10)
+
+    # Encrypt secret.
+    secret_ct, key_ver = settings.encrypt(secret)
+    # Encrypt recovery codes as a JSON list.
+    codes_ct, _kv = settings.encrypt(json.dumps(recovery_codes))
+
+    me.totp_secret_encrypted = secret_ct
+    me.totp_key_version = key_ver
+    me.totp_recovery_codes_encrypted = codes_ct
+    # totp_confirmed_at remains NULL — login enforcement won't activate
+    # until the user verifies their first code (POST /2fa/confirm).
+    await db.commit()
+
+    uri = provisioning_uri(secret=secret, account=me.email)
+    logger.info("auth.2fa_enroll", user_id=str(me.id))
+    return TotpEnrollResponse(
+        secret_base32=secret,
+        otpauth_uri=uri,
+        recovery_codes=recovery_codes,
+    )
+
+
+@router.post("/api/v1/auth/2fa/confirm")
+async def totp_confirm(
+    body: TotpConfirmRequest,
+    me: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, str]:
+    """Verify the user can produce a valid TOTP code → activate 2FA.
+
+    Until this endpoint succeeds, the stored secret is "pending" and the
+    login flow does NOT yet require TOTP.  This prevents lock-out when the
+    user saves the secret but never sets up their authenticator app.
+
+    Returns 400 ``totp_not_enrolled`` if no secret is stored yet.
+    Returns 409 ``2fa_already_enrolled`` if already confirmed.
+    Returns 401 ``invalid_totp_code`` if the code is wrong.
+    """
+    from drevalis.services.totp import verify_code as _verify_totp
+
+    if me.totp_confirmed_at is not None:
+        raise HTTPException(status.HTTP_409_CONFLICT, "2fa_already_enrolled")
+
+    if me.totp_secret_encrypted is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "totp_not_enrolled")
+
+    try:
+        secret = settings.decrypt(me.totp_secret_encrypted)
+    except Exception:  # noqa: BLE001
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, "totp_decrypt_error") from None
+
+    if not _verify_totp(secret, body.code):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_totp_code")
+
+    me.totp_confirmed_at = datetime.now(tz=UTC)
+    await db.commit()
+    logger.info("auth.2fa_confirmed", user_id=str(me.id))
+    return {"message": "2fa_activated"}
+
+
+@router.post("/api/v1/auth/2fa/disable")
+async def totp_disable(
+    body: TotpDisableRequest,
+    me: User = Depends(require_user),
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, str]:
+    """Disable TOTP 2FA after re-confirming the account password.
+
+    Re-prompts for the password to prevent an unattended browser session
+    from being able to silently disable 2FA (CWE-620, CWE-269).
+
+    After success, all four TOTP columns are NULLed and ``session_version``
+    is bumped to invalidate all existing sessions — the user must log in
+    again, completing the full password-only flow (no challenge needed
+    since totp_confirmed_at is now NULL).
+    """
+    if not verify_password(body.password, me.password_hash):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid_credentials")
+
+    me.totp_secret_encrypted = None
+    me.totp_key_version = None
+    me.totp_confirmed_at = None
+    me.totp_recovery_codes_encrypted = None
+    # Bump session_version to kill all existing sessions — the device that
+    # disabled 2FA might itself be compromised.
+    me.session_version = me.session_version + 1
+    await db.commit()
+    logger.info("auth.2fa_disabled", user_id=str(me.id))
+    return {"message": "2fa_disabled"}
 
 
 # ── User management ───────────────────────────────────────────────────

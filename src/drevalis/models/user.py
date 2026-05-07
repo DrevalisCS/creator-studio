@@ -47,3 +47,20 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     session_version: Mapped[int] = mapped_column(
         INTEGER, nullable=False, server_default="0", default=0
     )
+
+    # ── TOTP 2FA (migration 045) ───────────────────────────────────────
+    # ``totp_confirmed_at IS NOT NULL`` is the gate for login enforcement.
+    # The secret may exist before confirmation (pending enrolment); only
+    # after the user verifies their first code does the login flow require
+    # TOTP on subsequent logins.
+    #
+    # Recovery codes are stored encrypted (same Fernet key as the secret)
+    # so they can be consumed and displayed back to the user.  They are
+    # NOT hashed — hashing would prevent the "show which code was used"
+    # UX on consumption.
+    totp_secret_encrypted: Mapped[str | None] = mapped_column(TEXT, nullable=True)
+    totp_key_version: Mapped[int | None] = mapped_column(INTEGER, nullable=True)
+    totp_confirmed_at: Mapped[datetime | None] = mapped_column(
+        TIMESTAMP(timezone=True), nullable=True
+    )
+    totp_recovery_codes_encrypted: Mapped[str | None] = mapped_column(TEXT, nullable=True)
