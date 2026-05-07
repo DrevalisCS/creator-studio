@@ -17,7 +17,6 @@ import json
 import os
 import secrets
 from datetime import UTC, datetime, timedelta
-from typing import Any
 from uuid import UUID
 
 import structlog
@@ -86,18 +85,25 @@ def _pad_b64(s: str) -> bytes:
 _SESSION_TTL = timedelta(days=14)
 
 
-def mint_session_token(*, user_id: UUID, role: str, secret: str) -> str:
-    payload: dict[str, Any] = {
+def mint_session_token(*, user_id: UUID, role: str, secret: str, session_version: int = 0) -> str:
+    """Return a signed session token.
+
+    The ``sv`` (session-version) claim is embedded so that
+    ``_current_user`` can reject tokens minted before a
+    ``logout-everywhere`` call incremented the counter.
+    """
+    payload: dict[str, int | str] = {
         "uid": str(user_id),
         "role": role,
         "exp": int((datetime.now(tz=UTC) + _SESSION_TTL).timestamp()),
+        "sv": session_version,
     }
     body = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
     sig = _sign(body, secret)
     return f"{body}.{sig}"
 
 
-def parse_session_token(token: str, *, secret: str) -> dict[str, Any] | None:
+def parse_session_token(token: str, *, secret: str) -> dict[str, int | str] | None:
     if not token or "." not in token:
         return None
     body, sig = token.rsplit(".", 1)

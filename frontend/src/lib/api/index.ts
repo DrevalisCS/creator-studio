@@ -53,6 +53,7 @@ export type {
   ABTestStats,
   ABTestDetail,
   AuthUser,
+  LoginEvent,
   LoginResponse,
   UserCreate,
   UserUpdate,

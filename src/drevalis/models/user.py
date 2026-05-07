@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BOOLEAN, TEXT, TIMESTAMP, CheckConstraint, Index
+from sqlalchemy import BOOLEAN, INTEGER, TEXT, TIMESTAMP, CheckConstraint, Index
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -39,3 +39,11 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     display_name: Mapped[str | None] = mapped_column(TEXT, nullable=True)
     is_active: Mapped[bool] = mapped_column(BOOLEAN, nullable=False, server_default="true")
     last_login_at: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True), nullable=True)
+    # A.3 — per-user session version counter.  Incrementing this value
+    # (via POST /auth/logout-everywhere) invalidates all existing HMAC-
+    # signed session tokens for this user without touching Redis or a
+    # server-side token store.  The ``sv`` claim is embedded in every new
+    # token and validated on each request in ``_current_user``.
+    session_version: Mapped[int] = mapped_column(
+        INTEGER, nullable=False, server_default="0", default=0
+    )

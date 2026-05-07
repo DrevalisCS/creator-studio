@@ -15,6 +15,7 @@ import {
   Users,
   Palette,
   FileArchive,
+  History,
 } from 'lucide-react';
 import { LicenseSection } from '@/pages/Settings/sections/LicenseSection';
 import { UpdatesSection } from '@/pages/Settings/sections/UpdatesSection';
@@ -31,6 +32,7 @@ import { SocialSection } from '@/pages/Settings/sections/SocialSection';
 import { ApiKeysSection } from '@/pages/Settings/sections/ApiKeysSection';
 import { TemplatesSection } from '@/pages/Settings/sections/TemplatesSection';
 import { DiagnosticsSection } from '@/pages/Settings/sections/DiagnosticsSection';
+import { LoginHistorySection } from '@/pages/Settings/sections/LoginHistorySection';
 
 // ---------------------------------------------------------------------------
 // Settings Sections Nav
@@ -39,6 +41,7 @@ import { DiagnosticsSection } from '@/pages/Settings/sections/DiagnosticsSection
 type SectionId =
   | 'license'
   | 'team'
+  | 'login-history'
   | 'appearance'
   | 'llm'
   | 'comfyui'
@@ -72,6 +75,7 @@ const SECTION_GROUPS: SectionGroupDef[] = [
     sections: [
       { id: 'license', label: 'License', icon: KeyRound },
       { id: 'team', label: 'Team', icon: Users },
+      { id: 'login-history', label: 'Login history', icon: History },
     ],
   },
   {
@@ -198,6 +202,7 @@ function Settings() {
           {activeSection === 'social' && <SocialSection />}
           {activeSection === 'apikeys' && <ApiKeysSection onNavigateToApiKeys={() => setActiveSection('apikeys')} />}
           {activeSection === 'diagnostics' && <DiagnosticsSection />}
+          {activeSection === 'login-history' && <LoginHistorySection />}
         </div>
       </div>
     </div>

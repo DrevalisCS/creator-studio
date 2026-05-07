@@ -16,6 +16,7 @@ from .episode import Episode
 from .generation_job import GenerationJob
 from .license_state import LicenseStateRow
 from .llm_config import LLMConfig
+from .login_event import LoginEvent
 from .media_asset import MediaAsset
 from .prompt_template import PromptTemplate
 from .scheduled_post import ScheduledPost
@@ -45,6 +46,7 @@ __all__ = [
     "GenerationJob",
     "LLMConfig",
     "LicenseStateRow",
+    "LoginEvent",
     "MediaAsset",
     "PromptTemplate",
     "ScheduledPost",

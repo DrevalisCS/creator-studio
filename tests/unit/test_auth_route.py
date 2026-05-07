@@ -56,6 +56,8 @@ def _make_user(**overrides: Any) -> Any:
     u.last_login_at = overrides.get("last_login_at")
     u.password_hash = overrides.get("password_hash", "$pbkdf2$xx")
     u.created_at = overrides.get("created_at", datetime(2026, 1, 1, tzinfo=UTC))
+    # A.3 — session version: default to 0 so _current_user sv check passes.
+    u.session_version = overrides.get("session_version", 0)
     return u
 
 
@@ -143,7 +145,8 @@ class TestCurrentUser:
         db.get = AsyncMock(return_value=u)
         with patch(
             "drevalis.api.routes.auth.parse_session_token",
-            return_value={"uid": str(u.id)},
+            # A.3: sv claim must match user.session_version (both 0 here).
+            return_value={"uid": str(u.id), "sv": 0},
         ):
             out = await _current_user(request=_request(cookie="x"), db=db, settings=_settings())
         assert out is u
@@ -186,6 +189,7 @@ class TestLogin:
                 "drevalis.api.routes.auth.check_login_rate_limit",
                 AsyncMock(side_effect=LoginRateLimitedError("too many tries")),
             ),
+            patch("asyncio.create_task", side_effect=lambda c: c.close() or MagicMock()),
         ):
             with pytest.raises(HTTPException) as exc:
                 await login(
@@ -207,6 +211,7 @@ class TestLogin:
             patch("drevalis.api.routes.auth.ensure_owner_from_env", AsyncMock()),
             patch("drevalis.api.routes.auth.check_login_rate_limit", AsyncMock()),
             patch("drevalis.api.routes.auth.record_login_failure", record),
+            patch("asyncio.create_task", side_effect=lambda c: c.close() or MagicMock()),
         ):
             with pytest.raises(HTTPException) as exc:
                 await login(
@@ -232,6 +237,7 @@ class TestLogin:
             patch("drevalis.api.routes.auth.check_login_rate_limit", AsyncMock()),
             patch("drevalis.api.routes.auth.verify_password", return_value=True),
             patch("drevalis.api.routes.auth.record_login_failure", AsyncMock()),
+            patch("asyncio.create_task", side_effect=lambda c: c.close() or MagicMock()),
         ):
             with pytest.raises(HTTPException) as exc:
                 await login(
@@ -254,6 +260,7 @@ class TestLogin:
             patch("drevalis.api.routes.auth.check_login_rate_limit", AsyncMock()),
             patch("drevalis.api.routes.auth.verify_password", return_value=True),
             patch("drevalis.api.routes.auth.mint_session_token", return_value="tok"),
+            patch("asyncio.create_task", side_effect=lambda c: c.close() or MagicMock()),
         ):
             out = await login(
                 body=LoginRequest(email="a@b.co", password="x"),
