@@ -18,7 +18,7 @@ import NotFound from '@/pages/NotFound';
 // Lazy-loaded pages (code splitting)
 // ---------------------------------------------------------------------------
 
-const Dashboard = lazy(() => import('@/pages/Dashboard'));
+const Dashboard = lazy(() => import('@/pages/dashboard'));
 const SeriesList = lazy(() => import('@/pages/SeriesList'));
 const SeriesDetail = lazy(() => import('@/pages/SeriesDetail'));
 const EpisodesList = lazy(() => import('@/pages/EpisodesList'));
