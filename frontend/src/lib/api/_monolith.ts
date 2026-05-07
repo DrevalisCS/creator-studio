@@ -1503,6 +1503,24 @@ export const auth = {
   /** Disable 2FA after re-entering password. */
   disableTotp: (password: string) =>
     post<{ message: string }>('/api/v1/auth/2fa/disable', { password }),
+  /**
+   * Request a password-reset email.
+   * Always returns the same generic message regardless of whether the
+   * email is registered (enumeration-safe).
+   */
+  forgotPassword: (email: string) =>
+    post<{ message: string }>('/api/v1/auth/forgot-password', { email }),
+  /**
+   * Consume a reset token and set a new password.
+   * Returns either:
+   * - {message: "password_reset_successful"}             — no 2FA, done.
+   * - {stage: "totp_required", challenge: string}        — 2FA required.
+   */
+  resetPassword: (token: string, password: string, totpCode?: string) =>
+    post<{ message: string } | TotpChallengeResponse>(
+      '/api/v1/auth/reset-password',
+      { token, new_password: password, ...(totpCode ? { totp_code: totpCode } : {}) },
+    ),
 };
 
 export const users = {

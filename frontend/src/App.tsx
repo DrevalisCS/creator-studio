@@ -38,6 +38,7 @@ const EpisodeEditor = lazy(() => import('@/pages/EpisodeEditor'));
 const AudiobookEditor = lazy(() => import('@/pages/AudiobookEditor'));
 const ShotList = lazy(() => import('@/pages/ShotList'));
 const Login = lazy(() => import('@/pages/Login'));
+const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
 const SocialPlatform = lazy(() => import('@/pages/SocialPlatform'));
 
 // ---------------------------------------------------------------------------
@@ -120,6 +121,8 @@ function App() {
     <Suspense fallback={<PageLoadingFallback />}>
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Public reset-password page — no LoginGate or LicenseGate. */}
+      <Route path="/reset-password" element={<ResetPassword />} />
       {/* Fullscreen editor — no sidebar / header so the timeline has
           the whole viewport. */}
       <Route

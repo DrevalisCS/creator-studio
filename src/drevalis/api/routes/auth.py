@@ -11,6 +11,8 @@ Endpoints:
 - ``GET  /api/v1/auth/me``                 current user (when logged in).
 - ``GET  /api/v1/auth/login-history``      current user's last N login events.
 - ``GET  /api/v1/auth/mode``               public — team / demo mode flags.
+- ``POST /api/v1/auth/forgot-password``    request a reset email (public, timing-uniform).
+- ``POST /api/v1/auth/reset-password``     consume token + set new password (public).
 - ``POST /api/v1/auth/2fa/enroll``         generate & store TOTP secret (authenticated).
 - ``POST /api/v1/auth/2fa/confirm``        verify first code → activate 2FA (authenticated).
 - ``POST /api/v1/auth/2fa/disable``        re-prompt password → clear all TOTP columns (authenticated).
@@ -913,6 +915,196 @@ async def totp_disable(
     await db.commit()
     logger.info("auth.2fa_disabled", user_id=str(me.id))
     return {"message": "2fa_disabled"}
+
+
+# ── Forgot / reset password ───────────────────────────────────────────
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: str = Field(..., pattern=_EMAIL_RE)
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str = Field(..., min_length=1)
+    new_password: str = Field(..., min_length=8)
+    totp_code: str | None = None  # required when the user has 2FA active
+
+
+# Per-IP rate-limit for forgot-password: 5 requests / hour.
+_FORGOT_RATE_LIMIT = 5
+_FORGOT_RATE_WINDOW = 3600  # 1 hour
+
+
+async def _check_forgot_rate(client_ip: str) -> bool:
+    """Return True (allowed) / False (blocked) for the per-IP forgot-password limit.
+
+    Best-effort: Redis unavailability degrades gracefully (fail-open).
+    """
+    key = f"forgot_rate:ip:{client_ip}"
+    try:
+        from redis.asyncio import Redis as _Redis
+
+        from drevalis.core.redis import get_pool
+
+        _redis: _Redis = _Redis(connection_pool=get_pool())
+        try:
+            pipe = _redis.pipeline()
+            pipe.incr(key)
+            pipe.expire(key, _FORGOT_RATE_WINDOW, nx=True)
+            results = await pipe.execute()
+            count = int(results[0])
+        finally:
+            await _redis.aclose()
+    except Exception:  # noqa: BLE001
+        return True
+
+    return count <= _FORGOT_RATE_LIMIT
+
+
+@router.post("/api/v1/auth/forgot-password")
+async def forgot_password(
+    body: ForgotPasswordRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, str]:
+    """Request a password-reset email.
+
+    Always returns 200 with the same generic message whether or not the
+    email is registered, whether SMTP is configured, and whether the
+    rate-limit has been hit (server-side only).  This prevents account
+    enumeration (CWE-204, CWE-208).
+
+    Rate-limited per-IP at 5 requests / hour (per-email limit is inside
+    ``request_reset`` at 3 / hour).
+
+    Audit: records a ``login_events`` row with failure_reason='reset_requested'
+    (success=False) to preserve a timeline for security review.
+    """
+    from drevalis.services.password_reset import request_reset
+
+    ip = _client_ip(request)
+    ua = request.headers.get("user-agent")
+    email_norm = body.email.lower().strip()
+
+    _GENERIC_RESPONSE = {"message": "if your email is on file, a reset link has been sent"}
+
+    # ── Per-IP rate limit ──────────────────────────────────────────────
+    allowed = await _check_forgot_rate(ip)
+    if not allowed:
+        logger.warning("auth.forgot_password_rate_limited", ip=ip)
+        # Intentionally return the same 200 — no information leakage.
+        return _GENERIC_RESPONSE
+
+    # Audit record (fire-and-forget).
+    asyncio.create_task(
+        _record_login_event(
+            db,
+            user_id=None,
+            email_attempted=email_norm,
+            ip=ip,
+            user_agent=ua,
+            success=False,
+            failure_reason="reset_requested",
+        )
+    )
+
+    # Delegate all real work (timing-uniform, never raises).
+    await request_reset(db=db, email=email_norm, settings=settings)
+
+    return _GENERIC_RESPONSE
+
+
+@router.post("/api/v1/auth/reset-password")
+async def reset_password(
+    body: ResetPasswordRequest,
+    request: Request,
+    response: Response,
+    db: AsyncSession = Depends(get_db),
+    settings: Settings = Depends(get_settings),
+) -> dict[str, str]:
+    """Consume a password-reset token and set a new password.
+
+    On success:
+    * The session cookie is cleared (user must log in fresh).
+    * If the account has TOTP 2FA active, a ``totp_required`` challenge is
+      returned instead — same as the regular login flow.  The full session
+      is only issued after the TOTP step completes.
+
+    On failure: always 400 ``invalid_or_expired_token``.  Never
+    distinguishes between "expired", "already used", "wrong token" so
+    callers cannot probe the token state.
+
+    Audit: success and failure rows written to ``login_events``.
+    """
+    from drevalis.services.password_reset import consume_reset
+
+    ip = _client_ip(request)
+    ua = request.headers.get("user-agent")
+
+    _BAD_TOKEN = HTTPException(
+        status.HTTP_400_BAD_REQUEST,
+        "invalid_or_expired_token",
+    )
+
+    user = await consume_reset(
+        db=db,
+        raw_token=body.token,
+        new_password=body.new_password,
+        settings=settings,
+    )
+
+    if user is None:
+        # Audit failure.
+        asyncio.create_task(
+            _record_login_event(
+                db,
+                user_id=None,
+                email_attempted=None,
+                ip=ip,
+                user_agent=ua,
+                success=False,
+                failure_reason="invalid_token",
+            )
+        )
+        raise _BAD_TOKEN
+
+    # Clear any existing session cookie — user must log in fresh.
+    response.delete_cookie(_COOKIE_NAME, path="/")
+
+    # ── TOTP gate ──────────────────────────────────────────────────────
+    # If 2FA is enabled, do not issue a session cookie yet. The client
+    # must complete the TOTP step exactly as in the normal login flow.
+    if user.totp_confirmed_at is not None:
+        challenge = _mint_totp_challenge(user.id, settings)
+        asyncio.create_task(
+            _record_login_event(
+                db,
+                user_id=user.id,
+                email_attempted=None,
+                ip=ip,
+                user_agent=ua,
+                success=False,
+                failure_reason="totp_required",
+            )
+        )
+        logger.info("auth.reset_password_totp_required", user_id=str(user.id))
+        return {"stage": "totp_required", "challenge": challenge}
+
+    # ── No 2FA — record success and return ────────────────────────────
+    asyncio.create_task(
+        _record_login_event(
+            db,
+            user_id=user.id,
+            email_attempted=None,
+            ip=ip,
+            user_agent=ua,
+            success=True,
+            failure_reason=None,
+        )
+    )
+    logger.info("auth.reset_password_success", user_id=str(user.id))
+    return {"message": "password_reset_successful"}
 
 
 # ── User management ───────────────────────────────────────────────────

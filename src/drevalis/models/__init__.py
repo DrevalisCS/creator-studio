@@ -18,6 +18,7 @@ from .license_state import LicenseStateRow
 from .llm_config import LLMConfig
 from .login_event import LoginEvent
 from .media_asset import MediaAsset
+from .password_reset_token import PasswordResetToken
 from .prompt_template import PromptTemplate
 from .scheduled_post import ScheduledPost
 from .series import Series
@@ -48,6 +49,7 @@ __all__ = [
     "LicenseStateRow",
     "LoginEvent",
     "MediaAsset",
+    "PasswordResetToken",
     "PromptTemplate",
     "ScheduledPost",
     "Series",

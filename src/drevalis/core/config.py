@@ -139,6 +139,24 @@ class Settings(BaseSettings):
     # Cron job on/off. When True, runs daily at 03:00 UTC.
     backup_auto_enabled: bool = False
 
+    # ── SMTP (password-reset email) ───────────────────────────────────────
+    # All fields are optional. When smtp_host is unset, the forgot-password
+    # endpoint still returns the same generic 200 response — it simply logs
+    # a warning and skips the send. This means SMTP misconfiguration is never
+    # revealed to the caller (enumeration-safe).
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_username: str | None = None
+    smtp_password: str | None = None
+    smtp_use_tls: bool = True
+    # Sender address shown in From: header. Falls back to smtp_username when
+    # not set. If neither is set, sending is skipped even if smtp_host is set.
+    smtp_from: str | None = None
+    # Base URL used to build the password-reset link embedded in the email,
+    # e.g. "https://drevalis.example.com". When unset the service skips the
+    # send (and logs a warning) rather than emitting a broken link.
+    app_base_url: str | None = None
+
     # ── Demo mode ────────────────────────────────────────────────────────
     # When ``True`` the backend runs the public-facing demo shape:
     #   * ``generate_episode`` is replaced by a fake state machine that

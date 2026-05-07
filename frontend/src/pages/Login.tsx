@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Lock, ShieldCheck } from 'lucide-react';
+import { Lock, ShieldCheck, Mail } from 'lucide-react';
 import { auth, formatError } from '@/lib/api';
 import { Input } from '@/components/ui/Input';
 
@@ -31,6 +31,13 @@ export default function LoginPage() {
   const [totpCode, setTotpCode] = useState('');
   const [useRecovery, setUseRecovery] = useState(false);
   const totpInputRef = useRef<HTMLInputElement>(null);
+
+  // Forgot-password modal state.
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotSubmitting, setForgotSubmitting] = useState(false);
+  const [forgotDone, setForgotDone] = useState(false);
+  const [forgotError, setForgotError] = useState<string | null>(null);
 
   // ── Stage 1: email + password ─────────────────────────────────────
 
@@ -89,6 +96,43 @@ export default function LoginPage() {
     setTotpCode('');
     setUseRecovery(false);
     setError(null);
+  };
+
+  // ── Forgot-password handlers ───────────────────────────────────────
+
+  const openForgot = () => {
+    setForgotEmail(email.trim()); // pre-fill from the login form if present
+    setForgotError(null);
+    setForgotDone(false);
+    setShowForgot(true);
+  };
+
+  const closeForgot = () => {
+    setShowForgot(false);
+    setForgotDone(false);
+    setForgotError(null);
+  };
+
+  const submitForgot = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = forgotEmail.trim();
+    if (!trimmed) {
+      setForgotError('Enter your email address.');
+      return;
+    }
+    setForgotSubmitting(true);
+    setForgotError(null);
+    try {
+      await auth.forgotPassword(trimmed);
+      // Always show the same message regardless of whether the email exists.
+      setForgotDone(true);
+    } catch (err) {
+      // The endpoint always returns 200 in normal operation; any error here
+      // is a network-level failure — still show a generic message.
+      setForgotDone(true);
+    } finally {
+      setForgotSubmitting(false);
+    }
   };
 
   // ── Render ─────────────────────────────────────────────────────────
@@ -182,14 +226,23 @@ export default function LoginPage() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
-          <Input
-            label="Password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <div className="relative">
+            <Input
+              label="Password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={openForgot}
+              className="absolute right-0 top-0 text-[11px] text-txt-muted hover:text-txt-secondary underline underline-offset-2 mt-1"
+            >
+              Forgot password?
+            </button>
+          </div>
 
           {error && (
             <div className="p-2 rounded border border-error/30 bg-error/10 text-xs text-error" role="alert">
@@ -212,6 +265,76 @@ export default function LoginPage() {
           on your first login attempt.
         </p>
       </div>
+
+      {/* ── Forgot-password modal ──────────────────────────────────── */}
+      {showForgot && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="forgot-title"
+        >
+          <div className="w-full max-w-sm bg-bg-elevated/90 border border-white/[0.08] rounded-lg p-8 shadow-xl">
+            <div className="flex items-center justify-center w-10 h-10 rounded-full bg-accent/15 border border-accent/30 mx-auto mb-4">
+              <Mail className="text-accent" size={18} />
+            </div>
+            <h2 id="forgot-title" className="text-lg font-semibold text-center text-txt-primary mb-1">
+              Reset password
+            </h2>
+
+            {forgotDone ? (
+              <>
+                <p className="text-sm text-center text-txt-secondary mt-2 mb-6">
+                  If that email is on file, a reset link has been sent. Check your inbox.
+                </p>
+                <button
+                  type="button"
+                  onClick={closeForgot}
+                  className="w-full rounded-md bg-gradient-to-r from-accent to-accent-hover text-bg-base font-semibold py-2.5 text-sm"
+                >
+                  Back to sign in
+                </button>
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-center text-txt-secondary mb-5">
+                  Enter your email and we will send you a reset link.
+                </p>
+                <form onSubmit={submitForgot} className="space-y-4">
+                  <Input
+                    label="Email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    autoFocus
+                    value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                  />
+                  {forgotError && (
+                    <div className="p-2 rounded border border-error/30 bg-error/10 text-xs text-error" role="alert">
+                      {forgotError}
+                    </div>
+                  )}
+                  <button
+                    type="submit"
+                    disabled={forgotSubmitting}
+                    className="w-full rounded-md bg-gradient-to-r from-accent to-accent-hover text-bg-base font-semibold py-2.5 text-sm disabled:opacity-50"
+                  >
+                    {forgotSubmitting ? 'Sending…' : 'Send reset link'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={closeForgot}
+                    className="w-full text-center text-[12px] text-txt-muted hover:text-txt-secondary"
+                  >
+                    Cancel
+                  </button>
+                </form>
+              </>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
