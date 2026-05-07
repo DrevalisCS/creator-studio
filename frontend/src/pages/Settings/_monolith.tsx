@@ -14,6 +14,7 @@ import {
   Archive,
   Users,
   Palette,
+  FileArchive,
 } from 'lucide-react';
 import { LicenseSection } from '@/pages/Settings/sections/LicenseSection';
 import { UpdatesSection } from '@/pages/Settings/sections/UpdatesSection';
@@ -29,6 +30,7 @@ import { FFmpegSection } from '@/pages/Settings/sections/FFmpegSection';
 import { SocialSection } from '@/pages/Settings/sections/SocialSection';
 import { ApiKeysSection } from '@/pages/Settings/sections/ApiKeysSection';
 import { TemplatesSection } from '@/pages/Settings/sections/TemplatesSection';
+import { DiagnosticsSection } from '@/pages/Settings/sections/DiagnosticsSection';
 
 // ---------------------------------------------------------------------------
 // Settings Sections Nav
@@ -48,7 +50,8 @@ type SectionId =
   | 'ffmpeg'
   | 'backup'
   | 'updates'
-  | 'templates';
+  | 'templates'
+  | 'diagnostics';
 
 interface SectionDef {
   id: SectionId;
@@ -96,6 +99,7 @@ const SECTION_GROUPS: SectionGroupDef[] = [
       { id: 'ffmpeg', label: 'FFmpeg', icon: Film },
       { id: 'backup', label: 'Backup', icon: Archive },
       { id: 'updates', label: 'Updates', icon: ArrowUpCircle },
+      { id: 'diagnostics', label: 'Diagnostics', icon: FileArchive },
     ],
   },
   {
@@ -193,6 +197,7 @@ function Settings() {
           {activeSection === 'templates' && <TemplatesSection />}
           {activeSection === 'social' && <SocialSection />}
           {activeSection === 'apikeys' && <ApiKeysSection onNavigateToApiKeys={() => setActiveSection('apikeys')} />}
+          {activeSection === 'diagnostics' && <DiagnosticsSection />}
         </div>
       </div>
     </div>
